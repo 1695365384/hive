@@ -194,3 +194,30 @@ export {
   createSkillRegistry,
   initializeSkills,
 } from './skills/index.js';
+
+// ============================================
+// Hooks 系统
+// ============================================
+
+export {
+  // 注册表
+  HookRegistry,
+
+  // 类型
+  type HookPriority,
+  type HookResult,
+  type SessionStartHookContext,
+  type SessionEndHookContext,
+  type SessionErrorHookContext,
+  type ToolBeforeHookContext,
+  type ToolBeforeHookModifiedContext,
+  type ToolAfterHookContext,
+  type CapabilityInitHookContext,
+  type CapabilityDisposeHookContext,
+  type WorkflowPhaseHookContext,
+  type HookTypeMap,
+  type HookType,
+  type HookHandler,
+  type HookOptions,
+  type RegisteredHook,
+} from './hooks/index.js';

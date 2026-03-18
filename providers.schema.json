@@ -49,18 +49,18 @@
   "definitions": {
     "Provider": {
       "type": "object",
-      "required": ["name", "base_url"],
+      "required": ["name", "baseUrl"],
       "properties": {
         "name": {
           "type": "string",
           "description": "Display name"
         },
-        "base_url": {
+        "baseUrl": {
           "type": "string",
           "format": "uri",
           "description": "API base URL"
         },
-        "api_key": {
+        "apiKey": {
           "type": "string",
           "description": "API key (leave empty to use environment variable)"
         },
@@ -118,7 +118,7 @@
         "model": {
           "type": "string"
         },
-        "max_turns": {
+        "maxTurns": {
           "type": "integer",
           "minimum": 1
         },

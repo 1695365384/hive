@@ -40,9 +40,29 @@ export class SkillCapability implements AgentCapability {
   }
 
   /**
-   * 匹配技能
+   * 匹配技能（带 Hook 触发）
    */
-  match(input: string): SkillMatchResult | null {
+  async match(input: string, sessionId?: string): Promise<SkillMatchResult | null> {
+    const result = this.context.skillRegistry.match(input);
+
+    // 触发 skill:match hook
+    if (result) {
+      await this.context.hookRegistry.emit('skill:match', {
+        sessionId: sessionId || 'system',
+        input,
+        matchedSkill: result.skill.metadata.name,
+        matchScore: 1.0, // 默认匹配分数
+        timestamp: new Date(),
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * 同步匹配技能（向后兼容）
+   */
+  matchSync(input: string): SkillMatchResult | null {
     return this.context.skillRegistry.match(input);
   }
 
