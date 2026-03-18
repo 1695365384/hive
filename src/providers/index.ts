@@ -2,13 +2,13 @@
  * Provider 模块 - 统一入口
  *
  * 提供 LLM 提供商管理功能
+ * 使用 AI SDK 适配器和 Models.dev 元数据
  */
 
 // ============================================
 // 核心类
 // ============================================
 
-export { Provider } from './Provider.js';
 export {
   ProviderManager,
   getProviderManager,
@@ -27,6 +27,7 @@ export type {
   ProviderPreset,
   ConfigSource,
   IProvider,
+  ProviderType,
 } from './types.js';
 
 // ============================================
@@ -42,37 +43,40 @@ export {
 } from './sources/index.js';
 
 // ============================================
-// 预设
+// AI SDK 适配器
 // ============================================
 
 export {
-  ALL_PRESETS,
-  getPresets,
-  getPresetsByCategory,
-  getPreset,
-  applyPreset,
-  searchPresets,
-  ANTHROPIC_PRESETS,
-  OPENAI_PRESETS,
-  CHINESE_PRESETS,
-  GATEWAY_PRESETS,
-} from './presets/index.js';
+  // 类型
+  type ProviderAdapter,
+  type AdapterConfig,
+  // 类
+  OpenAIAdapter,
+  AnthropicAdapter,
+  GoogleAdapter,
+  OpenAICompatibleAdapter,
+  // 函数
+  createAdapter,
+  createOpenAIAdapter,
+  createAnthropicAdapter,
+  createGoogleAdapter,
+  createOpenAICompatibleAdapter,
+  getProviderType,
+  getKnownProviders,
+  getKnownProvidersSync,
+  isKnownProvider,
+  adapterRegistry,
+} from './adapters/index.js';
 
 // ============================================
-// 模型
+// 模型元数据
 // ============================================
 
 export {
-  fetchModels,
-  fetchModelDetail,
-  getModelFetcher,
-  getProviderModels,
-  getModelSpec,
-  getContextWindow,
-  checkModelSupport,
-  estimateCost,
-  getAllModels,
-  searchModels,
-} from './models/index.js';
-
-export type { ModelFetcher } from './models/fetcher.js';
+  ModelsDevClient,
+  getModelsDevClient,
+  createModelsDevClient,
+  getStaticModels,
+  fetchModelSpec,
+  fetchProviderModels,
+} from './metadata/index.js';

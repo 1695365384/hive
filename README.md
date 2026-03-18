@@ -1,6 +1,6 @@
 # Claude Agent Service
 
-面向 **C 端应用** 的 Claude Agent 服务 SDK，支持 **Gateway 网关模式** 部署。
+面向 **C 端应用** 的 Claude Agent 服务 SDK。
 
 **核心设计：借助生态力量，不重复造轮子**
 
@@ -10,12 +10,6 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                  本 SDK (claude-agent-service)                  │
 ├─────────────────────────────────────────────────────────────────┤
-│                        Agent 网关层 (可选)                       │
-│    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐           │
-│    │ 进程管理    │  │ 配置监听    │  │ 健康监控    │           │
-│    │ProcessMgr  │  │ConfigWatch │  │HealthMon   │           │
-│    └─────────────┘  └─────────────┘  └─────────────┘           │
-├─────────────────────────────────────────────────────────────────┤
 │                        Agent 核心系统                            │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │              Agent (主入口)                              │   │
@@ -24,8 +18,8 @@
 │  │  │Capability│ │Capability│ │Capability│ │Capability│   │   │
 │  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │   │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐               │   │
-│  │  │SubAgent  │ │SelfManage│ │   Hooks  │               │   │
-│  │  │Capability│ │Capability│ │Registry  │               │   │
+│  │  │SubAgent  │ │   Hooks  │ │  Prompt  │               │   │
+│  │  │Capability│ │ Registry │ │  System  │               │   │
 │  │  └──────────┘ └──────────┘ └──────────┘               │   │
 │  └─────────────────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────────┤
@@ -49,36 +43,10 @@
 - 📝 **通用任务** - 不只是写代码，支持研究、分析、写作、数据处理等
 - 💾 **持久化存储** - 用户偏好、跨会话记忆
 - 🛠️ **MCP 扩展** - 支持 Model Context Protocol
-- ✅ **完整测试** - 153 个测试用例，核心模块高覆盖率
-
-### 🆕 新增特性
-
-- 🏠 **Gateway 网关** - 进程管理、配置热更新、健康监控、API 代理
 - 🪝 **Hooks 系统** - 会话生命周期、工具调用、能力初始化等事件钩子
-- 📦 **服务注册表** - 统一的服务生命周期管理和依赖注入
-- 🔗 **网关协议** - Agent 与 Gateway 间的标准化通信协议
-- 🔄 **自管理能力** - Agent 运行时动态更新配置和状态
+- ✅ **完整测试** - 核心模块高覆盖率
 
 ## 快速开始
-
-### 启动网关服务（生产部署推荐）
-
-```bash
-npm run gateway
-```
-
-网关服务运行在 `http://localhost:8080`，提供：
-
-**管理接口：**
-- `GET /health` - 网关健康检查
-- `GET /agent/status` - Agent 状态
-- `POST /agent/start` - 启动 Agent
-- `POST /agent/stop` - 停止 Agent
-- `POST /agent/restart` - 重启 Agent
-- `POST /agent/heartbeat` - 心跳上报
-
-**代理接口：**
-- `/api/*` -> Agent 服务
 
 ### 本地调试 CLI（快速测试 Agent）
 
@@ -279,43 +247,13 @@ interface AgentChatOptions {
 }
 ```
 
-### GatewayClientService (新增)
-
-```typescript
-class GatewayClientService implements IGatewayClient {
-  constructor(config: GatewayClientServiceConfig);
-
-  // 连接管理
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
-  isConnected(): boolean;
-
-  // Agent 管理
-  getAgentStatus(): Promise<AgentState>;
-  startAgent(): Promise<void>;
-  stopAgent(): Promise<void>;
-  restartAgent(request?: RestartRequest): Promise<void>;
-
-  // 配置管理
-  getConfig(): Promise<Record<string, unknown>>;
-  updateConfig(request: ConfigUpdateRequest): Promise<ConfigUpdateResponse>;
-
-  // 健康检查
-  healthCheck(): Promise<HealthCheckResult>;
-
-  // 心跳
-  sendHeartbeat(data: HeartbeatRequest): Promise<HeartbeatResponse>;
-}
-```
-
-### ServiceRegistry (新增)
+### ServiceRegistry
 
 ```typescript
 class ServiceRegistry implements ServiceContext {
   // 服务管理
   register<T extends IService>(service: T): void;
   getService<T extends IService>(name: string): T | undefined;
-  getGatewayClient(): IGatewayClient | undefined;
 
   // 生命周期
   initializeAll(): Promise<void>;
@@ -425,135 +363,6 @@ await general('执行任务');
 | **Plan** | 继承 | 只读 | 计划研究、收集上下文 |
 | **General** | 继承 | 全部 | 复杂任务、代码修改 |
 
-## 网关系统 (Gateway)
-
-网关系统提供生产级 Agent 部署能力，包括进程管理、配置热更新、健康监控和 API 代理。
-
-### 架构
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Agent Gateway                         │
-│                    (端口: 8080)                          │
-├─────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │ProcessMgr  │  │ConfigWatch │  │HealthMon   │     │
-│  │ 进程管理    │  │ 配置监听    │  │ 健康监控    │     │
-│  └─────────────┘  └─────────────┘  └─────────────┘     │
-├─────────────────────────────────────────────────────────┤
-│                     HTTP API                            │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │ 管理接口:                                         │  │
-│  │   GET  /health          - 网关健康检查           │  │
-│  │   GET  /agent/status    - Agent 状态             │  │
-│  │   POST /agent/start     - 启动 Agent             │  │
-│  │   POST /agent/stop      - 停止 Agent             │  │
-│  │   POST /agent/restart   - 重启 Agent             │  │
-│  │   GET  /agent/config    - 获取配置               │  │
-│  │   POST /agent/config    - 更新配置               │  │
-│  │   POST /agent/heartbeat - 心跳上报               │  │
-│  ├──────────────────────────────────────────────────┤  │
-│  │ 代理接口:                                         │  │
-│  │   /api/* -> Agent 服务 (端口: 3000)              │  │
-│  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                   Agent Service                          │
-│                    (端口: 3000)                          │
-└─────────────────────────────────────────────────────────┘
-```
-
-### 启动网关
-
-```bash
-# 启动网关 (自动启动 Agent 服务)
-npm run gateway
-
-# 环境变量配置
-GATEWAY_PORT=8080      # 网关端口
-AGENT_PORT=3000        # Agent 服务端口
-AUTH_TOKEN=your-token  # API 认证 token
-PROVIDERS_CONFIG=./providers.json  # 提供商配置
-HEALTH_CHECK_INTERVAL=10000  # 健康检查间隔 (ms)
-```
-
-### 网关配置
-
-```json
-// gateway.example.json
-{
-  "port": 8080,
-  "agentPort": 3000,
-  "agentHost": "localhost",
-  "configPath": "./providers.json",
-  "healthCheckInterval": 10000,
-  "authToken": "your-auth-token"
-}
-```
-
-### 网关客户端
-
-```typescript
-import { GatewayClientService, ServiceRegistry } from 'claude-agent-service';
-
-// 创建服务注册表
-const registry = new ServiceRegistry();
-
-// 创建网关客户端服务
-const gatewayClient = new GatewayClientService({
-  gatewayUrl: 'http://localhost:8080',
-  authToken: 'your-token',
-  autoReconnect: true,
-  heartbeatInterval: 30000,
-});
-
-// 注册并初始化
-registry.register(gatewayClient);
-await registry.initializeAll();
-await registry.startAll();
-
-// 使用客户端
-const status = await gatewayClient.getAgentStatus();
-const health = await gatewayClient.healthCheck();
-
-// 优雅关闭
-await registry.stopAll();
-await registry.disposeAll();
-```
-
-### 网关协议
-
-Agent 和 Gateway 之间通过标准化协议通信：
-
-```typescript
-// 心跳上报
-interface HeartbeatRequest {
-  agentId: string;
-  timestamp: Date;
-  status: AgentStatus;
-  memoryUsage?: number;
-  cpuUsage?: number;
-  activeSessions?: number;
-}
-
-// 配置更新
-interface ConfigUpdateRequest {
-  config: Record<string, unknown>;
-  restart?: boolean;
-  version?: string;
-}
-
-// 健康检查
-interface HealthCheckResult {
-  healthy: boolean;
-  timestamp: Date;
-  responseTime: number;
-  error?: string;
-}
-```
-
 ## Hooks 系统
 
 Hooks 系统提供生命周期事件钩子，支持在关键节点插入自定义逻辑。
@@ -632,7 +441,7 @@ const registry = new ServiceRegistry();
 registry.register(new MyService({
   name: 'my-service',
   priority: 10,  // 优先级，越小越先启动
-  dependencies: ['gateway-client'],  // 依赖其他服务
+  dependencies: ['logger'],  // 依赖其他服务
   autoStart: true,
 }));
 
@@ -839,20 +648,12 @@ npm run test:watch
 npm run test:coverage
 ```
 
-**测试状态**：
-- ✅ 153 个测试全部通过
-- 📊 核心模块高覆盖率
-  - skills: 82.28%
-  - agents/core: 55.39%
-  - agents/prompts: 73.91%
-
 ## 目录结构
 
 ```
 src/
 ├── index.ts                    # SDK 入口
 ├── server.ts                   # HTTP 服务
-├── gateway-server.ts           # 网关服务启动入口
 ├── cli.ts                      # CLI 工具
 │
 ├── agents/                     # Agent 系统
@@ -870,8 +671,7 @@ src/
 │   │   ├── SkillCapability.ts # 技能能力
 │   │   ├── ProviderCapability.ts # 提供商能力
 │   │   ├── SubAgentCapability.ts # 子 Agent 能力
-│   │   ├── WorkflowCapability.ts # 工作流能力
-│   │   └── SelfManageCapability.ts # 自管理能力 (新增)
+│   │   └── WorkflowCapability.ts # 工作流能力
 │   ├── prompts/                # Prompt 模板系统
 │   │   ├── prompts.ts         # Prompt 定义
 │   │   ├── PromptTemplate.ts  # 模板类
@@ -882,14 +682,7 @@ src/
 │   ├── types.ts               # Agent 类型定义
 │   └── index.ts               # Agent 模块导出
 │
-├── gateway/                    # 网关系统 (新增)
-│   ├── index.ts               # 网关模块导出
-│   ├── types.ts               # 网关类型定义
-│   ├── ProcessManager.ts      # Agent 进程管理
-│   ├── ConfigWatcher.ts       # 配置文件监听
-│   └── HealthMonitor.ts       # 健康状态监控
-│
-├── hooks/                      # Hooks 系统 (新增)
+├── hooks/                      # Hooks 系统
 │   ├── index.ts               # Hooks 模块导出
 │   ├── types.ts               # Hook 类型定义
 │   └── registry.ts            # Hook 注册表
@@ -897,21 +690,11 @@ src/
 ├── services/                   # 服务层
 │   ├── index.ts               # 服务模块导出
 │   ├── types.ts               # 服务类型定义
-│   ├── ServiceRegistry.ts     # 服务注册表 (新增)
+│   ├── ServiceRegistry.ts     # 服务注册表
 │   ├── preferences.ts         # 偏好存储
-│   ├── gateway-client.ts      # 网关客户端 (兼容层)
-│   ├── base/                  # 基础服务 (新增)
-│   │   ├── BaseService.ts    # 服务基类
-│   │   └── index.ts          # 模块导出
-│   └── gateway/               # 网关服务 (新增)
-│       ├── GatewayClientService.ts # 网关客户端服务
+│   └── base/                  # 基础服务
+│       ├── BaseService.ts    # 服务基类
 │       └── index.ts          # 模块导出
-│
-├── shared/                     # 共享模块 (新增)
-│   └── gateway-protocol/      # 网关协议
-│       ├── types.ts           # 协议类型定义
-│       ├── client.ts          # 协议客户端
-│       └── index.ts           # 模块导出
 │
 ├── providers/                  # 提供商管理
 │   ├── index.ts               # 模块导出
@@ -955,34 +738,11 @@ skills/                         # 技能定义
 tests/                          # 测试文件
 ├── unit/                       # 单元测试
 ├── integration/                # 集成测试
-├── gateway.test.ts            # 网关测试 (新增)
-├── hooks/                     # Hooks 测试 (新增)
+├── hooks/                     # Hooks 测试
 └── skills.test.ts              # 技能系统测试
 ```
 
 ## 高级功能
-
-### 自管理能力
-
-Agent 支持运行时动态更新配置和状态：
-
-```typescript
-import { Agent } from 'claude-agent-service';
-
-const agent = new Agent();
-
-// 获取当前状态
-const status = await agent.getStatus();
-
-// 更新配置
-const result = await agent.updateConfig({
-  provider: 'deepseek',
-  model: 'deepseek-chat',
-});
-
-// 请求重启
-await agent.requestRestart({ reason: 'Config updated' });
-```
 
 ### 自定义 Agent
 

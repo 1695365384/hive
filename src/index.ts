@@ -117,7 +117,6 @@ export {
 
 export {
   // 核心类
-  Provider,
   ProviderManager,
   getProviderManager,
   createProviderManager,
@@ -129,22 +128,24 @@ export {
   EnvSource,
   createConfigChain,
 
-  // 预设
-  ALL_PRESETS,
-  getPresets,
-  getPresetsByCategory,
-  getPreset,
-  applyPreset,
-  searchPresets,
+  // AI SDK 适配器
+  createAdapter,
+  createOpenAIAdapter,
+  createAnthropicAdapter,
+  createGoogleAdapter,
+  createOpenAICompatibleAdapter,
+  getProviderType,
+  getKnownProviders,
+  getKnownProvidersSync,
+  isKnownProvider,
+  adapterRegistry,
 
-  // 模型
-  fetchModels,
-  getModelSpec,
-  getContextWindow,
-  checkModelSupport,
-  estimateCost,
-  getAllModels,
-  searchModels,
+  // 模型元数据
+  getModelsDevClient,
+  createModelsDevClient,
+  getStaticModels,
+  fetchModelSpec,
+  fetchProviderModels,
 
   // 类型
   type ProviderConfig,
@@ -153,6 +154,8 @@ export {
   type ProviderPreset,
   type ConfigSource,
   type IProvider,
+  type ProviderType,
+  type ProviderAdapter,
 } from './providers/index.js';
 
 // 向后兼容的类型别名
@@ -221,3 +224,110 @@ export {
   type HookOptions,
   type RegisteredHook,
 } from './hooks/index.js';
+
+// ============================================
+// 会话系统
+// ============================================
+
+export {
+  // 类型
+  type Message,
+  type MessageRole,
+  type CreateMessageOptions,
+  type CompressionState,
+  type SessionMetadata,
+  type SessionConfig,
+  type Session,
+  type SessionStorageConfig,
+  type SessionListItem,
+
+  // 常量
+  DEFAULT_STORAGE_DIR,
+  DEFAULT_MAX_SESSIONS,
+  DEFAULT_SESSION_TTL,
+
+  // 存储
+  SessionStorage,
+  createSessionStorage,
+
+  // 管理器
+  SessionManager,
+  createSessionManager,
+  type SessionManagerConfig,
+} from './session/index.js';
+
+// ============================================
+// 会话能力
+// ============================================
+
+export {
+  SessionCapability,
+  createSessionCapability,
+  type SessionCapabilityConfig,
+} from './agents/capabilities/index.js';
+
+// ============================================
+// 压缩系统
+// ============================================
+
+export {
+  // Token 计数器
+  SimpleTokenCounter,
+  createTokenCounter,
+  calculateThreshold,
+  shouldCompress,
+
+  // 压缩服务
+  CompressionService,
+  createCompressionService,
+  type CompressionServiceConfig,
+  type CompressionResult,
+
+  // 压缩策略
+  SlidingWindowStrategy,
+  createSlidingWindowStrategy,
+  SummaryStrategy,
+  createSummaryStrategy,
+  HybridStrategy,
+  createHybridStrategy,
+  type HybridStrategyConfig,
+
+  // 类型
+  type CompressionStrategyName,
+  type CompressionConfig,
+  type CompressionContext,
+  type CompressionStrategy,
+  type TokenCounter,
+  type TokenCounterConfig,
+
+  // 常量
+  DEFAULT_COMPRESSION_CONFIG,
+  DEFAULT_TOKEN_COUNTER_CONFIG,
+} from './compression/index.js';
+
+// ============================================
+// 工作空间系统
+// ============================================
+
+export {
+  // 类型
+  type WorkspaceMetadata,
+  type WorkspaceConfig,
+  type WorkspacePaths,
+  type WorkspaceInitConfig,
+  type SessionGroup,
+  type SessionConfig as WorkspaceSessionConfig,
+  type StorageConfig,
+  type Preferences,
+
+  // 常量
+  DEFAULT_WORKSPACE_DIR,
+  DEFAULT_WORKSPACE_NAME,
+  WORKSPACE_VERSION,
+  DEFAULT_SESSION_GROUPS,
+
+  // 管理器
+  WorkspaceManager,
+  initWorkspace,
+  createWorkspaceManager,
+} from './workspace/index.js';

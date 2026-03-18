@@ -4,7 +4,7 @@
  * 提供测试中常用的辅助函数和 mock 工具
  */
 
-import { vi } from 'vitest';
+import { vi, expect } from 'vitest';
 
 // ============================================
 // 类型定义
@@ -142,7 +142,7 @@ export function sleep(ms: number): Promise<void> {
  */
 export function assertCalledWith(
   mockFn: ReturnType<typeof vi.fn>,
-  expected: unknown
+  expected: Record<string, unknown>
 ): void {
   expect(mockFn).toHaveBeenCalled();
   const calls = mockFn.mock.calls;

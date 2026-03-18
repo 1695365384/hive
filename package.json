@@ -22,10 +22,16 @@
     "cli": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:watch": "vitest --config vitest.e2e.config.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.62",
+    "@ai-sdk/google": "^3.0.51",
+    "@ai-sdk/openai": "^3.0.46",
     "@anthropic-ai/claude-agent-sdk": "^0.2.77",
+    "ai": "^6.0.129",
     "better-sqlite3": "^11.0.0",
     "conf": "^13.0.1",
     "zod": "^4.3.6"

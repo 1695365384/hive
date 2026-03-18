@@ -32,3 +32,6 @@ providers.json
 
 # 测试用例
 coverage/
+
+# 会话
+.sessions
