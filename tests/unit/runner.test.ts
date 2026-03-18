@@ -50,8 +50,8 @@ describe('AgentRunner', () => {
     it('should create runner with provider manager', () => {
       const providerManager = {
         getActiveProvider: () => ({
-          base_url: 'https://api.test.com',
-          api_key: 'test-key',
+          baseUrl: 'https://api.test.com',
+          apiKey: 'test-key',
         }),
         getMcpServersForAgent: () => ({}),
       };

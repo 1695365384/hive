@@ -21,8 +21,12 @@ import { SkillCapability } from '../capabilities/SkillCapability.js';
 import { ChatCapability } from '../capabilities/ChatCapability.js';
 import { SubAgentCapability } from '../capabilities/SubAgentCapability.js';
 import { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
+import { SessionCapability } from '../capabilities/SessionCapability.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
+import type { Session, Message } from '../../session/index.js';
+import type { SessionCapabilityConfig } from '../capabilities/SessionCapability.js';
+import type { WorkspaceInitConfig } from '../../workspace/index.js';
 
 /**
  * Agent 核心类
@@ -36,11 +40,29 @@ export class Agent {
   private chatCap: ChatCapability;
   private subAgentCap: SubAgentCapability;
   private workflowCap: WorkflowCapability;
+  private sessionCap: SessionCapability;
   private initialized: boolean = false;
   private disposed: boolean = false;
 
-  constructor(skillConfig?: SkillSystemConfig) {
+  constructor(
+    skillConfig?: SkillSystemConfig,
+    sessionConfig?: SessionCapabilityConfig,
+    workspaceConfig?: WorkspaceInitConfig | string
+  ) {
     this._context = new AgentContextImpl(skillConfig);
+
+    // 处理工作空间配置
+    let finalSessionConfig = sessionConfig;
+    if (workspaceConfig) {
+      const wsConfig: WorkspaceInitConfig = typeof workspaceConfig === 'string'
+        ? { path: workspaceConfig }
+        : workspaceConfig;
+
+      finalSessionConfig = {
+        ...sessionConfig,
+        workspace: wsConfig,
+      };
+    }
 
     // 创建能力模块
     this.providerCap = new ProviderCapability();
@@ -48,6 +70,7 @@ export class Agent {
     this.chatCap = new ChatCapability();
     this.subAgentCap = new SubAgentCapability();
     this.workflowCap = new WorkflowCapability();
+    this.sessionCap = new SessionCapability(finalSessionConfig);
 
     // 注册并立即初始化能力模块（同步初始化）
     this.providerCap.initialize(this._context);
@@ -55,6 +78,7 @@ export class Agent {
     this.chatCap.initialize(this._context);
     this.subAgentCap.initialize(this._context);
     this.workflowCap.initialize(this._context);
+    this.sessionCap.initialize(this._context);
   }
 
   /**
@@ -72,6 +96,8 @@ export class Agent {
   async initialize(): Promise<void> {
     if (!this.initialized) {
       await this._context.initializeAll();
+      // 初始化会话能力（异步部分）
+      await this.sessionCap.initializeAsync();
       this.initialized = true;
     }
   }
@@ -85,6 +111,9 @@ export class Agent {
     if (this.disposed) {
       return;
     }
+
+    // 保存会话
+    await this.sessionCap.save();
 
     // 触发 session:end hook
     const sessionId = this._context.hookRegistry.getSessionId();
@@ -313,6 +342,103 @@ export class Agent {
   }> {
     return this.workflowCap.preview(task, options);
   }
+
+  // ============================================
+  // 会话管理（委托给 SessionCapability）
+  // ============================================
+
+  /**
+   * 获取当前会话
+   */
+  get currentSession(): Session | null {
+    return this.sessionCap.getCurrentSession();
+  }
+
+  /**
+   * 创建新会话
+   */
+  async createSession(config?: { title?: string; providerId?: string; model?: string }): Promise<Session> {
+    await this.initialize();
+    return this.sessionCap.createSession(config);
+  }
+
+  /**
+   * 加载会话
+   */
+  async loadSession(sessionId: string): Promise<Session | null> {
+    await this.initialize();
+    return this.sessionCap.loadSession(sessionId);
+  }
+
+  /**
+   * 恢复最近的会话
+   */
+  async resumeLastSession(): Promise<Session | null> {
+    await this.initialize();
+    return this.sessionCap.resumeLastSession();
+  }
+
+  /**
+   * 获取会话消息历史
+   */
+  getSessionMessages(): Message[] {
+    return this.sessionCap.getMessages();
+  }
+
+  /**
+   * 获取格式化的会话历史
+   */
+  getFormattedHistory(): string {
+    return this.sessionCap.getFormattedHistory();
+  }
+
+  /**
+   * 列出所有会话
+   */
+  async listSessions() {
+    await this.initialize();
+    return this.sessionCap.listSessions();
+  }
+
+  /**
+   * 删除当前会话
+   */
+  async deleteCurrentSession(): Promise<boolean> {
+    return this.sessionCap.deleteCurrentSession();
+  }
+
+  // ============================================
+  // 工作空间管理
+  // ============================================
+
+  /**
+   * 获取工作空间管理器
+   */
+  getWorkspaceManager() {
+    return this.sessionCap.getWorkspaceManager();
+  }
+
+  /**
+   * 设置当前会话组
+   */
+  async setSessionGroup(group: string): Promise<void> {
+    await this.initialize();
+    await this.sessionCap.setSessionGroup(group);
+  }
+
+  /**
+   * 获取当前会话组
+   */
+  getCurrentSessionGroup(): string {
+    return this.sessionCap.getCurrentSessionGroup();
+  }
+
+  /**
+   * 列出所有会话组
+   */
+  listSessionGroups() {
+    return this.sessionCap.listSessionGroups();
+  }
 }
 
 // ============================================
@@ -331,8 +457,12 @@ export function getAgent(): Agent {
 }
 
 /** 创建新的 Agent 实例 */
-export function createAgent(skillConfig?: SkillSystemConfig): Agent {
-  return new Agent(skillConfig);
+export function createAgent(
+  skillConfig?: SkillSystemConfig,
+  sessionConfig?: SessionCapabilityConfig,
+  workspaceConfig?: WorkspaceInitConfig | string
+): Agent {
+  return new Agent(skillConfig, sessionConfig, workspaceConfig);
 }
 
 /** 快速对话 */

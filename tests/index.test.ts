@@ -19,10 +19,11 @@ import {
 
   // Provider 模块
   ProviderManager,
-  getPresets,
-  getPresetsByCategory,
-  getPreset,
-  applyPreset,
+  getKnownProvidersSync,
+  isKnownProvider,
+  getProviderType,
+  createAdapter,
+  getStaticModels,
 } from '../src/index.js';
 
 describe('Agent 模块', () => {
@@ -102,36 +103,53 @@ describe('Agent 模块', () => {
 });
 
 describe('Provider 模块', () => {
-  describe('预设列表', () => {
-    it('should have presets', () => {
-      const presets = getPresets();
-      expect(presets.length).toBeGreaterThan(0);
-
-      const presetIds = presets.map(p => p.id);
-      expect(presetIds).toContain('anthropic');
-      expect(presetIds).toContain('glm');
-      expect(presetIds).toContain('deepseek');
+  describe('已知提供商', () => {
+    it('should have known providers', () => {
+      const providers = getKnownProvidersSync();
+      expect(providers.length).toBeGreaterThan(0);
+      expect(providers).toContain('deepseek');
+      expect(providers).toContain('glm');
+      expect(providers).toContain('qwen');
     });
   });
 
-  describe('预设分类', () => {
-    it('should have categories', () => {
-      const anthropicPresets = getPresetsByCategory('anthropic');
-      expect(anthropicPresets.length).toBeGreaterThan(0);
+  describe('提供商类型', () => {
+    it('should identify provider types', () => {
+      expect(getProviderType('openai')).toBe('openai');
+      expect(getProviderType('anthropic')).toBe('anthropic');
+      expect(getProviderType('google')).toBe('google');
+      expect(getProviderType('deepseek')).toBe('openai-compatible');
+    });
 
-      const chinesePresets = getPresetsByCategory('chinese');
-      expect(chinesePresets.length).toBeGreaterThan(0);
+    it('should identify known providers', () => {
+      expect(isKnownProvider('deepseek')).toBe(true);
+      expect(isKnownProvider('glm')).toBe(true);
+      expect(isKnownProvider('unknown')).toBe(false);
     });
   });
 
-  describe('创建提供商配置', () => {
-    it('should create config from preset', () => {
-      const preset = getPreset('deepseek');
-      expect(preset).toBeDefined();
+  describe('静态模型', () => {
+    it('should return static models for known providers', () => {
+      const anthropicModels = getStaticModels('anthropic');
+      expect(anthropicModels.length).toBeGreaterThan(0);
+      expect(anthropicModels.some(m => m.id.includes('claude'))).toBe(true);
 
-      const provider = applyPreset(preset!, 'test-api-key');
-      expect(provider).toBeDefined();
-      expect(provider.id).toBe('deepseek');
+      const openaiModels = getStaticModels('openai');
+      expect(openaiModels.length).toBeGreaterThan(0);
+      expect(openaiModels.some(m => m.id.includes('gpt'))).toBe(true);
+    });
+  });
+
+  describe('适配器工厂', () => {
+    it('should create adapter by type', () => {
+      const adapter = createAdapter({
+        id: 'test',
+        name: 'Test',
+        type: 'openai',
+        baseUrl: '',
+        apiKey: 'test-key',
+      });
+      expect(adapter.type).toBe('openai');
     });
   });
 
@@ -142,7 +160,6 @@ describe('Provider 模块', () => {
       expect(typeof manager.getActiveProvider).toBe('function');
       expect(typeof manager.getAllProviders).toBe('function');
       expect(typeof manager.switch).toBe('function');
-      expect(typeof manager.listPresets).toBe('function');
     });
   });
 });

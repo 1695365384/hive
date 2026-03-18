@@ -49,9 +49,9 @@ describe('HookRegistry', () => {
     it('应该按优先级排序 hooks', () => {
       const calls: string[] = [];
 
-      registry.on('session:start', () => { calls.push('normal'); }, { priority: 'normal' });
-      registry.on('session:start', () => { calls.push('highest'); }, { priority: 'highest' });
-      registry.on('session:start', () => { calls.push('low'); }, { priority: 'low' });
+      registry.on('session:start', () => { calls.push('normal'); return { proceed: true }; }, { priority: 'normal' });
+      registry.on('session:start', () => { calls.push('highest'); return { proceed: true }; }, { priority: 'highest' });
+      registry.on('session:start', () => { calls.push('low'); return { proceed: true }; }, { priority: 'low' });
 
       expect(registry.count('session:start')).toBe(3);
 
@@ -155,9 +155,9 @@ describe('HookRegistry', () => {
     it('应该按优先级顺序执行 hooks', async () => {
       const calls: string[] = [];
 
-      registry.on('session:start', () => { calls.push('low'); }, { priority: 'low' });
-      registry.on('session:start', () => { calls.push('highest'); }, { priority: 'highest' });
-      registry.on('session:start', () => { calls.push('normal'); }, { priority: 'normal' });
+      registry.on('session:start', () => { calls.push('low'); return { proceed: true }; }, { priority: 'low' });
+      registry.on('session:start', () => { calls.push('highest'); return { proceed: true }; }, { priority: 'highest' });
+      registry.on('session:start', () => { calls.push('normal'); return { proceed: true }; }, { priority: 'normal' });
 
       await registry.emit('session:start', {
         sessionId: 'test-session-123',
@@ -181,6 +181,7 @@ describe('HookRegistry', () => {
 
       registry.on('session:start', () => {
         calls.push('second');
+        return { proceed: true };
       }, { priority: 'low' });
 
       const result = await registry.emit('session:start', context);
@@ -204,6 +205,7 @@ describe('HookRegistry', () => {
 
       registry.on('session:start', () => {
         calls.push('success');
+        return { proceed: true };
       }, { priority: 'low' });
 
       const result = await registry.emit('session:start', context);
@@ -226,8 +228,8 @@ describe('HookRegistry', () => {
     it('应该同步触发 hooks', () => {
       const calls: string[] = [];
 
-      registry.on('session:start', () => { calls.push('first'); });
-      registry.on('session:start', () => { calls.push('second'); });
+      registry.on('session:start', () => { calls.push('first'); return { proceed: true }; });
+      registry.on('session:start', () => { calls.push('second'); return { proceed: true }; });
 
       const result = registry.emitSync('session:start', {
         sessionId: 'test-session-123',
@@ -386,6 +388,7 @@ describe('HookRegistry', () => {
       // 第二个 hook 应该继续执行
       registry.on('session:start', () => {
         calls.push('normal-hook');
+        return { proceed: true };
       }, { priority: 'low' });
 
       const result = await registry.emit('session:start', context);
@@ -509,6 +512,7 @@ describe('HookRegistry', () => {
 
       registry.on('session:start', () => {
         // 这个不应该被执行
+        return { proceed: true };
       }, { priority: 'low' });
 
       await registry.emit('session:start', context);
@@ -528,7 +532,7 @@ describe('HookRegistry', () => {
 
       // 执行 10 次
       for (let i = 0; i < 10; i++) {
-        registry.on('session:start', () => {});
+        registry.on('session:start', () => { return { proceed: true }; });
         await registry.emit('session:start', context);
       }
 
@@ -545,7 +549,7 @@ describe('HookRegistry', () => {
       };
 
       for (let i = 0; i < 5; i++) {
-        registry.on('session:start', () => {});
+        registry.on('session:start', () => { return { proceed: true }; });
         await registry.emit('session:start', context);
       }
 
@@ -561,7 +565,7 @@ describe('HookRegistry', () => {
         timestamp: new Date(),
       };
 
-      registry.on('session:start', () => {});
+      registry.on('session:start', () => { return { proceed: true }; });
       await registry.emit('session:start', context);
 
       expect(registry.getExecutionLog().length).toBe(1);
@@ -591,7 +595,7 @@ describe('HookRegistry', () => {
         timestamp: new Date(),
       };
 
-      registry.on('session:start', () => {});
+      registry.on('session:start', () => { return { proceed: true }; });
       await registry.emit('session:start', context);
 
       const logs = registry.getExecutionLog();

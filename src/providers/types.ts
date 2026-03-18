@@ -5,6 +5,15 @@
  */
 
 // ============================================
+// Provider 类型
+// ============================================
+
+/**
+ * Provider 类型
+ */
+export type ProviderType = 'openai' | 'anthropic' | 'google' | 'openai-compatible';
+
+// ============================================
 // Provider 配置
 // ============================================
 
@@ -16,6 +25,8 @@ export interface ProviderConfig {
   id: string;
   /** 显示名称 */
   name: string;
+  /** Provider 类型 */
+  type?: ProviderType;
   /** API 基础 URL */
   baseUrl: string;
   /** API Key */
@@ -65,6 +76,8 @@ export interface ModelSpec {
   id: string;
   /** 显示名称 */
   name?: string;
+  /** 模型家族 */
+  family?: string;
   /** 上下文窗口大小（tokens） */
   contextWindow: number;
   /** 最大输出 tokens */
@@ -75,16 +88,86 @@ export interface ModelSpec {
   supportsTools?: boolean;
   /** 是否支持流式输出 */
   supportsStreaming?: boolean;
+  /** 是否支持推理（如 DeepSeek Reasoner） */
+  supportsReasoning?: boolean;
+  /** 输入模态 */
+  inputModalities?: string[];
+  /** 输出模态 */
+  outputModalities?: string[];
   /** 定价（每百万 tokens） */
   pricing?: {
     input: number;
     output: number;
+    cacheRead?: number;
     currency: 'USD' | 'CNY';
   };
   /** 模型别名 */
   aliases?: string[];
   /** 是否已弃用 */
   deprecated?: boolean;
+}
+
+// ============================================
+// Models.dev API 类型
+// ============================================
+
+/**
+ * Models.dev API 原始模型格式
+ */
+export interface ModelsDevModelRaw {
+  id: string;
+  name: string;
+  family?: string;
+  attachment?: boolean;
+  reasoning?: boolean;
+  tool_call?: boolean;
+  modalities?: {
+    input: string[];
+    output: string[];
+  };
+  cost?: {
+    input: number;
+    output: number;
+    cache_read?: number;
+  };
+  limit?: {
+    context: number;
+    output: number;
+  };
+}
+
+/**
+ * Models.dev API 原始提供商格式
+ */
+export interface ModelsDevProviderRaw {
+  id: string;
+  name: string;
+  env?: string[];
+  npm?: string;
+  api?: string;
+  doc?: string;
+  models: Record<string, ModelsDevModelRaw>;
+}
+
+/**
+ * Models.dev API 完整响应格式
+ */
+export interface ModelsDevResponse {
+  providers: Record<string, ModelsDevProviderRaw>;
+}
+
+/**
+ * 转换后的提供商信息
+ */
+export interface ModelsDevProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  envKeys: string[];
+  npmPackage: string;
+  docUrl?: string;
+  type: ProviderType;
+  models: ModelSpec[];
 }
 
 // ============================================

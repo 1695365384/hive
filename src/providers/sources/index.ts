@@ -8,11 +8,13 @@ import type { ConfigSource, ProviderConfig, McpServerConfig } from '../types.js'
 import { CCSwitchSource } from './cc-switch.js';
 import { LocalConfigSource } from './local-config.js';
 import { EnvSource } from './env.js';
+import { ModelsDevSource, createModelsDevSource, getModelsDevSource } from './models-dev.js';
 
 // 导出所有来源
 export { CCSwitchSource } from './cc-switch.js';
 export { LocalConfigSource } from './local-config.js';
 export { EnvSource } from './env.js';
+export { ModelsDevSource, createModelsDevSource, getModelsDevSource } from './models-dev.js';
 
 // 导出类型
 export type { ConfigSource } from '../types.js';

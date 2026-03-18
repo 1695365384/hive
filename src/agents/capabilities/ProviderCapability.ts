@@ -5,7 +5,17 @@
  */
 
 import type { AgentCapability, AgentContext } from '../core/types.js';
-import type { ProviderConfig } from '../../providers/types.js';
+import type { ProviderConfig, ProviderType } from '../../providers/types.js';
+import { getKnownProvidersSync, getProviderType } from '../../providers/adapters/index.js';
+
+/**
+ * Provider 预设信息（用于 UI 展示）
+ */
+export interface ProviderPresetInfo {
+  id: string;
+  name: string;
+  type: ProviderType;
+}
 
 /**
  * 提供商能力实现
@@ -33,10 +43,37 @@ export class ProviderCapability implements AgentCapability {
   }
 
   /**
-   * 列出预设
+   * 列出已知提供商预设
+   *
+   * 返回支持通过适配器连接的提供商列表
    */
-  listPresets() {
-    return this.context.providerManager.listPresets();
+  listPresets(): ProviderPresetInfo[] {
+    const knownProviders = getKnownProvidersSync();
+    return knownProviders.map((id: string) => ({
+      id,
+      name: this.getProviderDisplayName(id),
+      type: getProviderType(id),
+    }));
+  }
+
+  /**
+   * 获取提供商显示名称
+   */
+  private getProviderDisplayName(id: string): string {
+    const names: Record<string, string> = {
+      anthropic: 'Anthropic',
+      openai: 'OpenAI',
+      google: 'Google',
+      deepseek: 'DeepSeek',
+      glm: 'GLM (智谱)',
+      qwen: '通义千问',
+      kimi: 'Kimi (月之暗面)',
+      moonshot: 'Moonshot',
+      openrouter: 'OpenRouter',
+      litellm: 'LiteLLM',
+      groq: 'Groq',
+    };
+    return names[id.toLowerCase()] || id;
   }
 
   /**

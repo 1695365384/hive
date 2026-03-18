@@ -2,20 +2,32 @@
  * Provider 管理器
  *
  * 统一管理所有 Provider 配置和状态
+ * 使用 AI SDK 适配器和 Models.dev 元数据
  */
 
-import type { ProviderConfig, McpServerConfig, ModelSpec, ConfigSource } from './types.js';
-import { Provider } from './Provider.js';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
+import type { ProviderConfig, McpServerConfig, ModelSpec, ConfigSource, ProviderType } from './types.js';
+import { createAdapter, adapterRegistry, getProviderType } from './adapters/index.js';
 import { createConfigChain } from './sources/index.js';
-import { applyPreset, getPresets } from './presets/index.js';
+import { getModelsDevClient, fetchProviderModels, fetchModelSpec } from './metadata/index.js';
+
+/**
+ * Provider 信息
+ */
+interface ProviderInfo {
+  config: ProviderConfig;
+  modelCache: ModelSpec[] | null;
+  cacheTime: number;
+}
 
 /**
  * Provider 管理器
  */
 export class ProviderManager {
-  private providers: Map<string, Provider> = new Map();
+  private providers: Map<string, ProviderInfo> = new Map();
   private activeId: string | null = null;
   private sources: ConfigSource[];
+  private readonly CACHE_TTL = 3600000; // 1 小时
 
   constructor() {
     this.sources = createConfigChain();
@@ -34,7 +46,11 @@ export class ProviderManager {
       const configs = source.getAllProviders();
       for (const config of configs) {
         if (!this.providers.has(config.id)) {
-          this.providers.set(config.id, new Provider(config));
+          this.providers.set(config.id, {
+            config,
+            modelCache: null,
+            cacheTime: 0,
+          });
         }
       }
 
@@ -54,18 +70,18 @@ export class ProviderManager {
   }
 
   /**
-   * 获取当前活跃的 Provider
+   * 获取当前活跃的 Provider 配置
    */
-  get active(): Provider | null {
+  get active(): ProviderConfig | null {
     if (!this.activeId) return null;
-    return this.providers.get(this.activeId) ?? null;
+    return this.providers.get(this.activeId)?.config ?? null;
   }
 
   /**
-   * 获取所有 Provider
+   * 获取所有 Provider 配置
    */
-  get all(): Provider[] {
-    return Array.from(this.providers.values());
+  get all(): ProviderConfig[] {
+    return Array.from(this.providers.values()).map(p => p.config);
   }
 
   /**
@@ -76,53 +92,43 @@ export class ProviderManager {
   }
 
   /**
-   * 获取指定 Provider
+   * 获取指定 Provider 配置
    */
-  get(id: string): Provider | undefined {
-    return this.providers.get(id);
+  get(id: string): ProviderConfig | undefined {
+    return this.providers.get(id)?.config;
   }
 
   /**
    * 切换 Provider
-   *
-   * @param id Provider ID 或预设 ID
-   * @param apiKey 可选的 API Key（用于预设）
    */
   switch(id: string, apiKey?: string): boolean {
-    // 检查是否是已存在的 Provider
-    if (this.providers.has(id)) {
-      this.activeId = id;
-      this.active?.apply();
-      return true;
+    if (!this.providers.has(id)) {
+      console.error(`未找到 Provider: ${id}`);
+      return false;
     }
 
-    // 检查是否是预设
-    const preset = getPresets().find(p => p.id === id);
-    if (preset) {
-      const key = apiKey || process.env[preset.envKey];
-      if (!key) {
-        console.error(`使用预设 "${id}" 需要设置 ${preset.envKey}`);
-        return false;
-      }
-
-      const provider = applyPreset(preset, key);
-      this.providers.set(provider.id, provider);
-      this.activeId = provider.id;
-      provider.apply();
-      return true;
+    // 如果提供了新的 apiKey，更新配置
+    if (apiKey) {
+      const info = this.providers.get(id)!;
+      info.config = { ...info.config, apiKey };
+      // 清除模型缓存
+      info.modelCache = null;
     }
 
-    console.error(`未找到 Provider: ${id}`);
-    return false;
+    this.activeId = id;
+    return true;
   }
 
   /**
    * 注册新的 Provider
    */
-  register(config: ProviderConfig): Provider {
-    const provider = new Provider(config);
-    this.providers.set(config.id, provider);
-    return provider;
+  register(config: ProviderConfig): ProviderConfig {
+    this.providers.set(config.id, {
+      config,
+      modelCache: null,
+      cacheTime: 0,
+    });
+    return config;
   }
 
   /**
@@ -156,25 +162,83 @@ export class ProviderManager {
     return result;
   }
 
+  // ============================================
+  // AI SDK 集成方法
+  // ============================================
+
+  /**
+   * 获取 AI SDK 模型实例
+   *
+   * @param modelId 可选的模型 ID，不提供则使用默认
+   */
+  getModel(modelId?: string): LanguageModelV3 | null {
+    const config = this.active;
+    if (!config) return null;
+
+    const adapter = adapterRegistry.getOrCreate(config);
+    return adapter.createModel(config, modelId);
+  }
+
+  /**
+   * 获取指定 Provider 的 AI SDK 模型实例
+   */
+  getModelForProvider(providerId: string, modelId?: string): LanguageModelV3 | null {
+    const config = this.providers.get(providerId)?.config;
+    if (!config) return null;
+
+    const adapter = adapterRegistry.getOrCreate(config);
+    return adapter.createModel(config, modelId);
+  }
+
+  // ============================================
+  // 模型元数据方法
+  // ============================================
+
   /**
    * 获取指定 Provider 的模型列表
    */
   async getModels(providerId?: string): Promise<ModelSpec[]> {
-    const provider = providerId
-      ? this.providers.get(providerId)
-      : this.active;
+    const id = providerId || this.activeId;
+    if (!id) return [];
 
-    if (!provider) return [];
-    return provider.getModels();
+    const info = this.providers.get(id);
+    if (!info) return [];
+
+    // 检查缓存
+    if (info.modelCache && Date.now() - info.cacheTime < this.CACHE_TTL) {
+      return info.modelCache;
+    }
+
+    // 获取模型列表
+    const models = await fetchProviderModels(id);
+    info.modelCache = models;
+    info.cacheTime = Date.now();
+
+    return models;
+  }
+
+  /**
+   * 获取模型规格（从 Models.dev）
+   */
+  async getModelSpec(modelId?: string): Promise<ModelSpec | undefined> {
+    const config = this.active;
+    if (!config) return undefined;
+
+    const model = modelId || config.model;
+    if (!model) return undefined;
+
+    return fetchModelSpec(config.id, model);
   }
 
   /**
    * 获取当前模型的上下文窗口
    */
   async getContextWindow(): Promise<number> {
-    const provider = this.active;
-    if (!provider || !provider.defaultModel) return 4096;
-    return provider.getContextWindow(provider.defaultModel);
+    const config = this.active;
+    if (!config || !config.model) return 4096;
+
+    const spec = await this.getModelSpec(config.model);
+    return spec?.contextWindow || 4096;
   }
 
   /**
@@ -185,16 +249,28 @@ export class ProviderManager {
     providerId?: string,
     modelId?: string
   ): Promise<boolean> {
-    const provider = providerId
-      ? this.providers.get(providerId)
+    const config = providerId
+      ? this.providers.get(providerId)?.config
       : this.active;
 
-    if (!provider) return false;
+    if (!config) return false;
 
-    const model = modelId || provider.defaultModel;
+    const model = modelId || config.model;
     if (!model) return false;
 
-    return provider.checkSupport(model, feature);
+    const spec = await fetchModelSpec(config.id, model);
+    if (!spec) return false;
+
+    switch (feature) {
+      case 'vision':
+        return spec.supportsVision ?? false;
+      case 'tools':
+        return spec.supportsTools ?? true;
+      case 'streaming':
+        return spec.supportsStreaming ?? true;
+      default:
+        return false;
+    }
   }
 
   /**
@@ -206,24 +282,30 @@ export class ProviderManager {
     providerId?: string,
     modelId?: string
   ): Promise<{ cost: number; currency: 'USD' | 'CNY' } | null> {
-    const provider = providerId
-      ? this.providers.get(providerId)
+    const config = providerId
+      ? this.providers.get(providerId)?.config
       : this.active;
 
-    if (!provider) return null;
+    if (!config) return null;
 
-    const model = modelId || provider.defaultModel;
+    const model = modelId || config.model;
     if (!model) return null;
 
-    return provider.estimateCost(model, inputTokens, outputTokens);
+    const spec = await fetchModelSpec(config.id, model);
+    if (!spec?.pricing) return null;
+
+    const inputCost = (inputTokens / 1_000_000) * spec.pricing.input;
+    const outputCost = (outputTokens / 1_000_000) * spec.pricing.output;
+
+    return {
+      cost: inputCost + outputCost,
+      currency: spec.pricing.currency,
+    };
   }
 
-  /**
-   * 列出所有预设
-   */
-  listPresets() {
-    return getPresets();
-  }
+  // ============================================
+  // 工具方法
+  // ============================================
 
   /**
    * 重新加载配置
@@ -231,6 +313,8 @@ export class ProviderManager {
   reload(): void {
     this.providers.clear();
     this.activeId = null;
+    adapterRegistry.clear();
+    getModelsDevClient().clearCache();
     this.loadProviders();
   }
 
@@ -244,6 +328,18 @@ export class ProviderManager {
     }));
   }
 
+  /**
+   * 获取 Provider 类型
+   */
+  getProviderType(providerId?: string): ProviderType {
+    const config = providerId
+      ? this.providers.get(providerId)?.config
+      : this.active;
+
+    if (!config) return 'openai-compatible';
+    return config.type || getProviderType(config.id);
+  }
+
   // ============================================
   // 兼容性方法（向后兼容）
   // ============================================
@@ -252,14 +348,14 @@ export class ProviderManager {
    * 获取当前活跃的 Provider 配置
    */
   getActiveProvider(): ProviderConfig | null {
-    return this.active?.toConfig() ?? null;
+    return this.active;
   }
 
   /**
    * 获取所有 Provider 配置
    */
   getAllProviders(): ProviderConfig[] {
-    return this.all.map(p => p.toConfig());
+    return this.all;
   }
 
   /**
@@ -281,6 +377,26 @@ export class ProviderManager {
    */
   isCCSwitchInstalled(): boolean {
     return this.sources.some(s => s.name === 'cc-switch' && s.isAvailable());
+  }
+
+  /**
+   * 应用配置到环境变量（兼容旧代码）
+   *
+   * @deprecated 不再需要，AI SDK 直接使用配置
+   */
+  applyToEnv(): void {
+    const config = this.active;
+    if (!config) return;
+
+    process.env.ANTHROPIC_BASE_URL = config.baseUrl;
+
+    if (config.apiKey) {
+      process.env.ANTHROPIC_API_KEY = config.apiKey;
+    }
+
+    if (config.model) {
+      process.env.ANTHROPIC_MODEL = config.model;
+    }
   }
 }
 
