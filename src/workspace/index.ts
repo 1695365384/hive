@@ -14,6 +14,9 @@ export type {
   SessionConfig,
   StorageConfig,
   Preferences,
+  ModelsDevCache,
+  CachedProviderInfo,
+  CachedModelInfo,
 } from './types.js';
 
 // 常量
@@ -22,6 +25,7 @@ export {
   DEFAULT_WORKSPACE_NAME,
   WORKSPACE_VERSION,
   DEFAULT_SESSION_GROUPS,
+  MODELS_DEV_CACHE_VERSION,
 } from './types.js';
 
 // 管理器

@@ -98,6 +98,8 @@ export class Agent {
       await this._context.initializeAll();
       // 初始化会话能力（异步部分）
       await this.sessionCap.initializeAsync();
+      // 初始化提供商能力（配置持久化）
+      await this.providerCap.initializeAsync();
       this.initialized = true;
     }
   }

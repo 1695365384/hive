@@ -5,7 +5,7 @@
  */
 
 import type { ProviderType } from '../types.js';
-import { getModelsDevClient } from './models-dev.js';
+import { getModelsDevClient, type ModelsDevPersistence } from './models-dev.js';
 
 /**
  * 提供商信息（用于适配器）
@@ -134,6 +134,18 @@ class ProviderRegistryImpl {
   private cache: Map<string, ProviderInfo> = new Map();
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
+  private persistenceConfigured = false;
+
+  /**
+   * 设置持久化层
+   *
+   * 将 models.dev 数据持久化到工作空间
+   */
+  setPersistence(persistence: ModelsDevPersistence): void {
+    const client = getModelsDevClient();
+    client.setPersistence(persistence);
+    this.persistenceConfigured = true;
+  }
 
   /**
    * 获取第一个非 chat 模型的模型作为默认模型
