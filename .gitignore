@@ -29,3 +29,6 @@ config.json
 preferences.json
 memories.json
 providers.json
+
+# 测试用例
+coverage/
