@@ -6,8 +6,44 @@
 
 import { query, type Options, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentConfig, AgentExecuteOptions, AgentResult, ThoroughnessLevel } from './types.js';
+import {
+  isResultMessage,
+  isAssistantMessage,
+  isToolProgressMessage,
+  isUsageMessage,
+  isTextBlock,
+  isToolUseBlock,
+} from './types.js';
 import { getAgentConfig } from './agents.js';
 import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
+
+// ============================================
+// Provider Manager 接口
+// ============================================
+
+/**
+ * 提供商信息
+ */
+export interface ProviderInfo {
+  baseUrl: string;
+  apiKey?: string;
+}
+
+/**
+ * Provider Manager 接口
+ *
+ * 定义 Agent 运行器所需的提供商管理能力
+ */
+export interface ProviderManagerLike {
+  /** 获取当前活跃的提供商 */
+  getActiveProvider: () => ProviderInfo | null;
+  /** 获取 Agent 可用的 MCP 服务器 */
+  getMcpServersForAgent: () => Record<string, McpServerConfig>;
+}
+
+// ============================================
+// Agent 运行器
+// ============================================
 
 /**
  * Agent 运行器
@@ -15,15 +51,9 @@ import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
  * 执行子 Agent 并管理结果
  */
 export class AgentRunner {
-  private providerManager: {
-    getActiveProvider: () => { base_url: string; api_key: string } | null;
-    getMcpServersForAgent: () => Record<string, McpServerConfig>;
-  };
+  private providerManager: ProviderManagerLike;
 
-  constructor(providerManager?: {
-    getActiveProvider: () => { base_url: string; api_key: string } | null;
-    getMcpServersForAgent: () => Record<string, McpServerConfig>;
-  }) {
+  constructor(providerManager?: ProviderManagerLike) {
     this.providerManager = providerManager || {
       getActiveProvider: () => null,
       getMcpServersForAgent: () => ({}),
@@ -54,7 +84,7 @@ export class AgentRunner {
   /**
    * 使用配置执行 Agent
    */
-  async executeWithConfig(
+  private async executeWithConfig(
     config: AgentConfig,
     prompt: string,
     options?: AgentExecuteOptions
@@ -69,15 +99,16 @@ export class AgentRunner {
     const provider = this.providerManager.getActiveProvider();
     const envVars: Record<string, string | undefined> = { ...process.env };
     if (provider) {
-      envVars.ANTHROPIC_BASE_URL = provider.base_url;
-      envVars.ANTHROPIC_API_KEY = provider.api_key;
+      envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
+      if (provider.apiKey) {
+        envVars.ANTHROPIC_API_KEY = provider.apiKey;
+      }
     }
 
     // 获取 MCP 服务器
     const mcpServers = this.providerManager.getMcpServersForAgent();
 
     // 构建选项 - 显式传递环境变量
-    // 使用 tools 选项指定可用工具（而不是 allowedTools）
     const queryOptions: Options = {
       cwd: options?.cwd,
       tools: config.tools || options?.allowedTools,
@@ -92,52 +123,47 @@ export class AgentRunner {
     try {
       for await (const message of query({ prompt, options: queryOptions })) {
         // 处理最终结果
-        if ('result' in message && message.result) {
+        if (isResultMessage(message) && message.result) {
           const text = String(message.result);
           result.text += text;
           options?.onText?.(text);
         }
 
         // 处理 assistant 消息 - 提取文本内容
-        if ('type' in message && message.type === 'assistant' && 'message' in message) {
-          const msg = message as { message?: { content?: unknown[] } };
-          if (msg.message?.content && Array.isArray(msg.message.content)) {
-            for (const block of msg.message.content) {
-              if (typeof block === 'object' && block !== null) {
-                const b = block as { type?: string; text?: string; name?: string; input?: unknown };
-                // 提取文本块
-                if (b.type === 'text' && b.text) {
-                  result.text += b.text;
-                  options?.onText?.(b.text);
-                }
-                // 记录工具调用
-                if (b.type === 'tool_use' && b.name) {
-                  if (!result.tools.includes(b.name)) {
-                    result.tools.push(b.name);
-                    options?.onTool?.(b.name, b.input);
-                  }
+        if (isAssistantMessage(message)) {
+          const content = message.message?.content;
+          if (content && Array.isArray(content)) {
+            for (const block of content) {
+              // 提取文本块
+              if (isTextBlock(block) && block.text) {
+                result.text += block.text;
+                options?.onText?.(block.text);
+              }
+              // 记录工具调用
+              if (isToolUseBlock(block) && block.name) {
+                if (!result.tools.includes(block.name)) {
+                  result.tools.push(block.name);
+                  options?.onTool?.(block.name, block.input);
                 }
               }
             }
           }
         }
 
-        // 处理工具调用进度 - SDK 通过 tool_progress 消息发送
-        if ('type' in message && message.type === 'tool_progress') {
-          const toolMsg = message as { tool_name: string; tool_use_id?: string };
-          const toolName = toolMsg.tool_name;
+        // 处理工具调用进度
+        if (isToolProgressMessage(message)) {
+          const toolName = message.tool_name;
           if (!result.tools.includes(toolName)) {
             result.tools.push(toolName);
-            options?.onTool?.(toolName, { tool_use_id: toolMsg.tool_use_id });
+            options?.onTool?.(toolName, { tool_use_id: message.tool_use_id });
           }
         }
 
         // 处理 usage
-        if ('usage' in message && message.usage) {
-          const usage = message.usage as { input_tokens?: number; output_tokens?: number };
+        if (isUsageMessage(message)) {
           result.usage = {
-            input: usage.input_tokens || 0,
-            output: usage.output_tokens || 0,
+            input: message.usage.input_tokens || 0,
+            output: message.usage.output_tokens || 0,
           };
         }
       }
@@ -173,13 +199,14 @@ export class AgentRunner {
   }
 }
 
+// ============================================
+// 便捷函数
+// ============================================
+
 /**
  * 创建 Agent 运行器
  */
-export function createAgentRunner(providerManager?: {
-  getActiveProvider: () => { base_url: string; api_key: string } | null;
-  getMcpServersForAgent: () => Record<string, McpServerConfig>;
-}): AgentRunner {
+export function createAgentRunner(providerManager?: ProviderManagerLike): AgentRunner {
   return new AgentRunner(providerManager);
 }
 

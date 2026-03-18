@@ -4,19 +4,19 @@
  * 管理所有共享资源和能力模块
  */
 
-import { UnifiedProviderManager } from '../../providers/cc-switch-provider.js';
+import { ProviderManager } from '../../providers/index.js';
 import { AgentRunner } from './runner.js';
 import { SkillRegistry, createSkillRegistry } from '../../skills/index.js';
 import { AgentRegistryImpl } from '../registry/AgentRegistry.js';
 import type { AgentCapability, AgentContext, SkillSystemConfig } from './types.js';
-import type { CCProvider } from '../../providers/cc-switch-provider.js';
+import type { ProviderConfig } from '../../providers/index.js';
 import type { Skill, SkillMatchResult } from '../../skills/index.js';
 
 /**
  * Agent 上下文实现
  */
 export class AgentContextImpl implements AgentContext {
-  readonly providerManager: UnifiedProviderManager;
+  readonly providerManager: ProviderManager;
   readonly runner: AgentRunner;
   readonly skillRegistry: SkillRegistry;
   readonly agentRegistry: AgentRegistryImpl;
@@ -25,7 +25,7 @@ export class AgentContextImpl implements AgentContext {
   private initialized: boolean = false;
 
   constructor(skillConfig?: SkillSystemConfig) {
-    this.providerManager = new UnifiedProviderManager();
+    this.providerManager = new ProviderManager();
     this.runner = new AgentRunner(this.providerManager);
     this.skillRegistry = createSkillRegistry(skillConfig);
     this.agentRegistry = new AgentRegistryImpl();
@@ -75,7 +75,7 @@ export class AgentContextImpl implements AgentContext {
   // AgentContext 接口实现
   // ============================================
 
-  getActiveProvider(): CCProvider | null {
+  getActiveProvider(): ProviderConfig | null {
     return this.providerManager.getActiveProvider();
   }
 

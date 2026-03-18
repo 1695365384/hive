@@ -6,7 +6,20 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Task, createTask, runTask, runParallel, mapParallel } from '../../src/agents/core/task.js';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type Query } from '@anthropic-ai/claude-agent-sdk';
+
+// Mock 消息类型
+type MockMessage = { result?: string; content?: { name: string; input: unknown }[]; usage?: { input_tokens: number; output_tokens: number } };
+
+// 创建符合 Query 接口的 mock 对象
+function createMockQuery(messages: MockMessage[]): Query {
+  const gen = async function* () {
+    for (const msg of messages) {
+      yield msg as unknown;
+    }
+  };
+  return gen() as unknown as Query;
+}
 
 // Mock Agent SDK
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
@@ -32,11 +45,7 @@ describe('Task System', () => {
     });
 
     it('should run task and return result', async () => {
-      // Mock query to return a result
-      const mockGenerator = async function* () {
-        yield { result: 'Task completed' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Task completed' }]));
 
       const task = new Task({
         name: 'test-task',
@@ -52,11 +61,10 @@ describe('Task System', () => {
     });
 
     it('should capture tool usage', async () => {
-      const mockGenerator = async function* () {
-        yield { content: [{ name: 'Read', input: { file_path: '/test.ts' } }] };
-        yield { result: 'Done' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([
+        { content: [{ name: 'Read', input: { file_path: '/test.ts' } }] },
+        { result: 'Done' },
+      ]));
 
       const task = new Task({
         name: 'test-task',
@@ -69,13 +77,10 @@ describe('Task System', () => {
     });
 
     it('should capture usage stats', async () => {
-      const mockGenerator = async function* () {
-        yield {
-          result: 'Done',
-          usage: { input_tokens: 100, output_tokens: 50 }
-        };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{
+        result: 'Done',
+        usage: { input_tokens: 100, output_tokens: 50 },
+      }]));
 
       const task = new Task({
         name: 'test-task',
@@ -104,10 +109,7 @@ describe('Task System', () => {
     });
 
     it('should use agentType configuration', async () => {
-      const mockGenerator = async function* () {
-        yield { result: 'Explored' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Explored' }]));
 
       const task = new Task({
         name: 'explore-task',
@@ -130,10 +132,7 @@ describe('Task System', () => {
     });
 
     it('should use custom tools when specified', async () => {
-      const mockGenerator = async function* () {
-        yield { result: 'Done' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Done' }]));
 
       const task = new Task({
         name: 'test-task',
@@ -153,10 +152,7 @@ describe('Task System', () => {
     });
 
     it('should use custom model when specified', async () => {
-      const mockGenerator = async function* () {
-        yield { result: 'Done' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Done' }]));
 
       const task = new Task({
         name: 'test-task',
@@ -189,10 +185,7 @@ describe('Task System', () => {
 
   describe('runTask', () => {
     it('should run task with minimal config', async () => {
-      const mockGenerator = async function* () {
-        yield { result: 'Quick result' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Quick result' }]));
 
       const result = await runTask('Quick task');
 
@@ -201,10 +194,7 @@ describe('Task System', () => {
     });
 
     it('should accept partial options', async () => {
-      const mockGenerator = async function* () {
-        yield { result: 'Done' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Done' }]));
 
       const result = await runTask('Task with options', {
         name: 'custom-name',
@@ -217,10 +207,7 @@ describe('Task System', () => {
 
   describe('runParallel', () => {
     it('should run tasks in parallel', async () => {
-      const mockGenerator = async function* () {
-        yield { result: 'Result' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Result' }]));
 
       const results = await runParallel([
         { prompt: 'Task 1' },
@@ -242,11 +229,12 @@ describe('Task System', () => {
         concurrentCount++;
         maxConcurrent = Math.max(maxConcurrent, concurrentCount);
 
-        return (async function* () {
+        const gen = async function* () {
           await new Promise(resolve => setTimeout(resolve, 10));
           concurrentCount--;
           yield { result: 'Done' };
-        })();
+        };
+        return gen() as unknown as Query;
       });
 
       await runParallel(
@@ -265,9 +253,10 @@ describe('Task System', () => {
         if (callCount === 2) {
           throw new Error('Task 2 failed');
         }
-        return (async function* () {
+        const gen = async function* () {
           yield { result: 'Success' };
-        })();
+        };
+        return gen() as unknown as Query;
       });
 
       const results = await runParallel([
@@ -282,10 +271,7 @@ describe('Task System', () => {
     });
 
     it('should auto-generate names if not provided', async () => {
-      const mockGenerator = async function* () {
-        yield { result: 'Done' };
-      };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(createMockQuery([{ result: 'Done' }]));
 
       const results = await runParallel([
         { prompt: 'Task 1' },
@@ -349,11 +335,11 @@ describe('Task System', () => {
 
   describe('Task performance', () => {
     it('should track duration', async () => {
-      const mockGenerator = async function* () {
+      const gen = async function* () {
         await new Promise(resolve => setTimeout(resolve, 50));
         yield { result: 'Done' };
       };
-      vi.mocked(query).mockReturnValue(mockGenerator());
+      vi.mocked(query).mockReturnValue(gen() as unknown as Query);
 
       const task = new Task({
         name: 'timed-task',

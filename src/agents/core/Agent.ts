@@ -21,7 +21,7 @@ import { ChatCapability } from '../capabilities/ChatCapability.js';
 import { SubAgentCapability } from '../capabilities/SubAgentCapability.js';
 import { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
-import type { CCProvider } from '../../providers/cc-switch-provider.js';
+import type { ProviderConfig } from '../../providers/index.js';
 
 /**
  * Agent 核心类
@@ -69,11 +69,11 @@ export class Agent {
   // 提供商管理（委托给 ProviderCapability）
   // ============================================
 
-  get currentProvider(): CCProvider | null {
+  get currentProvider(): ProviderConfig | null {
     return this.providerCap.current;
   }
 
-  listProviders(): CCProvider[] {
+  listProviders(): ProviderConfig[] {
     return this.providerCap.listAll();
   }
 

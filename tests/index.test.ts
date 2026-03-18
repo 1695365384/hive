@@ -18,10 +18,11 @@ import {
   getExtendedAgentNames,
 
   // Provider 模块
-  UnifiedProviderManager,
-  listAllPresets,
-  listPresetsByCategory,
-  createProviderConfig,
+  ProviderManager,
+  getPresets,
+  getPresetsByCategory,
+  getPreset,
+  applyPreset,
 } from '../src/index.js';
 
 describe('Agent 模块', () => {
@@ -103,7 +104,7 @@ describe('Agent 模块', () => {
 describe('Provider 模块', () => {
   describe('预设列表', () => {
     it('should have presets', () => {
-      const presets = listAllPresets();
+      const presets = getPresets();
       expect(presets.length).toBeGreaterThan(0);
 
       const presetIds = presets.map(p => p.id);
@@ -115,28 +116,32 @@ describe('Provider 模块', () => {
 
   describe('预设分类', () => {
     it('should have categories', () => {
-      const categories = listPresetsByCategory();
-      expect(categories).toHaveProperty('anthropic');
-      expect(categories).toHaveProperty('chinese');
+      const anthropicPresets = getPresetsByCategory('anthropic');
+      expect(anthropicPresets.length).toBeGreaterThan(0);
+
+      const chinesePresets = getPresetsByCategory('chinese');
+      expect(chinesePresets.length).toBeGreaterThan(0);
     });
   });
 
   describe('创建提供商配置', () => {
-    it('should create config', () => {
-      const config = createProviderConfig('deepseek', 'test-api-key');
-      expect(config).toBeDefined();
-      expect(config?.id).toBe('deepseek');
-      expect(config?.api_key).toBe('test-api-key');
+    it('should create config from preset', () => {
+      const preset = getPreset('deepseek');
+      expect(preset).toBeDefined();
+
+      const provider = applyPreset(preset!, 'test-api-key');
+      expect(provider).toBeDefined();
+      expect(provider.id).toBe('deepseek');
     });
   });
 
-  describe('统一提供商管理器', () => {
+  describe('提供商管理器', () => {
     it('should create manager', () => {
-      const manager = new UnifiedProviderManager();
+      const manager = new ProviderManager();
       expect(manager).toBeDefined();
       expect(typeof manager.getActiveProvider).toBe('function');
       expect(typeof manager.getAllProviders).toBe('function');
-      expect(typeof manager.switchProvider).toBe('function');
+      expect(typeof manager.switch).toBe('function');
       expect(typeof manager.listPresets).toBe('function');
     });
   });

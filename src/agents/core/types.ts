@@ -5,7 +5,7 @@
  */
 
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
-import type { UnifiedProviderManager, CCProvider } from '../../providers/cc-switch-provider.js';
+import type { ProviderManager, ProviderConfig } from '../../providers/index.js';
 import type { SkillRegistry, Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { AgentRunner } from './runner.js';
 import type { AgentConfig, AgentResult, ThoroughnessLevel, AgentType } from '../types.js';
@@ -41,7 +41,7 @@ export interface AgentCapability {
  */
 export interface AgentContext {
   /** 提供商管理器 */
-  providerManager: UnifiedProviderManager;
+  providerManager: ProviderManager;
   /** Agent 运行器 */
   runner: AgentRunner;
   /** 技能注册表 */
@@ -51,7 +51,7 @@ export interface AgentContext {
 
   // 便捷访问器
   /** 获取当前提供商 */
-  getActiveProvider(): CCProvider | null;
+  getActiveProvider(): ProviderConfig | null;
   /** 获取技能 */
   getSkill(name: string): Skill | undefined;
   /** 匹配技能 */
@@ -162,4 +162,21 @@ export type {
   AgentExecuteOptions,
   ThoroughnessLevel,
   AgentType,
+  ContentBlock,
+  TextContentBlock,
+  ToolUseContentBlock,
+  SdkMessage,
+  ResultMessage,
+  AssistantMessage,
+  ToolProgressMessage,
+  UsageMessage,
+} from '../types.js';
+
+export {
+  isResultMessage,
+  isAssistantMessage,
+  isToolProgressMessage,
+  isUsageMessage,
+  isTextBlock,
+  isToolUseBlock,
 } from '../types.js';

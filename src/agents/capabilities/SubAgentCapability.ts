@@ -5,7 +5,8 @@
  */
 
 import type { AgentCapability, AgentContext, AgentResult, ThoroughnessLevel, AgentType } from '../core/types.js';
-import { buildExplorePrompt, buildPlanPrompt, THOROUGHNESS_PROMPTS } from '../prompts/prompts.js';
+import { AGENT_NAMES, CORE_AGENT_NAMES, EXTENDED_AGENT_NAMES } from '../core/agents.js';
+import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
 
 /**
  * 子 Agent 能力实现
@@ -27,7 +28,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium'): Promise<string> {
     const result = await this.context.runner.execute(
-      'explore',
+      CORE_AGENT_NAMES.EXPLORE,
       buildExplorePrompt(prompt, thoroughness)
     );
     return result.text;
@@ -38,7 +39,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async plan(prompt: string): Promise<string> {
     const result = await this.context.runner.execute(
-      'plan',
+      CORE_AGENT_NAMES.PLAN,
       buildPlanPrompt(prompt)
     );
     return result.text;
@@ -48,7 +49,7 @@ export class SubAgentCapability implements AgentCapability {
    * 使用 General Agent 执行任务
    */
   async general(prompt: string): Promise<string> {
-    const result = await this.context.runner.execute('general', prompt);
+    const result = await this.context.runner.execute(CORE_AGENT_NAMES.GENERAL, prompt);
     return result.text;
   }
 
@@ -68,7 +69,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async reviewCode(target: string): Promise<string> {
     const result = await this.context.runner.execute(
-      'code-reviewer',
+      EXTENDED_AGENT_NAMES.CODE_REVIEWER,
       `Review the code: ${target}`
     );
     return result.text;
@@ -79,7 +80,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async generateTests(target: string): Promise<string> {
     const result = await this.context.runner.execute(
-      'test-engineer',
+      EXTENDED_AGENT_NAMES.TEST_ENGINEER,
       `Generate tests for: ${target}`
     );
     return result.text;
@@ -90,7 +91,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async writeDocs(target: string): Promise<string> {
     const result = await this.context.runner.execute(
-      'doc-writer',
+      EXTENDED_AGENT_NAMES.DOC_WRITER,
       `Write documentation for: ${target}`
     );
     return result.text;
@@ -101,7 +102,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async debug(target: string): Promise<string> {
     const result = await this.context.runner.execute(
-      'debugger',
+      EXTENDED_AGENT_NAMES.DEBUGGER,
       `Debug this issue: ${target}`
     );
     return result.text;
@@ -112,7 +113,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async refactor(target: string): Promise<string> {
     const result = await this.context.runner.execute(
-      'refactorer',
+      EXTENDED_AGENT_NAMES.REFACTORER,
       `Refactor this code: ${target}`
     );
     return result.text;
@@ -123,7 +124,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async securityAudit(target: string): Promise<string> {
     const result = await this.context.runner.execute(
-      'security-auditor',
+      EXTENDED_AGENT_NAMES.SECURITY_AUDITOR,
       `Audit security of: ${target}`
     );
     return result.text;

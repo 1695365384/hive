@@ -44,8 +44,8 @@ export class ChatCapability implements AgentCapability {
     // 构建环境变量
     const envVars: Record<string, string | undefined> = { ...process.env };
     if (provider) {
-      envVars.ANTHROPIC_BASE_URL = provider.base_url;
-      envVars.ANTHROPIC_API_KEY = provider.api_key;
+      envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
+      envVars.ANTHROPIC_API_KEY = provider.apiKey;
     }
 
     // 构建子 Agent 配置

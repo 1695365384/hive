@@ -7,79 +7,80 @@
 import { describe, it, expect } from 'vitest';
 import {
   ALL_PRESETS,
-  CHINESE_PROVIDERS,
-  OPENAI_SERIES_PROVIDERS,
-  GATEWAY_PROVIDERS,
-  ANTHROPIC_PROVIDERS,
-  getProviderPreset,
-  listAllPresets,
-  listPresetsByCategory,
-} from '../../src/providers/presets.js';
+  ANTHROPIC_PRESETS,
+  OPENAI_PRESETS,
+  CHINESE_PRESETS,
+  GATEWAY_PRESETS,
+  getPreset,
+  getPresets,
+  getPresetsByCategory,
+} from '../../src/providers/index.js';
 
 describe('Provider Presets', () => {
   describe('ALL_PRESETS', () => {
     it('should have multiple presets', () => {
-      const presetCount = Object.keys(ALL_PRESETS).length;
-      expect(presetCount).toBeGreaterThan(5);
+      expect(ALL_PRESETS.length).toBeGreaterThan(5);
     });
 
     it('should include major providers', () => {
-      expect(ALL_PRESETS.anthropic).toBeDefined();
-      expect(ALL_PRESETS.openai).toBeDefined();
-      expect(ALL_PRESETS.deepseek).toBeDefined();
-      expect(ALL_PRESETS.glm).toBeDefined();
+      const ids = ALL_PRESETS.map(p => p.id);
+      expect(ids).toContain('anthropic');
+      expect(ids).toContain('openai');
+      expect(ids).toContain('deepseek');
+      expect(ids).toContain('glm');
     });
   });
 
   describe('Provider Categories', () => {
-    it('CHINESE_PROVIDERS should have Chinese providers', () => {
-      expect(Object.keys(CHINESE_PROVIDERS).length).toBeGreaterThan(0);
+    it('CHINESE_PRESETS should have Chinese providers', () => {
+      expect(CHINESE_PRESETS.length).toBeGreaterThan(0);
     });
 
-    it('OPENAI_SERIES_PROVIDERS should have OpenAI compatible providers', () => {
-      expect(Object.keys(OPENAI_SERIES_PROVIDERS).length).toBeGreaterThan(0);
+    it('OPENAI_PRESETS should have OpenAI providers', () => {
+      expect(OPENAI_PRESETS.length).toBeGreaterThan(0);
     });
 
-    it('GATEWAY_PROVIDERS should have gateway providers', () => {
-      expect(Object.keys(GATEWAY_PROVIDERS).length).toBeGreaterThan(0);
+    it('GATEWAY_PRESETS should have gateway providers', () => {
+      expect(GATEWAY_PRESETS.length).toBeGreaterThan(0);
     });
 
-    it('ANTHROPIC_PROVIDERS should have Anthropic', () => {
-      expect(ANTHROPIC_PROVIDERS.anthropic).toBeDefined();
+    it('ANTHROPIC_PRESETS should have Anthropic', () => {
+      expect(ANTHROPIC_PRESETS.some(p => p.id === 'anthropic')).toBe(true);
     });
   });
 
-  describe('getProviderPreset', () => {
+  describe('getPreset', () => {
     it('should return preset for existing provider', () => {
-      const preset = getProviderPreset('deepseek');
+      const preset = getPreset('deepseek');
       expect(preset).toBeDefined();
       expect(preset?.id).toBe('deepseek');
     });
 
     it('should return undefined for non-existing provider', () => {
-      const preset = getProviderPreset('non-existing');
+      const preset = getPreset('non-existing');
       expect(preset).toBeUndefined();
     });
   });
 
-  describe('listAllPresets', () => {
+  describe('getPresets', () => {
     it('should return array of presets', () => {
-      const presets = listAllPresets();
+      const presets = getPresets();
       expect(Array.isArray(presets)).toBe(true);
       expect(presets.length).toBeGreaterThan(0);
     });
   });
 
-  describe('listPresetsByCategory', () => {
-    it('should return categorized presets', () => {
-      const categories = listPresetsByCategory();
-      expect(categories).toBeDefined();
+  describe('getPresetsByCategory', () => {
+    it('should return presets for specific category', () => {
+      const anthropicPresets = getPresetsByCategory('anthropic');
+      expect(anthropicPresets.length).toBeGreaterThan(0);
+      expect(anthropicPresets.every(p => p.category === 'anthropic')).toBe(true);
     });
 
-    it('should have expected categories', () => {
-      const categories = listPresetsByCategory();
-      expect(categories).toHaveProperty('anthropic');
-      expect(categories).toHaveProperty('chinese');
+    it('should return chinese presets', () => {
+      const chinesePresets = getPresetsByCategory('chinese');
+      expect(chinesePresets.length).toBeGreaterThan(0);
+      expect(chinesePresets.every(p => p.category === 'chinese')).toBe(true);
     });
   });
 });

@@ -5,7 +5,7 @@
  */
 
 import type { AgentCapability, AgentContext } from '../core/types.js';
-import type { CCProvider } from '../../providers/cc-switch-provider.js';
+import type { ProviderConfig } from '../../providers/types.js';
 
 /**
  * 提供商能力实现
@@ -21,14 +21,14 @@ export class ProviderCapability implements AgentCapability {
   /**
    * 获取当前提供商
    */
-  get current(): CCProvider | null {
+  get current(): ProviderConfig | null {
     return this.context.providerManager.getActiveProvider();
   }
 
   /**
    * 列出所有提供商
    */
-  listAll(): CCProvider[] {
+  listAll(): ProviderConfig[] {
     return this.context.providerManager.getAllProviders();
   }
 
