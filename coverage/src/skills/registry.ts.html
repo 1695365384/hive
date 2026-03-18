@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/agents/runner.ts</title>
+    <title>Code coverage report for src/skills/registry.ts</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../../prettify.css" />
     <link rel="stylesheet" href="../../base.css" />
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/agents</a> runner.ts</h1>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/skills</a> registry.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">92.98% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/63</span>
+                <span class='fraction'>53/57</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">86.66% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/62</span>
+                <span class='fraction'>13/15</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">95.23% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/13</span>
+                <span class='fraction'>20/21</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">92.85% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/63</span>
+                <span class='fraction'>52/56</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -285,7 +285,47 @@
 <a name='L220'></a><a href='#L220'>220</a>
 <a name='L221'></a><a href='#L221'>221</a>
 <a name='L222'></a><a href='#L222'>222</a>
-<a name='L223'></a><a href='#L223'>223</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L223'></a><a href='#L223'>223</a>
+<a name='L224'></a><a href='#L224'>224</a>
+<a name='L225'></a><a href='#L225'>225</a>
+<a name='L226'></a><a href='#L226'>226</a>
+<a name='L227'></a><a href='#L227'>227</a>
+<a name='L228'></a><a href='#L228'>228</a>
+<a name='L229'></a><a href='#L229'>229</a>
+<a name='L230'></a><a href='#L230'>230</a>
+<a name='L231'></a><a href='#L231'>231</a>
+<a name='L232'></a><a href='#L232'>232</a>
+<a name='L233'></a><a href='#L233'>233</a>
+<a name='L234'></a><a href='#L234'>234</a>
+<a name='L235'></a><a href='#L235'>235</a>
+<a name='L236'></a><a href='#L236'>236</a>
+<a name='L237'></a><a href='#L237'>237</a>
+<a name='L238'></a><a href='#L238'>238</a>
+<a name='L239'></a><a href='#L239'>239</a>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a>
+<a name='L247'></a><a href='#L247'>247</a>
+<a name='L248'></a><a href='#L248'>248</a>
+<a name='L249'></a><a href='#L249'>249</a>
+<a name='L250'></a><a href='#L250'>250</a>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a>
+<a name='L257'></a><a href='#L257'>257</a>
+<a name='L258'></a><a href='#L258'>258</a>
+<a name='L259'></a><a href='#L259'>259</a>
+<a name='L260'></a><a href='#L260'>260</a>
+<a name='L261'></a><a href='#L261'>261</a>
+<a name='L262'></a><a href='#L262'>262</a>
+<a name='L263'></a><a href='#L263'>263</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -302,18 +342,21 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -324,137 +367,16 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -465,38 +387,196 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -508,226 +588,266 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * Agent 运行器
+ * 技能注册表
  *
- * 负责执行子 Agent 并返回结果
+ * 管理所有已加载的技能：
+ * 1. 注册技能
+ * 2. 按名称获取技能
+ * 3. 列出所有技能
+ * 4. 匹配技能
  */
 &nbsp;
-import { query, type Options, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentConfig, AgentExecuteOptions, AgentResult, ThoroughnessLevel } from './types.js';
-import { getAgentConfig, buildExplorePrompt, buildPlanPrompt } from './builtin.js';
+import type { Skill, SkillMetadata, SkillMatchResult, SkillSystemConfig } from './types.js';
+import { SkillLoader, createSkillLoader } from './loader.js';
+import { SkillMatcher, createSkillMatcher } from './matcher.js';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+&nbsp;
+// 获取当前模块目录
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 &nbsp;
 /**
- * Agent 运行器
- *
- * 执行子 Agent 并管理结果
+ * 技能注册表类
  */
-export class AgentRunner {
-  private providerManager: {
-    getActiveProvider: () =&gt; { base_url: string; api_key: string } | null;
-    getMcpServersForAgent: () =&gt; Record&lt;string, McpServerConfig&gt;;
-  };
+export class SkillRegistry {
+  private skills: Map&lt;string, Skill&gt; = new Map();
+  private matcher: SkillMatcher;
+  private loader: SkillLoader | null = null;
+  private config: SkillSystemConfig;
 &nbsp;
-<span class="fstat-no" title="function not covered" >  constructor(p</span>roviderManager?: {
-    getActiveProvider: () =&gt; { base_url: string; api_key: string } | null;
-    getMcpServersForAgent: () =&gt; Record&lt;string, McpServerConfig&gt;;
-  }) {
-<span class="cstat-no" title="statement not covered" >    this.providerManager = providerManager || {</span>
-<span class="fstat-no" title="function not covered" >      getActiveProvider: () =&gt; <span class="cstat-no" title="statement not covered" >n</span>ull,</span>
-<span class="fstat-no" title="function not covered" >      getMcpServersForAgent: () =&gt; (<span class="cstat-no" title="statement not covered" >{</span>})</span>,
+  constructor(config: SkillSystemConfig = {}) {
+    this.matcher = createSkillMatcher();
+    this.config = {
+      builtinSkillsDir: path.join(__dirname, '..', '..', 'skills'),
+      enableAutoMatch: true,
+      showSkillsInPrompt: true,
+      ...config,
     };
   }
 &nbsp;
   /**
-   * 执行 Agent
+   * 初始化注册表
+   *
+   * 加载内置技能和用户技能
    */
-  async <span class="fstat-no" title="function not covered" >execute(</span>
-    agentName: string,
-    prompt: string,
-    options?: AgentExecuteOptions
-  ): Promise&lt;AgentResult&gt; {
-    const <span class="cstat-no" title="statement not covered" >agentConfig = getAgentConfig(agentName);</span>
-<span class="cstat-no" title="statement not covered" >    if (!agentConfig) {</span>
-<span class="cstat-no" title="statement not covered" >      return {</span>
-        text: '',
-        tools: [],
-        success: false,
-        error: `Unknown agent: ${agentName}`,
-      };
+  async initialize(): Promise&lt;void&gt; {
+    // 加载内置技能
+    <span class="missing-if-branch" title="else path not taken" >E</span>if (this.config.builtinSkillsDir) {
+      await this.loadFromDirectory(this.config.builtinSkillsDir);
     }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    return this.executeWithConfig(agentConfig, prompt, options);</span>
+    // 加载用户技能
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (this.config.userSkillsDir) {
+<span class="cstat-no" title="statement not covered" >      await this.loadFromDirectory(this.config.userSkillsDir);</span>
+    }
   }
 &nbsp;
   /**
-   * 使用配置执行 Agent
+   * 从目录加载技能
+   *
+   * @param dir - 技能目录路径
    */
-  async <span class="fstat-no" title="function not covered" >executeWithConfig(</span>
-    config: AgentConfig,
-    prompt: string,
-    options?: AgentExecuteOptions
-  ): Promise&lt;AgentResult&gt; {
-    const result: AgentResult = <span class="cstat-no" title="statement not covered" >{</span>
-      text: '',
-      tools: [],
-      success: true,
-    };
+  async loadFromDirectory(dir: string): Promise&lt;void&gt; {
+    this.loader = createSkillLoader({
+      skillsDir: dir,
+      recursive: true,
+    });
 &nbsp;
-    // 应用提供商配置 - 构建环境变量对象
-    const provider = <span class="cstat-no" title="statement not covered" >this.providerManager.getActiveProvider();</span>
-    const envVars: Record&lt;string, string | undefined&gt; = <span class="cstat-no" title="statement not covered" >{ ...process.env };</span>
-<span class="cstat-no" title="statement not covered" >    if (provider) {</span>
-<span class="cstat-no" title="statement not covered" >      envVars.ANTHROPIC_BASE_URL = provider.base_url;</span>
-<span class="cstat-no" title="statement not covered" >      envVars.ANTHROPIC_API_KEY = provider.api_key;</span>
+    const skills = this.loader.loadSkills();
+&nbsp;
+    for (const skill of skills) {
+      this.register(skill);
+    }
+  }
+&nbsp;
+  /**
+   * 注册技能
+   *
+   * @param skill - 技能对象
+   */
+  register(skill: Skill): void {
+    const key = this.getSkillKey(skill);
+    this.skills.set(key, skill);
+    // 清除匹配器缓存
+    this.matcher.clearCache();
+  }
+&nbsp;
+  /**
+   * 注销技能
+   *
+   * @param name - 技能名称
+   */
+  unregister(name: string): boolean {
+    const key = name.toLowerCase();
+    const result = this.skills.delete(key);
+    if (result) {
+      this.matcher.clearCache();
+    }
+    return result;
+  }
+&nbsp;
+  /**
+   * 获取技能键
+   */
+  private getSkillKey(skill: Skill): string {
+    return skill.metadata.name.toLowerCase();
+  }
+&nbsp;
+  /**
+   * 按名称获取技能
+   *
+   * @param name - 技能名称
+   * @returns 技能对象，如果不存在则返回 undefined
+   */
+  get(name: string): Skill | undefined {
+    return this.skills.get(name.toLowerCase());
+  }
+&nbsp;
+  /**
+   * 检查技能是否存在
+   *
+   * @param name - 技能名称
+   */
+  has(name: string): boolean {
+    return this.skills.has(name.toLowerCase());
+  }
+&nbsp;
+  /**
+   * 获取所有技能
+   *
+   * @returns 技能数组
+   */
+  getAll(): Skill[] {
+    return Array.from(this.skills.values());
+  }
+&nbsp;
+  /**
+   * 获取所有技能元数据
+   *
+   * 用于在系统提示中显示可用技能
+   *
+   * @returns 元数据数组
+   */
+  getAllMetadata(): SkillMetadata[] {
+    return this.getAll().map((skill) =&gt; skill.metadata);
+  }
+&nbsp;
+  /**
+   * 获取技能数量
+   */
+  get size(): number {
+    return this.skills.size;
+  }
+&nbsp;
+  /**
+   * 匹配技能
+   *
+   * 根据用户输入自动匹配最佳技能
+   *
+   * @param input - 用户输入
+   * @returns 匹配结果，如果没有匹配则返回 null
+   */
+  match(input: string): SkillMatchResult | null {
+    if (!this.config.enableAutoMatch) {
+      return null;
     }
 &nbsp;
-    // 获取 MCP 服务器
-    const mcpServers = <span class="cstat-no" title="statement not covered" >this.providerManager.getMcpServersForAgent();</span>
+    return this.matcher.matchBest(input, this.getAll());
+  }
 &nbsp;
-    // 构建选项 - 显式传递环境变量
-    // 使用 tools 选项指定可用工具（而不是 allowedTools）
-    const queryOptions: Options = <span class="cstat-no" title="statement not covered" >{</span>
-      cwd: options?.cwd,
-      tools: config.tools || options?.allowedTools,
-      maxTurns: config.maxTurns || options?.maxTurns || 10,
-      model: config.model || options?.model,
-      systemPrompt: config.prompt,
-      mcpServers: Object.keys(mcpServers).length &gt; 0 ? mcpServers : undefined,
-      permissionMode: options?.permissionMode || 'bypassPermissions',
-      env: envVars,
-    };
-&nbsp;
-<span class="cstat-no" title="statement not covered" >    try {</span>
-<span class="cstat-no" title="statement not covered" >      for await (const message of query({ prompt, options: queryOptions })) {</span>
-        // 处理最终结果
-<span class="cstat-no" title="statement not covered" >        if ('result' in message &amp;&amp; message.result) {</span>
-          const text = <span class="cstat-no" title="statement not covered" >String(message.result);</span>
-<span class="cstat-no" title="statement not covered" >          result.text += text;</span>
-<span class="cstat-no" title="statement not covered" >          options?.onText?.(text);</span>
-        }
-&nbsp;
-        // 处理 assistant 消息 - 提取文本内容
-<span class="cstat-no" title="statement not covered" >        if ('type' in message &amp;&amp; message.type === 'assistant' &amp;&amp; 'message' in message) {</span>
-          const msg = <span class="cstat-no" title="statement not covered" >message as { message?: { content?: unknown[] } };</span>
-<span class="cstat-no" title="statement not covered" >          if (msg.message?.content &amp;&amp; Array.isArray(msg.message.content)) {</span>
-<span class="cstat-no" title="statement not covered" >            for (const block of msg.message.content) {</span>
-<span class="cstat-no" title="statement not covered" >              if (typeof block === 'object' &amp;&amp; block !== null) {</span>
-                const b = <span class="cstat-no" title="statement not covered" >block as { type?: string; text?: string; name?: string; input?: unknown };</span>
-                // 提取文本块
-<span class="cstat-no" title="statement not covered" >                if (b.type === 'text' &amp;&amp; b.text) {</span>
-<span class="cstat-no" title="statement not covered" >                  result.text += b.text;</span>
-<span class="cstat-no" title="statement not covered" >                  options?.onText?.(b.text);</span>
-                }
-                // 记录工具调用
-<span class="cstat-no" title="statement not covered" >                if (b.type === 'tool_use' &amp;&amp; b.name) {</span>
-<span class="cstat-no" title="statement not covered" >                  if (!result.tools.includes(b.name)) {</span>
-<span class="cstat-no" title="statement not covered" >                    result.tools.push(b.name);</span>
-<span class="cstat-no" title="statement not covered" >                    options?.onTool?.(b.name, b.input);</span>
-                  }
-                }
-              }
-            }
-          }
-        }
-&nbsp;
-        // 处理工具调用进度 - SDK 通过 tool_progress 消息发送
-<span class="cstat-no" title="statement not covered" >        if ('type' in message &amp;&amp; message.type === 'tool_progress') {</span>
-          const toolMsg = <span class="cstat-no" title="statement not covered" >message as { tool_name: string; tool_use_id?: string };</span>
-          const toolName = <span class="cstat-no" title="statement not covered" >toolMsg.tool_name;</span>
-<span class="cstat-no" title="statement not covered" >          if (!result.tools.includes(toolName)) {</span>
-<span class="cstat-no" title="statement not covered" >            result.tools.push(toolName);</span>
-<span class="cstat-no" title="statement not covered" >            options?.onTool?.(toolName, { tool_use_id: toolMsg.tool_use_id });</span>
-          }
-        }
-&nbsp;
-        // 处理 usage
-<span class="cstat-no" title="statement not covered" >        if ('usage' in message &amp;&amp; message.usage) {</span>
-          const usage = <span class="cstat-no" title="statement not covered" >message.usage as { input_tokens?: number; output_tokens?: number };</span>
-<span class="cstat-no" title="statement not covered" >          result.usage = {</span>
-            input: usage.input_tokens || 0,
-            output: usage.output_tokens || 0,
-          };
-        }
-      }
-    } catch (error) {
-      const err = <span class="cstat-no" title="statement not covered" >error instanceof Error ? error : new Error(String(error));</span>
-<span class="cstat-no" title="statement not covered" >      result.success = false;</span>
-<span class="cstat-no" title="statement not covered" >      result.error = err.message;</span>
-<span class="cstat-no" title="statement not covered" >      options?.onError?.(err);</span>
+  /**
+   * 匹配所有符合条件的技能
+   *
+   * @param input - 用户输入
+   * @returns 所有匹配结果
+   */
+  matchAll(input: string): SkillMatchResult[] {
+    if (!this.config.enableAutoMatch) {
+      return [];
     }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    return result;</span>
+    return this.matcher.matchAll(input, this.getAll());
   }
 &nbsp;
   /**
-   * 快速探索（使用统一的 prompt 模板）
+   * 生成技能列表描述
+   *
+   * 用于系统提示
+   *
+   * @returns 格式化的技能列表字符串
    */
-  async <span class="fstat-no" title="function not covered" >explore(p</span>rompt: string, thoroughness: ThoroughnessLevel = <span class="branch-0 cbranch-no" title="branch not covered" >'medium'): Promise&lt;AgentResult&gt; {</span>
-<span class="cstat-no" title="statement not covered" >    return this.execute('explore', buildExplorePrompt(prompt, thoroughness));</span>
+  generateSkillListDescription(): string {
+    const skills = this.getAll();
+&nbsp;
+    if (skills.length === 0) {
+      return '';
+    }
+&nbsp;
+    const lines = skills.map((skill) =&gt; {
+      const { name, description } = skill.metadata;
+      return `- **${name}**: ${description}`;
+    });
+&nbsp;
+    return `## Available Skills\n\n${lines.join('\n')}`;
   }
 &nbsp;
   /**
-   * 计划研究（使用统一的 prompt 模板）
+   * 生成技能详细指令
+   *
+   * 当技能被触发时，生成完整的技能指令
+   *
+   * @param skill - 技能对象
+   * @returns 完整的技能指令
    */
-  async <span class="fstat-no" title="function not covered" >plan(p</span>rompt: string): Promise&lt;AgentResult&gt; {
-<span class="cstat-no" title="statement not covered" >    return this.execute('plan', buildPlanPrompt(prompt));</span>
+  generateSkillInstruction(skill: Skill): string {
+    let instruction = `## Active Skill: ${skill.metadata.name}\n\n`;
+    instruction += `**Description**: ${skill.metadata.description}\n\n`;
+    instruction += `**Version**: ${skill.metadata.version}\n\n`;
+    instruction += `### Instructions\n\n${skill.body}`;
+&nbsp;
+    return instruction;
   }
 &nbsp;
   /**
-   * 通用执行
+   * 清空注册表
    */
-  async <span class="fstat-no" title="function not covered" >general(p</span>rompt: string): Promise&lt;AgentResult&gt; {
-<span class="cstat-no" title="statement not covered" >    return this.execute('general', prompt);</span>
+  clear(): void {
+    this.skills.clear();
+    this.matcher.clearCache();
   }
 }
 &nbsp;
+// ============================================
+// 全局实例和便捷函数
+// ============================================
+&nbsp;
+let globalRegistry: SkillRegistry | null = null;
+&nbsp;
 /**
- * 创建 Agent 运行器
+ * 获取全局技能注册表
  */
-export function <span class="fstat-no" title="function not covered" >createAgentRunner(p</span>roviderManager?: {
-  getActiveProvider: () =&gt; { base_url: string; api_key: string } | null;
-  getMcpServersForAgent: () =&gt; Record&lt;string, McpServerConfig&gt;;
-}): AgentRunner {
-<span class="cstat-no" title="statement not covered" >  return new AgentRunner(providerManager);</span>
+export function getSkillRegistry(config?: SkillSystemConfig): SkillRegistry {
+  if (!globalRegistry) {
+    globalRegistry = new SkillRegistry(config);
+  }
+  return globalRegistry;
 }
 &nbsp;
 /**
- * 快速执行 Agent（便捷函数）
+ * 创建新的技能注册表
  */
-export async function <span class="fstat-no" title="function not covered" >runAgent(</span>
-  agentName: string,
-  prompt: string,
-  options?: AgentExecuteOptions
-): Promise&lt;AgentResult&gt; {
-  const runner = <span class="cstat-no" title="statement not covered" >new AgentRunner();</span>
-<span class="cstat-no" title="statement not covered" >  return runner.execute(agentName, prompt, options);</span>
+export function createSkillRegistry(config?: SkillSystemConfig): SkillRegistry {
+  return new SkillRegistry(config);
 }
 &nbsp;
 /**
- * 快速探索（便捷函数）
+ * 初始化全局技能注册表
  */
-export async function <span class="fstat-no" title="function not covered" >runExplore(p</span>rompt: string, thoroughness: ThoroughnessLevel = <span class="branch-0 cbranch-no" title="branch not covered" >'medium'): Promise&lt;string&gt; {</span>
-  const runner = <span class="cstat-no" title="statement not covered" >new AgentRunner();</span>
-  const result = <span class="cstat-no" title="statement not covered" >await runner.explore(prompt, thoroughness);</span>
-<span class="cstat-no" title="statement not covered" >  return result.text;</span>
-}
-&nbsp;
-/**
- * 快速计划（便捷函数）
- */
-export async function <span class="fstat-no" title="function not covered" >runPlan(p</span>rompt: string): Promise&lt;string&gt; {
-  const runner = <span class="cstat-no" title="statement not covered" >new AgentRunner();</span>
-  const result = <span class="cstat-no" title="statement not covered" >await runner.plan(prompt);</span>
-<span class="cstat-no" title="statement not covered" >  return result.text;</span>
-}
-&nbsp;
-/**
- * 快速通用执行（便捷函数）
- */
-export async function <span class="fstat-no" title="function not covered" >runGeneral(p</span>rompt: string): Promise&lt;string&gt; {
-  const runner = <span class="cstat-no" title="statement not covered" >new AgentRunner();</span>
-  const result = <span class="cstat-no" title="statement not covered" >await runner.general(prompt);</span>
-<span class="cstat-no" title="statement not covered" >  return result.text;</span>
+export async function <span class="fstat-no" title="function not covered" >initializeSkills(c</span>onfig?: SkillSystemConfig): Promise&lt;SkillRegistry&gt; {
+  const registry = <span class="cstat-no" title="statement not covered" >getSkillRegistry(config);</span>
+<span class="cstat-no" title="statement not covered" >  await registry.initialize();</span>
+<span class="cstat-no" title="statement not covered" >  return registry;</span>
 }
 &nbsp;</pre></td></tr></table></pre>
 

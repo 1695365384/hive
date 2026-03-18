@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/agents/types.ts</title>
+    <title>Code coverage report for src/providers/types.ts</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../../prettify.css" />
     <link rel="stylesheet" href="../../base.css" />
@@ -19,7 +19,7 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/agents</a> types.ts</h1>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/providers</a> types.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
@@ -125,11 +125,7 @@
 <a name='L60'></a><a href='#L60'>60</a>
 <a name='L61'></a><a href='#L61'>61</a>
 <a name='L62'></a><a href='#L62'>62</a>
-<a name='L63'></a><a href='#L63'>63</a>
-<a name='L64'></a><a href='#L64'>64</a>
-<a name='L65'></a><a href='#L65'>65</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L63'></a><a href='#L63'>63</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -192,69 +188,67 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * Agent 类型定义
+ * Provider 类型定义
  *
- * 定义所有 Agent 相关的类型
+ * 统一的类型定义，避免循环依赖
  */
 &nbsp;
-import type { AgentDefinition, Options } from '@anthropic-ai/claude-agent-sdk';
-&nbsp;
-/**
- * Agent 类型
- */
-export type AgentType = 'explore' | 'plan' | 'general' | 'code-reviewer' | 'test-engineer' | 'doc-writer' | 'debugger' | 'refactorer' | 'security-auditor' | 'custom';
-&nbsp;
-/**
- * Agent 配置
- */
-export interface AgentConfig extends Omit&lt;AgentDefinition, 'description'&gt; {
-  /** Agent 类型标识 */
-  type: AgentType;
-  /** 描述 */
-  description?: string;
-  /** 使用的模型 */
+export interface CCProvider {
+  id: string;
+  app_id: string;
+  name: string;
+  base_url: string;
+  api_key: string;
   model?: string;
-  /** 最大轮次 */
-  maxTurns?: number;
-  /** 可用工具 */
-  tools?: string[];
+  is_active: boolean;
+  config?: Record&lt;string, unknown&gt;;
 }
 &nbsp;
-/**
- * Agent 执行选项
- */
-export interface AgentExecuteOptions extends Omit&lt;Options, 'agents'&gt; {
-  /** 回调：文本输出 */
-  onText?: (text: string) =&gt; void;
-  /** 回调：工具使用 */
-  onTool?: (toolName: string, input?: unknown) =&gt; void;
-  /** 回调：错误 */
-  onError?: (error: Error) =&gt; void;
+export interface CCMcpServer {
+  id: string;
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record&lt;string, string&gt;;
+  enabled: boolean;
 }
 &nbsp;
-/**
- * Agent 执行结果
- */
-export interface AgentResult {
-  /** 输出文本 */
-  text: string;
-  /** 使用的工具列表 */
-  tools: string[];
-  /** Token 使用量 */
-  usage?: {
-    input: number;
-    output: number;
+export interface ProviderConfig {
+  name: string;
+  base_url: string;
+  api_key?: string;
+  model?: string;
+  models?: string[];
+  description?: string;
+  note?: string;
+  enabled?: boolean;
+}
+&nbsp;
+export interface McpServerConfig {
+  command: string;
+  args?: string[];
+  env?: Record&lt;string, string&gt;;
+  enabled?: boolean;
+}
+&nbsp;
+export interface AgentDefaults {
+  model?: string;
+  max_turns?: number;
+  thoroughness?: 'quick' | 'medium' | 'very-thorough';
+}
+&nbsp;
+export interface ProvidersConfig {
+  version: string;
+  description?: string;
+  default?: string;
+  providers: Record&lt;string, ProviderConfig&gt;;
+  mcp_servers?: Record&lt;string, McpServerConfig&gt;;
+  agent_defaults?: {
+    explore?: AgentDefaults;
+    plan?: AgentDefaults;
+    general?: AgentDefaults;
   };
-  /** 是否成功 */
-  success: boolean;
-  /** 错误信息 */
-  error?: string;
 }
-&nbsp;
-/**
- * 探索严格程度
- */
-export type ThoroughnessLevel = 'quick' | 'medium' | 'very-thorough';
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->

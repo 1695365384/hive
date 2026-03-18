@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">18.75% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>6/32</span>
+                <span class='fraction'>0/32</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">19.35% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>6/31</span>
+                <span class='fraction'>0/31</span>
             </div>
         
             
@@ -205,7 +205,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -216,14 +216,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -251,7 +251,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -300,7 +300,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -323,7 +323,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -337,7 +337,7 @@ import { z } from 'zod';
 import Conf from 'conf';
 &nbsp;
 // 记忆条目 Schema
-const MemoryEntrySchema = z.object({
+const MemoryEntrySchema = <span class="cstat-no" title="statement not covered" >z.object({</span>
   key: z.string(),
   value: z.unknown(),
   createdAt: z.string(),
@@ -348,14 +348,14 @@ const MemoryEntrySchema = z.object({
 type MemoryEntry = z.infer&lt;typeof MemoryEntrySchema&gt;;
 &nbsp;
 // 记忆存储
-const memoryStore = new Conf&lt;{ memories: Record&lt;string, MemoryEntry&gt; }&gt;({
+const memoryStore = <span class="cstat-no" title="statement not covered" >new Conf&lt;{ memories: Record&lt;string, MemoryEntry&gt; }&gt;({</span>
   projectName: 'claude-agent-demo',
   configName: 'memories',
   defaults: { memories: {} },
 });
 &nbsp;
 // 记住信息
-const rememberTool = tool(
+const <span class="cstat-no" title="statement not covered" >rememberTool = tool(</span>
   'remember',
   '记住一条信息，跨会话持久化存储',
   {
@@ -383,7 +383,7 @@ const rememberTool = tool(
 );
 &nbsp;
 // 回忆信息
-const recallTool = tool(
+const <span class="cstat-no" title="statement not covered" >recallTool = tool(</span>
   'recall',
   '回忆之前记住的信息',
   {
@@ -432,7 +432,7 @@ const recallTool = tool(
 );
 &nbsp;
 // 遗忘信息
-const forgetTool = tool(
+const <span class="cstat-no" title="statement not covered" >forgetTool = tool(</span>
   'forget',
   '遗忘一条记忆',
   {
@@ -455,7 +455,7 @@ const forgetTool = tool(
 );
 &nbsp;
 // 创建 MCP 服务器
-export const memoryMcpServer = createSdkMcpServer({
+export const <span class="cstat-no" title="statement not covered" >memoryMcpServer = createSdkMcpServer({</span>
   name: 'memory-server',
   tools: [rememberTool, recallTool, forgetTool],
 });
@@ -466,7 +466,7 @@ export const memoryMcpServer = createSdkMcpServer({
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-03-18T00:16:01.878Z
+                at 2026-03-18T02:36:22.384Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

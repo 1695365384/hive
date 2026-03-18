@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/agents/types.ts</title>
+    <title>Code coverage report for src/skills/index.ts</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../../prettify.css" />
     <link rel="stylesheet" href="../../base.css" />
@@ -19,7 +19,7 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/agents</a> types.ts</h1>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/skills</a> index.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
@@ -127,7 +127,17 @@
 <a name='L62'></a><a href='#L62'>62</a>
 <a name='L63'></a><a href='#L63'>63</a>
 <a name='L64'></a><a href='#L64'>64</a>
-<a name='L65'></a><a href='#L65'>65</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -192,69 +202,74 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * Agent 类型定义
+ * 技能系统模块
  *
- * 定义所有 Agent 相关的类型
+ * 提供模块化的技能管理功能：
+ * - 技能加载
+ * - 技能匹配
+ * - 技能注册
+ *
+ * 使用方式：
+ * ```typescript
+ * import { SkillRegistry, initializeSkills } from 'claude-agent-service/skills';
+ *
+ * // 初始化技能系统
+ * const registry = await initializeSkills();
+ *
+ * // 匹配技能
+ * const match = registry.match('帮我 review 代码');
+ * if (match) {
+ *   console.log(`Matched skill: ${match.skill.metadata.name}`);
+ * }
+ *
+ * // 列出所有技能
+ * const skills = registry.getAllMetadata();
+ * ```
  */
 &nbsp;
-import type { AgentDefinition, Options } from '@anthropic-ai/claude-agent-sdk';
+// ============================================
+// 类型导出
+// ============================================
 &nbsp;
-/**
- * Agent 类型
- */
-export type AgentType = 'explore' | 'plan' | 'general' | 'code-reviewer' | 'test-engineer' | 'doc-writer' | 'debugger' | 'refactorer' | 'security-auditor' | 'custom';
+export type {
+  SkillMetadata,
+  Skill,
+  SkillContext,
+  SkillLoaderOptions,
+  SkillMatchResult,
+  SkillSystemConfig,
+} from './types.js';
 &nbsp;
-/**
- * Agent 配置
- */
-export interface AgentConfig extends Omit&lt;AgentDefinition, 'description'&gt; {
-  /** Agent 类型标识 */
-  type: AgentType;
-  /** 描述 */
-  description?: string;
-  /** 使用的模型 */
-  model?: string;
-  /** 最大轮次 */
-  maxTurns?: number;
-  /** 可用工具 */
-  tools?: string[];
-}
+// ============================================
+// 加载器导出
+// ============================================
 &nbsp;
-/**
- * Agent 执行选项
- */
-export interface AgentExecuteOptions extends Omit&lt;Options, 'agents'&gt; {
-  /** 回调：文本输出 */
-  onText?: (text: string) =&gt; void;
-  /** 回调：工具使用 */
-  onTool?: (toolName: string, input?: unknown) =&gt; void;
-  /** 回调：错误 */
-  onError?: (error: Error) =&gt; void;
-}
+export {
+  SkillLoader,
+  createSkillLoader,
+  parseFrontmatter,
+} from './loader.js';
 &nbsp;
-/**
- * Agent 执行结果
- */
-export interface AgentResult {
-  /** 输出文本 */
-  text: string;
-  /** 使用的工具列表 */
-  tools: string[];
-  /** Token 使用量 */
-  usage?: {
-    input: number;
-    output: number;
-  };
-  /** 是否成功 */
-  success: boolean;
-  /** 错误信息 */
-  error?: string;
-}
+// ============================================
+// 匹配器导出
+// ============================================
 &nbsp;
-/**
- * 探索严格程度
- */
-export type ThoroughnessLevel = 'quick' | 'medium' | 'very-thorough';
+export {
+  SkillMatcher,
+  createSkillMatcher,
+  extractTriggerPhrases,
+} from './matcher.js';
+&nbsp;
+// ============================================
+// 注册表导出
+// ============================================
+&nbsp;
+export {
+  SkillRegistry,
+  getSkillRegistry,
+  createSkillRegistry,
+  initializeSkills,
+} from './registry.js';
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
