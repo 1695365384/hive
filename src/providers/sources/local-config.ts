@@ -7,6 +7,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { cwd } from 'process';
 import type { ConfigSource, ProviderConfig, McpServerConfig } from '../types.js';
 
 /**
@@ -21,16 +22,41 @@ interface ProvidersJsonConfig {
 }
 
 /**
+ * 查找配置文件路径
+ *
+ * 按优先级查找：
+ * 1. 环境变量 PROVIDERS_CONFIG
+ * 2. 当前工作目录下的 providers.json
+ * 3. ~/.claude/providers.json
+ */
+function findConfigPath(): string {
+  // 1. 环境变量
+  const envPath = process.env.PROVIDERS_CONFIG;
+  if (envPath && existsSync(envPath)) {
+    return envPath;
+  }
+
+  // 2. 当前工作目录
+  const cwdPath = join(cwd(), 'providers.json');
+  if (existsSync(cwdPath)) {
+    return cwdPath;
+  }
+
+  // 3. 用户主目录
+  return join(homedir(), '.claude', 'providers.json');
+}
+
+/**
  * 本地配置文件来源
  */
 export class LocalConfigSource implements ConfigSource {
-  readonly name = 'local-config';
+  readonly name = 'providers';
 
   private configPath: string;
   private config: ProvidersJsonConfig | null = null;
 
   constructor(configPath?: string) {
-    this.configPath = configPath || join(homedir(), '.claude', 'providers.json');
+    this.configPath = configPath || findConfigPath();
   }
 
   isAvailable(): boolean {
@@ -91,10 +117,8 @@ export class LocalConfigSource implements ConfigSource {
     const config = this.loadConfig();
     if (!config) return null;
 
-    // 如果有默认配置
     if (config.default) return config.default;
 
-    // 返回第一个启用的
     for (const [id, provider] of Object.entries(config.providers)) {
       if (provider.enabled !== false) {
         return id;
@@ -102,6 +126,13 @@ export class LocalConfigSource implements ConfigSource {
     }
 
     return null;
+  }
+
+  /**
+   * 获取配置文件路径
+   */
+  getPath(): string {
+    return this.configPath;
   }
 
   /**

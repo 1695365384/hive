@@ -8,6 +8,7 @@ import { ProviderManager } from '../../providers/index.js';
 import { AgentRunner } from './runner.js';
 import { SkillRegistry, createSkillRegistry } from '../../skills/index.js';
 import { AgentRegistryImpl } from '../registry/AgentRegistry.js';
+import { HookRegistry } from '../../hooks/index.js';
 import type { AgentCapability, AgentContext, SkillSystemConfig } from './types.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Skill, SkillMatchResult } from '../../skills/index.js';
@@ -20,6 +21,7 @@ export class AgentContextImpl implements AgentContext {
   readonly runner: AgentRunner;
   readonly skillRegistry: SkillRegistry;
   readonly agentRegistry: AgentRegistryImpl;
+  readonly hookRegistry: HookRegistry;
 
   private capabilities: Map<string, AgentCapability> = new Map();
   private initialized: boolean = false;
@@ -29,6 +31,7 @@ export class AgentContextImpl implements AgentContext {
     this.runner = new AgentRunner(this.providerManager);
     this.skillRegistry = createSkillRegistry(skillConfig);
     this.agentRegistry = new AgentRegistryImpl();
+    this.hookRegistry = new HookRegistry();
   }
 
   /**
@@ -62,6 +65,13 @@ export class AgentContextImpl implements AgentContext {
 
     // 初始化所有能力模块
     for (const capability of this.capabilities.values()) {
+      // 触发 capability:init hook
+      await this.hookRegistry.emit('capability:init', {
+        capabilityName: capability.name,
+        context: this,
+        timestamp: new Date(),
+      });
+
       const result = capability.initialize(this);
       if (result instanceof Promise) {
         await result;
@@ -69,6 +79,34 @@ export class AgentContextImpl implements AgentContext {
     }
 
     this.initialized = true;
+  }
+
+  /**
+   * 销毁所有能力模块
+   */
+  async disposeAll(): Promise<void> {
+    // 销毁所有能力模块
+    for (const capability of this.capabilities.values()) {
+      // 触发 capability:dispose hook
+      await this.hookRegistry.emit('capability:dispose', {
+        capabilityName: capability.name,
+        timestamp: new Date(),
+      });
+
+      if (capability.dispose) {
+        try {
+          const result = capability.dispose();
+          if (result instanceof Promise) {
+            await result;
+          }
+        } catch (error) {
+          console.error(`[AgentContext] Failed to dispose capability ${capability.name}:`, error);
+        }
+      }
+    }
+
+    this.capabilities.clear();
+    this.initialized = false;
   }
 
   // ============================================

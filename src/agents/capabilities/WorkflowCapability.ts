@@ -11,6 +11,7 @@ import type {
   WorkflowResult,
   TaskAnalysis,
 } from '../core/types.js';
+import type { WorkflowPhaseHookContext } from '../../hooks/types.js';
 import { getPromptTemplate } from '../prompts/index.js';
 
 /**
@@ -56,6 +57,9 @@ export class WorkflowCapability implements AgentCapability {
    * 执行智能工作流
    */
   async run(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
+    const sessionId = this.context.hookRegistry.getSessionId();
+    let previousPhase: string | undefined;
+
     const result: WorkflowResult = {
       analysis: {
         type: 'simple',
@@ -67,13 +71,27 @@ export class WorkflowCapability implements AgentCapability {
       success: true,
     };
 
+    // 辅助函数：触发阶段变化 hook
+    const emitPhaseChange = async (phase: string, message: string) => {
+      const hookContext: WorkflowPhaseHookContext = {
+        sessionId,
+        phase,
+        message,
+        previousPhase,
+        timestamp: new Date(),
+      };
+      await this.context.hookRegistry.emit('workflow:phase', hookContext);
+      previousPhase = phase;
+      options?.onPhase?.(phase, message);
+    };
+
     try {
       // Phase 1: 简单分析
-      options?.onPhase?.('analyze', '准备执行任务...');
+      await emitPhaseChange('analyze', '准备执行任务...');
       result.analysis = this.analyzeTask(task);
 
       // Phase 2: 直接执行
-      options?.onPhase?.('execute', '执行任务...');
+      await emitPhaseChange('execute', '执行任务...');
 
       const intelligentPrompt = this.buildIntelligentPrompt(task);
 
@@ -87,9 +105,15 @@ export class WorkflowCapability implements AgentCapability {
       });
 
       result.success = result.executeResult.success;
+
+      // Phase 3: 完成
+      await emitPhaseChange('complete', result.success ? '任务完成' : '任务失败');
     } catch (error) {
       result.success = false;
       result.error = error instanceof Error ? error.message : String(error);
+
+      // 触发错误阶段
+      await emitPhaseChange('error', result.error);
     }
 
     return result;

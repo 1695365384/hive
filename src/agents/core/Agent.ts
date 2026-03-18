@@ -14,6 +14,7 @@ import type {
   AgentType,
   AgentResult,
 } from './types.js';
+import type { SessionStartHookContext, SessionEndHookContext, SessionErrorHookContext } from '../../hooks/types.js';
 import { AgentContextImpl } from './AgentContext.js';
 import { ProviderCapability } from '../capabilities/ProviderCapability.js';
 import { SkillCapability } from '../capabilities/SkillCapability.js';
@@ -29,16 +30,17 @@ import type { ProviderConfig } from '../../providers/index.js';
  * 所有功能通过能力模块实现
  */
 export class Agent {
-  private context: AgentContextImpl;
+  private _context: AgentContextImpl;
   private providerCap: ProviderCapability;
   private skillCap: SkillCapability;
   private chatCap: ChatCapability;
   private subAgentCap: SubAgentCapability;
   private workflowCap: WorkflowCapability;
   private initialized: boolean = false;
+  private disposed: boolean = false;
 
   constructor(skillConfig?: SkillSystemConfig) {
-    this.context = new AgentContextImpl(skillConfig);
+    this._context = new AgentContextImpl(skillConfig);
 
     // 创建能力模块
     this.providerCap = new ProviderCapability();
@@ -48,11 +50,20 @@ export class Agent {
     this.workflowCap = new WorkflowCapability();
 
     // 注册并立即初始化能力模块（同步初始化）
-    this.providerCap.initialize(this.context);
-    this.skillCap.initialize(this.context);
-    this.chatCap.initialize(this.context);
-    this.subAgentCap.initialize(this.context);
-    this.workflowCap.initialize(this.context);
+    this.providerCap.initialize(this._context);
+    this.skillCap.initialize(this._context);
+    this.chatCap.initialize(this._context);
+    this.subAgentCap.initialize(this._context);
+    this.workflowCap.initialize(this._context);
+  }
+
+  /**
+   * 获取 Agent 上下文
+   *
+   * 用于访问 hookRegistry 等共享资源
+   */
+  get context(): AgentContext {
+    return this._context;
   }
 
   /**
@@ -60,9 +71,35 @@ export class Agent {
    */
   async initialize(): Promise<void> {
     if (!this.initialized) {
-      await this.context.initializeAll();
+      await this._context.initializeAll();
       this.initialized = true;
     }
+  }
+
+  /**
+   * 销毁 Agent
+   *
+   * 触发 session:end 和 capability:dispose hooks
+   */
+  async dispose(): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+
+    // 触发 session:end hook
+    const sessionId = this._context.hookRegistry.getSessionId();
+    await this._context.hookRegistry.emit('session:end', {
+      sessionId,
+      success: true,
+      reason: 'Agent disposed',
+      timestamp: new Date(),
+      duration: 0, // 由调用者计算
+    });
+
+    // 销毁所有能力模块
+    await this._context.disposeAll();
+
+    this.disposed = true;
   }
 
   // ============================================
@@ -82,7 +119,7 @@ export class Agent {
   }
 
   useProvider(name: string, apiKey?: string): boolean {
-    return this.providerCap.use(name, apiKey);
+    return this.providerCap.useSync(name, apiKey);
   }
 
   isCCSwitchInstalled(): boolean {
@@ -106,7 +143,7 @@ export class Agent {
   }
 
   matchSkill(input: string): SkillMatchResult | null {
-    return this.skillCap.match(input);
+    return this.skillCap.matchSync(input);
   }
 
   registerSkill(skill: Skill): void {
@@ -122,11 +159,95 @@ export class Agent {
   // ============================================
 
   async chat(prompt: string, options?: AgentOptions): Promise<string> {
-    return this.chatCap.send(prompt, options);
+    const sessionId = this._context.hookRegistry.getSessionId();
+    const startTime = Date.now();
+
+    // 触发 session:start hook
+    await this._context.hookRegistry.emit('session:start', {
+      sessionId,
+      prompt,
+      timestamp: new Date(),
+    });
+
+    try {
+      const result = await this.chatCap.send(prompt, options);
+
+      // 触发 session:end hook
+      await this._context.hookRegistry.emit('session:end', {
+        sessionId,
+        success: true,
+        timestamp: new Date(),
+        duration: Date.now() - startTime,
+      });
+
+      return result;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+
+      // 触发 session:error hook
+      await this._context.hookRegistry.emit('session:error', {
+        sessionId,
+        error: err,
+        timestamp: new Date(),
+        recoverable: false,
+      });
+
+      // 触发 session:end hook（失败）
+      await this._context.hookRegistry.emit('session:end', {
+        sessionId,
+        success: false,
+        reason: err.message,
+        timestamp: new Date(),
+        duration: Date.now() - startTime,
+      });
+
+      throw error;
+    }
   }
 
   async chatStream(prompt: string, options?: AgentOptions): Promise<void> {
-    return this.chatCap.sendStream(prompt, options);
+    const sessionId = this._context.hookRegistry.getSessionId();
+    const startTime = Date.now();
+
+    // 触发 session:start hook
+    await this._context.hookRegistry.emit('session:start', {
+      sessionId,
+      prompt,
+      timestamp: new Date(),
+    });
+
+    try {
+      await this.chatCap.sendStream(prompt, options);
+
+      // 触发 session:end hook
+      await this._context.hookRegistry.emit('session:end', {
+        sessionId,
+        success: true,
+        timestamp: new Date(),
+        duration: Date.now() - startTime,
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+
+      // 触发 session:error hook
+      await this._context.hookRegistry.emit('session:error', {
+        sessionId,
+        error: err,
+        timestamp: new Date(),
+        recoverable: false,
+      });
+
+      // 触发 session:end hook（失败）
+      await this._context.hookRegistry.emit('session:end', {
+        sessionId,
+        success: false,
+        reason: err.message,
+        timestamp: new Date(),
+        duration: Date.now() - startTime,
+      });
+
+      throw error;
+    }
   }
 
   // ============================================

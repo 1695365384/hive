@@ -116,6 +116,33 @@ export {
 } from './registry/AgentRegistry.js';
 
 // ============================================
+// Hooks 系统（从顶级模块重导出）
+// ============================================
+
+export {
+  // 注册表
+  HookRegistry,
+
+  // 类型
+  type HookPriority,
+  type HookResult,
+  type SessionStartHookContext,
+  type SessionEndHookContext,
+  type SessionErrorHookContext,
+  type ToolBeforeHookContext,
+  type ToolBeforeHookModifiedContext,
+  type ToolAfterHookContext,
+  type CapabilityInitHookContext,
+  type CapabilityDisposeHookContext,
+  type WorkflowPhaseHookContext,
+  type HookTypeMap,
+  type HookType,
+  type HookHandler,
+  type HookOptions,
+  type RegisteredHook,
+} from '../hooks/index.js';
+
+// ============================================
 // 类型定义
 // ============================================
 

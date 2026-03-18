@@ -9,6 +9,7 @@ import type { ProviderManager, ProviderConfig } from '../../providers/index.js';
 import type { SkillRegistry, Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { AgentRunner } from './runner.js';
 import type { AgentConfig, AgentResult, ThoroughnessLevel, AgentType } from '../types.js';
+import type { HookRegistry } from '../../hooks/index.js';
 
 // 重导出 SkillSystemConfig
 export type { SkillSystemConfig } from '../../skills/index.js';
@@ -32,6 +33,13 @@ export interface AgentCapability {
    * @param context - Agent 上下文
    */
   initialize(context: AgentContext): void | Promise<void>;
+
+  /**
+   * 销毁能力（可选）
+   *
+   * 用于清理资源、取消订阅等
+   */
+  dispose?(): void | Promise<void>;
 }
 
 /**
@@ -48,6 +56,8 @@ export interface AgentContext {
   skillRegistry: SkillRegistry;
   /** Agent 注册表 */
   agentRegistry: AgentRegistry;
+  /** Hook 注册表 */
+  hookRegistry: HookRegistry;
 
   // 便捷访问器
   /** 获取当前提供商 */

@@ -40,9 +40,42 @@ export class ProviderCapability implements AgentCapability {
   }
 
   /**
-   * 切换提供商
+   * 切换提供商（带 Hook 触发）
    */
-  use(name: string, apiKey?: string): boolean {
+  async use(name: string, apiKey?: string, sessionId?: string): Promise<boolean> {
+    const previousProvider = this.current?.name || 'unknown';
+
+    // 触发 provider:beforeChange hook
+    const shouldProceed = await this.context.hookRegistry.emit('provider:beforeChange', {
+      sessionId: sessionId || 'system',
+      previousProvider,
+      newProviderId: name,
+      timestamp: new Date(),
+    });
+
+    if (!shouldProceed) {
+      return false;
+    }
+
+    // 执行切换
+    const success = this.context.providerManager.switchProvider(name, apiKey);
+
+    // 触发 provider:afterChange hook
+    await this.context.hookRegistry.emit('provider:afterChange', {
+      sessionId: sessionId || 'system',
+      previousProvider,
+      newProvider: name,
+      success,
+      timestamp: new Date(),
+    });
+
+    return success;
+  }
+
+  /**
+   * 同步切换提供商（向后兼容）
+   */
+  useSync(name: string, apiKey?: string): boolean {
     return this.context.providerManager.switchProvider(name, apiKey);
   }
 

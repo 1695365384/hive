@@ -13,3 +13,4 @@ export { SkillCapability } from './SkillCapability.js';
 export { ChatCapability } from './ChatCapability.js';
 export { SubAgentCapability } from './SubAgentCapability.js';
 export { WorkflowCapability } from './WorkflowCapability.js';
+
