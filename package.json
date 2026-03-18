@@ -1,5 +1,5 @@
 {
-  "name": "claude-agent-service",
+  "name": "aiclaw",
   "version": "1.0.0",
   "description": "面向 C 端的 Claude Agent 服务 SDK，整合 CC-Switch 生态",
   "type": "module",
