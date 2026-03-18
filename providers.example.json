@@ -1,0 +1,123 @@
+{
+  "$schema": "./providers.schema.json",
+  "version": "1.0.0",
+  "description": "LLM 提供商配置文件 - 复制为 providers.json 并填入你的 API Key",
+
+  "default": "glm",
+
+  "providers": {
+    "anthropic": {
+      "name": "Anthropic (官方)",
+      "base_url": "https://api.anthropic.com",
+      "api_key": "",
+      "model": "claude-sonnet-4-6",
+      "models": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
+      "description": "Anthropic Claude 官方 API",
+      "enabled": true
+    },
+
+    "deepseek": {
+      "name": "DeepSeek",
+      "base_url": "https://api.deepseek.com/anthropic",
+      "api_key": "",
+      "model": "deepseek-chat",
+      "models": ["deepseek-chat", "deepseek-reasoner"],
+      "description": "DeepSeek 大模型，性价比高",
+      "enabled": true
+    },
+
+    "glm": {
+      "name": "GLM (智谱)",
+      "base_url": "https://open.bigmodel.cn/api/anthropic",
+      "api_key": "c64af17ba4fd418e9d0eb4a18b3c1b65.9wT0SLltVSw2Pr50",
+      "model": "glm-5",
+      "models": ["glm-5", "glm-4.7", "glm-4-plus", "glm-4-flash"],
+      "description": "智谱清言大模型，支持长文本、多模态",
+      "enabled": true
+    },
+
+    "qwen": {
+      "name": "Qwen (通义千问)",
+      "base_url": "https://dashscope.aliyuncs.com/apps/anthropic",
+      "api_key": "",
+      "model": "qwen3-max",
+      "models": ["qwen3-max", "qwen3-72b", "qwen3-32b", "qwen-plus", "qwen-turbo"],
+      "description": "阿里云通义千问大模型",
+      "enabled": true
+    },
+
+    "kimi": {
+      "name": "Kimi (月之暗面)",
+      "base_url": "https://api.moonshot.cn/anthropic",
+      "api_key": "",
+      "model": "moonshot-v1-128k",
+      "models": ["moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"],
+      "description": "Kimi 大模型，超长上下文支持",
+      "enabled": true
+    },
+
+    "openai": {
+      "name": "OpenAI",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "",
+      "model": "gpt-4o",
+      "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+      "description": "OpenAI GPT 系列模型",
+      "note": "需要使用兼容层转换为 Anthropic 格式",
+      "enabled": false
+    },
+
+    "openrouter": {
+      "name": "OpenRouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "",
+      "model": "anthropic/claude-sonnet-4",
+      "models": [
+        "anthropic/claude-opus-4",
+        "anthropic/claude-sonnet-4",
+        "openai/gpt-4o",
+        "google/gemini-pro-1.5",
+        "deepseek/deepseek-chat"
+      ],
+      "description": "OpenRouter 聚合网关，支持 100+ 模型",
+      "enabled": true
+    },
+
+    "litellm": {
+      "name": "LiteLLM (本地)",
+      "base_url": "http://localhost:4000",
+      "api_key": "sk-litellm",
+      "model": "gpt-4o",
+      "models": ["*"],
+      "description": "LiteLLM 统一网关，需要自行部署",
+      "enabled": false
+    }
+  },
+
+  "mcp_servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-filesystem", "/path/to/allowed/dir"],
+      "enabled": false
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-memory"],
+      "enabled": true
+    }
+  },
+
+  "agent_defaults": {
+    "explore": {
+      "model": "claude-haiku-4-5",
+      "max_turns": 5,
+      "thoroughness": "medium"
+    },
+    "plan": {
+      "max_turns": 10
+    },
+    "general": {
+      "max_turns": 20
+    }
+  }
+}

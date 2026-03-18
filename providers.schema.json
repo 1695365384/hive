@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LLM Providers Configuration",
+  "description": "Configuration schema for LLM providers",
+  "type": "object",
+  "required": ["version", "providers"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "default": {
+      "type": "string",
+      "description": "Default provider ID"
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/Provider"
+      }
+    },
+    "mcp_servers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/McpServer"
+      }
+    },
+    "agent_defaults": {
+      "type": "object",
+      "properties": {
+        "explore": {
+          "$ref": "#/definitions/AgentDefaults"
+        },
+        "plan": {
+          "$ref": "#/definitions/AgentDefaults"
+        },
+        "general": {
+          "$ref": "#/definitions/AgentDefaults"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Provider": {
+      "type": "object",
+      "required": ["name", "base_url"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "base_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "API base URL"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key (leave empty to use environment variable)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Default model to use"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Available models"
+        },
+        "description": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "McpServer": {
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "AgentDefaults": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "max_turns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thoroughness": {
+          "type": "string",
+          "enum": ["quick", "medium", "very-thorough"]
+        }
+      }
+    }
+  }
+}
