@@ -6,7 +6,8 @@
 
 import { query, type Options, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentConfig, AgentExecuteOptions, AgentResult, ThoroughnessLevel } from './types.js';
-import { getAgentConfig, buildExplorePrompt, buildPlanPrompt } from './builtin.js';
+import { getAgentConfig } from './agents.js';
+import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
 
 /**
  * Agent 运行器

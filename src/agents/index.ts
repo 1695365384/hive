@@ -5,30 +5,14 @@
  * - 对话功能
  * - 子 Agent（Explore, Plan, General 等）
  * - 工作流
- *
- * 使用方式：
- * ```typescript
- * import { Agent, createAgent, ask } from 'claude-agent-service';
- *
- * // 方式 1: 创建实例
- * const agent = new Agent();
- * await agent.chat('你好');
- * await agent.explore('查找 API');
- *
- * // 方式 2: 使用全局实例
- * const agent = createAgent();
- * await agent.runWorkflow('添加功能');
- *
- * // 方式 3: 便捷函数
- * await ask('你好');
- * ```
  */
 
 // ============================================
-// 主 Agent（核心入口）
+// 核心 Agent（从 core/ 导出）
 // ============================================
 
 export {
+  // Agent 类
   Agent,
   getAgent,
   createAgent,
@@ -37,25 +21,8 @@ export {
   plan,
   general,
   runWorkflow,
-  type AgentOptions,
-  type WorkflowOptions,
-  type WorkflowResult,
-} from './main.js';
 
-// ============================================
-// 子 Agent 类型（供高级用户使用）
-// ============================================
-
-export type {
-  AgentType,
-  AgentConfig,
-  AgentExecuteOptions,
-  AgentResult,
-  ThoroughnessLevel,
-} from './types.js';
-
-// 内置 Agent 定义（供高级用户直接访问）
-export {
+  // 内置 Agent
   CORE_AGENTS,
   EXTENDED_AGENTS,
   BUILTIN_AGENTS,
@@ -63,23 +30,16 @@ export {
   getCoreAgentNames,
   getExtendedAgentNames,
   getAllAgentNames,
-} from './builtin.js';
 
-// Agent 运行器（供高级用户直接使用）
-export {
+  // 运行器
   AgentRunner,
   createAgentRunner,
   runAgent,
   runExplore,
   runPlan,
   runGeneral,
-} from './runner.js';
 
-// ============================================
-// Task 系统（类似 Claude Code 的 Task Tool）
-// ============================================
-
-export {
+  // Task 系统
   Task,
   createTask,
   runTask,
@@ -88,17 +48,75 @@ export {
   runExploreTask,
   runPlanTask,
   runGeneralTask,
+
+  // 类型
+  type AgentOptions,
+  type AgentExecuteOptions,
+  type WorkflowOptions,
+  type WorkflowResult,
+  type TaskAnalysis,
+  type AgentConfig,
+  type AgentResult,
+  type ThoroughnessLevel,
+  type AgentType,
   type TaskConfig,
   type TaskResult,
   type ParallelTaskConfig,
-} from './task.js';
+} from './core/index.js';
 
-// Prompt 模板（供高级用户自定义）
+// ============================================
+// 能力模块
+// ============================================
+
 export {
+  ProviderCapability,
+  SkillCapability,
+  ChatCapability,
+  SubAgentCapability,
+  WorkflowCapability,
+} from './capabilities/index.js';
+
+// ============================================
+// Prompt 系统
+// ============================================
+
+export {
+  // 模板引擎
+  PromptTemplate,
+  getPromptTemplate,
+  createPromptTemplate,
+
+  // Prompt 常量
   THOROUGHNESS_PROMPTS,
   EXPLORE_AGENT_PROMPT,
   PLAN_AGENT_PROMPT,
   GENERAL_AGENT_PROMPT,
+
+  // 构建函数
   buildExplorePrompt,
   buildPlanPrompt,
-} from './builtin.js';
+  buildIntelligentPrompt,
+
+  // 模板渲染
+  renderTemplate,
+  loadTemplate,
+
+  // 类型
+  type TemplateVariables,
+} from './prompts/index.js';
+
+// ============================================
+// Agent 注册表
+// ============================================
+
+export {
+  AgentRegistryImpl,
+  getAgentRegistry,
+  createAgentRegistry,
+} from './registry/AgentRegistry.js';
+
+// ============================================
+// 类型定义
+// ============================================
+
+export type { AgentCapability, AgentContext } from './capabilities/index.js';

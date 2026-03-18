@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Task, createTask, runTask, runParallel, mapParallel } from '../../src/agents/task.js';
+import { Task, createTask, runTask, runParallel, mapParallel } from '../../src/agents/core/task.js';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 // Mock Agent SDK
