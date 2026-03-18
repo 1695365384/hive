@@ -10,6 +10,7 @@ import {
   getModelsDevClient,
   createModelsDevClient,
 } from './models-dev.js';
+import type { ModelsDevPersistence } from './models-dev.js';
 import {
   getProviderRegistry,
   getProviderInfo,
@@ -19,6 +20,10 @@ import type { ProviderInfo } from './provider-registry.js';
 
 // 导出 ModelsDevClient
 export { ModelsDevClient, getModelsDevClient, createModelsDevClient } from './models-dev.js';
+export type { ModelsDevPersistence } from './models-dev.js';
+
+// 导出工作空间持久化
+export { WorkspacePersistence, createWorkspacePersistence } from './workspace-persistence.js';
 
 // 导出 ProviderRegistry
 export {

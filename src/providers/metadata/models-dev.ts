@@ -194,7 +194,7 @@ export class ModelsDevClient {
           baseUrl: provider.baseUrl,
           type: provider.type as ProviderType,
           envKeys: provider.envKeys,
-          npmPackage: '', // 缓存中没有存储
+          npmPackage: provider.npmPackage || '',
           models,
         };
 

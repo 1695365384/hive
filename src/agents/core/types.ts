@@ -59,6 +59,10 @@ export interface AgentContext {
   /** Hook 注册表 */
   hookRegistry: HookRegistry;
 
+  // 能力模块访问
+  /** 获取能力模块 */
+  getCapability<T extends AgentCapability>(name: string): T;
+
   // 便捷访问器
   /** 获取当前提供商 */
   getActiveProvider(): ProviderConfig | null;
