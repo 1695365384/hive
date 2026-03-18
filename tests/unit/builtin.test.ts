@@ -13,13 +13,15 @@ import {
   getCoreAgentNames,
   getExtendedAgentNames,
   getAllAgentNames,
+} from '../../src/agents/core/agents.js';
+import {
   THOROUGHNESS_PROMPTS,
   EXPLORE_AGENT_PROMPT,
   PLAN_AGENT_PROMPT,
   GENERAL_AGENT_PROMPT,
   buildExplorePrompt,
   buildPlanPrompt,
-} from '../../src/agents/builtin.js';
+} from '../../src/agents/prompts/prompts.js';
 
 describe('Builtin Agents', () => {
   describe('CORE_AGENTS', () => {

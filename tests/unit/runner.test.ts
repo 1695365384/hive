@@ -5,10 +5,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AgentRunner, createAgentRunner } from '../../src/agents/runner.js';
+import { AgentRunner, createAgentRunner } from '../../src/agents/core/runner.js';
 
-// Mock the builtin module
-vi.mock('../../src/agents/builtin.js', () => ({
+// Mock the agents module
+vi.mock('../../src/agents/core/agents.js', () => ({
   getAgentConfig: vi.fn((name: string) => {
     if (['explore', 'plan', 'general'].includes(name)) {
       return {
@@ -20,6 +20,10 @@ vi.mock('../../src/agents/builtin.js', () => ({
     }
     return undefined;
   }),
+}));
+
+// Mock the prompts module
+vi.mock('../../src/agents/prompts/prompts.js', () => ({
   buildExplorePrompt: vi.fn((task: string) => `Explore: ${task}`),
   buildPlanPrompt: vi.fn((task: string) => `Plan: ${task}`),
 }));

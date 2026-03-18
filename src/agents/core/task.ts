@@ -29,7 +29,8 @@
 
 import { query, type Options, type AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentResult, ThoroughnessLevel } from './types.js';
-import { BUILTIN_AGENTS, EXTENDED_AGENTS, buildExplorePrompt } from './builtin.js';
+import { BUILTIN_AGENTS, EXTENDED_AGENTS } from './agents.js';
+import { buildExplorePrompt } from '../prompts/prompts.js';
 
 // ============================================
 // 类型定义
