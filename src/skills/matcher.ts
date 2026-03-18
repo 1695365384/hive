@@ -101,6 +101,12 @@ function isPhraseMatched(
 }
 
 /**
+ * 缓存最大条目数
+ * 防止长时间运行导致的内存泄漏
+ */
+const MAX_CACHE_SIZE = 100;
+
+/**
  * 技能匹配器类
  */
 export class SkillMatcher {
@@ -113,16 +119,33 @@ export class SkillMatcher {
 
   /**
    * 获取技能的触发短语（带缓存）
+   * 使用 LRU 策略限制缓存大小
    */
   private getTriggerPhrases(skill: Skill): string[] {
     const cacheKey = skill.path;
 
-    if (!this.triggerPhrasesCache.has(cacheKey)) {
-      const phrases = extractTriggerPhrases(skill.metadata.description);
+    if (this.triggerPhrasesCache.has(cacheKey)) {
+      // LRU: 将已存在的条目移到最后（删除后重新添加）
+      const phrases = this.triggerPhrasesCache.get(cacheKey)!;
+      this.triggerPhrasesCache.delete(cacheKey);
       this.triggerPhrasesCache.set(cacheKey, phrases);
+      return phrases;
     }
 
-    return this.triggerPhrasesCache.get(cacheKey)!;
+    // 缓存未命中，提取触发短语
+    const phrases = extractTriggerPhrases(skill.metadata.description);
+
+    // LRU 淘汰：如果缓存已满，删除最旧的条目
+    if (this.triggerPhrasesCache.size >= MAX_CACHE_SIZE) {
+      // Map 的 keys() 迭代器按插入顺序返回，第一个是最旧的
+      const oldestKey = this.triggerPhrasesCache.keys().next().value;
+      if (oldestKey) {
+        this.triggerPhrasesCache.delete(oldestKey);
+      }
+    }
+
+    this.triggerPhrasesCache.set(cacheKey, phrases);
+    return phrases;
   }
 
   /**

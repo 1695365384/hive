@@ -255,7 +255,7 @@ export class SkillLoader {
       throw new Error(`Skill not found: ${skillPath}`);
     }
 
-    const content = fs.readFileSync(skillPath, this.options.encoding!);
+    const content = fs.readFileSync(skillPath, this.options.encoding ?? 'utf-8');
     const { metadata, body } = parseFrontmatter(content);
     const resources = discoverResources(skillDir);
 
@@ -319,15 +319,28 @@ export class SkillLoader {
    * @returns 文件内容
    */
   loadReference(skill: Skill, filename: string): string {
+    // 安全检查：防止路径遍历攻击
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      throw new Error(`Invalid filename: path traversal not allowed`);
+    }
+
+    // 只匹配 basename，忽略完整路径
     const refPath = skill.references.find(
-      (ref) => path.basename(ref) === filename || ref === filename
+      (ref) => path.basename(ref) === filename
     );
 
     if (!refPath) {
       throw new Error(`Reference not found: ${filename}`);
     }
 
-    return fs.readFileSync(refPath, this.options.encoding!);
+    // 验证解析后的路径仍在技能目录内
+    const resolvedPath = path.resolve(refPath);
+    const skillDirResolved = path.resolve(skill.path);
+    if (!resolvedPath.startsWith(skillDirResolved)) {
+      throw new Error(`Security: attempted to read outside skill directory`);
+    }
+
+    return fs.readFileSync(refPath, this.options.encoding ?? 'utf-8');
   }
 
   /**
@@ -341,7 +354,7 @@ export class SkillLoader {
 
     for (const refPath of skill.references) {
       const filename = path.basename(refPath);
-      references.set(filename, fs.readFileSync(refPath, this.options.encoding!));
+      references.set(filename, fs.readFileSync(refPath, this.options.encoding ?? 'utf-8'));
     }
 
     return references;
