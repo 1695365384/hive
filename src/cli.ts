@@ -74,9 +74,9 @@ function printBanner(): void {
     logSuccess(`当前提供商: ${provider.name}`);
     debug('提供商详情:', {
       id: provider.id,
-      base_url: provider.base_url,
+      baseUrl: provider.baseUrl,
       model: provider.model,
-      hasApiKey: !!provider.api_key,
+      hasApiKey: !!provider.apiKey,
     });
   } else {
     logError('未找到提供商配置');
@@ -149,7 +149,7 @@ async function executePrompt(prompt: string): Promise<void> {
   logPhase('START', `任务: ${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}`);
 
   if (provider) {
-    debug(`使用提供商: ${provider.name} (${provider.base_url})`);
+    debug(`使用提供商: ${provider.name} (${provider.baseUrl})`);
   }
 
   const startTime = Date.now();
@@ -307,8 +307,8 @@ async function handleCommand(line: string): Promise<boolean> {
         console.log('当前提供商:');
         console.log(`  ID: ${provider.id}`);
         console.log(`  名称: ${provider.name}`);
-        console.log(`  Base URL: ${provider.base_url}`);
-        console.log(`  API Key: ${provider.api_key ? provider.api_key.substring(0, 10) + '...' : '(未设置)'}`);
+        console.log(`  Base URL: ${provider.baseUrl}`);
+        console.log(`  API Key: ${provider.apiKey ? provider.apiKey.substring(0, 10) + '...' : '(未设置)'}`);
         console.log(`  Model: ${provider.model || '(默认)'}`);
       } else {
         console.log('  未配置提供商');
@@ -329,7 +329,7 @@ async function handleCommand(line: string): Promise<boolean> {
       const provider = agent.currentProvider;
       if (provider) {
         console.log(`\n当前提供商: ${provider.name}`);
-        console.log(`  Base URL: ${provider.base_url}`);
+        console.log(`  Base URL: ${provider.baseUrl}`);
         console.log(`  Model: ${provider.model || '(默认)'}`);
       }
       console.log('');
@@ -421,7 +421,7 @@ async function handleCommand(line: string): Promise<boolean> {
         logSuccess(`已切换 provider: ${name}`);
         const newProvider = agent.currentProvider;
         if (newProvider) {
-          debug(`Base URL: ${newProvider.base_url}`);
+          debug(`Base URL: ${newProvider.baseUrl}`);
         }
       } else {
         logError(`切换 provider 失败: ${name}`);
@@ -439,12 +439,12 @@ async function handleCommand(line: string): Promise<boolean> {
       console.log('\n\x1b[1m📋 可用提供商\x1b[0m\n');
       for (const p of providers) {
         const active = agent.currentProvider?.id === p.id;
-        const hasKey = !!p.api_key;
+        const hasKey = !!p.apiKey;
         const keyStatus = hasKey ? '🔑' : '⚠️ 无Key';
         const activeMarker = active ? '\x1b[32m (active)\x1b[0m' : '';
         console.log(`  ${active ? '●' : '○'} ${p.name}${activeMarker} ${keyStatus}`);
         if (DEBUG || state.verbose) {
-          console.log(`    └─ ${p.base_url}`);
+          console.log(`    └─ ${p.baseUrl}`);
         }
       }
       console.log('');

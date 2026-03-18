@@ -12,6 +12,33 @@ import {
 } from '../prompts/prompts.js';
 
 // ============================================
+// Agent 名称常量
+// ============================================
+
+/** 核心 Agent 名称 */
+export const CORE_AGENT_NAMES = {
+  EXPLORE: 'explore',
+  PLAN: 'plan',
+  GENERAL: 'general',
+} as const;
+
+/** 扩展 Agent 名称 */
+export const EXTENDED_AGENT_NAMES = {
+  CODE_REVIEWER: 'code-reviewer',
+  TEST_ENGINEER: 'test-engineer',
+  DOC_WRITER: 'doc-writer',
+  DEBUGGER: 'debugger',
+  REFACTORER: 'refactorer',
+  SECURITY_AUDITOR: 'security-auditor',
+} as const;
+
+/** 所有内置 Agent 名称 */
+export const AGENT_NAMES = {
+  ...CORE_AGENT_NAMES,
+  ...EXTENDED_AGENT_NAMES,
+} as const;
+
+// ============================================
 // 核心 Agent 配置
 // ============================================
 

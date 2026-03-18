@@ -113,7 +113,6 @@ describe('Agent Module Exports', () => {
     it('should export WorkflowOptions type', () => {
       const options: WorkflowOptions = {
         cwd: '/test',
-        provider: 'deepseek',
       };
       expect(options).toBeDefined();
     });

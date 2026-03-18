@@ -1,49 +1,78 @@
 /**
- * Provider 模块
+ * Provider 模块 - 统一入口
+ *
+ * 提供 LLM 提供商管理功能
  */
 
+// ============================================
+// 核心类
+// ============================================
+
+export { Provider } from './Provider.js';
 export {
-  CCSwitchReader,
-  getCurrentProvider,
-  switchProvider,
-  UnifiedProviderManager,
+  ProviderManager,
+  getProviderManager,
+  createProviderManager,
   providerManager,
-  type CCProvider,
-  type CCMcpServer,
-} from './cc-switch-provider.js';
+} from './ProviderManager.js';
+
+// ============================================
+// 类型
+// ============================================
+
+export type {
+  ProviderConfig,
+  McpServerConfig,
+  ModelSpec,
+  ProviderPreset,
+  ConfigSource,
+  IProvider,
+} from './types.js';
+
+// ============================================
+// 配置来源
+// ============================================
+
+export {
+  CCSwitchSource,
+  LocalConfigSource,
+  EnvSource,
+  createConfigChain,
+  mergeSources,
+} from './sources/index.js';
+
+// ============================================
+// 预设
+// ============================================
 
 export {
   ALL_PRESETS,
-  CHINESE_PROVIDERS,
-  OPENAI_SERIES_PROVIDERS,
-  GATEWAY_PROVIDERS,
-  ANTHROPIC_PROVIDERS,
-  getProviderPreset,
-  createProviderConfig,
+  getPresets,
+  getPresetsByCategory,
+  getPreset,
   applyPreset,
-  listAllPresets,
-  listPresetsByCategory,
-} from './presets.js';
+  searchPresets,
+  ANTHROPIC_PRESETS,
+  OPENAI_PRESETS,
+  CHINESE_PRESETS,
+  GATEWAY_PRESETS,
+} from './presets/index.js';
 
-// 本地配置加载器
+// ============================================
+// 模型
+// ============================================
+
 export {
-  findConfigFile,
-  getConfigPath,
-  loadConfig,
-  reloadConfig,
-  saveConfig,
-  getProviders,
-  getProvider,
-  getDefaultProvider,
-  getEnabledProviders,
-  toCCProvider,
-  getMcpServers,
-  getEnabledMcpServers,
-  getAgentDefaults,
-  useProvider,
-  listProviders,
-  type ProviderConfig,
-  type McpServerConfig,
-  type AgentDefaults,
-  type ProvidersConfig,
-} from './config-loader.js';
+  fetchModels,
+  fetchModelDetail,
+  getModelFetcher,
+  getProviderModels,
+  getModelSpec,
+  getContextWindow,
+  checkModelSupport,
+  estimateCost,
+  getAllModels,
+  searchModels,
+} from './models/index.js';
+
+export type { ModelFetcher } from './models/fetcher.js';

@@ -116,27 +116,47 @@ export {
 // ============================================
 
 export {
-  CCSwitchReader,
-  getCurrentProvider,
-  switchProvider,
-  UnifiedProviderManager,
+  // 核心类
+  Provider,
+  ProviderManager,
+  getProviderManager,
+  createProviderManager,
   providerManager,
-  type CCProvider,
-  type CCMcpServer,
-} from './providers/cc-switch-provider.js';
 
-export {
+  // 配置来源
+  CCSwitchSource,
+  LocalConfigSource,
+  EnvSource,
+  createConfigChain,
+
+  // 预设
   ALL_PRESETS,
-  CHINESE_PROVIDERS,
-  OPENAI_SERIES_PROVIDERS,
-  GATEWAY_PROVIDERS,
-  ANTHROPIC_PROVIDERS,
-  getProviderPreset,
-  createProviderConfig,
+  getPresets,
+  getPresetsByCategory,
+  getPreset,
   applyPreset,
-  listAllPresets,
-  listPresetsByCategory,
-} from './providers/presets.js';
+  searchPresets,
+
+  // 模型
+  fetchModels,
+  getModelSpec,
+  getContextWindow,
+  checkModelSupport,
+  estimateCost,
+  getAllModels,
+  searchModels,
+
+  // 类型
+  type ProviderConfig,
+  type McpServerConfig,
+  type ModelSpec,
+  type ProviderPreset,
+  type ConfigSource,
+  type IProvider,
+} from './providers/index.js';
+
+// 向后兼容的类型别名
+export type { ProviderConfig as CCProvider, McpServerConfig as CCMcpServer } from './providers/index.js';
 
 // ============================================
 // MCP 服务器（高级用户）
