@@ -35,3 +35,7 @@ coverage/
 
 # 会话
 .sessions
+
+# pnpm
+.pnpm-store/
+pnpm-lock.yaml
