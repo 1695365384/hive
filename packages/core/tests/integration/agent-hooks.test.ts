@@ -675,4 +675,284 @@ describe('Agent + Hooks Integration', () => {
       expect(logs[0].success).toBe(true);
     });
   });
+
+  // ============================================
+  // Push Hooks (新增)
+  // ============================================
+  describe('Push Hooks', () => {
+    let agent: Agent;
+
+    beforeEach(async () => {
+      agent = createAgent();
+      await agent.initialize();
+    });
+
+    afterEach(async () => {
+      await agent.dispose();
+    });
+
+    // agent:thinking hook
+    describe('agent:thinking', () => {
+      it('should register agent:thinking hook', () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('agent:thinking', hookSpy);
+
+        expect(agent.context.hookRegistry.has('agent:thinking')).toBe(true);
+      });
+
+      it('should emit agent:thinking with thought context', async () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('agent:thinking', hookSpy);
+
+        await agent.context.hookRegistry.emit('agent:thinking', {
+          sessionId: 'test-session',
+          thought: '正在分析用户请求...',
+          type: 'analyzing',
+          timestamp: new Date(),
+        });
+
+        expect(hookSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            thought: '正在分析用户请求...',
+            type: 'analyzing',
+          })
+        );
+      });
+
+      it('should support all thinking types', async () => {
+        const types: Array<'analyzing' | 'planning' | 'executing' | 'reflecting'> =
+          ['analyzing', 'planning', 'executing', 'reflecting'];
+
+        for (const type of types) {
+          const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+          agent.context.hookRegistry.on('agent:thinking', hookSpy);
+
+          await agent.context.hookRegistry.emit('agent:thinking', {
+            sessionId: 'test',
+            thought: `Thinking type: ${type}`,
+            type,
+            timestamp: new Date(),
+          });
+
+          expect(hookSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type })
+          );
+
+          agent.context.hookRegistry.clear('agent:thinking');
+        }
+      });
+    });
+
+    // task:progress hook
+    describe('task:progress', () => {
+      it('should register task:progress hook', () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('task:progress', hookSpy);
+
+        expect(agent.context.hookRegistry.has('task:progress')).toBe(true);
+      });
+
+      it('should emit task:progress with progress info', async () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('task:progress', hookSpy);
+
+        await agent.context.hookRegistry.emit('task:progress', {
+          sessionId: 'test-session',
+          taskId: 'task-001',
+          description: '正在处理文件',
+          progress: 50,
+          currentStep: '步骤 2/4',
+          totalSteps: 4,
+          timestamp: new Date(),
+        });
+
+        expect(hookSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            taskId: 'task-001',
+            progress: 50,
+            currentStep: '步骤 2/4',
+            totalSteps: 4,
+          })
+        );
+      });
+
+      it('should accept progress from 0 to 100', async () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('task:progress', hookSpy);
+
+        const progressValues = [0, 25, 50, 75, 100];
+
+        for (const progress of progressValues) {
+          await agent.context.hookRegistry.emit('task:progress', {
+            sessionId: 'test',
+            taskId: 'task',
+            description: `Progress: ${progress}%`,
+            progress,
+            timestamp: new Date(),
+          });
+        }
+
+        expect(hookSpy).toHaveBeenCalledTimes(progressValues.length);
+      });
+    });
+
+    // notification:push hook
+    describe('notification:push', () => {
+      it('should register notification:push hook', () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('notification:push', hookSpy);
+
+        expect(agent.context.hookRegistry.has('notification:push')).toBe(true);
+      });
+
+      it('should emit notification:push with notification info', async () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('notification:push', hookSpy);
+
+        await agent.context.hookRegistry.emit('notification:push', {
+          sessionId: 'test-session',
+          type: 'info',
+          title: '任务开始',
+          message: '正在开始执行任务...',
+          timestamp: new Date(),
+        });
+
+        expect(hookSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'info',
+            title: '任务开始',
+            message: '正在开始执行任务...',
+          })
+        );
+      });
+
+      it('should support all notification types', async () => {
+        const types: Array<'info' | 'warning' | 'success' | 'error'> =
+          ['info', 'warning', 'success', 'error'];
+
+        for (const type of types) {
+          const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+          agent.context.hookRegistry.on('notification:push', hookSpy);
+
+          await agent.context.hookRegistry.emit('notification:push', {
+            sessionId: 'test',
+            type,
+            title: `Notification: ${type}`,
+            message: `This is a ${type} notification`,
+            timestamp: new Date(),
+          });
+
+          expect(hookSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type })
+          );
+
+          agent.context.hookRegistry.clear('notification:push');
+        }
+      });
+
+      it('should include metadata when provided', async () => {
+        const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+        agent.context.hookRegistry.on('notification:push', hookSpy);
+
+        await agent.context.hookRegistry.emit('notification:push', {
+          sessionId: 'test',
+          type: 'success',
+          title: '任务完成',
+          message: '所有文件已处理完成',
+          timestamp: new Date(),
+          metadata: {
+            filesProcessed: 10,
+            duration: 5000,
+          },
+        });
+
+        expect(hookSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            metadata: {
+              filesProcessed: 10,
+              duration: 5000,
+            },
+          })
+        );
+      });
+    });
+  });
+
+  // ============================================
+  // Agent Push Methods (便捷方法测试)
+  // ============================================
+  describe('Agent Push Methods', () => {
+    let agent: Agent;
+
+    beforeEach(async () => {
+      agent = createAgent();
+      await agent.initialize();
+    });
+
+    afterEach(async () => {
+      await agent.dispose();
+    });
+
+    it('should have notify method', () => {
+      expect(agent.notify).toBeDefined();
+      expect(typeof agent.notify).toBe('function');
+    });
+
+    it('should have updateProgress method', () => {
+      expect(agent.updateProgress).toBeDefined();
+      expect(typeof agent.updateProgress).toBe('function');
+    });
+
+    it('should have emitThinking method', () => {
+      expect(agent.emitThinking).toBeDefined();
+      expect(typeof agent.emitThinking).toBe('function');
+    });
+
+    it('should trigger notification:push hook via notify()', async () => {
+      const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+      agent.context.hookRegistry.on('notification:push', hookSpy);
+
+      await agent.notify('success', '测试标题', '测试消息');
+
+      expect(hookSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'success',
+          title: '测试标题',
+          message: '测试消息',
+        })
+      );
+    });
+
+    it('should trigger task:progress hook via updateProgress()', async () => {
+      const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+      agent.context.hookRegistry.on('task:progress', hookSpy);
+
+      await agent.updateProgress('task-001', 75, '处理中', '步骤 3/4', 4);
+
+      expect(hookSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-001',
+          progress: 75,
+          description: '处理中',
+          currentStep: '步骤 3/4',
+          totalSteps: 4,
+        })
+      );
+    });
+
+    it('should trigger agent:thinking hook via emitThinking()', async () => {
+      const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+      agent.context.hookRegistry.on('agent:thinking', hookSpy);
+
+      await agent.emitThinking('正在分析代码结构', 'analyzing', { file: 'test.ts' });
+
+      expect(hookSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thought: '正在分析代码结构',
+          type: 'analyzing',
+          metadata: { file: 'test.ts' },
+        })
+      );
+    });
+  });
 });

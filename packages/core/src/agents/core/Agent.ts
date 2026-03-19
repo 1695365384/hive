@@ -16,7 +16,12 @@ import type {
   TimeoutConfig,
   HeartbeatConfig,
 } from './types.js';
-import type { SessionStartHookContext, SessionEndHookContext, SessionErrorHookContext } from '../../hooks/types.js';
+import type {
+  SessionStartHookContext,
+  SessionEndHookContext,
+  SessionErrorHookContext,
+  NotificationType,
+} from '../../hooks/types.js';
 import { AgentContextImpl } from './AgentContext.js';
 import { TimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { ProviderCapability } from '../capabilities/ProviderCapability.js';
@@ -566,6 +571,85 @@ export class Agent {
    */
   updateTimeoutConfig(config: Partial<TimeoutConfig>): void {
     this._context.timeoutCap.updateConfig(config);
+  }
+
+  // ============================================
+  // 推送能力（便捷方法）
+  // ============================================
+
+  /**
+   * 推送通知
+   *
+   * @param type - 通知类型
+   * @param title - 通知标题
+   * @param message - 通知内容
+   * @param metadata - 可选元数据
+   */
+  async notify(
+    type: NotificationType,
+    title: string,
+    message: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    const sessionId = this._context.hookRegistry.getSessionId();
+    await this._context.hookRegistry.emit('notification:push', {
+      sessionId,
+      type,
+      title,
+      message,
+      timestamp: new Date(),
+      metadata,
+    });
+  }
+
+  /**
+   * 更新任务进度
+   *
+   * @param taskId - 任务 ID
+   * @param progress - 进度百分比 (0-100)
+   * @param description - 任务描述
+   * @param currentStep - 当前步骤
+   * @param totalSteps - 总步骤数
+   */
+  async updateProgress(
+    taskId: string,
+    progress: number,
+    description: string,
+    currentStep?: string,
+    totalSteps?: number
+  ): Promise<void> {
+    const sessionId = this._context.hookRegistry.getSessionId();
+    await this._context.hookRegistry.emit('task:progress', {
+      sessionId,
+      taskId,
+      progress,
+      description,
+      currentStep,
+      totalSteps,
+      timestamp: new Date(),
+    });
+  }
+
+  /**
+   * 触发思考过程事件
+   *
+   * @param thought - 思考内容
+   * @param type - 思考类型
+   * @param metadata - 可选元数据
+   */
+  async emitThinking(
+    thought: string,
+    type: 'analyzing' | 'planning' | 'executing' | 'reflecting',
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    const sessionId = this._context.hookRegistry.getSessionId();
+    await this._context.hookRegistry.emit('agent:thinking', {
+      sessionId,
+      thought,
+      type,
+      timestamp: new Date(),
+      metadata,
+    });
   }
 }
 

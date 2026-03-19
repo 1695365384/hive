@@ -6,7 +6,12 @@
 
 import { query, type Options, type AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentCapability, AgentContext, AgentOptions } from '../core/types.js';
-import type { ToolBeforeHookContext, ToolAfterHookContext } from '../../hooks/types.js';
+import type {
+  ToolBeforeHookContext,
+  ToolAfterHookContext,
+  AgentThinkingHookContext,
+  TaskProgressHookContext,
+} from '../../hooks/types.js';
 import { BUILTIN_AGENTS, EXTENDED_AGENTS } from '../core/agents.js';
 import { TimeoutError } from '../core/types.js';
 
@@ -16,9 +21,52 @@ import { TimeoutError } from '../core/types.js';
 export class ChatCapability implements AgentCapability {
   readonly name = 'chat';
   private context!: AgentContext;
+  private taskCounter: number = 0;
 
   initialize(context: AgentContext): void {
     this.context = context;
+  }
+
+  /**
+   * 触发 Agent 思考过程 Hook
+   */
+  private async emitThinking(
+    sessionId: string,
+    thought: string,
+    type: AgentThinkingHookContext['type'],
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    const hookContext: AgentThinkingHookContext = {
+      sessionId,
+      thought,
+      type,
+      timestamp: new Date(),
+      metadata,
+    };
+    await this.context.hookRegistry.emit('agent:thinking', hookContext);
+  }
+
+  /**
+   * 触发任务进度 Hook
+   */
+  private async emitProgress(
+    sessionId: string,
+    taskId: string,
+    description: string,
+    progress: number,
+    currentStep?: string,
+    totalSteps?: number
+  ): Promise<void> {
+    const hookContext: TaskProgressHookContext = {
+      sessionId,
+      taskId,
+      description,
+      progress,
+      currentStep,
+      totalSteps,
+      timestamp: new Date(),
+    };
+    await this.context.hookRegistry.emit('task:progress', hookContext);
   }
 
   /**
@@ -139,12 +187,38 @@ export class ChatCapability implements AgentCapability {
     sessionId: string,
     toolStartTimes: Map<string, number>
   ): Promise<void> {
+    // 生成任务 ID
+    this.taskCounter++;
+    const taskId = `chat-task-${this.taskCounter}`;
+
+    // 触发初始思考
+    await this.emitThinking(
+      sessionId,
+      `开始处理用户请求: ${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}`,
+      'analyzing'
+    );
+
+    // 触发初始进度
+    await this.emitProgress(sessionId, taskId, '正在准备对话', 0, '初始化', 3);
+
+    let messageCount = 0;
+    let toolCallCount = 0;
+
     for await (const message of query({ prompt, options: queryOptions })) {
       // 收到消息时更新活动状态（心跳）
       this.context.timeoutCap.updateActivity();
+      messageCount++;
 
       if ('result' in message && message.result) {
         options?.onText?.(message.result as string);
+
+        // 触发反思思考
+        await this.emitThinking(
+          sessionId,
+          '正在生成响应',
+          'reflecting',
+          { messageLength: String(message.result).length }
+        );
       }
 
       // 处理工具调用开始 (tool:before hook)
@@ -155,6 +229,15 @@ export class ChatCapability implements AgentCapability {
 
         // 记录开始时间
         toolStartTimes.set(toolName, Date.now());
+        toolCallCount++;
+
+        // 触发执行思考
+        await this.emitThinking(
+          sessionId,
+          `准备调用工具: ${toolName}`,
+          'executing',
+          { toolName, toolInput }
+        );
 
         // 触发 tool:before hook
         const hookContext: ToolBeforeHookContext = {
@@ -164,6 +247,17 @@ export class ChatCapability implements AgentCapability {
           timestamp: new Date(),
         };
         await this.context.hookRegistry.emit('tool:before', hookContext);
+
+        // 更新进度（限制最大 95%，保留 5% 给完成）
+        const progress = Math.min(95, 33 + (toolCallCount * 20));
+        await this.emitProgress(
+          sessionId,
+          taskId,
+          `正在执行工具: ${toolName}`,
+          progress,
+          `工具调用 #${toolCallCount}`,
+          3
+        );
 
         options?.onTool?.(toolName, toolInput);
       }
@@ -181,6 +275,15 @@ export class ChatCapability implements AgentCapability {
 
                 // 记录开始时间
                 toolStartTimes.set(toolName, Date.now());
+                toolCallCount++;
+
+                // 触发执行思考
+                await this.emitThinking(
+                  sessionId,
+                  `准备调用工具: ${toolName}`,
+                  'executing',
+                  { toolName, toolInput }
+                );
 
                 // 触发 tool:before hook
                 const hookContext: ToolBeforeHookContext = {
@@ -190,6 +293,17 @@ export class ChatCapability implements AgentCapability {
                   timestamp: new Date(),
                 };
                 await this.context.hookRegistry.emit('tool:before', hookContext);
+
+                // 更新进度（限制最大 95%，保留 5% 给完成）
+                const progress = Math.min(95, 33 + (toolCallCount * 20));
+                await this.emitProgress(
+                  sessionId,
+                  taskId,
+                  `正在执行工具: ${toolName}`,
+                  progress,
+                  `工具调用 #${toolCallCount}`,
+                  3
+                );
 
                 options?.onTool?.(toolName, toolInput);
               }
@@ -206,6 +320,14 @@ export class ChatCapability implements AgentCapability {
         for (const [toolName, startTime] of toolStartTimes) {
           const duration = Date.now() - startTime;
 
+          // 触发反思思考
+          await this.emitThinking(
+            sessionId,
+            `工具 ${toolName} 执行完成，耗时 ${duration}ms`,
+            'reflecting',
+            { toolName, duration }
+          );
+
           const hookContext: ToolAfterHookContext = {
             sessionId,
             toolName,
@@ -220,5 +342,8 @@ export class ChatCapability implements AgentCapability {
         toolStartTimes.clear();
       }
     }
+
+    // 触发完成进度
+    await this.emitProgress(sessionId, taskId, '对话完成', 100, '完成', 3);
   }
 }
