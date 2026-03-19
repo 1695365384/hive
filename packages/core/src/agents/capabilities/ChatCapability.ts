@@ -1,13 +1,14 @@
 /**
  * 对话能力
  *
- * 提供核心对话功能
+ * 提供核心对话功能，支持超时控制和心跳更新
  */
 
 import { query, type Options, type AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentCapability, AgentContext, AgentOptions } from '../core/types.js';
 import type { ToolBeforeHookContext, ToolAfterHookContext } from '../../hooks/types.js';
 import { BUILTIN_AGENTS, EXTENDED_AGENTS } from '../core/agents.js';
+import { TimeoutError } from '../core/types.js';
 
 /**
  * 对话能力实现
@@ -36,12 +37,22 @@ export class ChatCapability implements AgentCapability {
   }
 
   /**
-   * 流式对话
+   * 流式对话（带超时控制）
    */
   async sendStream(prompt: string, options?: AgentOptions): Promise<void> {
     const provider = this.context.providerManager.getActiveProvider();
     const mcpServers = this.context.providerManager.getMcpServersForAgent();
     const sessionId = this.context.hookRegistry.getSessionId();
+
+    // 获取超时配置
+    const timeoutConfig = this.context.timeoutCap.getConfig();
+    const apiTimeout = options?.apiTimeout ?? timeoutConfig.apiTimeout;
+
+    // 创建 AbortController 用于超时控制
+    const { controller, clear, timeoutPromise } = this.context.timeoutCap.createAbortController(
+      apiTimeout,
+      `API call timed out after ${apiTimeout}ms`
+    );
 
     // 构建环境变量
     const envVars: Record<string, string | undefined> = { ...process.env };
@@ -77,89 +88,137 @@ export class ChatCapability implements AgentCapability {
     // 追踪工具调用开始时间
     const toolStartTimes: Map<string, number> = new Map();
 
+    // 更新活动状态（开始时）
+    this.context.timeoutCap.updateActivity();
+
     try {
-      for await (const message of query({ prompt, options: queryOptions })) {
-        if ('result' in message && message.result) {
-          options?.onText?.(message.result as string);
-        }
+      // 使用 Promise.race 实现超时控制
+      // 由于 SDK 的 query 是异步迭代器，我们需要特殊处理
+      const streamPromise = this.processStream(
+        prompt,
+        queryOptions,
+        options,
+        sessionId,
+        toolStartTimes
+      );
 
-        // 处理工具调用开始 (tool:before hook)
-        if ('type' in message && message.type === 'tool_progress') {
-          const toolMsg = message as { tool_name: string; tool_input?: unknown };
-          const toolName = toolMsg.tool_name;
-          const toolInput = toolMsg.tool_input as Record<string, unknown> | undefined;
+      // 竞争：流处理 vs 超时
+      await Promise.race([
+        streamPromise,
+        timeoutPromise,
+      ]);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
 
-          // 记录开始时间
-          toolStartTimes.set(toolName, Date.now());
+      // 如果是超时错误，触发 hook
+      if (error instanceof TimeoutError) {
+        await this.context.hookRegistry.emit('timeout:api', {
+          sessionId,
+          error: err,
+          attempt: 1,
+          maxAttempts: 1,
+          timeout: apiTimeout,
+          timestamp: new Date(),
+        });
+      }
 
-          // 触发 tool:before hook
-          const hookContext: ToolBeforeHookContext = {
-            sessionId,
-            toolName,
-            input: toolInput ?? {},
-            timestamp: new Date(),
-          };
-          await this.context.hookRegistry.emit('tool:before', hookContext);
+      options?.onError?.(err);
+      throw err;
+    } finally {
+      clear();
+    }
+  }
 
-          options?.onTool?.(toolName, toolInput);
-        }
+  /**
+   * 处理流式响应（内部方法）
+   */
+  private async processStream(
+    prompt: string,
+    queryOptions: Options,
+    options: AgentOptions | undefined,
+    sessionId: string,
+    toolStartTimes: Map<string, number>
+  ): Promise<void> {
+    for await (const message of query({ prompt, options: queryOptions })) {
+      // 收到消息时更新活动状态（心跳）
+      this.context.timeoutCap.updateActivity();
 
-        // 处理 assistant 消息中的 content blocks (tool_use 表示工具调用开始)
-        if ('message' in message && message.message && typeof message.message === 'object') {
-          const msg = message.message as { content?: unknown[] };
-          if (Array.isArray(msg.content)) {
-            for (const block of msg.content) {
-              if (typeof block === 'object' && block !== null) {
-                const b = block as { type?: string; name?: string; input?: unknown };
-                if (b.type === 'tool_use' && b.name) {
-                  const toolName = b.name;
-                  const toolInput = b.input as Record<string, unknown> | undefined;
+      if ('result' in message && message.result) {
+        options?.onText?.(message.result as string);
+      }
 
-                  // 记录开始时间
-                  toolStartTimes.set(toolName, Date.now());
+      // 处理工具调用开始 (tool:before hook)
+      if ('type' in message && message.type === 'tool_progress') {
+        const toolMsg = message as { tool_name: string; tool_input?: unknown };
+        const toolName = toolMsg.tool_name;
+        const toolInput = toolMsg.tool_input as Record<string, unknown> | undefined;
 
-                  // 触发 tool:before hook
-                  const hookContext: ToolBeforeHookContext = {
-                    sessionId,
-                    toolName,
-                    input: toolInput ?? {},
-                    timestamp: new Date(),
-                  };
-                  await this.context.hookRegistry.emit('tool:before', hookContext);
+        // 记录开始时间
+        toolStartTimes.set(toolName, Date.now());
 
-                  options?.onTool?.(toolName, toolInput);
-                }
+        // 触发 tool:before hook
+        const hookContext: ToolBeforeHookContext = {
+          sessionId,
+          toolName,
+          input: toolInput ?? {},
+          timestamp: new Date(),
+        };
+        await this.context.hookRegistry.emit('tool:before', hookContext);
+
+        options?.onTool?.(toolName, toolInput);
+      }
+
+      // 处理 assistant 消息中的 content blocks (tool_use 表示工具调用开始)
+      if ('message' in message && message.message && typeof message.message === 'object') {
+        const msg = message.message as { content?: unknown[] };
+        if (Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (typeof block === 'object' && block !== null) {
+              const b = block as { type?: string; name?: string; input?: unknown };
+              if (b.type === 'tool_use' && b.name) {
+                const toolName = b.name;
+                const toolInput = b.input as Record<string, unknown> | undefined;
+
+                // 记录开始时间
+                toolStartTimes.set(toolName, Date.now());
+
+                // 触发 tool:before hook
+                const hookContext: ToolBeforeHookContext = {
+                  sessionId,
+                  toolName,
+                  input: toolInput ?? {},
+                  timestamp: new Date(),
+                };
+                await this.context.hookRegistry.emit('tool:before', hookContext);
+
+                options?.onTool?.(toolName, toolInput);
               }
             }
           }
         }
-
-        // 处理工具结果 (tool:after hook)
-        // 注意：SDK 流中工具结果可能以不同形式出现
-        // 当检测到 result 消息时，触发已完成工具的 after hook
-        if ('result' in message && message.result) {
-          // 对所有追踪中的工具触发 after hook
-          for (const [toolName, startTime] of toolStartTimes) {
-            const duration = Date.now() - startTime;
-
-            const hookContext: ToolAfterHookContext = {
-              sessionId,
-              toolName,
-              input: {},
-              output: message.result,
-              success: true,
-              duration,
-              timestamp: new Date(),
-            };
-            await this.context.hookRegistry.emit('tool:after', hookContext);
-          }
-          toolStartTimes.clear();
-        }
       }
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      options?.onError?.(err);
-      throw err;
+
+      // 处理工具结果 (tool:after hook)
+      // 注意：SDK 流中工具结果可能以不同形式出现
+      // 当检测到 result 消息时，触发已完成工具的 after hook
+      if ('result' in message && message.result) {
+        // 对所有追踪中的工具触发 after hook
+        for (const [toolName, startTime] of toolStartTimes) {
+          const duration = Date.now() - startTime;
+
+          const hookContext: ToolAfterHookContext = {
+            sessionId,
+            toolName,
+            input: {},
+            output: message.result,
+            success: true,
+            duration,
+            timestamp: new Date(),
+          };
+          await this.context.hookRegistry.emit('tool:after', hookContext);
+        }
+        toolStartTimes.clear();
+      }
     }
   }
 }

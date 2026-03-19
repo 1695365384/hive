@@ -13,9 +13,12 @@ import type {
   ThoroughnessLevel,
   AgentType,
   AgentResult,
+  TimeoutConfig,
+  HeartbeatConfig,
 } from './types.js';
 import type { SessionStartHookContext, SessionEndHookContext, SessionErrorHookContext } from '../../hooks/types.js';
 import { AgentContextImpl } from './AgentContext.js';
+import { TimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { ProviderCapability } from '../capabilities/ProviderCapability.js';
 import { SkillCapability } from '../capabilities/SkillCapability.js';
 import { ChatCapability } from '../capabilities/ChatCapability.js';
@@ -47,9 +50,10 @@ export class Agent {
   constructor(
     skillConfig?: SkillSystemConfig,
     sessionConfig?: SessionCapabilityConfig,
-    workspaceConfig?: WorkspaceInitConfig | string
+    workspaceConfig?: WorkspaceInitConfig | string,
+    timeoutConfig?: TimeoutConfig
   ) {
-    this._context = new AgentContextImpl(skillConfig);
+    this._context = new AgentContextImpl(skillConfig, timeoutConfig);
 
     // 处理工作空间配置
     let finalSessionConfig = sessionConfig;
@@ -193,6 +197,10 @@ export class Agent {
     const sessionId = this._context.hookRegistry.getSessionId();
     const startTime = Date.now();
 
+    // 获取执行超时配置
+    const timeoutConfig = this._context.timeoutCap.getConfig();
+    const executionTimeout = options?.executionTimeout ?? timeoutConfig.executionTimeout;
+
     // 触发 session:start hook
     await this._context.hookRegistry.emit('session:start', {
       sessionId,
@@ -200,8 +208,29 @@ export class Agent {
       timestamp: new Date(),
     });
 
+    // 启动心跳检测
+    this._context.timeoutCap.startHeartbeat({
+      interval: timeoutConfig.heartbeatInterval,
+      stallTimeout: timeoutConfig.stallTimeout,
+      onStalled: async (lastActivity) => {
+        // 心跳检测到卡住时触发 hook
+        await this._context.hookRegistry.emit('timeout:stalled', {
+          sessionId,
+          lastActivity,
+          stallDuration: Date.now() - lastActivity,
+          stallTimeout: timeoutConfig.stallTimeout,
+          timestamp: new Date(),
+        });
+      },
+    });
+
     try {
-      const result = await this.chatCap.send(prompt, options);
+      // 使用执行超时包装
+      const result = await this._context.timeoutCap.withTimeout(
+        this.chatCap.send(prompt, options),
+        executionTimeout,
+        `Agent execution timed out after ${executionTimeout}ms`
+      );
 
       // 触发 session:end hook
       await this._context.hookRegistry.emit('session:end', {
@@ -233,12 +262,19 @@ export class Agent {
       });
 
       throw error;
+    } finally {
+      // 停止心跳检测
+      this._context.timeoutCap.stopHeartbeat();
     }
   }
 
   async chatStream(prompt: string, options?: AgentOptions): Promise<void> {
     const sessionId = this._context.hookRegistry.getSessionId();
     const startTime = Date.now();
+
+    // 获取执行超时配置
+    const timeoutConfig = this._context.timeoutCap.getConfig();
+    const executionTimeout = options?.executionTimeout ?? timeoutConfig.executionTimeout;
 
     // 触发 session:start hook
     await this._context.hookRegistry.emit('session:start', {
@@ -247,8 +283,29 @@ export class Agent {
       timestamp: new Date(),
     });
 
+    // 启动心跳检测
+    this._context.timeoutCap.startHeartbeat({
+      interval: timeoutConfig.heartbeatInterval,
+      stallTimeout: timeoutConfig.stallTimeout,
+      onStalled: async (lastActivity) => {
+        // 心跳检测到卡住时触发 hook
+        await this._context.hookRegistry.emit('timeout:stalled', {
+          sessionId,
+          lastActivity,
+          stallDuration: Date.now() - lastActivity,
+          stallTimeout: timeoutConfig.stallTimeout,
+          timestamp: new Date(),
+        });
+      },
+    });
+
     try {
-      await this.chatCap.sendStream(prompt, options);
+      // 使用执行超时包装
+      await this._context.timeoutCap.withTimeout(
+        this.chatCap.sendStream(prompt, options),
+        executionTimeout,
+        `Agent execution timed out after ${executionTimeout}ms`
+      );
 
       // 触发 session:end hook
       await this._context.hookRegistry.emit('session:end', {
@@ -278,6 +335,9 @@ export class Agent {
       });
 
       throw error;
+    } finally {
+      // 停止心跳检测
+      this._context.timeoutCap.stopHeartbeat();
     }
   }
 
@@ -441,6 +501,72 @@ export class Agent {
   listSessionGroups() {
     return this.sessionCap.listSessionGroups();
   }
+
+  // ============================================
+  // 超时和心跳管理
+  // ============================================
+
+  /**
+   * 获取超时能力实例
+   *
+   * 用于直接访问超时控制功能
+   */
+  get timeoutCap(): TimeoutCapability {
+    return this._context.timeoutCap;
+  }
+
+  /**
+   * 启动心跳检测
+   *
+   * @param config - 心跳配置
+   */
+  startHeartbeat(config: HeartbeatConfig): void {
+    this._context.timeoutCap.startHeartbeat(config);
+  }
+
+  /**
+   * 停止心跳检测
+   */
+  stopHeartbeat(): void {
+    this._context.timeoutCap.stopHeartbeat();
+  }
+
+  /**
+   * 更新活动状态
+   *
+   * 在外部事件发生时调用，防止被误判为卡住
+   */
+  updateActivity(): void {
+    this._context.timeoutCap.updateActivity();
+  }
+
+  /**
+   * 检查是否卡住
+   */
+  isStalled(): boolean {
+    return this._context.timeoutCap.isStalled();
+  }
+
+  /**
+   * 获取最后活动时间
+   */
+  getLastActivity(): number | null {
+    return this._context.timeoutCap.getLastActivity();
+  }
+
+  /**
+   * 获取超时配置
+   */
+  getTimeoutConfig(): Required<TimeoutConfig> {
+    return this._context.timeoutCap.getConfig();
+  }
+
+  /**
+   * 更新超时配置
+   */
+  updateTimeoutConfig(config: Partial<TimeoutConfig>): void {
+    this._context.timeoutCap.updateConfig(config);
+  }
 }
 
 // ============================================
@@ -462,9 +588,10 @@ export function getAgent(): Agent {
 export function createAgent(
   skillConfig?: SkillSystemConfig,
   sessionConfig?: SessionCapabilityConfig,
-  workspaceConfig?: WorkspaceInitConfig | string
+  workspaceConfig?: WorkspaceInitConfig | string,
+  timeoutConfig?: TimeoutConfig
 ): Agent {
-  return new Agent(skillConfig, sessionConfig, workspaceConfig);
+  return new Agent(skillConfig, sessionConfig, workspaceConfig, timeoutConfig);
 }
 
 /** 快速对话 */

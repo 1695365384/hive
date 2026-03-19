@@ -46,6 +46,12 @@ export {
   type CacheHitHookContext,
   type CacheMissHookContext,
 
+  // 扩展上下文 - Timeout and Health
+  type TimeoutApiHookContext,
+  type TimeoutExecutionHookContext,
+  type TimeoutStalledHookContext,
+  type HealthHeartbeatHookContext,
+
   // 类型映射
   type HookTypeMap,
   type HookType,
