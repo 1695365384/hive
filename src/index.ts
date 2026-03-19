@@ -165,7 +165,6 @@ export type { ProviderConfig as CCProvider, McpServerConfig as CCMcpServer } fro
 // MCP 服务器（高级用户）
 // ============================================
 
-export { preferencesMcpServer } from './tools/preference-tools.js';
 export { memoryMcpServer } from './tools/memory-tools.js';
 
 // ============================================
