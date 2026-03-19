@@ -368,6 +368,71 @@ export interface CacheMissHookContext {
 }
 
 // ============================================
+// 推送相关 Hook 上下文
+// ============================================
+
+/**
+ * Agent 思考过程 Hook 上下文
+ */
+export interface AgentThinkingHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** 思考内容 */
+  thought: string;
+  /** 思考类型 */
+  type: 'analyzing' | 'planning' | 'executing' | 'reflecting';
+  /** 时间戳 */
+  timestamp: Date;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * 任务进度 Hook 上下文
+ */
+export interface TaskProgressHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** 任务 ID */
+  taskId: string;
+  /** 任务描述 */
+  description: string;
+  /** 进度百分比 (0-100) */
+  progress: number;
+  /** 当前步骤 */
+  currentStep?: string;
+  /** 总步骤数 */
+  totalSteps?: number;
+  /** 时间戳 */
+  timestamp: Date;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * 通知类型
+ */
+export type NotificationType = 'info' | 'warning' | 'success' | 'error';
+
+/**
+ * 通用推送通知 Hook 上下文
+ */
+export interface NotificationPushHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** 通知类型 */
+  type: NotificationType;
+  /** 通知标题 */
+  title: string;
+  /** 通知内容 */
+  message: string;
+  /** 时间戳 */
+  timestamp: Date;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================
 // 超时和健康检查 Hook 上下文
 // ============================================
 
@@ -480,6 +545,10 @@ export interface HookTypeMap {
   'timeout:execution': TimeoutExecutionHookContext;
   'timeout:stalled': TimeoutStalledHookContext;
   'health:heartbeat': HealthHeartbeatHookContext;
+  // 推送相关
+  'agent:thinking': AgentThinkingHookContext;
+  'task:progress': TaskProgressHookContext;
+  'notification:push': NotificationPushHookContext;
 }
 
 /**

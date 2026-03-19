@@ -11,7 +11,12 @@ import type {
   WorkflowResult,
   TaskAnalysis,
 } from '../core/types.js';
-import type { WorkflowPhaseHookContext } from '../../hooks/types.js';
+import type {
+  WorkflowPhaseHookContext,
+  TaskProgressHookContext,
+  NotificationPushHookContext,
+  NotificationType,
+} from '../../hooks/types.js';
 import { getPromptTemplate } from '../prompts/index.js';
 
 /**
@@ -20,9 +25,54 @@ import { getPromptTemplate } from '../prompts/index.js';
 export class WorkflowCapability implements AgentCapability {
   readonly name = 'workflow';
   private context!: AgentContext;
+  private workflowCounter: number = 0;
 
   initialize(context: AgentContext): void {
     this.context = context;
+  }
+
+  /**
+   * 触发任务进度 Hook
+   */
+  private async emitProgress(
+    sessionId: string,
+    taskId: string,
+    description: string,
+    progress: number,
+    currentStep?: string,
+    totalSteps?: number
+  ): Promise<void> {
+    const hookContext: TaskProgressHookContext = {
+      sessionId,
+      taskId,
+      description,
+      progress,
+      currentStep,
+      totalSteps,
+      timestamp: new Date(),
+    };
+    await this.context.hookRegistry.emit('task:progress', hookContext);
+  }
+
+  /**
+   * 触发推送通知 Hook
+   */
+  private async emitNotification(
+    sessionId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    const hookContext: NotificationPushHookContext = {
+      sessionId,
+      type,
+      title,
+      message,
+      timestamp: new Date(),
+      metadata,
+    };
+    await this.context.hookRegistry.emit('notification:push', hookContext);
   }
 
   /**
@@ -60,6 +110,10 @@ export class WorkflowCapability implements AgentCapability {
     const sessionId = this.context.hookRegistry.getSessionId();
     let previousPhase: string | undefined;
 
+    // 生成工作流 ID
+    this.workflowCounter++;
+    const workflowId = `workflow-${this.workflowCounter}`;
+
     const result: WorkflowResult = {
       analysis: {
         type: 'simple',
@@ -86,12 +140,23 @@ export class WorkflowCapability implements AgentCapability {
     };
 
     try {
+      // 触发开始通知
+      await this.emitNotification(
+        sessionId,
+        'info',
+        '工作流开始',
+        `开始执行任务: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}`
+      );
+
       // Phase 1: 简单分析
       await emitPhaseChange('analyze', '准备执行任务...');
+      await this.emitProgress(sessionId, workflowId, '分析任务中', 10, '分析', 3);
+
       result.analysis = this.analyzeTask(task);
 
       // Phase 2: 直接执行
       await emitPhaseChange('execute', '执行任务...');
+      await this.emitProgress(sessionId, workflowId, '执行任务中', 30, '执行', 3);
 
       const intelligentPrompt = this.buildIntelligentPrompt(task);
 
@@ -108,12 +173,34 @@ export class WorkflowCapability implements AgentCapability {
 
       // Phase 3: 完成
       await emitPhaseChange('complete', result.success ? '任务完成' : '任务失败');
+      await this.emitProgress(sessionId, workflowId, '工作流完成', 100, '完成', 3);
+
+      // 触发完成通知
+      await this.emitNotification(
+        sessionId,
+        result.success ? 'success' : 'error',
+        result.success ? '任务完成' : '任务失败',
+        result.success
+          ? '工作流执行成功完成'
+          : `工作流执行失败: ${result.error || '未知错误'}`,
+        { workflowId, analysis: result.analysis }
+      );
     } catch (error) {
       result.success = false;
       result.error = error instanceof Error ? error.message : String(error);
 
       // 触发错误阶段
       await emitPhaseChange('error', result.error);
+      await this.emitProgress(sessionId, workflowId, '工作流出错', 100, '错误', 3);
+
+      // 触发错误通知
+      await this.emitNotification(
+        sessionId,
+        'error',
+        '工作流错误',
+        result.error,
+        { workflowId, error: true }
+      );
     }
 
     return result;
