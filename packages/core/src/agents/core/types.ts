@@ -72,6 +72,10 @@ export interface AgentContext {
   matchSkill(input: string): SkillMatchResult | null;
   /** 获取 Agent 配置 */
   getAgentConfig(name: string): AgentConfig | undefined;
+
+  // 超时能力（内置）
+  /** 超时能力实例 */
+  timeoutCap: import('../capabilities/TimeoutCapability.js').TimeoutCapability;
 }
 
 /**
@@ -86,6 +90,58 @@ export interface AgentRegistry {
   register(name: string, config: AgentConfig): void;
   /** 检查 Agent 是否存在 */
   has(name: string): boolean;
+}
+
+// ============================================
+// 超时配置
+// ============================================
+
+/**
+ * 超时配置
+ *
+ * 控制 Agent 执行的超时和心跳检测
+ */
+export interface TimeoutConfig {
+  /** API 调用超时（毫秒），默认 120000 (2分钟) */
+  apiTimeout?: number;
+  /** 整体执行超时（毫秒），默认 600000 (10分钟) */
+  executionTimeout?: number;
+  /** 心跳间隔（毫秒），默认 30000 (30秒) */
+  heartbeatInterval?: number;
+  /** 无进展超时（毫秒），默认 60000 (1分钟) */
+  stallTimeout?: number;
+  /** 超时后是否自动重试 */
+  retryOnTimeout?: boolean;
+  /** 最大重试次数 */
+  maxRetries?: number;
+}
+
+/**
+ * 心跳配置
+ */
+export interface HeartbeatConfig {
+  /** 心跳间隔（毫秒） */
+  interval: number;
+  /** 无进展超时（毫秒） */
+  stallTimeout: number;
+  /** 心跳回调 */
+  onHeartbeat?: (lastActivity: number) => void;
+  /** 检测到卡住时的回调 */
+  onStalled?: (lastActivity: number) => void;
+}
+
+/**
+ * 超时错误
+ */
+export class TimeoutError extends Error {
+  constructor(
+    message: string,
+    public readonly type: 'api' | 'execution' | 'stalled',
+    public readonly duration: number
+  ) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
 }
 
 // ============================================
@@ -108,6 +164,10 @@ export interface AgentOptions {
   agents?: AgentType[];
   /** 自定义子 Agent */
   customAgents?: Record<string, AgentDefinition>;
+  /** API 调用超时（毫秒） */
+  apiTimeout?: number;
+  /** 执行超时（毫秒） */
+  executionTimeout?: number;
   /** 回调：收到文本 */
   onText?: (text: string) => void;
   /** 回调：工具使用 */

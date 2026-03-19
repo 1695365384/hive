@@ -10,6 +10,7 @@ import type { ProviderManager, ProviderConfig } from '../../src/providers/index.
 import type { SkillRegistry, Skill, SkillMatchResult } from '../../src/skills/index.js';
 import type { AgentRunner } from '../../src/agents/core/runner.js';
 import type { HookRegistry } from '../../src/hooks/index.js';
+import type { TimeoutCapability } from '../../src/agents/capabilities/TimeoutCapability.js';
 
 // ============================================
 // Mock 工厂函数
@@ -159,6 +160,56 @@ export function createMockHookRegistry(sessionId?: string): HookRegistry {
   } as unknown as HookRegistry;
 }
 
+/**
+ * 创建 Mock TimeoutCapability
+ */
+export function createMockTimeoutCapability(): TimeoutCapability {
+  const defaultConfig = {
+    apiTimeout: 120000,
+    executionTimeout: 600000,
+    heartbeatInterval: 30000,
+    stallTimeout: 60000,
+    retryOnTimeout: false,
+    maxRetries: 0,
+  };
+
+  return {
+    name: 'timeout',
+    initialize: vi.fn(),
+    dispose: vi.fn(),
+    updateConfig: vi.fn(),
+    getConfig: vi.fn(() => ({ ...defaultConfig })),
+    createAbortController: vi.fn((timeout: number) => {
+      const controller = new AbortController();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`Operation timed out after ${timeout}ms`));
+        }, timeout);
+      });
+
+      return {
+        controller,
+        clear: () => {
+          if (timeoutId) clearTimeout(timeoutId);
+        },
+        timeoutPromise,
+      };
+    }),
+    withTimeout: vi.fn(async <T>(promise: Promise<T>) => promise),
+    withTimeoutAndRetry: vi.fn(async <T>(fn: () => Promise<T>) => fn()),
+    startExecutionTimer: vi.fn(() => () => {}),
+    startHeartbeat: vi.fn(),
+    stopHeartbeat: vi.fn(),
+    updateActivity: vi.fn(),
+    isStalled: vi.fn(() => false),
+    getLastActivity: vi.fn(() => Date.now()),
+    isHeartbeatRunning: vi.fn(() => false),
+  } as unknown as TimeoutCapability;
+}
+
 // ============================================
 // AgentContext Mock
 // ============================================
@@ -197,13 +248,15 @@ export function createMockAgentContext(options: MockAgentContextOptions = {}): A
     configs: options.agentConfigs,
   });
   const hookRegistry = createMockHookRegistry(options.sessionId);
+  const timeoutCap = createMockTimeoutCapability();
 
-  return {
+  const context = {
     providerManager,
     skillRegistry,
     runner,
     agentRegistry,
     hookRegistry,
+    timeoutCap, // 直接作为属性
 
     // 便捷访问器
     getActiveProvider: vi.fn(() => options.activeProvider ?? null),
@@ -212,7 +265,15 @@ export function createMockAgentContext(options: MockAgentContextOptions = {}): A
     ),
     matchSkill: vi.fn(() => options.skillMatchResult ?? null),
     getAgentConfig: vi.fn((name: string) => options.agentConfigs?.[name]),
-  } as unknown as AgentContext;
+
+    // 能力模块访问
+    getCapability: vi.fn((name: string) => {
+      if (name === 'timeout') return timeoutCap;
+      return undefined;
+    }),
+  };
+
+  return context as unknown as AgentContext;
 }
 
 // ============================================

@@ -9,9 +9,10 @@ import { AgentRunner } from './runner.js';
 import { SkillRegistry, createSkillRegistry } from '../../skills/index.js';
 import { AgentRegistryImpl } from '../registry/AgentRegistry.js';
 import { HookRegistry } from '../../hooks/index.js';
-import type { AgentCapability, AgentContext, SkillSystemConfig } from './types.js';
+import type { AgentCapability, AgentContext, SkillSystemConfig, TimeoutConfig } from './types.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Skill, SkillMatchResult } from '../../skills/index.js';
+import { TimeoutCapability, createTimeoutCapability } from '../capabilities/TimeoutCapability.js';
 
 /**
  * Agent 上下文实现
@@ -23,15 +24,21 @@ export class AgentContextImpl implements AgentContext {
   readonly agentRegistry: AgentRegistryImpl;
   readonly hookRegistry: HookRegistry;
 
+  /** 内置超时能力 */
+  readonly timeoutCap: TimeoutCapability;
+
   private capabilities: Map<string, AgentCapability> = new Map();
   private initialized: boolean = false;
 
-  constructor(skillConfig?: SkillSystemConfig) {
+  constructor(skillConfig?: SkillSystemConfig, timeoutConfig?: TimeoutConfig) {
     this.providerManager = new ProviderManager();
     this.runner = new AgentRunner(this.providerManager);
     this.skillRegistry = createSkillRegistry(skillConfig);
     this.agentRegistry = new AgentRegistryImpl();
     this.hookRegistry = new HookRegistry();
+
+    // 创建内置超时能力
+    this.timeoutCap = createTimeoutCapability(timeoutConfig);
   }
 
   /**
@@ -62,6 +69,9 @@ export class AgentContextImpl implements AgentContext {
 
     // 初始化技能系统
     await this.skillRegistry.initialize();
+
+    // 初始化内置超时能力（最先初始化，供其他能力使用）
+    this.timeoutCap.initialize(this);
 
     // 初始化所有能力模块
     for (const capability of this.capabilities.values()) {
@@ -106,6 +116,12 @@ export class AgentContextImpl implements AgentContext {
     }
 
     this.capabilities.clear();
+
+    // 销毁内置超时能力（最后销毁）
+    if (this.timeoutCap.dispose) {
+      this.timeoutCap.dispose();
+    }
+
     this.initialized = false;
   }
 

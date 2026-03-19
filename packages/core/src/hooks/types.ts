@@ -368,6 +368,78 @@ export interface CacheMissHookContext {
 }
 
 // ============================================
+// 超时和健康检查 Hook 上下文
+// ============================================
+
+/**
+ * API 超时 Hook 上下文
+ */
+export interface TimeoutApiHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** 错误对象 */
+  error: Error;
+  /** 当前尝试次数 */
+  attempt: number;
+  /** 最大尝试次数 */
+  maxAttempts: number;
+  /** 超时时间（毫秒） */
+  timeout: number;
+  /** 时间戳 */
+  timestamp: Date;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * 执行超时 Hook 上下文
+ */
+export interface TimeoutExecutionHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** 超时时间（毫秒） */
+  timeout: number;
+  /** 时间戳 */
+  timestamp: Date;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * 卡住检测 Hook 上下文
+ */
+export interface TimeoutStalledHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** 最后活动时间戳 */
+  lastActivity: number;
+  /** 卡住持续时间（毫秒） */
+  stallDuration: number;
+  /** 卡住超时阈值（毫秒） */
+  stallTimeout: number;
+  /** 时间戳 */
+  timestamp: Date;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * 心跳 Hook 上下文
+ */
+export interface HealthHeartbeatHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** 最后活动时间戳 */
+  lastActivity: number;
+  /** 距离上次活动的时间（毫秒） */
+  timeSinceLastActivity: number;
+  /** 时间戳 */
+  timestamp: Date;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================
 // Hook 类型映射
 // ============================================
 
@@ -403,6 +475,11 @@ export interface HookTypeMap {
   // 缓存相关
   'cache:hit': CacheHitHookContext;
   'cache:miss': CacheMissHookContext;
+  // 超时和健康检查
+  'timeout:api': TimeoutApiHookContext;
+  'timeout:execution': TimeoutExecutionHookContext;
+  'timeout:stalled': TimeoutStalledHookContext;
+  'health:heartbeat': HealthHeartbeatHookContext;
 }
 
 /**

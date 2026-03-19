@@ -217,6 +217,10 @@ export {
   type CapabilityInitHookContext,
   type CapabilityDisposeHookContext,
   type WorkflowPhaseHookContext,
+  type TimeoutApiHookContext,
+  type TimeoutExecutionHookContext,
+  type TimeoutStalledHookContext,
+  type HealthHeartbeatHookContext,
   type HookTypeMap,
   type HookType,
   type HookHandler,
@@ -264,6 +268,26 @@ export {
   createSessionCapability,
   type SessionCapabilityConfig,
 } from './agents/capabilities/index.js';
+
+// ============================================
+// 超时能力
+// ============================================
+
+export {
+  TimeoutCapability,
+  createTimeoutCapability,
+} from './agents/capabilities/index.js';
+
+// ============================================
+// 超时和心跳类型
+// ============================================
+
+export type {
+  TimeoutConfig,
+  HeartbeatConfig,
+} from './agents/core/types.js';
+
+export { TimeoutError } from './agents/core/types.js';
 
 // ============================================
 // 压缩系统
