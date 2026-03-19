@@ -9,6 +9,7 @@ export {
   PromptTemplate,
   getPromptTemplate,
   createPromptTemplate,
+  TEMPLATES_DIR,
 } from './PromptTemplate.js';
 
 // Prompt 常量和构建函数
@@ -28,6 +29,17 @@ export {
   renderTemplate,
   loadTemplate,
 } from './prompts.js';
+
+// 模板索引和热重载
+export {
+  listTemplates,
+  listTemplatesByCategory,
+  reloadTemplates,
+  reloadTemplate,
+  validateTemplates,
+  getTemplateInfo,
+  hasTemplate,
+} from './templates/index.js';
 
 // 类型
 export type { TemplateVariables } from './PromptTemplate.js';

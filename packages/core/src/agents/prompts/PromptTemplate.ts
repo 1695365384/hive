@@ -1,7 +1,15 @@
 /**
  * Prompt 模板系统
  *
- * 支持从文件加载和变量替换的模板引擎
+ * 优先从 templates/ 目录加载 .md 文件
+ * 文件不存在时使用内联 fallback
+ *
+ * 模板目录结构:
+ * - templates/explore.md        - Explore Agent 主模板
+ * - templates/plan.md           - Plan Agent 主模板
+ * - templates/intelligent.md    - Intelligent Agent 主模板
+ * - templates/tool-guides.md    - 工具使用指南
+ * - templates/agents/*.md       - 扩展 Agent 模板
  */
 
 import * as fs from 'fs';
@@ -13,7 +21,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // 模板目录
-const TEMPLATES_DIR = path.join(__dirname, 'templates');
+export const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
 /**
  * 模板变量类型
@@ -25,11 +33,14 @@ export type TemplateVariables = Record<string, string | number | boolean>;
  */
 export class PromptTemplate {
   private cache: Map<string, string> = new Map();
+  private warnOnFallback: boolean = true;
 
   /**
    * 加载模板文件
    *
-   * @param name - 模板名称（不含扩展名）
+   * 优先级: 文件 > 内联模板
+   *
+   * @param name - 模板名称（不含扩展名，支持子目录如 'agents/code-reviewer'）
    * @returns 模板内容
    */
   load(name: string): string {
@@ -47,9 +58,15 @@ export class PromptTemplate {
       return content;
     }
 
-    // 如果文件不存在，返回内联模板
+    // 如果文件不存在，返回内联模板（fallback）
     const inlineTemplate = this.getInlineTemplate(name);
     if (inlineTemplate) {
+      if (this.warnOnFallback) {
+        console.warn(
+          `[PromptTemplate] Using inline template for '${name}'. ` +
+            `Create templates/${name}.md for customization.`
+        );
+      }
       this.cache.set(name, inlineTemplate);
       return inlineTemplate;
     }
@@ -77,14 +94,39 @@ export class PromptTemplate {
   }
 
   /**
-   * 清除缓存
+   * 清除缓存（用于热重载）
    */
   clearCache(): void {
     this.cache.clear();
   }
 
   /**
+   * 清除特定模板的缓存
+   */
+  clearTemplateCache(name: string): boolean {
+    return this.cache.delete(name);
+  }
+
+  /**
+   * 设置是否在 fallback 时显示警告
+   */
+  setWarnOnFallback(warn: boolean): void {
+    this.warnOnFallback = warn;
+  }
+
+  /**
+   * 检查模板文件是否存在
+   */
+  hasTemplateFile(name: string): boolean {
+    const filePath = path.join(TEMPLATES_DIR, `${name}.md`);
+    return fs.existsSync(filePath);
+  }
+
+  /**
    * 内联模板（作为文件不存在时的 fallback）
+   *
+   * 注意：这些 fallback 模板仅在对应 .md 文件不存在时使用。
+   * 推荐在 templates/ 目录中维护这些模板。
    */
   private getInlineTemplate(name: string): string | null {
     const templates: Record<string, string> = {

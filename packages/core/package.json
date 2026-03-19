@@ -15,7 +15,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && npm run copy-templates",
+    "copy-templates": "cp -r src/agents/prompts/templates dist/agents/prompts/",
     "dev": "tsc -p tsconfig.build.json --watch",
     "cli": "tsx src/cli.ts",
     "test": "vitest run",
