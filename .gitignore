@@ -2,7 +2,7 @@
 node_modules/
 
 # Build output
-dist/
+**/**/dist/
 
 # Environment variables
 .env
@@ -31,7 +31,7 @@ memories.json
 providers.json
 
 # 测试用例
-coverage/
+packages/core/coverage/
 
 # 会话
 .sessions
