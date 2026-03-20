@@ -1,18 +1,18 @@
 import { useCallback } from 'react';
 import { useChatStore } from '../stores/chatStore';
-import { chatStream } from '../services/api';
+import { getChatApi, type UnifiedChatEvent } from '../api/chatAdapter';
 
 export function useChat() {
   const {
     messages,
     isLoading,
     error,
-    abortController,
+    requestId,
     addMessage,
     updateMessage,
     setLoading,
     setError,
-    setAbortController,
+    setRequestId,
     clearMessages,
   } = useChatStore();
 
@@ -44,38 +44,59 @@ export function useChat() {
 
       // 设置加载状态
       setLoading(true);
-      const controller = new AbortController();
-      setAbortController(controller);
 
       let fullContent = '';
+      let thinkingContent = '';
+
       try {
-        await chatStream(
-          content,
-          (event) => {
-            if (event.type === 'text' && event.content) {
-              fullContent += event.content;
-              updateMessage(assistantId, fullContent, true);
-            } else if (event.type === 'error') {
+        const chatApi = getChatApi();
+
+        // 处理事件
+        const handleEvent = (event: UnifiedChatEvent) => {
+          switch (event.type) {
+            case 'text':
+              if (event.content) {
+                fullContent += event.content;
+                updateMessage(assistantId, fullContent, true);
+              }
+              break;
+            case 'thinking':
+              if (event.content) {
+                thinkingContent = event.content;
+                console.log('[Thinking]', thinkingContent);
+              }
+              break;
+            case 'tool':
+              console.log('[Tool]', event.metadata);
+              break;
+            case 'progress':
+              console.log('[Progress]', event.metadata);
+              break;
+            case 'error':
               setError(event.message || 'Unknown error');
               updateMessage(assistantId, fullContent || '发生错误', false);
-            } else if (event.type === 'done') {
+              break;
+            case 'done':
               updateMessage(assistantId, fullContent, false);
-            }
-          },
-          controller.signal
-        );
+              break;
+          }
+        };
+
+        // 调用 IPC API
+        const result = await chatApi.chatStream({
+          prompt: content,
+          onEvent: handleEvent,
+        });
+
+        // 保存 requestId 用于取消
+        setRequestId(result);
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          // 用户取消，不显示错误
-          updateMessage(assistantId, fullContent + '\n\n[已取消]', false);
-        } else {
-          const errorMessage = err instanceof Error ? err.message : '请求失败';
-          setError(errorMessage);
-          updateMessage(assistantId, fullContent || errorMessage, false);
-        }
+        const errorMessage = err instanceof Error ? err.message : '请求失败';
+        setError(errorMessage);
+        updateMessage(assistantId, fullContent || errorMessage, false);
       } finally {
         setLoading(false);
-        setAbortController(null);
+        setRequestId(null);
       }
     },
     [
@@ -84,15 +105,20 @@ export function useChat() {
       updateMessage,
       setLoading,
       setError,
-      setAbortController,
+      setRequestId,
     ]
   );
 
-  const stopGeneration = useCallback(() => {
-    if (abortController) {
-      abortController.abort();
+  const stopGeneration = useCallback(async () => {
+    if (requestId) {
+      try {
+        const chatApi = getChatApi();
+        await chatApi.stop(requestId);
+      } catch (err) {
+        console.error('Failed to stop request:', err);
+      }
     }
-  }, [abortController]);
+  }, [requestId]);
 
   return {
     messages,

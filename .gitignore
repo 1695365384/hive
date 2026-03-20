@@ -38,4 +38,33 @@ packages/core/coverage/
 
 # pnpm
 .pnpm-store/
-pnpm-lock.yaml
+
+# ============================================================
+# 打包产物 (Build Artifacts)
+# ============================================================
+
+# Tauri / Rust 编译产物
+packages/app/src-tauri/target/*
+packages/app/src-tauri/gen/
+packages/app/src-tauri/Cargo.lock
+
+# pkg 打包产物 (Node 服务二进制)
+node-service*
+*.node
+
+# Vite 构建产物
+packages/app/dist/
+
+# Source maps (可选，按需注释)
+*.js.map
+*.d.ts.map
+
+# WASM 产物
+*.wasm
+
+# npm pack 产物
+*.tgz
+
+# Coverage 报告
+coverage/
+*.lcov

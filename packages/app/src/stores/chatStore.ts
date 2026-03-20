@@ -5,14 +5,14 @@ interface ChatState {
   messages: Message[];
   isLoading: boolean;
   error: string | null;
-  abortController: AbortController | null;
+  requestId: string | null;
 
   // Actions
   addMessage: (message: Message) => void;
   updateMessage: (id: string, content: string, isStreaming?: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
-  setAbortController: (controller: AbortController | null) => void;
+  setRequestId: (requestId: string | null) => void;
   clearMessages: () => void;
 }
 
@@ -20,7 +20,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   isLoading: false,
   error: null,
-  abortController: null,
+  requestId: null,
 
   addMessage: (message) =>
     set((state) => ({
@@ -38,7 +38,7 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setError: (error) => set({ error }),
 
-  setAbortController: (controller) => set({ abortController: controller }),
+  setRequestId: (requestId) => set({ requestId }),
 
-  clearMessages: () => set({ messages: [], error: null }),
+  clearMessages: () => set({ messages: [], error: null, requestId: null }),
 }));

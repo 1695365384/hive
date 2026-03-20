@@ -17,7 +17,6 @@ export function ConfigPanel() {
     setModel,
     setAgent,
     setPanelOpen,
-    savePreferences,
   } = useConfig();
 
   const [localProvider, setLocalProvider] = useState(selectedProvider);
@@ -41,17 +40,13 @@ export function ConfigPanel() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setIsSaving(true);
-    try {
-      setProvider(localProvider);
-      setModel(localModel);
-      setAgent(localAgent);
-      await savePreferences();
-      setPanelOpen(false);
-    } finally {
-      setIsSaving(false);
-    }
+    setProvider(localProvider);
+    setModel(localModel);
+    setAgent(localAgent);
+    setPanelOpen(false);
+    setIsSaving(false);
   };
 
   const handleCancel = () => {

@@ -1,42 +1,9 @@
 import { create } from 'zustand';
 import type { Provider, AgentType } from '../types';
+import { getConfig } from '../api/agent';
 
-// 预定义的 Provider 和模型列表
-const AVAILABLE_PROVIDERS: Provider[] = [
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    models: [
-      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-    ],
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    models: [
-      { id: 'gpt-4o', name: 'GPT-4o' },
-      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
-    ],
-  },
-  {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    models: [
-      { id: 'deepseek-chat', name: 'DeepSeek Chat' },
-      { id: 'deepseek-coder', name: 'DeepSeek Coder' },
-    ],
-  },
-];
-
-const AVAILABLE_AGENTS: AgentType[] = [
-  { id: 'general', name: '通用助手', description: '适用于一般对话和问题解答' },
-  { id: 'explore', name: '代码探索', description: '探索和分析代码库' },
-  { id: 'plan', name: '规划助手', description: '制定实现计划和架构设计' },
-  { id: 'code-reviewer', name: '代码审查', description: '代码质量审查和改进建议' },
-];
+// 本地存储 key
+const PREF_KEY = 'aiclaw-preferences';
 
 interface ConfigState {
   providers: Provider[];
@@ -46,6 +13,7 @@ interface ConfigState {
   selectedAgent: string;
   isPanelOpen: boolean;
   isLoading: boolean;
+  isConfigLoaded: boolean;
 
   // Actions
   setProvider: (providerId: string) => void;
@@ -53,18 +21,42 @@ interface ConfigState {
   setAgent: (agentId: string) => void;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
-  loadPreferences: () => Promise<void>;
-  savePreferences: () => Promise<void>;
+  loadConfig: () => Promise<void>;
+  loadPreferences: () => void;
+  savePreferences: () => void;
+}
+
+// 从本地存储加载偏好设置
+function loadFromLocalStorage(): { provider?: string; model?: string; agentType?: string } | null {
+  try {
+    const stored = localStorage.getItem(PREF_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    // 忽略解析错误
+  }
+  return null;
+}
+
+// 保存偏好设置到本地存储
+function saveToLocalStorage(prefs: { provider: string; model: string; agentType: string }): void {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
+  } catch {
+    // 忽略存储错误
+  }
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
-  providers: AVAILABLE_PROVIDERS,
-  agents: AVAILABLE_AGENTS,
-  selectedProvider: 'anthropic',
-  selectedModel: 'claude-sonnet-4-6',
-  selectedAgent: 'general',
+  providers: [],
+  agents: [],
+  selectedProvider: '',
+  selectedModel: '',
+  selectedAgent: '',
   isPanelOpen: false,
   isLoading: false,
+  isConfigLoaded: false,
 
   setProvider: (providerId) => {
     const provider = get().providers.find((p) => p.id === providerId);
@@ -80,29 +72,49 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   setPanelOpen: (open) => set({ isPanelOpen: open }),
 
-  loadPreferences: async () => {
+  loadConfig: async () => {
     try {
-      const { getPreferences } = await import('../services/api');
-      const prefs = await getPreferences();
+      set({ isLoading: true });
+      const config = await getConfig();
       set({
-        selectedProvider: prefs.provider || 'anthropic',
-        selectedModel: prefs.model || 'claude-sonnet-4-6',
-        selectedAgent: prefs.agentType || 'general',
+        providers: config.providers,
+        agents: config.agents,
+        isConfigLoaded: true,
+        // 设置默认选择
+        selectedProvider: config.providers[0]?.id || '',
+        selectedModel: config.providers[0]?.models[0]?.id || '',
+        selectedAgent: config.agents[0]?.id || '',
       });
+    } catch (error) {
+      console.error('Failed to load config:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  loadPreferences: () => {
+    try {
+      const prefs = loadFromLocalStorage();
+      if (prefs) {
+        set({
+          selectedProvider: prefs.provider || get().selectedProvider,
+          selectedModel: prefs.model || get().selectedModel,
+          selectedAgent: prefs.agentType || get().selectedAgent,
+        });
+      }
     } catch (error) {
       console.error('Failed to load preferences:', error);
     }
   },
 
-  savePreferences: async () => {
+  savePreferences: () => {
     try {
-      const { setPreference } = await import('../services/api');
       const { selectedProvider, selectedModel, selectedAgent } = get();
-      await Promise.all([
-        setPreference('provider', selectedProvider),
-        setPreference('model', selectedModel),
-        setPreference('agentType', selectedAgent),
-      ]);
+      saveToLocalStorage({
+        provider: selectedProvider,
+        model: selectedModel,
+        agentType: selectedAgent,
+      });
     } catch (error) {
       console.error('Failed to save preferences:', error);
     }
