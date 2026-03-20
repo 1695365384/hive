@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "default",
+  "description": "Default capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/node-service",
+          "cmd": "binaries/node-service",
+          "sidecar": true
+        }
+      ]
+    },
+    "shell:allow-execute",
+    "shell:allow-kill"
+  ]
+}
