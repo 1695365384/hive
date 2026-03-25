@@ -1,10 +1,10 @@
 /**
- * Claude Agent Service - 面向 C 端的可嵌入 SDK
+ * Hive Core - 多 Agent 协作框架
  *
  * 核心设计：
  * - 主 Agent 作为唯一入口
  * - 管理子 Agent（Explore, Plan, General 等）
- * - 管理提供商（CC-Switch + 内置预设）
+ * - 管理提供商（EnvSource + 内置预设）
  * - 执行工作流
  *
  * 架构：
@@ -16,14 +16,14 @@
  * │  Explore | Plan | General | Extended   │
  * ├─────────────────────────────────────────┤
  * │           提供商管理                     │
- * │  CC-Switch + 内置预设                   │
+ * │  EnvSource + 内置预设                   │
  * ├─────────────────────────────────────────┤
- * │         Claude Agent SDK                │
+ * │         LLM Provider SDK                │
  * └─────────────────────────────────────────┘
  *
  * 使用方式：
  * ```typescript
- * import { Agent, createAgent, ask } from 'claude-agent-service';
+ * import { Agent, createAgent, ask } from '@hive/core';
  *
  * // 方式 1: 创建实例
  * const agent = new Agent();

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Agent Service - 面向 C 端应用的 Claude Agent 服务 SDK，整合 CC-Switch 生态。
+Hive - 多 Agent 协作框架。像蜜蜂一样高效协作的 AI Agent SDK。
 
 ## Common Commands
 
@@ -185,7 +185,7 @@ class Agent {
 
 ### 提供商配置链
 
-配置按优先级合并：CC-Switch > 本地配置 > 环境变量 > 预设默认值
+配置按优先级合并：外部配置 > 环境变量 > 预设默认值
 
 ### 服务注册表
 
@@ -204,4 +204,4 @@ await registry.startAll();
 - 使用 `tsx` 运行 TypeScript (开发时)
 - 测试框架: Vitest
 - 依赖 `@anthropic-ai/claude-agent-sdk` 作为底层 SDK
-- `cc-switch` 是可选的 peer dependency
+- 配置由外部应用传入，SDK 是配置消费者

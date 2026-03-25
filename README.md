@@ -1,9 +1,9 @@
 <div align="center">
   <img src="logo.svg" alt="Hive Logo" width="140" height="140">
 
-  <h1>Hive - Claude Agent Service</h1>
+  <h1>Hive</h1>
 
-  <p><strong>面向 C 端应用的 Claude Agent 服务 SDK</strong></p>
+  <p><strong>多 Agent 协作框架 - 像🐝蜂巢一样高效协作</strong></p>
 
   <p>
     <em>借助生态力量，不重复造轮子</em>
@@ -46,13 +46,13 @@
 ### 安装
 
 ```bash
-npm install claude-agent-service
+npm install @hive/core
 ```
 
 ### 5 分钟上手
 
 ```typescript
-import { ask, createAgent } from 'claude-agent-service';
+import { ask, createAgent } from '@hive/core';
 
 // 方式 1: 快速对话（使用环境变量）
 const answer = await ask('你好');
@@ -207,7 +207,7 @@ await agent.general('重构代码并添加测试');
 ```
 
 ```typescript
-import { runWorkflow, codeTask, researchTask } from 'claude-agent-service';
+import { runWorkflow, codeTask, researchTask } from '@hive/core';
 
 // 代码任务
 await codeTask('实现一个工具函数库');
@@ -330,7 +330,7 @@ agent.useProvider('deepseek'); // → DEEPSEEK_API_KEY
 配置由外部应用传入，SDK 只是消费者：
 
 ```typescript
-import { createAgent, type ExternalConfig } from 'claude-agent-service';
+import { createAgent, type ExternalConfig } from '@hive/core';
 
 const config: ExternalConfig = {
   providers: [
@@ -394,7 +394,7 @@ tags:
 ```
 
 ```typescript
-import { initializeSkills } from 'claude-agent-service';
+import { initializeSkills } from '@hive/core';
 
 const registry = await initializeSkills();
 const match = registry.match('帮我 review 代码');
@@ -496,7 +496,7 @@ const agent = createAgent({
 <br>
 
 ```typescript
-import { Agent } from 'claude-agent-service';
+import { Agent } from '@hive/core';
 
 const agent = new Agent();
 

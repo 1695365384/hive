@@ -1,5 +1,5 @@
 /**
- * Claude Agent Service 测试
+ * Hive Core 测试
  *
  * 核心功能测试
  */
