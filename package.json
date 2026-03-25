@@ -1,14 +1,12 @@
 {
-  "name": "aiclaw-monorepo",
+  "name": "hive-monorepo",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm --filter @aiclaw/core test",
-    "test:e2e": "pnpm --filter @aiclaw/core test:e2e",
-    "dev:app": "pnpm --filter @aiclaw/app dev",
-    "cli": "pnpm --filter @aiclaw/core cli"
+    "test": "pnpm --filter @hive/core test",
+    "test:e2e": "pnpm --filter @hive/core test:e2e"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.0",
