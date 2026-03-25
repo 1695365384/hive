@@ -83,13 +83,6 @@ function printBanner(): void {
     logInfo('请确保 providers.json 配置正确或设置环境变量');
   }
 
-  // 显示 CC-Switch 状态
-  if (agent.isCCSwitchInstalled()) {
-    logInfo('CC-Switch 已安装');
-  } else {
-    debug('CC-Switch 未安装，使用本地配置或环境变量');
-  }
-
   console.log('\n命令: 直接输入任务 | /help 帮助 | /exit 退出\n');
   printState();
 }
@@ -313,7 +306,6 @@ async function handleCommand(line: string): Promise<boolean> {
       } else {
         console.log('  未配置提供商');
       }
-      console.log(`\nCC-Switch: ${agent.isCCSwitchInstalled() ? '已安装' : '未安装'}`);
       console.log(`工作目录: ${state.cwd}`);
       console.log('');
       return true;

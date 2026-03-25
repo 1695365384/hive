@@ -2,17 +2,14 @@
  * 配置来源模块
  *
  * 定义统一的配置来源接口和实现
+ * 简化版：只支持环境变量和外部传入配置
  */
 
 import type { ConfigSource, ProviderConfig, McpServerConfig } from '../types.js';
-import { CCSwitchSource } from './cc-switch.js';
-import { LocalConfigSource } from './local-config.js';
 import { EnvSource } from './env.js';
 import { ModelsDevSource, createModelsDevSource, getModelsDevSource } from './models-dev.js';
 
 // 导出所有来源
-export { CCSwitchSource } from './cc-switch.js';
-export { LocalConfigSource } from './local-config.js';
 export { EnvSource } from './env.js';
 export { ModelsDevSource, createModelsDevSource, getModelsDevSource } from './models-dev.js';
 
@@ -22,12 +19,10 @@ export type { ConfigSource } from '../types.js';
 /**
  * 创建配置来源链
  *
- * 按优先级顺序：CC-Switch > Local Config > Environment
+ * 简化版：只使用 EnvSource 作为 fallback
  */
 export function createConfigChain(): ConfigSource[] {
   return [
-    new CCSwitchSource(),
-    new LocalConfigSource(),
     new EnvSource(),
   ];
 }

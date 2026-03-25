@@ -161,10 +161,4 @@ export class ProviderCapability implements AgentCapability {
     return this.context.providerManager.switchProvider(name, apiKey);
   }
 
-  /**
-   * 检查是否安装了 CC-Switch
-   */
-  isCCSwitchInstalled(): boolean {
-    return this.context.providerManager.isCCSwitchInstalled();
-  }
 }

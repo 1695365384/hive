@@ -88,9 +88,15 @@ export class ChatCapability implements AgentCapability {
    * 流式对话（带超时控制）
    */
   async sendStream(prompt: string, options?: AgentOptions): Promise<void> {
-    const provider = this.context.providerManager.getActiveProvider();
+    const provider = options?.providerId
+      ? this.context.providerManager.get(options.providerId) ?? null
+      : this.context.providerManager.getActiveProvider();
     const mcpServers = this.context.providerManager.getMcpServersForAgent();
-    const sessionId = this.context.hookRegistry.getSessionId();
+    const sessionId = options?.sessionId ?? this.context.hookRegistry.getSessionId();
+
+    if (options?.providerId && !provider) {
+      throw new Error(`Provider not found: ${options.providerId}`);
+    }
 
     // 获取超时配置
     const timeoutConfig = this.context.timeoutCap.getConfig();
@@ -101,12 +107,16 @@ export class ChatCapability implements AgentCapability {
       apiTimeout,
       `API call timed out after ${apiTimeout}ms`
     );
+    const combinedSignal = this.combineAbortSignals(controller.signal, options?.abortSignal);
 
     // 构建环境变量
     const envVars: Record<string, string | undefined> = { ...process.env };
     if (provider) {
       envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
       envVars.ANTHROPIC_API_KEY = provider.apiKey;
+    }
+    if (options?.modelId || provider?.model) {
+      envVars.ANTHROPIC_MODEL = options?.modelId || provider?.model;
     }
 
     // 构建子 Agent 配置
@@ -133,6 +143,10 @@ export class ChatCapability implements AgentCapability {
       permissionMode: 'bypassPermissions',
     };
 
+    if (combinedSignal) {
+      (queryOptions as Options & { signal?: AbortSignal }).signal = combinedSignal;
+    }
+
     // 追踪工具调用开始时间
     const toolStartTimes: Map<string, number> = new Map();
 
@@ -147,7 +161,8 @@ export class ChatCapability implements AgentCapability {
         queryOptions,
         options,
         sessionId,
-        toolStartTimes
+        toolStartTimes,
+        combinedSignal
       );
 
       // 竞争：流处理 vs 超时
@@ -185,7 +200,8 @@ export class ChatCapability implements AgentCapability {
     queryOptions: Options,
     options: AgentOptions | undefined,
     sessionId: string,
-    toolStartTimes: Map<string, number>
+    toolStartTimes: Map<string, number>,
+    abortSignal?: AbortSignal
   ): Promise<void> {
     // 生成任务 ID
     this.taskCounter++;
@@ -204,7 +220,10 @@ export class ChatCapability implements AgentCapability {
     let messageCount = 0;
     let toolCallCount = 0;
 
+    this.throwIfAborted(abortSignal);
+
     for await (const message of query({ prompt, options: queryOptions })) {
+      this.throwIfAborted(abortSignal);
       // 收到消息时更新活动状态（心跳）
       this.context.timeoutCap.updateActivity();
       messageCount++;
@@ -345,5 +364,42 @@ export class ChatCapability implements AgentCapability {
 
     // 触发完成进度
     await this.emitProgress(sessionId, taskId, '对话完成', 100, '完成', 3);
+  }
+
+  private combineAbortSignals(...signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+    const activeSignals = signals.filter((signal): signal is AbortSignal => signal !== undefined);
+    if (activeSignals.length === 0) {
+      return undefined;
+    }
+    if (activeSignals.length === 1) {
+      return activeSignals[0];
+    }
+
+    const controller = new AbortController();
+    const abort = () => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    };
+
+    for (const signal of activeSignals) {
+      if (signal.aborted) {
+        abort();
+        break;
+      }
+      signal.addEventListener('abort', abort, { once: true });
+    }
+
+    return controller.signal;
+  }
+
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (!signal?.aborted) {
+      return;
+    }
+
+    const error = new Error('Request aborted');
+    error.name = 'AbortError';
+    throw error;
   }
 }

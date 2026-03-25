@@ -104,6 +104,31 @@ describe('ChatCapability', () => {
       expect(callArgs.prompt).toBe('Hello');
     });
 
+    it('should override provider and model for a single request', async () => {
+      const overrideProvider = createTestProviderConfig({
+        id: 'glm',
+        name: 'GLM',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        apiKey: 'glm-api-key',
+        model: 'glm-default',
+      });
+
+      vi.mocked(context.providerManager.get).mockReturnValue(overrideProvider);
+      mockQuery.mockImplementation(async function* () {
+        yield { result: 'OK' };
+      });
+
+      await capability.send('Hello', {
+        providerId: 'glm',
+        modelId: 'glm-5',
+      });
+
+      const callArgs = mockQuery.mock.calls[0][0];
+      expect(callArgs.options.env.ANTHROPIC_BASE_URL).toBe(overrideProvider.baseUrl);
+      expect(callArgs.options.env.ANTHROPIC_API_KEY).toBe(overrideProvider.apiKey);
+      expect(callArgs.options.env.ANTHROPIC_MODEL).toBe('glm-5');
+    });
+
     it('should handle empty response', async () => {
       mockQuery.mockImplementation(async function* () {
         // 不 yield 任何结果
@@ -240,6 +265,17 @@ describe('ChatCapability', () => {
 
       const callArgs = mockQuery.mock.calls[0][0];
       expect(callArgs.options.agents).toBeDefined();
+    });
+
+    it('should stop before invoking SDK when already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(capability.sendStream('Hello', {
+        abortSignal: controller.signal,
+      })).rejects.toThrow('Request aborted');
+
+      expect(mockQuery).not.toHaveBeenCalled();
     });
   });
 

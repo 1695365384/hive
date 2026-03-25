@@ -28,9 +28,9 @@ describe('Compression + Session Integration', () => {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: { enableCompression: true },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
     });
 
@@ -95,7 +95,7 @@ function hello() {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
           compression: {
@@ -105,7 +105,7 @@ function hello() {
             },
           },
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
     });
 
@@ -173,7 +173,7 @@ function hello() {
     });
 
     it('should use sliding-window strategy', async () => {
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
           compression: {
@@ -183,7 +183,7 @@ function hello() {
             },
           },
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
 
       const sessionCap = (agent as any).sessionCap;
@@ -201,7 +201,7 @@ function hello() {
     });
 
     it('should use summary strategy', async () => {
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
           compression: {
@@ -211,7 +211,7 @@ function hello() {
             },
           },
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
 
       const sessionCap = (agent as any).sessionCap;
@@ -229,7 +229,7 @@ function hello() {
     });
 
     it('should use hybrid strategy', async () => {
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
           compression: {
@@ -239,7 +239,7 @@ function hello() {
             },
           },
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
 
       const sessionCap = (agent as any).sessionCap;
@@ -267,14 +267,14 @@ function hello() {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
           compression: {
             compression: { threshold: 50 },
           },
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
     });
 
@@ -322,11 +322,11 @@ function hello() {
       await agent.dispose();
 
       // 创建新 Agent 并加载会话
-      const agent2 = createAgent(undefined, {
+      const agent2 = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
         },
-      }, TEST_DIR);
+      } });
       await agent2.initialize();
 
       const loadedSession = await agent2.loadSession(sessionId!);
@@ -349,14 +349,14 @@ function hello() {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
           compression: {
             compression: { threshold: 50 },
           },
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
     });
 
@@ -413,11 +413,11 @@ function hello() {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
     });
 
@@ -453,11 +453,11 @@ function hello() {
     it('should handle compression disabled', async () => {
       await agent.dispose();
 
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: false,
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
 
       const sessionCap = (agent as any).sessionCap;
@@ -483,14 +483,14 @@ function hello() {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, {
+      agent = createAgent({ workspace: TEST_DIR, sessionConfig: {
         sessionManager: {
           enableCompression: true,
           compression: {
             compression: { threshold: 100 },
           },
         },
-      }, TEST_DIR);
+      } });
       await agent.initialize();
     });
 

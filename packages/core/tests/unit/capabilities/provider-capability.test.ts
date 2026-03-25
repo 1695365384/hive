@@ -238,24 +238,6 @@ describe('ProviderCapability', () => {
   });
 
   // ============================================
-  // isCCSwitchInstalled() 测试
-  // ============================================
-
-  describe('isCCSwitchInstalled()', () => {
-    it('should return false when CC-Switch not installed', () => {
-      const result = capability.isCCSwitchInstalled();
-      expect(result).toBe(false);
-    });
-
-    it('should return true when CC-Switch is installed', () => {
-      vi.mocked(context.providerManager.isCCSwitchInstalled).mockReturnValue(true);
-
-      const result = capability.isCCSwitchInstalled();
-      expect(result).toBe(true);
-    });
-  });
-
-  // ============================================
   // 错误处理测试
   // ============================================
 
