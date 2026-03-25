@@ -4,16 +4,28 @@
  * 测试 Agent 与 SessionCapability、WorkspaceManager 的完整集成
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Agent, createAgent } from '../../src/agents/core/Agent.js';
 import type { WorkspaceManager } from '../../src/workspace/index.js';
 
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: vi.fn(),
+}));
+
 // 测试用临时目录
 const TEST_DIR = path.join(process.cwd(), '.test-agent-session-workspace');
 
 describe('Agent + Session + Workspace Integration', () => {
+  let mockQuery: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const { query } = await import('@anthropic-ai/claude-agent-sdk');
+    mockQuery = query as ReturnType<typeof vi.fn>;
+    mockQuery.mockReset();
+  });
+
   // ============================================
   // Agent Initialization
   // ============================================
@@ -31,7 +43,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should create Agent with workspace config', async () => {
-      const agent = createAgent(undefined, undefined, TEST_DIR);
+      const agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
 
       // 验证工作空间管理器已创建
@@ -43,7 +55,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should initialize SessionCapability with workspace', async () => {
-      const agent = createAgent(undefined, undefined, TEST_DIR);
+      const agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
 
       // 验证工作空间已初始化
@@ -64,7 +76,7 @@ describe('Agent + Session + Workspace Integration', () => {
       const newDir = path.join(TEST_DIR, 'auto-created');
       expect(fs.existsSync(newDir)).toBe(false);
 
-      const agent = createAgent(undefined, undefined, newDir);
+      const agent = createAgent({ workspace: newDir });
       await agent.initialize();
 
       // 验证目录已自动创建
@@ -90,7 +102,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should accept workspace config as string', async () => {
-      const agent = createAgent(undefined, undefined, TEST_DIR);
+      const agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
 
       const workspaceManager = agent.getWorkspaceManager();
@@ -100,7 +112,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should accept workspace config as object', async () => {
-      const agent = createAgent(undefined, undefined, { path: TEST_DIR, name: 'test-workspace' });
+      const agent = createAgent({ workspace: { path: TEST_DIR, name: 'test-workspace' } });
       await agent.initialize();
 
       const workspaceManager = agent.getWorkspaceManager();
@@ -122,7 +134,7 @@ describe('Agent + Session + Workspace Integration', () => {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, undefined, TEST_DIR);
+      agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
     });
 
@@ -183,7 +195,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await sessionCap.save();
 
       // 创建新 Agent 并加载会话
-      const newAgent = createAgent(undefined, undefined, TEST_DIR);
+      const newAgent = createAgent({ workspace: TEST_DIR });
       await newAgent.initialize();
 
       const loadedSession = await newAgent.loadSession(sessionId);
@@ -211,7 +223,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await sessionCap.save();
 
       // 创建新 Agent 并恢复最近会话
-      const newAgent = createAgent(undefined, undefined, TEST_DIR);
+      const newAgent = createAgent({ workspace: TEST_DIR });
       await newAgent.initialize();
 
       const resumed = await newAgent.resumeLastSession();
@@ -242,11 +254,29 @@ describe('Agent + Session + Workspace Integration', () => {
       expect(result).toBe(true);
 
       // 验证会话已删除
-      const newAgent = createAgent(undefined, undefined, TEST_DIR);
+      const newAgent = createAgent({ workspace: TEST_DIR });
       await newAgent.initialize();
       const loaded = await newAgent.loadSession(sessionId);
       expect(loaded).toBeNull();
       await newAgent.dispose();
+    });
+
+    it('should persist chat messages into an explicit session', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { result: 'Persisted reply' };
+      });
+
+      await agent.chat('Persist this prompt', {
+        sessionId: 'chat-session-1',
+      });
+
+      const session = agent.currentSession;
+      expect(session?.id).toBe('chat-session-1');
+      expect(session?.messages).toHaveLength(2);
+      expect(session?.messages[0].role).toBe('user');
+      expect(session?.messages[0].content).toBe('Persist this prompt');
+      expect(session?.messages[1].role).toBe('assistant');
+      expect(session?.messages[1].content).toBe('Persisted reply');
     });
   });
 
@@ -260,7 +290,7 @@ describe('Agent + Session + Workspace Integration', () => {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, undefined, TEST_DIR);
+      agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
     });
 
@@ -348,7 +378,7 @@ describe('Agent + Session + Workspace Integration', () => {
       if (fs.existsSync(TEST_DIR)) {
         await fs.promises.rm(TEST_DIR, { recursive: true });
       }
-      agent = createAgent(undefined, undefined, TEST_DIR);
+      agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
       workspaceManager = agent.getWorkspaceManager();
     });
@@ -389,7 +419,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should get workspace metadata', async () => {
-      const namedAgent = createAgent(undefined, undefined, { path: TEST_DIR, name: 'my-workspace' });
+      const namedAgent = createAgent({ workspace: { path: TEST_DIR, name: 'my-workspace' } });
       await namedAgent.initialize();
 
       const ws = namedAgent.getWorkspaceManager();
@@ -420,7 +450,7 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should auto-resume last session when configured', async () => {
       // 第一个 Agent 创建会话
-      const agent1 = createAgent(undefined, undefined, TEST_DIR);
+      const agent1 = createAgent({ workspace: TEST_DIR });
       await agent1.initialize();
       await agent1.createSession({ title: 'Auto Resume Session' });
       const sessionCap1 = (agent1 as any).sessionCap;
@@ -429,7 +459,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await agent1.dispose();
 
       // 第二个 Agent 启用自动恢复
-      const agent2 = createAgent(undefined, { autoResume: true }, TEST_DIR);
+      const agent2 = createAgent({ workspace: TEST_DIR, sessionConfig: { autoResume: true } });
       await agent2.initialize();
 
       // 验证会话已自动恢复
@@ -444,7 +474,7 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should handle no previous session gracefully', async () => {
       // 启用自动恢复但没有之前的会话
-      const agent = createAgent(undefined, { autoResume: true }, TEST_DIR);
+      const agent = createAgent({ workspace: TEST_DIR, sessionConfig: { autoResume: true } });
       await agent.initialize();
 
       // autoResume 如果没有会话，不会自动创建
@@ -462,7 +492,7 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should not auto-resume when disabled', async () => {
       // 第一个 Agent 创建会话
-      const agent1 = createAgent(undefined, undefined, TEST_DIR);
+      const agent1 = createAgent({ workspace: TEST_DIR });
       await agent1.initialize();
       await agent1.createSession({ title: 'Previous Session' });
       const sessionCap1 = (agent1 as any).sessionCap;
@@ -471,7 +501,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await agent1.dispose();
 
       // 第二个 Agent 禁用自动恢复（默认）
-      const agent2 = createAgent(undefined, { autoResume: false }, TEST_DIR);
+      const agent2 = createAgent({ workspace: TEST_DIR, sessionConfig: { autoResume: false } });
       await agent2.initialize();
 
       // 应该是新的空会话
@@ -501,7 +531,7 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should persist session across Agent instances', async () => {
       // Agent 1: 创建会话并添加消息
-      const agent1 = createAgent(undefined, undefined, TEST_DIR);
+      const agent1 = createAgent({ workspace: TEST_DIR });
       await agent1.initialize();
       const session1 = await agent1.createSession({
         title: 'Cross-Instance Session',
@@ -516,7 +546,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await agent1.dispose();
 
       // Agent 2: 加载并验证会话
-      const agent2 = createAgent(undefined, undefined, TEST_DIR);
+      const agent2 = createAgent({ workspace: TEST_DIR });
       await agent2.initialize();
       const loadedSession = await agent2.loadSession(sessionId);
 
@@ -534,7 +564,7 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should maintain session state after Agent disposal', async () => {
       // Agent 1: 创建会话
-      const agent1 = createAgent(undefined, undefined, TEST_DIR);
+      const agent1 = createAgent({ workspace: TEST_DIR });
       await agent1.initialize();
       await agent1.createSession({ title: 'Stateful Session' });
       const sessionCap1 = (agent1 as any).sessionCap;
@@ -546,7 +576,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await agent1.dispose();
 
       // Agent 2: 验证状态已保存
-      const agent2 = createAgent(undefined, undefined, TEST_DIR);
+      const agent2 = createAgent({ workspace: TEST_DIR });
       await agent2.initialize();
       const resumed = await agent2.resumeLastSession();
 
@@ -559,7 +589,7 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should handle complete workflow with groups', async () => {
       // Agent 1: 在多个组中创建会话
-      const agent1 = createAgent(undefined, undefined, TEST_DIR);
+      const agent1 = createAgent({ workspace: TEST_DIR });
       await agent1.initialize();
       const workspaceManager1 = agent1.getWorkspaceManager();
 
@@ -586,7 +616,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await agent1.dispose();
 
       // Agent 2: 验证所有组的会话
-      const agent2 = createAgent(undefined, undefined, TEST_DIR);
+      const agent2 = createAgent({ workspace: TEST_DIR });
       await agent2.initialize();
 
       const groups = agent2.listSessionGroups();
@@ -630,7 +660,7 @@ describe('Agent + Session + Workspace Integration', () => {
       await agent1.dispose();
 
       // Agent 2: 验证压缩状态已保存
-      const agent2 = createAgent(undefined, undefined, TEST_DIR);
+      const agent2 = createAgent({ workspace: TEST_DIR });
       await agent2.initialize();
       const loaded = await agent2.loadSession(sessionId!);
 
@@ -659,8 +689,8 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should handle multiple Agent instances with same workspace', async () => {
       // 同时创建两个 Agent 使用相同工作空间
-      const agent1 = createAgent(undefined, undefined, TEST_DIR);
-      const agent2 = createAgent(undefined, undefined, TEST_DIR);
+      const agent1 = createAgent({ workspace: TEST_DIR });
+      const agent2 = createAgent({ workspace: TEST_DIR });
 
       await agent1.initialize();
       await agent2.initialize();
@@ -684,7 +714,7 @@ describe('Agent + Session + Workspace Integration', () => {
 
     it('should handle workspace path with special characters', async () => {
       const specialDir = path.join(TEST_DIR, 'path with spaces');
-      const agent = createAgent(undefined, undefined, specialDir);
+      const agent = createAgent({ workspace: specialDir });
       await agent.initialize();
 
       expect(agent.getWorkspaceManager()?.getRootPath()).toBe(specialDir);
@@ -694,7 +724,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should handle empty session list gracefully', async () => {
-      const agent = createAgent(undefined, undefined, TEST_DIR);
+      const agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
 
       // 切换到新组（空）
@@ -709,7 +739,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should handle concurrent session operations', async () => {
-      const agent = createAgent(undefined, undefined, TEST_DIR);
+      const agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
 
       // 并发创建多个会话
@@ -727,7 +757,7 @@ describe('Agent + Session + Workspace Integration', () => {
     });
 
     it('should handle Agent re-initialization', async () => {
-      const agent = createAgent(undefined, undefined, TEST_DIR);
+      const agent = createAgent({ workspace: TEST_DIR });
       await agent.initialize();
 
       await agent.createSession({ title: 'Before Re-init' });

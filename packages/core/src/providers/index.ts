@@ -28,6 +28,8 @@ export type {
   ConfigSource,
   IProvider,
   ProviderType,
+  ExternalConfig,
+  AgentDefaults,
 } from './types.js';
 
 // ============================================
@@ -35,9 +37,10 @@ export type {
 // ============================================
 
 export {
-  CCSwitchSource,
-  LocalConfigSource,
   EnvSource,
+  ModelsDevSource,
+  createModelsDevSource,
+  getModelsDevSource,
   createConfigChain,
   mergeSources,
 } from './sources/index.js';

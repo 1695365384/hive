@@ -51,6 +51,7 @@ export {
 
   // 类型
   type AgentOptions,
+  type AgentInitOptions,
   type AgentExecuteOptions,
   type WorkflowOptions,
   type WorkflowResult,

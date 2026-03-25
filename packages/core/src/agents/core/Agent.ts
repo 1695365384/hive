@@ -7,6 +7,7 @@
 import type {
   AgentContext,
   AgentOptions,
+  AgentInitOptions,
   WorkflowOptions,
   WorkflowResult,
   TaskAnalysis,
@@ -23,6 +24,7 @@ import type {
   NotificationType,
 } from '../../hooks/types.js';
 import { AgentContextImpl } from './AgentContext.js';
+import type { AgentContextOptions } from './AgentContext.js';
 import { TimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { ProviderCapability } from '../capabilities/ProviderCapability.js';
 import { SkillCapability } from '../capabilities/SkillCapability.js';
@@ -52,13 +54,21 @@ export class Agent {
   private initialized: boolean = false;
   private disposed: boolean = false;
 
-  constructor(
-    skillConfig?: SkillSystemConfig,
-    sessionConfig?: SessionCapabilityConfig,
-    workspaceConfig?: WorkspaceInitConfig | string,
-    timeoutConfig?: TimeoutConfig
-  ) {
-    this._context = new AgentContextImpl(skillConfig, timeoutConfig);
+  /**
+   * 构造函数
+   *
+   * @param options - Agent 初始化选项
+   */
+  constructor(options: AgentInitOptions = {}) {
+    const {
+      externalConfig,
+      skillConfig,
+      sessionConfig,
+      workspace: workspaceConfig,
+      timeout: timeoutConfig,
+    } = options;
+
+    this._context = new AgentContextImpl({ externalConfig, skillConfig, timeoutConfig });
 
     // 处理工作空间配置
     let finalSessionConfig = sessionConfig;
@@ -160,10 +170,6 @@ export class Agent {
 
   useProvider(name: string, apiKey?: string): boolean {
     return this.providerCap.useSync(name, apiKey);
-  }
-
-  isCCSwitchInstalled(): boolean {
-    return this.providerCap.isCCSwitchInstalled();
   }
 
   // ============================================
@@ -669,13 +675,8 @@ export function getAgent(): Agent {
 }
 
 /** 创建新的 Agent 实例 */
-export function createAgent(
-  skillConfig?: SkillSystemConfig,
-  sessionConfig?: SessionCapabilityConfig,
-  workspaceConfig?: WorkspaceInitConfig | string,
-  timeoutConfig?: TimeoutConfig
-): Agent {
-  return new Agent(skillConfig, sessionConfig, workspaceConfig, timeoutConfig);
+export function createAgent(options: AgentInitOptions = {}): Agent {
+  return new Agent(options);
 }
 
 /** 快速对话 */

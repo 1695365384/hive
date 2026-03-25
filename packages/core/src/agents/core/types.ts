@@ -5,14 +5,38 @@
  */
 
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderManager, ProviderConfig } from '../../providers/index.js';
+import type { ProviderManager, ProviderConfig, ExternalConfig } from '../../providers/index.js';
 import type { SkillRegistry, Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { AgentRunner } from './runner.js';
 import type { AgentConfig, AgentResult, ThoroughnessLevel, AgentType } from '../types.js';
 import type { HookRegistry } from '../../hooks/index.js';
+import type { SessionCapabilityConfig } from '../capabilities/SessionCapability.js';
+import type { WorkspaceInitConfig } from '../../workspace/index.js';
 
 // 重导出 SkillSystemConfig
 export type { SkillSystemConfig } from '../../skills/index.js';
+
+// ============================================
+// Agent 构造函数选项
+// ============================================
+
+/**
+ * Agent 构造函数选项
+ *
+ * 用于创建 Agent 实例时传入配置
+ */
+export interface AgentInitOptions {
+  /** 外部配置（由应用层管理） */
+  externalConfig?: ExternalConfig;
+  /** 技能系统配置 */
+  skillConfig?: SkillSystemConfig;
+  /** 会话能力配置 */
+  sessionConfig?: SessionCapabilityConfig;
+  /** 工作空间配置 */
+  workspace?: WorkspaceInitConfig | string;
+  /** 超时配置 */
+  timeout?: TimeoutConfig;
+}
 
 // ============================================
 // 核心接口
@@ -152,6 +176,12 @@ export class TimeoutError extends Error {
  * Agent 选项
  */
 export interface AgentOptions {
+  /** 指定 Provider（仅本次请求） */
+  providerId?: string;
+  /** 指定模型（仅本次请求） */
+  modelId?: string;
+  /** 指定会话（仅本次请求） */
+  sessionId?: string;
   /** 工作目录 */
   cwd?: string;
   /** 允许的工具 */
@@ -168,6 +198,8 @@ export interface AgentOptions {
   apiTimeout?: number;
   /** 执行超时（毫秒） */
   executionTimeout?: number;
+  /** 外部取消信号 */
+  abortSignal?: AbortSignal;
   /** 回调：收到文本 */
   onText?: (text: string) => void;
   /** 回调：工具使用 */

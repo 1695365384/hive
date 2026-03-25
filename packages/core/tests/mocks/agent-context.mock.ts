@@ -35,7 +35,6 @@ export function createMockProviderManager(overrides?: {
     unregister: vi.fn(),
     getMcpServers: vi.fn(() => ({})),
     getMcpServersForAgent: vi.fn(() => ({})),
-    isCCSwitchInstalled: vi.fn(() => false),
     get: vi.fn(),
     getModel: vi.fn(),
     getModelForProvider: vi.fn(),

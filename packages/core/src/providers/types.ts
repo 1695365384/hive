@@ -201,7 +201,8 @@ export interface ProviderPreset {
 // ============================================
 
 /**
- * providers.json 配置结构
+ * providers.json 配置结构（已废弃，保留向后兼容）
+ * @deprecated 使用 ExternalConfig 替代
  */
 export interface ProvidersConfig {
   version: string;
@@ -214,6 +215,52 @@ export interface ProvidersConfig {
     plan?: AgentDefaults;
     general?: AgentDefaults;
   };
+}
+
+// ============================================
+// 外部配置（新版 API）
+// ============================================
+
+/**
+ * Agent 默认配置
+ */
+export interface AgentDefaults {
+  /** 默认模型（覆盖 Provider 设置） */
+  model?: string;
+  /** 最大对话轮次 */
+  maxTurns?: number;
+  /** 探索彻底程度 */
+  thoroughness?: 'quick' | 'medium' | 'very-thorough';
+  /** 单次请求超时（毫秒） */
+  timeout?: number;
+  /** 是否启用流式输出 */
+  streaming?: boolean;
+}
+
+/**
+ * 外部配置接口
+ *
+ * 由外部应用传入，SDK 不负责配置的持久化或发现
+ */
+export interface ExternalConfig {
+  /** Provider 配置列表 */
+  providers?: ProviderConfig[];
+  /** 当前激活的 Provider ID */
+  activeProvider?: string;
+  /** MCP 服务器配置 */
+  mcpServers?: Record<string, McpServerConfig>;
+  /** Agent 默认配置 */
+  defaults?: AgentDefaults;
+}
+
+/**
+ * API Key 来源配置
+ */
+export interface ApiKeyConfig {
+  /** 直接提供 API Key */
+  apiKey?: string;
+  /** 环境变量名（默认 ${PROVIDER_ID}_API_KEY） */
+  apiKeyEnv?: string;
 }
 
 // ============================================

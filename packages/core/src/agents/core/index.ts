@@ -77,6 +77,7 @@ export type {
   AgentContext as AgentContextInterface,
   AgentRegistry as AgentRegistryInterface,
   AgentOptions,
+  AgentInitOptions,
   AgentExecuteOptions,
   WorkflowOptions,
   WorkflowResult,

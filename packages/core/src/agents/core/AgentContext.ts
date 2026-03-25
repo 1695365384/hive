@@ -5,6 +5,7 @@
  */
 
 import { ProviderManager } from '../../providers/index.js';
+import type { ExternalConfig } from '../../providers/index.js';
 import { AgentRunner } from './runner.js';
 import { SkillRegistry, createSkillRegistry } from '../../skills/index.js';
 import { AgentRegistryImpl } from '../registry/AgentRegistry.js';
@@ -13,6 +14,15 @@ import type { AgentCapability, AgentContext, SkillSystemConfig, TimeoutConfig } 
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Skill, SkillMatchResult } from '../../skills/index.js';
 import { TimeoutCapability, createTimeoutCapability } from '../capabilities/TimeoutCapability.js';
+
+/**
+ * Agent 上下文选项
+ */
+export interface AgentContextOptions {
+  externalConfig?: ExternalConfig;
+  skillConfig?: SkillSystemConfig;
+  timeoutConfig?: TimeoutConfig;
+}
 
 /**
  * Agent 上下文实现
@@ -30,8 +40,10 @@ export class AgentContextImpl implements AgentContext {
   private capabilities: Map<string, AgentCapability> = new Map();
   private initialized: boolean = false;
 
-  constructor(skillConfig?: SkillSystemConfig, timeoutConfig?: TimeoutConfig) {
-    this.providerManager = new ProviderManager();
+  constructor(options: AgentContextOptions = {}) {
+    const { externalConfig, skillConfig, timeoutConfig } = options;
+
+    this.providerManager = new ProviderManager({ externalConfig });
     this.runner = new AgentRunner(this.providerManager);
     this.skillRegistry = createSkillRegistry(skillConfig);
     this.agentRegistry = new AgentRegistryImpl();

@@ -472,11 +472,6 @@ describe('Agent + Provider Integration', () => {
       await agent.dispose();
     });
 
-    it('should check CC-Switch installation status', () => {
-      const isInstalled = agent.isCCSwitchInstalled();
-      expect(typeof isInstalled).toBe('boolean');
-    });
-
     it('should have providerCap initialized', () => {
       const providerCap = (agent as any).providerCap;
       expect(providerCap).toBeDefined();

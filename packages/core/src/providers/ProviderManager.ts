@@ -6,7 +6,7 @@
  */
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
-import type { ProviderConfig, McpServerConfig, ModelSpec, ConfigSource, ProviderType } from './types.js';
+import type { ProviderConfig, McpServerConfig, ModelSpec, ConfigSource, ProviderType, ExternalConfig } from './types.js';
 import { createAdapter, adapterRegistry, getProviderType } from './adapters/index.js';
 import { createConfigChain } from './sources/index.js';
 import { getModelsDevClient, fetchProviderModels, fetchModelSpec } from './metadata/index.js';
@@ -21,30 +21,94 @@ interface ProviderInfo {
 }
 
 /**
+ * Provider 管理器配置选项
+ */
+export interface ProviderManagerOptions {
+  /** 外部配置（优先级最高） */
+  externalConfig?: ExternalConfig;
+  /** 是否使用环境变量作为 fallback */
+  useEnvFallback?: boolean;
+}
+
+/**
  * Provider 管理器
  */
 export class ProviderManager {
   private providers: Map<string, ProviderInfo> = new Map();
   private activeId: string | null = null;
   private sources: ConfigSource[];
+  private externalConfig: ExternalConfig | null;
   private readonly CACHE_TTL = 3600000; // 1 小时
 
-  constructor() {
-    this.sources = createConfigChain();
-    this.loadProviders();
+  constructor(options: ProviderManagerOptions = {}) {
+    this.externalConfig = options.externalConfig ?? null;
+
+    // 如果提供了外部配置，优先使用
+    if (this.externalConfig) {
+      this.loadExternalConfig();
+    }
+
+    // 如果允许环境变量 fallback，加载环境变量配置
+    if (options.useEnvFallback !== false) {
+      this.sources = createConfigChain();
+      this.loadFromSources();
+    } else {
+      this.sources = [];
+    }
+
+    // 设置默认 Provider
+    if (!this.activeId && this.providers.size > 0) {
+      this.activeId = this.externalConfig?.activeProvider
+        ?? this.providers.keys().next().value
+        ?? null;
+    }
   }
 
   /**
-   * 从所有配置源加载 Provider
+   * 加载外部配置
    */
-  private loadProviders(): void {
-    // 按优先级加载配置
+  private loadExternalConfig(): void {
+    if (!this.externalConfig?.providers) return;
+
+    for (const config of this.externalConfig.providers) {
+      // 解析 API Key
+      const resolvedConfig = this.resolveApiKey(config);
+      this.providers.set(resolvedConfig.id, {
+        config: resolvedConfig,
+        modelCache: null,
+        cacheTime: 0,
+      });
+    }
+  }
+
+  /**
+   * 解析 API Key（支持环境变量）
+   */
+  private resolveApiKey(config: ProviderConfig): ProviderConfig {
+    // 如果已有 apiKey，直接返回
+    if (config.apiKey) return config;
+
+    // 尝试从环境变量读取
+    const envKey = config.extra?.apiKeyEnv as string ?? `${config.id.toUpperCase()}_API_KEY`;
+    const apiKey = process.env[envKey];
+
+    if (apiKey) {
+      return { ...config, apiKey };
+    }
+
+    return config;
+  }
+
+  /**
+   * 从配置源加载（环境变量 fallback）
+   */
+  private loadFromSources(): void {
     for (const source of this.sources) {
       if (!source.isAvailable()) continue;
 
-      // 加载所有 Provider
       const configs = source.getAllProviders();
       for (const config of configs) {
+        // 外部配置优先，不覆盖
         if (!this.providers.has(config.id)) {
           this.providers.set(config.id, {
             config,
@@ -53,19 +117,6 @@ export class ProviderManager {
           });
         }
       }
-
-      // 设置默认
-      if (!this.activeId && source.getDefaultProviderId) {
-        const defaultId = source.getDefaultProviderId();
-        if (defaultId && this.providers.has(defaultId)) {
-          this.activeId = defaultId;
-        }
-      }
-    }
-
-    // 如果没有默认，使用第一个
-    if (!this.activeId && this.providers.size > 0) {
-      this.activeId = this.providers.keys().next().value ?? null;
     }
   }
 
@@ -315,7 +366,19 @@ export class ProviderManager {
     this.activeId = null;
     adapterRegistry.clear();
     getModelsDevClient().clearCache();
-    this.loadProviders();
+
+    // 重新加载配置
+    if (this.externalConfig) {
+      this.loadExternalConfig();
+    }
+    this.loadFromSources();
+
+    // 重新设置默认 Provider
+    if (!this.activeId && this.providers.size > 0) {
+      this.activeId = this.externalConfig?.activeProvider
+        ?? this.providers.keys().next().value
+        ?? null;
+    }
   }
 
   /**
@@ -373,13 +436,6 @@ export class ProviderManager {
   }
 
   /**
-   * 检查 CC-Switch 是否安装
-   */
-  isCCSwitchInstalled(): boolean {
-    return this.sources.some(s => s.name === 'cc-switch' && s.isAvailable());
-  }
-
-  /**
    * 应用配置到环境变量（兼容旧代码）
    *
    * @deprecated 不再需要，AI SDK 直接使用配置
@@ -408,22 +464,34 @@ let _instance: ProviderManager | null = null;
 
 /**
  * 获取全局 Provider 管理器实例
+ *
+ * @param options 可选配置，仅在首次调用时生效
  */
-export function getProviderManager(): ProviderManager {
+export function getProviderManager(options?: ProviderManagerOptions): ProviderManager {
   if (!_instance) {
-    _instance = new ProviderManager();
+    _instance = new ProviderManager(options);
   }
   return _instance;
 }
 
 /**
  * 创建新的 Provider 管理器实例
+ *
+ * @param options 配置选项
  */
-export function createProviderManager(): ProviderManager {
-  return new ProviderManager();
+export function createProviderManager(options?: ProviderManagerOptions): ProviderManager {
+  return new ProviderManager(options);
+}
+
+/**
+ * 重置全局实例（用于测试或重新初始化）
+ */
+export function resetProviderManager(): void {
+  _instance = null;
 }
 
 /**
  * 全局实例（便捷访问）
+ * @deprecated 推荐使用 getProviderManager(options) 以传入配置
  */
 export const providerManager = getProviderManager();

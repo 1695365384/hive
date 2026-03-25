@@ -56,6 +56,7 @@ export {
 
   // 类型
   type AgentOptions,
+  type AgentInitOptions,
   type WorkflowOptions,
   type WorkflowResult,
 } from './agents/index.js';
@@ -123,9 +124,10 @@ export {
   providerManager,
 
   // 配置来源
-  CCSwitchSource,
-  LocalConfigSource,
   EnvSource,
+  ModelsDevSource,
+  createModelsDevSource,
+  getModelsDevSource,
   createConfigChain,
 
   // AI SDK 适配器
@@ -354,3 +356,35 @@ export {
   initWorkspace,
   createWorkspaceManager,
 } from './workspace/index.js';
+
+// ============================================
+// 配置系统（外部配置支持）
+// ============================================
+
+export {
+  // 验证
+  validateAgentConfig,
+  validateProviderConfig,
+  validateOrThrow,
+  type ValidationResult,
+
+  // 类型
+  type ExternalConfig,
+  type ProviderConfig as ProviderConfigType,
+  type McpServerConfig as McpServerConfigType,
+  type AgentDefaults,
+} from './config/index.js';
+
+// ============================================
+// JSON Schema
+// ============================================
+
+export {
+  // Schema 获取
+  getAgentConfigSchema,
+  getProviderConfigSchema,
+
+  // Schema URI
+  SCHEMA_URIS,
+  SCHEMA_PATHS,
+} from './schemas/index.js';
