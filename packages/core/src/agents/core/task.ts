@@ -1,7 +1,7 @@
 /**
- * Task 系统 - 类似 Claude Code 的 Task Tool
+ * Task 系统 - 并行任务执行引擎
  *
- * Task 是 Claude Code 的底层并行处理引擎：
+ * Task 是 Hive 的底层并行处理引擎：
  * - 临时创建子代理执行特定任务
  * - 并行执行（最多 10 个并发）
  * - 上下文隔离
@@ -9,7 +9,7 @@
  *
  * 使用方式：
  * ```typescript
- * import { Task, createTask, runParallel } from 'claude-agent-service';
+ * import { Task, createTask, runParallel } from '@hive/core';
  *
  * // 方式 1: 创建 Task
  * const task = new Task({
