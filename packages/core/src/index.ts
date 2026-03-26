@@ -414,3 +414,36 @@ export {
   SCHEMA_URIS,
   SCHEMA_PATHS,
 } from './schemas/index.js';
+
+// ============================================
+// 插件系统
+// ============================================
+
+export {
+  // 通道消息类型
+  type ChannelMessage,
+  type ChannelMessageType,
+  type ChannelMessageSender,
+  type ChannelMessageRecipient,
+
+  // 通道发送
+  type ChannelSendOptions,
+  type ChannelSendResult,
+
+  // 通道接口
+  type ChannelCapabilities,
+  type IChannel,
+
+  // 插件上下文
+  type IMessageBus,
+  type ILogger,
+  type PluginContext,
+
+  // 插件接口
+  type PluginMetadata,
+  type IPlugin,
+
+  // 插件加载
+  type PluginLoadOptions,
+  type IPluginLoader,
+} from './plugins/index.js';

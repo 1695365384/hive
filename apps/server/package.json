@@ -23,12 +23,9 @@
   },
   "dependencies": {
     "@hive/core": "workspace:*",
-    "@hive/openclaw-adapter": "workspace:*",
     "@hive/orchestrator": "workspace:*",
-    "@larksuite/openclaw-lark": "2026.3.25",
     "dotenv": "^16.4.0",
     "hono": "^4.12.0",
-    "jiti": "^2.6.1",
     "zod": "^3.23.0"
   },
   "devDependencies": {
