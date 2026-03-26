@@ -14,3 +14,6 @@ export type {
   FeishuChallengeResponse,
   IFeishuChannel,
 } from './types.js'
+
+// Default export for dynamic import
+export { createFeishuPlugin as default } from './plugin.js'
