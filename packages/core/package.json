@@ -1,0 +1,55 @@
+{
+  "name": "@hive/core",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./providers": {
+      "import": "./dist/providers/index.js",
+      "types": "./dist/providers/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && npm run copy-templates",
+    "copy-templates": "cp -r src/agents/prompts/templates dist/agents/prompts/",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.62",
+    "@ai-sdk/google": "^3.0.51",
+    "@ai-sdk/openai": "^3.0.46",
+    "@ai-sdk/provider": "^3.0.8",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.77",
+    "ai": "^6.0.129",
+    "ajv": "^8.18.0",
+    "better-sqlite3": "^11.0.0",
+    "conf": "^13.0.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.11.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

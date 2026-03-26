@@ -1,0 +1,19 @@
+{
+  "name": "Default Workspace",
+  "createdAt": "2026-03-19T20:37:49.796Z",
+  "lastAccessedAt": "2026-03-19T20:43:09.103Z",
+  "version": "1.0.0",
+  "sessionGroups": [
+    {
+      "name": "default",
+      "description": "默认会话",
+      "createdAt": "2026-03-19T20:37:49.785Z"
+    },
+    {
+      "name": "archive",
+      "description": "归档会话",
+      "createdAt": "2026-03-19T20:37:49.785Z"
+    }
+  ],
+  "defaultSessionGroup": "default"
+}

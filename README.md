@@ -1,76 +1,112 @@
-# Claude Agent Service
+<div align="center">
+  <img src="logo.svg" alt="Hive Logo" width="140" height="140">
 
-面向 **C 端应用** 的 Claude Agent 服务 SDK。
+  <h1>Hive</h1>
 
-**核心设计：借助生态力量，不重复造轮子**
+  <p><strong>多 Agent 协作框架 - 像🐝蜂巢一样高效协作</strong></p>
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      你的 C 端应用                               │
-├─────────────────────────────────────────────────────────────────┤
-│                  本 SDK (claude-agent-service)                  │
-├─────────────────────────────────────────────────────────────────┤
-│                        Agent 核心系统                            │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              Agent (主入口)                              │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │   │
-│  │  │ Provider │ │  Skill   │ │   Chat   │ │Workflow  │   │   │
-│  │  │Capability│ │Capability│ │Capability│ │Capability│   │   │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐               │   │
-│  │  │SubAgent  │ │   Hooks  │ │  Prompt  │               │   │
-│  │  │Capability│ │ Registry │ │  System  │               │   │
-│  │  └──────────┘ └──────────┘ └──────────┘               │   │
-│  └─────────────────────────────────────────────────────────┘   │
-├─────────────────────────────────────────────────────────────────┤
-│                     提供商管理 + CC-Switch                       │
-├─────────────────────────────────────────────────────────────────┤
-│    Claude │ GLM │ DeepSeek │ Qwen │ OpenAI │ 50+ 更多...       │
-└─────────────────────────────────────────────────────────────────┘
-```
+  <p>
+    <em>借助生态力量，不重复造轮子</em>
+  </p>
+
+  <p>
+    <a href="#快速开始">快速开始</a> •
+    <a href="#特性">特性</a> •
+    <a href="#api-参考">API</a> •
+    <a href="#常见问题">FAQ</a>
+  </p>
+
+  <p>
+    <img src="https://img.shields.io/badge/Node.js-18+-green" alt="Node.js">
+    <img src="https://img.shields.io/badge/TypeScript-5.0+-blue" alt="TypeScript">
+    <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
+  </p>
+</div>
+
+---
 
 ## 特性
 
-- 🚀 **开箱即用** - 内置主流 LLM 提供商预设，无需额外配置
-- 🔄 **双模式切换** - 支持 CC-Switch 集成或直接使用预设
-- 🇨🇳 **国产友好** - 原生支持 GLM、DeepSeek、Qwen、Kimi 等
-- 🌍 **全球覆盖** - 支持 OpenAI、OpenRouter、Together AI 等
-- 🤖 **主 Agent 系统** - 统一入口，管理所有子 Agent 和功能
-- 🔧 **子 Agent 系统** - Claude Code 风格的 Explore / Plan / General
-- 🔄 **工作流引擎** - 三阶段循环：收集上下文 → 采取行动 → 验证结果
-- 🎯 **技能系统** - 模块化技能管理，支持自定义扩展
-- 🌐 **HTTP 服务** - 内置 REST API，支持流式响应
-- 📝 **通用任务** - 不只是写代码，支持研究、分析、写作、数据处理等
-- 💾 **持久化存储** - 用户偏好、跨会话记忆
-- 🛠️ **MCP 扩展** - 支持 Model Context Protocol
-- 🪝 **Hooks 系统** - 会话生命周期、工具调用、能力初始化等事件钩子
-- ✅ **完整测试** - 核心模块高覆盖率
+| | |
+|:-:|:-|
+| 🚀 **开箱即用** | 内置主流 LLM 提供商预设，无需额外配置 |
+| 🔄 **外部配置** | 支持外部传入配置，由应用层管理 |
+| 🇨🇳 **国产友好** | 原生支持 GLM、DeepSeek、Qwen、Kimi 等 |
+| 🌍 **全球覆盖** | 支持 OpenAI、OpenRouter、Together AI 等 |
+| 🤖 **主 Agent 系统** | 统一入口，管理所有子 Agent 和功能 |
+| 🔧 **子 Agent 系统** | Claude Code 风格的 Explore / Plan / General |
+| 🔄 **工作流引擎** | 三阶段循环：收集上下文 → 采取行动 → 验证结果 |
+| 🎯 **技能系统** | 模块化技能管理，支持自定义扩展 |
+| 🪝 **Hooks 系统** | 会话生命周期、工具调用等事件钩子 |
+
+---
 
 ## 快速开始
 
-### 本地调试 CLI（快速测试 Agent）
+### 安装
+
+```bash
+npm install @hive/core
+```
+
+### 5 分钟上手
+
+```typescript
+import { ask, createAgent } from '@hive/core';
+
+// 方式 1: 快速对话（使用环境变量）
+const answer = await ask('你好');
+
+// 方式 2: 创建 Agent 实例（传入配置）
+const agent = createAgent({
+  externalConfig: {
+    providers: [
+      { id: 'glm', baseUrl: '...', apiKey: 'your-api-key', model: 'glm-5' },
+      { id: 'deepseek', baseUrl: '...', apiKey: 'your-api-key' },
+    ],
+    activeProvider: 'glm',
+  },
+});
+
+// 流式输出
+await agent.chatStream('写一个故事', {
+  onText: (text) => process.stdout.write(text),
+});
+```
+
+### 零配置模式（环境变量）
+
+只需设置环境变量，SDK 会自动检测：
+
+```bash
+# 设置任意一个 API Key
+export GLM_API_KEY=xxx
+export DEEPSEEK_API_KEY=xxx
+export ANTHROPIC_API_KEY=xxx
+export OPENAI_API_KEY=xxx
+```
+
+```typescript
+// 无需任何配置
+const agent = createAgent();
+// 自动使用检测到的 Provider
+```
+
+### 本地调试 CLI
 
 ```bash
 npm run cli
 ```
 
-启动后可直接输入问题进行对话，支持以下模式：
+**命令列表**:
 
-- **workflow 模式**（默认）：直接输入任务，观察 phase/tool 输出，验证 agent loop 与子 agent
-- **chat 模式**：简单对话交互
-- **explore/plan/general 模式**：测试特定子 Agent
-
-CLI 命令：
-- `/mode chat|explore|plan|general|workflow` - 切换模式
-- `/loop <task>` - 执行工作流任务
-- `/provider <name> [apiKey]` - 切换提供商
-- `/cwd <path>` - 设置工作目录
-- `/thoroughness quick|medium|very-thorough` - 设置彻底程度
-- `/stream on|off` - 开关流式输出
-- `/state` - 查看当前状态
-- `/skills` - 列出所有技能
-- `/help` - 显示帮助
-- `/exit` - 退出
+| 命令 | 说明 |
+|------|------|
+| `/mode chat\|workflow\|explore\|plan\|general` | 切换模式 |
+| `/loop <task>` | 执行工作流任务 |
+| `/provider <name> [apiKey]` | 切换提供商 |
+| `/state` | 查看当前状态 |
+| `/skills` | 列出所有技能 |
 
 ### 启动 HTTP 服务
 
@@ -78,20 +114,11 @@ CLI 命令：
 npm run server
 ```
 
-服务运行在 `http://localhost:3000`，提供以下 API：
-
-- `POST /chat` - 简单对话
-- `POST /chat/stream` - 流式对话（Server-Sent Events）
-- `GET /health` - 健康检查
-- `GET /providers` - 列出所有提供商
-- `GET /skills` - 列出所有技能
-
-示例：
 ```bash
-# 简单对话
+# 对话接口
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "你好，请介绍一下你自己"}'
+  -d '{"prompt": "你好"}'
 
 # 流式对话
 curl -X POST http://localhost:3000/chat/stream \
@@ -99,388 +126,88 @@ curl -X POST http://localhost:3000/chat/stream \
   -d '{"prompt": "写一个故事"}'
 ```
 
-### 1. 安装
-
-```bash
-# 安装本 SDK
-npm install claude-agent-service
-
-# 可选：安装 CC-Switch（用于管理多个提供商）
-brew tap farion1231/ccswitch
-brew install --cask cc-switch
-```
-
-### 2. 使用内置预设（推荐新手）
-
-```typescript
-import { UnifiedAgentService, ask } from 'claude-agent-service';
-
-// 方式 1: 快速对话
-const answer = await ask('你好', {
-  provider: 'deepseek',
-  apiKey: 'your-deepseek-api-key',
-});
-
-// 方式 2: 创建 Agent 实例
-const agent = new UnifiedAgentService();
-
-// 切换到 DeepSeek
-agent.useProvider('deepseek', 'your-api-key');
-const response = await agent.chat('分析这个代码');
-
-// 切换到 GLM
-agent.useProvider('glm', 'your-glm-api-key');
-const response2 = await agent.chat('你好，请介绍一下你自己');
-```
-
-### 3. 使用 CC-Switch（推荐进阶用户）
-
-```typescript
-import { UnifiedAgentService } from 'claude-agent-service';
-
-const agent = new UnifiedAgentService();
-
-// 检查 CC-Switch 是否已安装
-if (agent.isCCSwitchInstalled()) {
-  // 使用 CC-Switch 当前激活的提供商
-  const response = await agent.chat('你好');
-
-  // 切换提供商（配置在 CC-Switch 中）
-  agent.useProvider('openrouter');
-  const response2 = await agent.chat('Hello');
-}
-```
-
-### 4. 流式对话
-
-```typescript
-const agent = new UnifiedAgentService();
-
-await agent.chatStream('写一个故事', {
-  provider: 'qwen',
-  apiKey: 'your-qwen-api-key',
-  onText: (text) => console.log(text),
-  onTool: (name) => console.log(`使用工具: ${name}`),
-});
-```
+---
 
 ## 支持的提供商
 
-### 国产 LLM
+### 🇨🇳 国产 LLM
 
 | 提供商 | 预设名称 | 模型示例 | 特点 |
-|--------|----------|----------|------|
-| **GLM (智谱)** | `glm` | glm-5, glm-4.7 | 长文本、多模态 |
-| **Qwen (通义千问)** | `qwen` | qwen3-max, qwen-plus | 阿里云、长上下文 |
-| **DeepSeek** | `deepseek` | deepseek-chat, deepseek-reasoner | 高性价比 |
-| **Kimi (月之暗面)** | `kimi` | moonshot-v1-128k | 超长上下文 |
-| **ERNIE (文心一言)** | `ernie` | ernie-4.0-8k | 百度 |
-| **Spark (讯飞星火)** | `spark` | spark-v4.0 | 讯飞 |
+|:------|:---------|:---------|:-----|
+| GLM (智谱) | `glm` | glm-5, glm-4.7 | 长文本、多模态 |
+| Qwen (通义千问) | `qwen` | qwen3-max, qwen-plus | 阿里云、长上下文 |
+| DeepSeek | `deepseek` | deepseek-chat, deepseek-reasoner | 高性价比 |
+| Kimi (月之暗面) | `kimi` | moonshot-v1-128k | 超长上下文 |
+| ERNIE (文心一言) | `ernie` | ernie-4.0-8k | 百度 |
 
-### OpenAI 系列
-
-| 提供商 | 预设名称 | 模型示例 |
-|--------|----------|----------|
-| **OpenAI** | `openai` | gpt-4o, gpt-4-turbo |
-| **Azure OpenAI** | `azure_openai` | gpt-4o, gpt-35-turbo |
-
-### 聚合网关
-
-| 提供商 | 预设名称 | 特点 |
-|--------|----------|------|
-| **OpenRouter** | `openrouter` | 100+ 模型聚合 |
-| **LiteLLM** | `litellm` | 开源自部署网关 |
-| **Together AI** | `together` | 开源模型推理 |
-
-### 官方
+### 🌍 全球 LLM
 
 | 提供商 | 预设名称 | 模型示例 |
-|--------|----------|----------|
-| **Anthropic** | `anthropic` | claude-opus-4-6, claude-sonnet-4-6 |
+|:------|:---------|:---------|
+| Anthropic | `anthropic` | claude-opus-4-6, claude-sonnet-4-6 |
+| OpenAI | `openai` | gpt-4o, gpt-4-turbo |
+| Azure OpenAI | `azure_openai` | gpt-4o, gpt-35-turbo |
+| OpenRouter | `openrouter` | 100+ 模型聚合 |
+| Together AI | `together` | 开源模型推理 |
 
-## API 参考
+---
 
-### UnifiedAgentService
+## 三代理系统
 
-```typescript
-class UnifiedAgentService {
-  // 获取当前提供商
-  get currentProvider(): CCProvider | null;
-
-  // 列出所有提供商（合并 CC-Switch + 内置预设）
-  listProviders(): CCProvider[];
-
-  // 列出所有内置预设
-  listPresets(): Array<{ id: string; name: string; description?: string }>;
-
-  // 按类别列出预设
-  listPresetsByCategory(): Record<string, Array<{ id: string; name: string }>>;
-
-  // 切换提供商
-  useProvider(name: string, apiKey?: string): boolean;
-
-  // 检查 CC-Switch 是否安装
-  isCCSwitchInstalled(): boolean;
-
-  // 简单对话
-  chat(prompt: string, options?: AgentChatOptions): Promise<string>;
-
-  // 流式对话
-  chatStream(prompt: string, options?: AgentChatOptions): Promise<void>;
-}
-```
-
-### AgentChatOptions
-
-```typescript
-interface AgentChatOptions {
-  provider?: string;      // 提供商名称（预设或 CC-Switch 配置）
-  apiKey?: string;        // API Key（使用预设时需要）
-  model?: string;         // 指定模型
-  cwd?: string;           // 工作目录
-  tools?: string[];       // 允许的工具
-  maxTurns?: number;      // 最大轮次
-  systemPrompt?: string;  // 系统提示
-  onText?: (text: string) => void;       // 文本回调
-  onTool?: (name: string) => void;       // 工具回调
-  onError?: (error: Error) => void;      // 错误回调
-}
-```
-
-### ServiceRegistry
-
-```typescript
-class ServiceRegistry implements ServiceContext {
-  // 服务管理
-  register<T extends IService>(service: T): void;
-  getService<T extends IService>(name: string): T | undefined;
-
-  // 生命周期
-  initializeAll(): Promise<void>;
-  startAll(): Promise<void>;
-  stopAll(): Promise<void>;
-  disposeAll(): Promise<void>;
-
-  // 事件
-  emit(event: string, data: unknown): void;
-  on(event: string, handler: EventHandler): void;
-  off(event: string, handler: EventHandler): void;
-
-  // 健康检查
-  healthCheckAll(): Promise<Record<string, boolean>>;
-  getAllStatus(): Record<string, { status: ServiceStatus; config: IServiceConfig }>;
-}
-```
-
-### HookRegistry (新增)
-
-```typescript
-class HookRegistry {
-  // Hook 注册
-  on<K extends HookType>(type: K, hook: HookHandler<HookTypeMap[K]>): void;
-  off<K extends HookType>(type: K, hook: HookHandler<HookTypeMap[K]>): void;
-
-  // Hook 触发
-  emit<K extends HookType>(type: K, context: HookTypeMap[K]): Promise<void>;
-
-  // 会话管理
-  getSessionId(): string;
-  setSessionId(id: string): void;
-
-  // 执行追踪
-  getExecutionLog(): HookExecutionLog[];
-  enableExecutionTracking(options?: ExecutionTrackingOptions): void;
-}
-```
-
-## 便捷函数
-
-```typescript
-// 快速对话
-import { ask } from 'claude-agent-service';
-const answer = await ask('你好', { provider: 'deepseek', apiKey: '...' });
-
-// 创建 Agent
-import { createAgent } from 'claude-agent-service';
-const agent = createAgent();
-
-// 快速使用预设
-import { usePreset } from 'claude-agent-service';
-await usePreset('glm', 'your-api-key');
-```
-
-## 三代理系统（Claude Code 风格）
-
-Claude Code 内置三个核心代理，可以处理任何任务：
+Claude Code 风格的子代理架构，自动根据任务类型选择合适的代理：
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    主 Agent                              │
-├─────────────────────────────────────────────────────────┤
-│  根据任务类型，自动委托给合适的子代理                     │
-└───────────────┬─────────────────────────────────────────┘
-                │
-    ┌───────────┼───────────┐
-    ▼           ▼           ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│Explore │ │  Plan  │ │General │
-│ 快速   │ │ 研究   │ │ 通用   │
-└────────┘ └────────┘ └────────┘
-│Haiku   │ │继承    │ │继承    │
-│只读    │ │只读    │ │所有工具│
-└────────┘ └────────┘ └────────┘
+                    ┌─────────────────┐
+                    │    主 Agent     │
+                    │   (统一入口)     │
+                    └────────┬────────┘
+                             │
+           ┌─────────────────┼─────────────────┐
+           ▼                 ▼                 ▼
+    ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+    │   Explore    │ │     Plan     │ │    General   │
+    │    快速      │ │     研究     │ │     通用     │
+    ├──────────────┤ ├──────────────┤ ├──────────────┤
+    │  Haiku 模型  │ │   继承模型   │ │   继承模型   │
+    │   只读工具   │ │   只读工具   │ │   所有工具   │
+    └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
 ### 使用示例
 
 ```typescript
-import { createAgent, explore, plan, general } from 'claude-agent-service';
-
 const agent = createAgent();
 
-// Explore - 快速搜索代码库（Haiku 模型）
-await agent.explore('查找所有 API 路由', 'quick');      // 快速
-await agent.explore('分析项目结构', 'medium');          // 平衡
-await agent.explore('全面分析认证模块', 'very-thorough'); // 彻底
+// Explore - 快速搜索（Haiku 模型，速度快）
+await agent.explore('查找所有 API 路由', 'quick');
+await agent.explore('分析项目结构', 'medium');
+await agent.explore('全面分析认证模块', 'very-thorough');
 
-// Plan - 研究代码库用于规划
-await agent.plan('研究认证模块的实现');
+// Plan - 研究规划（只读工具）
+await agent.plan('研究认证模块的实现方案');
 
 // General - 通用任务（所有工具）
 await agent.general('重构代码并添加测试');
-
-// 便捷函数
-await explore('搜索代码', 'quick');
-await plan('研究实现');
-await general('执行任务');
 ```
 
-### 三代理对比
-
-| Agent | 模型 | 工具 | 用途 |
-|-------|------|------|------|
-| **Explore** | Haiku（快速） | 只读 | 文件发现、代码搜索、探索 |
+| Agent | 模型 | 工具 | 典型用途 |
+|:------|:-----|:-----|:---------|
+| **Explore** | Haiku（快速） | 只读 | 文件发现、代码搜索 |
 | **Plan** | 继承 | 只读 | 计划研究、收集上下文 |
 | **General** | 继承 | 全部 | 复杂任务、代码修改 |
 
-## Hooks 系统
-
-Hooks 系统提供生命周期事件钩子，支持在关键节点插入自定义逻辑。
-
-### 支持的 Hook 类型
-
-| Hook 类型 | 触发时机 | 用途 |
-|-----------|----------|------|
-| `session:start` | 会话开始 | 初始化、日志记录 |
-| `session:end` | 会话结束 | 清理、统计 |
-| `session:error` | 会话错误 | 错误处理、告警 |
-| `tool:before` | 工具调用前 | 参数校验、审计 |
-| `tool:after` | 工具调用后 | 结果处理、日志 |
-| `capability:init` | 能力初始化 | 依赖注入 |
-| `capability:dispose` | 能力销毁 | 资源清理 |
-| `workflow:phase` | 工作流阶段 | 进度追踪 |
-
-### 使用示例
-
-```typescript
-import { Agent, HookRegistry } from 'claude-agent-service';
-
-const agent = new Agent();
-
-// 注册 Hook
-agent.context.hookRegistry.on('session:start', {
-  priority: 100, // 优先级，数值越小越先执行
-  handler: async (ctx) => {
-    console.log(`Session started: ${ctx.sessionId}`);
-  },
-});
-
-agent.context.hookRegistry.on('tool:before', {
-  priority: 50,
-  handler: async (ctx) => {
-    console.log(`Tool ${ctx.toolName} called with:`, ctx.params);
-    // 可以修改参数
-    ctx.params = { ...ctx.params, _timestamp: Date.now() };
-    return { modifiedContext: ctx };
-  },
-});
-
-agent.context.hookRegistry.on('workflow:phase', {
-  handler: async (ctx) => {
-    console.log(`Phase: ${ctx.phase} - ${ctx.description}`);
-  },
-});
-```
-
-## 服务注册表
-
-服务注册表提供统一的服务生命周期管理。
-
-### 基础服务类
-
-```typescript
-import { BaseService, ServiceRegistry } from 'claude-agent-service';
-
-// 创建自定义服务
-class MyService extends BaseService {
-  async doStart() {
-    // 启动逻辑
-  }
-
-  async doStop() {
-    // 停止逻辑
-  }
-
-  async healthCheck() {
-    return true;
-  }
-}
-
-// 注册服务
-const registry = new ServiceRegistry();
-registry.register(new MyService({
-  name: 'my-service',
-  priority: 10,  // 优先级，越小越先启动
-  dependencies: ['logger'],  // 依赖其他服务
-  autoStart: true,
-}));
-
-// 初始化和启动
-await registry.initializeAll();
-await registry.startAll();
-
-// 获取服务
-const myService = registry.getService<MyService>('my-service');
-
-// 优雅关闭
-await registry.stopAll();
-await registry.disposeAll();
-```
+---
 
 ## 三阶段工作流
 
-Claude Code 的工作流是三阶段循环：
-
 ```
-收集上下文 → 采取行动 → 验证结果
-     ↑                       │
-     └───────────────────────┘
+  收集上下文 ──→ 采取行动 ──→ 验证结果
+       ▲                          │
+       └──────────────────────────┘
 ```
-
-这三个阶段相互融合，Claude 始终使用工具来完成工作。
-
-### 使用示例
 
 ```typescript
-import { runWorkflow, codeTask, researchTask, WorkflowEngine } from 'claude-agent-service';
-
-// 基础工作流
-await runWorkflow('创建一个 README.md', {
-  cwd: process.cwd(),
-  onPhaseChange: (phase, desc) => {
-    console.log(`[${phase}] ${desc}`);
-  },
-});
+import { runWorkflow, codeTask, researchTask } from '@hive/core';
 
 // 代码任务
 await codeTask('实现一个工具函数库');
@@ -489,156 +216,220 @@ await codeTask('实现一个工具函数库');
 await researchTask('分析这个项目的架构');
 
 // 完整工作流控制
-const engine = new WorkflowEngine();
-await engine.execute({
-  task: '创建测试文件',
-  cwd: './src',
-  verifyCondition: '确保测试可以运行',
-  onPhaseChange: (phase) => console.log(`Phase: ${phase}`),
-  onTool: (tool) => console.log(`Tool: ${tool}`),
+await runWorkflow('创建测试文件', {
+  cwd: process.cwd(),
+  onPhaseChange: (phase, desc) => console.log(`[${phase}] ${desc}`),
 });
 ```
 
 ### 任务类型
 
-SDK 不只是写代码，支持多种任务类型：
-
-| 类型 | 描述 | 工具 |
-|------|------|------|
+| 类型 | 描述 | 可用工具 |
+|:-----|:-----|:---------|
 | `code` | 代码任务 | Read, Write, Edit, Bash, Glob, Grep |
 | `research` | 研究任务 | Read, Glob, Grep, WebSearch, WebFetch |
 | `analysis` | 分析任务 | Read, Bash, Glob, Grep |
 | `writing` | 写作任务 | Read, Write, Edit, WebSearch |
 | `data` | 数据处理 | Read, Write, Edit, Bash, Glob |
-| `automation` | 自动化任务 | Read, Write, Edit, Bash, Glob, Grep |
 | `custom` | 自定义任务 | 所有工具 |
 
-## 环境变量配置
+---
 
-可以通过环境变量预配置 API Key，然后直接使用提供商名称：
+## Hooks 系统
+
+在关键生命周期节点插入自定义逻辑：
+
+```typescript
+const agent = createAgent();
+
+// 会话生命周期
+agent.context.hookRegistry.on('session:start', async (ctx) => {
+  console.log(`Session started: ${ctx.sessionId}`);
+});
+
+// 工具调用拦截
+agent.context.hookRegistry.on('tool:before', async (ctx) => {
+  if (ctx.toolName === 'Bash') {
+    // 安全检查
+    return { proceed: true };
+  }
+});
+
+// 工作流阶段追踪
+agent.context.hookRegistry.on('workflow:phase', async (ctx) => {
+  console.log(`Phase: ${ctx.phase}`);
+});
+```
+
+| Hook 类型 | 触发时机 |
+|:----------|:---------|
+| `session:start` / `session:end` / `session:error` | 会话生命周期 |
+| `tool:before` / `tool:after` | 工具调用前后 |
+| `capability:init` / `capability:dispose` | 能力生命周期 |
+| `workflow:phase` | 工作流阶段变化 |
+
+---
+
+## API 参考
+
+### UnifiedAgentService
+
+```typescript
+class UnifiedAgentService {
+  // 提供商管理
+  get currentProvider(): CCProvider | null;
+  listProviders(): CCProvider[];
+  useProvider(name: string, apiKey?: string): boolean;
+
+  // 对话
+  chat(prompt: string, options?: AgentChatOptions): Promise<string>;
+  chatStream(prompt: string, options?: AgentChatOptions): Promise<void>;
+}
+```
+
+### 便捷函数
+
+```typescript
+// 快速对话
+await ask('你好', { provider: 'deepseek', apiKey: '...' });
+
+// 创建 Agent
+const agent = createAgent();
+
+// 使用预设
+await usePreset('glm', 'your-api-key');
+
+// 子代理便捷函数
+await explore('搜索代码', 'quick');
+await plan('研究实现');
+await general('执行任务');
+```
+
+---
+
+## 配置
+
+### 环境变量
 
 ```bash
-# .env 文件
+# .env
 GLM_API_KEY=your_glm_key
 DEEPSEEK_API_KEY=your_deepseek_key
 QWEN_API_KEY=your_qwen_key
 OPENAI_API_KEY=your_openai_key
-OPENROUTER_API_KEY=your_openrouter_key
 ```
 
 ```typescript
-// 然后在代码中直接使用
-agent.useProvider('glm');      // 自动从 GLM_API_KEY 读取
-agent.useProvider('deepseek'); // 自动从 DEEPSEEK_API_KEY 读取
+// 自动从环境变量读取
+agent.useProvider('glm');      // → GLM_API_KEY
+agent.useProvider('deepseek'); // → DEEPSEEK_API_KEY
 ```
 
-## CC-Switch 集成
+### 外部配置
 
-CC-Switch 是一个跨平台的桌面应用，用于管理多个 LLM 提供商配置。
-
-### 直接读取配置
+配置由外部应用传入，SDK 只是消费者：
 
 ```typescript
-import { CCSwitchReader } from 'claude-agent-service';
+import { createAgent, type ExternalConfig } from '@hive/core';
 
-const reader = new CCSwitchReader();
+const config: ExternalConfig = {
+  providers: [
+    {
+      id: 'glm',
+      name: 'GLM (智谱)',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: 'your-api-key',
+      model: 'glm-5',
+    },
+    {
+      id: 'deepseek',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com',
+      apiKeyEnv: 'DEEPSEEK_API_KEY', // 或从环境变量读取
+    },
+  ],
+  activeProvider: 'glm',
+  mcpServers: {
+    context7: {
+      command: 'npx',
+      args: ['-y', '@anthropic/mcp-server-context7'],
+    },
+  },
+};
 
-// 获取当前激活的提供商
-const provider = reader.getActiveProvider();
-
-// 应用到环境变量
-reader.applyProvider(provider);
-
-// 获取 MCP 服务器配置
-const mcpServers = reader.getMcpServersForAgent();
+const agent = createAgent({ externalConfig: config });
 ```
 
-### CC-Switch vs 内置预设
+### 配置优先级
 
-| 场景 | 推荐方案 |
-|------|----------|
-| 只用一个提供商 | 内置预设 |
-| 需要频繁切换 | CC-Switch |
-| 团队共享配置 | CC-Switch |
-| 不想安装额外软件 | 内置预设 |
-| 需要自定义配置 | CC-Switch |
+| 来源 | 优先级 | 说明 |
+|:-----|:-------|:-----|
+| 外部配置 | 最高 | 应用传入的 ExternalConfig |
+| 环境变量 | 次高 | ${PROVIDER}_API_KEY 约定 |
+
+---
 
 ## 技能系统
 
-技能系统提供模块化的功能扩展，支持通过 YAML frontmatter 配置技能元数据。
-
-### 技能结构
+模块化的功能扩展，通过 YAML frontmatter 定义：
 
 ```
 skills/
 ├── code-review/
-│   └── SKILL.md              # 代码审查技能
+│   └── SKILL.md
 └── api-testing/
-    └── SKILL.md              # API 测试技能
+    └── SKILL.md
 ```
-
-### 创建技能
-
-1. 在 `skills/` 目录创建技能文件夹
-2. 创建 `SKILL.md` 文件，包含 frontmatter 和说明：
 
 ```markdown
 ---
-name: My Skill
-description: This skill should be used when...
-version: 1.0.0
-author: Your Name
+name: Code Review
+description: Used when user asks to review code...
 tags:
-  - category
-  - another-category
+  - code-quality
 ---
 
-# My Skill
-
-## Purpose
-
-Describe what this skill does...
-
-## Process
-
-1. Step 1
-2. Step 2
+# Code Review Skill
 ...
-
-## Output Format
-
-Describe expected output format...
 ```
-
-### 使用技能
 
 ```typescript
-import { initializeSkills } from 'claude-agent-service';
+import { initializeSkills } from '@hive/core';
 
-// 初始化技能系统
 const registry = await initializeSkills();
-
-// 匹配技能
 const match = registry.match('帮我 review 代码');
-if (match) {
-  console.log(`Matched skill: ${match.skill.metadata.name}`);
-}
-
-// 列出所有技能
-const skills = registry.getAllMetadata();
 ```
 
-### 内置技能
+---
 
-- **Code Review** - 代码审查和质量分析
-- **API Testing** - API 接口测试和验证
+## 目录结构
+
+```
+src/
+├── agents/
+│   ├── core/           # Agent 核心实现
+│   ├── capabilities/   # 能力模块（委托模式）
+│   ├── prompts/        # Prompt 模板系统
+│   └── registry/       # Agent 注册表
+├── providers/
+│   ├── sources/        # 配置来源（环境变量）
+│   ├── presets/        # 内置预设
+│   └── models/         # 模型规格
+├── skills/             # 技能系统
+├── hooks/              # Hooks 系统
+├── services/           # 服务层
+└── tools/              # MCP 工具
+
+skills/                 # 技能定义文件
+tests/                  # 测试（unit, integration, e2e）
+```
+
+---
 
 ## 测试
 
-项目包含完整的测试套件：
-
 ```bash
-# 运行测试
+# 运行所有测试
 npm test
 
 # 监视模式
@@ -646,224 +437,109 @@ npm run test:watch
 
 # 覆盖率报告
 npm run test:coverage
+
+# E2E 测试（真实 API）
+npm run test:e2e
 ```
 
-## 目录结构
-
-```
-src/
-├── index.ts                    # SDK 入口
-├── server.ts                   # HTTP 服务
-├── cli.ts                      # CLI 工具
-│
-├── agents/                     # Agent 系统
-│   ├── core/                   # 核心 Agent 实现
-│   │   ├── Agent.ts           # 主 Agent 类
-│   │   ├── AgentContext.ts    # Agent 上下文
-│   │   ├── agents.ts          # 内置 Agent 配置
-│   │   ├── runner.ts          # Agent 运行器
-│   │   ├── task.ts            # Task 系统
-│   │   ├── types.ts           # 类型定义
-│   │   └── index.ts           # 模块导出
-│   ├── capabilities/           # Agent 能力模块
-│   │   ├── index.ts           # 能力模块导出
-│   │   ├── ChatCapability.ts  # 对话能力
-│   │   ├── SkillCapability.ts # 技能能力
-│   │   ├── ProviderCapability.ts # 提供商能力
-│   │   ├── SubAgentCapability.ts # 子 Agent 能力
-│   │   └── WorkflowCapability.ts # 工作流能力
-│   ├── prompts/                # Prompt 模板系统
-│   │   ├── prompts.ts         # Prompt 定义
-│   │   ├── PromptTemplate.ts  # 模板类
-│   │   └── index.ts           # 模块导出
-│   ├── registry/               # Agent 注册表
-│   │   ├── AgentRegistry.ts   # 注册表实现
-│   │   └── index.ts           # 模块导出
-│   ├── types.ts               # Agent 类型定义
-│   └── index.ts               # Agent 模块导出
-│
-├── hooks/                      # Hooks 系统
-│   ├── index.ts               # Hooks 模块导出
-│   ├── types.ts               # Hook 类型定义
-│   └── registry.ts            # Hook 注册表
-│
-├── services/                   # 服务层
-│   ├── index.ts               # 服务模块导出
-│   ├── types.ts               # 服务类型定义
-│   ├── ServiceRegistry.ts     # 服务注册表
-│   ├── preferences.ts         # 偏好存储
-│   └── base/                  # 基础服务
-│       ├── BaseService.ts    # 服务基类
-│       └── index.ts          # 模块导出
-│
-├── providers/                  # 提供商管理
-│   ├── index.ts               # 模块导出
-│   ├── Provider.ts            # Provider 类
-│   ├── ProviderManager.ts    # 提供商管理器
-│   ├── types.ts               # 类型定义
-│   ├── sources/               # 配置来源
-│   │   ├── index.ts          # 来源导出
-│   │   ├── cc-switch.ts      # CC-Switch 来源
-│   │   ├── env.ts            # 环境变量来源
-│   │   └── local-config.ts   # 本地配置来源
-│   ├── presets/               # 提供商预设
-│   │   ├── index.ts          # 预设导出
-│   │   ├── anthropic.ts      # Anthropic 预设
-│   │   ├── openai.ts         # OpenAI 预设
-│   │   ├── chinese.ts        # 国产 LLM 预设
-│   │   └── gateway.ts        # 网关预设
-│   └── models/                # 模型管理
-│       ├── index.ts          # 模块导出
-│       ├── spec.ts           # 模型规格
-│       ├── fetcher.ts        # 模型获取
-│       └── registry.ts       # 模型注册表
-│
-├── skills/                     # 技能系统
-│   ├── index.ts               # 技能模块导出
-│   ├── types.ts               # 类型定义
-│   ├── loader.ts              # 技能加载器
-│   ├── matcher.ts             # 技能匹配器
-│   └── registry.ts            # 技能注册表
-│
-└── tools/                      # MCP 工具
-    ├── preference-tools.ts    # 偏好 MCP 工具
-    └── memory-tools.ts        # 记忆 MCP 工具
-
-skills/                         # 技能定义
-├── code-review/
-│   └── SKILL.md
-└── api-testing/
-    └── SKILL.md
-
-tests/                          # 测试文件
-├── unit/                       # 单元测试
-├── integration/                # 集成测试
-├── hooks/                     # Hooks 测试
-└── skills.test.ts              # 技能系统测试
-```
-
-## 高级功能
-
-### 自定义 Agent
-
-```typescript
-import { AgentRegistry, getAgentConfig } from 'claude-agent-service';
-
-// 创建自定义 Agent
-const registry = new AgentRegistry();
-registry.register({
-  name: 'my-agent',
-  description: 'My custom agent',
-  systemPrompt: 'You are a specialized agent...',
-  model: 'claude-sonnet-4-6',
-  tools: ['read', 'write'],
-});
-
-// 使用自定义 Agent
-const config = getAgentConfig('my-agent');
-```
-
-### 工作流控制
-
-```typescript
-import { WorkflowEngine } from 'claude-agent-service';
-
-const engine = new WorkflowEngine();
-await engine.execute({
-  task: '创建测试文件',
-  cwd: './src',
-  verifyCondition: '确保测试可以运行',
-  onPhaseChange: (phase) => console.log(`Phase: ${phase}`),
-  onTool: (tool) => console.log(`Tool: ${tool}`),
-});
-```
-
-### Task 并行执行
-
-```typescript
-import { runParallel } from 'claude-agent-service';
-
-// 并行执行多个任务
-const results = await runParallel([
-  { type: 'explore', prompt: '分析模块 A' },
-  { type: 'explore', prompt: '分析模块 B' },
-  { type: 'explore', prompt: '分析模块 C' },
-]);
-```
+---
 
 ## 常见问题
 
-### Q: 内置预设和 CC-Switch 有什么区别？
+<details>
+<summary><b>如何配置多个提供商？</b></summary>
+<br>
 
-A: 内置预设是硬编码在 SDK 中的配置，开箱即用。CC-Switch 是一个独立的桌面应用，提供更多自定义选项和 50+ 提供商预设。
-
-### Q: 如何添加新的提供商？
-
-A: 有两种方式：
-1. 在 CC-Switch 中添加自定义提供商
-2. 在 `presets.ts` 中添加预设并提交 PR
-
-### Q: 如何创建自定义技能？
-
-A: 在 `skills/` 目录创建文件夹和 `SKILL.md` 文件，使用 YAML frontmatter 定义元数据。系统会自动加载和匹配技能。
-
-### Q: 支持哪些模型？
-
-A: SDK 通过提供商支持几乎所有主流模型。具体支持的模型取决于各提供商。
-
-### Q: 如何处理 API Key？
-
-A: 推荐使用环境变量存储 API Key，不要硬编码在代码中。
-
-### Q: 如何在生产环境部署？
-
-A: 可以使用内置的 HTTP 服务器，或直接在应用中嵌入 SDK：
+通过外部配置传入：
 
 ```typescript
-import { Agent } from 'claude-agent-service';
+const agent = createAgent({
+  externalConfig: {
+    providers: [
+      { id: 'glm', baseUrl: '...', apiKey: '...' },
+      { id: 'deepseek', baseUrl: '...', apiKey: '...' },
+    ],
+    activeProvider: 'glm',
+  },
+});
+```
+
+</details>
+
+<details>
+<summary><b>如何添加新的提供商？</b></summary>
+<br>
+
+1. 在外部配置中添加自定义提供商
+2. 或在 `presets/` 中添加预设并提交 PR
+
+</details>
+
+<details>
+<summary><b>如何创建自定义技能？</b></summary>
+<br>
+
+在 `skills/` 目录创建文件夹和 `SKILL.md` 文件，使用 YAML frontmatter 定义元数据。系统会自动加载和匹配技能。
+
+</details>
+
+<details>
+<summary><b>如何处理 API Key？</b></summary>
+<br>
+
+推荐使用环境变量存储 API Key，不要硬编码在代码中。
+
+</details>
+
+<details>
+<summary><b>如何在生产环境部署？</b></summary>
+<br>
+
+```typescript
+import { Agent } from '@hive/core';
 
 const agent = new Agent();
+
+// Express 示例
 app.post('/api/chat', async (req, res) => {
   const response = await agent.chat(req.body.prompt);
   res.json({ response });
 });
 ```
 
+</details>
+
+---
+
 ## 开发
 
-### 构建
-
 ```bash
+# 构建
 npm run build
-```
 
-### 监视模式
-
-```bash
+# 监视模式
 npm run dev
-```
 
-### 运行测试
-
-```bash
+# 运行测试
 npm test
-npm run test:watch
-npm run test:coverage
 ```
 
-## 许可证
-
-MIT
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
+---
 
 ## 相关项目
 
-- [CC-Switch](https://github.com/farion1231/ccswitch) - 跨平台 LLM 提供商管理工具
-- [Anthropic Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk) - 官方 Agent SDK
+| 项目 | 描述 |
+|:-----|:-----|
+| [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk) | Anthropic 官方 Agent SDK |
+
+---
 
 ## 许可证
 
-MIT
+[MIT](LICENSE)
+
+---
+
+<p align="center">
+  欢迎提交 <a href="https://github.com/farion1231/hive/issues">Issue</a> 和 <a href="https://github.com/farion1231/hive/pulls">Pull Request</a>！
+</p>

@@ -1,58 +1,19 @@
 {
-  "name": "aiclaw",
+  "name": "hive-monorepo",
   "version": "1.0.0",
-  "description": "面向 C 端的 Claude Agent 服务 SDK，整合 CC-Switch 生态",
+  "private": true,
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./providers": {
-      "import": "./dist/providers/index.js",
-      "types": "./dist/providers/index.d.ts"
-    }
-  },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "server": "tsx src/server.ts",
-    "cli": "tsx src/cli.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:e2e:watch": "vitest --config vitest.e2e.config.ts"
-  },
-  "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.62",
-    "@ai-sdk/google": "^3.0.51",
-    "@ai-sdk/openai": "^3.0.46",
-    "@anthropic-ai/claude-agent-sdk": "^0.2.77",
-    "ai": "^6.0.129",
-    "better-sqlite3": "^11.0.0",
-    "conf": "^13.0.1",
-    "zod": "^4.3.6"
+    "build": "pnpm -r build",
+    "test": "pnpm --filter @hive/core test",
+    "test:e2e": "pnpm --filter @hive/core test:e2e"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.11",
-    "@types/node": "^20.11.0",
     "@vitest/coverage-v8": "^4.1.0",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.0",
-    "vitest": "^4.1.0"
-  },
-  "peerDependencies": {
-    "cc-switch": ">=3.0.0"
-  },
-  "peerDependenciesMeta": {
-    "cc-switch": {
-      "optional": true
-    }
+    "typescript": "^5.3.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
   }
 }
