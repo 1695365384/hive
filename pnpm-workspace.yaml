@@ -1,2 +1,6 @@
 packages:
   - 'packages/*'
+  - 'packages/plugins/*'
+  - 'apps/*'
+  # Temporarily exclude feishu plugin until it's updated to use new architecture
+  - '!packages/plugins/feishu'

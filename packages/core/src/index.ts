@@ -358,6 +358,32 @@ export {
 } from './workspace/index.js';
 
 // ============================================
+// 存储系统（SQLite）
+// ============================================
+
+export {
+  // Database
+  DatabaseManager,
+  createDatabase,
+  type DatabaseConfig,
+
+  // Migration
+  MigrationRunner,
+  registerMigration,
+  type Migration,
+
+  // Repositories
+  SessionRepository,
+  createSessionRepository,
+  type ISessionRepository,
+
+  MemoryRepository,
+  createMemoryRepository,
+  type IMemoryRepository,
+  type MemoryEntry,
+} from './storage/index.js';
+
+// ============================================
 // 配置系统（外部配置支持）
 // ============================================
 

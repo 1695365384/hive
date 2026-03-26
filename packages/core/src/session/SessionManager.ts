@@ -2,7 +2,7 @@
  * 会话管理器
  *
  * 管理会话生命周期、消息操作和持久化
- * 支持工作空间集成
+ * 使用 SQLite 作为存储后端
  */
 
 import { randomUUID } from 'crypto';
@@ -12,75 +12,45 @@ import type {
   SessionMetadata,
   Message,
   CompressionState,
-  SessionStorageConfig,
 } from './types.js';
 import type { CreateMessageOptions } from './types.js';
-import { SessionStorage } from './SessionStorage.js';
+import type { ISessionRepository } from '../storage/SessionRepository.js';
 import {
   CompressionService,
   createCompressionService,
   type CompressionServiceConfig,
 } from '../compression/index.js';
-import type { WorkspaceManager } from '../workspace/index.js';
 
 /**
  * 会话管理器配置
  */
 export interface SessionManagerConfig {
-  /** 存储配置 */
-  storage?: Partial<SessionStorageConfig>;
+  /** Session Repository (必需) */
+  repository: ISessionRepository;
   /** 自动保存 */
   autoSave?: boolean;
   /** 压缩服务配置 */
   compression?: CompressionServiceConfig;
   /** 是否启用自动压缩 */
   enableCompression?: boolean;
-  /** 工作空间管理器（可选） */
-  workspaceManager?: WorkspaceManager;
 }
 
 /**
  * 会话管理器
  */
 export class SessionManager {
-  private readonly storage: SessionStorage;
+  private readonly repository: ISessionRepository;
   private readonly autoSave: boolean;
   private readonly enableCompression: boolean;
   private readonly compressionService: CompressionService;
-  private readonly workspaceManager?: WorkspaceManager;
 
   private currentSession: Session | null = null;
-  private initialized: boolean = false;
 
-  constructor(config?: SessionManagerConfig) {
-    // 如果提供了工作空间管理器，使用工作空间的会话路径
-    if (config?.workspaceManager) {
-      this.workspaceManager = config.workspaceManager;
-      // 使用 sessions 根目录，SessionStorage 会自动添加组名
-      const sessionsRoot = config.workspaceManager.getPaths().sessionsDir;
-      this.storage = new SessionStorage({
-        ...config?.storage,
-        storageDir: sessionsRoot,
-      });
-    } else {
-      this.storage = new SessionStorage(config?.storage);
-    }
-
-    this.autoSave = config?.autoSave ?? true;
-    this.enableCompression = config?.enableCompression ?? true;
-    this.compressionService = createCompressionService(config?.compression);
-  }
-
-  /**
-   * 初始化管理器
-   */
-  async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
-
-    await this.storage.initialize();
-    this.initialized = true;
+  constructor(config: SessionManagerConfig) {
+    this.repository = config.repository;
+    this.autoSave = config.autoSave ?? true;
+    this.enableCompression = config.enableCompression ?? true;
+    this.compressionService = createCompressionService(config.compression);
   }
 
   /**
@@ -94,8 +64,6 @@ export class SessionManager {
    * 创建新会话
    */
   async createSession(config?: SessionConfig): Promise<Session> {
-    await this.initialize();
-
     const now = new Date();
     const session: Session = {
       id: config?.id ?? randomUUID(),
@@ -115,7 +83,7 @@ export class SessionManager {
     this.currentSession = session;
 
     if (this.autoSave) {
-      await this.storage.save(session);
+      await this.repository.save(session);
     }
 
     return session;
@@ -139,9 +107,7 @@ export class SessionManager {
    * 加载会话
    */
   async loadSession(sessionId: string): Promise<Session | null> {
-    await this.initialize();
-
-    const session = await this.storage.load(sessionId);
+    const session = await this.repository.load(sessionId);
     if (session) {
       this.currentSession = session;
     }
@@ -152,9 +118,7 @@ export class SessionManager {
    * 恢复最近的会话
    */
   async resumeLastSession(): Promise<Session | null> {
-    await this.initialize();
-
-    const session = await this.storage.getMostRecent();
+    const session = await this.repository.getMostRecent();
     if (session) {
       this.currentSession = session;
     }
@@ -186,7 +150,7 @@ export class SessionManager {
     }
 
     if (this.autoSave) {
-      await this.storage.save(this.currentSession!);
+      await this.repository.save(this.currentSession!);
     }
 
     return message;
@@ -240,7 +204,7 @@ export class SessionManager {
     this.currentSession.metadata.compressionCount++;
 
     if (this.autoSave) {
-      await this.storage.save(this.currentSession);
+      await this.repository.save(this.currentSession);
     }
   }
 
@@ -265,7 +229,7 @@ export class SessionManager {
     }
 
     if (this.autoSave) {
-      await this.storage.save(this.currentSession);
+      await this.repository.save(this.currentSession);
     }
   }
 
@@ -281,7 +245,7 @@ export class SessionManager {
     this.currentSession.updatedAt = new Date();
 
     if (this.autoSave) {
-      await this.storage.save(this.currentSession);
+      await this.repository.save(this.currentSession);
     }
   }
 
@@ -290,7 +254,7 @@ export class SessionManager {
    */
   async save(): Promise<void> {
     if (this.currentSession) {
-      await this.storage.save(this.currentSession);
+      await this.repository.save(this.currentSession);
     }
   }
 
@@ -302,7 +266,7 @@ export class SessionManager {
       return false;
     }
 
-    const deleted = await this.storage.delete(this.currentSession.id);
+    const deleted = await this.repository.delete(this.currentSession.id);
     if (deleted) {
       this.currentSession = null;
     }
@@ -313,14 +277,7 @@ export class SessionManager {
    * 列出所有会话
    */
   async listSessions() {
-    return this.storage.list();
-  }
-
-  /**
-   * 清理过期会话
-   */
-  async cleanup() {
-    return this.storage.cleanup();
+    return this.repository.list();
   }
 
   /**
@@ -374,44 +331,16 @@ export class SessionManager {
   }
 
   /**
-   * 获取存储实例
+   * 获取 Repository 实例
    */
-  getStorage(): SessionStorage {
-    return this.storage;
-  }
-
-  /**
-   * 设置当前会话组
-   */
-  async setSessionGroup(group: string): Promise<void> {
-    if (this.workspaceManager) {
-      await this.workspaceManager.setCurrentGroup(group);
-      this.storage.setGroup(group);
-      // 使用 sessions 根目录，SessionStorage 会自动添加组名
-      this.storage.setStorageDir(this.workspaceManager.getPaths().sessionsDir);
-    } else {
-      this.storage.setGroup(group);
-    }
-  }
-
-  /**
-   * 获取当前会话组
-   */
-  getCurrentSessionGroup(): string {
-    return this.storage.getGroup();
-  }
-
-  /**
-   * 获取工作空间管理器
-   */
-  getWorkspaceManager(): WorkspaceManager | undefined {
-    return this.workspaceManager;
+  getRepository(): ISessionRepository {
+    return this.repository;
   }
 }
 
 /**
  * 创建会话管理器实例
  */
-export function createSessionManager(config?: SessionManagerConfig): SessionManager {
+export function createSessionManager(config: SessionManagerConfig): SessionManager {
   return new SessionManager(config);
 }

@@ -1,0 +1,33 @@
+{
+  "$schema": "./hive.config.schema.json",
+
+  "server": {
+    "port": 3000,
+    "host": "127.0.0.1",
+    "logLevel": "debug"
+  },
+
+  "provider": {
+    "id": "glm",
+    "apiKey": "c64af17ba4fd418e9d0eb4a18b3c1b65.9wT0SLltVSw2Pr50",
+    "model": "glm-4"
+  },
+
+  "plugins": {
+    "@larksuite/openclaw-lark": {
+      "channels": {
+        "feishu": {
+          "appId": "cli_a92c183819b89ced",
+          "appSecret": "wZVo3bZznFzLOTLOoNg2pezNegl3C7qX",
+          "connectionMode": "websocket",
+          "domain": "feishu",
+          "enabled": true,
+          "groupAllowFrom": [
+            "*"
+          ],
+          "groupPolicy": "allowlist"
+        }
+      }
+    }
+  }
+}

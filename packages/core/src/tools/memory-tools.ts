@@ -1,29 +1,30 @@
 /**
  * 自定义 MCP 工具 - 记忆存储
  * 让 Agent 可以记住跨会话的信息
+ *
+ * 使用 SQLite 作为持久化后端
  */
 
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import Conf from 'conf';
+import type { IMemoryRepository } from '../storage/MemoryRepository.js';
 
-// 记忆条目 Schema
-const MemoryEntrySchema = z.object({
-  key: z.string(),
-  value: z.unknown(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  tags: z.array(z.string()).optional(),
-});
+// Global repository instance
+let memoryRepository: IMemoryRepository | null = null;
 
-type MemoryEntry = z.infer<typeof MemoryEntrySchema>;
+/**
+ * Set memory repository (must be called before using tools)
+ */
+export function setMemoryRepository(repo: IMemoryRepository): void {
+  memoryRepository = repo;
+}
 
-// 记忆存储
-const memoryStore = new Conf<{ memories: Record<string, MemoryEntry> }>({
-  projectName: 'claude-agent-demo',
-  configName: 'memories',
-  defaults: { memories: {} },
-});
+/**
+ * Get memory repository
+ */
+export function getMemoryRepository(): IMemoryRepository | null {
+  return memoryRepository;
+}
 
 // 记住信息
 const rememberTool = tool(
@@ -35,18 +36,22 @@ const rememberTool = tool(
     tags: z.array(z.string()).optional().describe('可选的标签，用于分类'),
   },
   async (args) => {
-    const now = new Date().toISOString();
-    const existing = memoryStore.get('memories');
+    if (!memoryRepository) {
+      return {
+        content: [{ type: 'text', text: '❌ Memory repository not initialized' }],
+      };
+    }
 
-    existing[args.key] = {
-      key: args.key,
+    const now = new Date();
+    const existing = await memoryRepository.get(args.key);
+
+    await memoryRepository.set(args.key, {
       value: args.value,
-      createdAt: existing[args.key]?.createdAt || now,
-      updatedAt: now,
       tags: args.tags,
-    };
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
 
-    memoryStore.set('memories', existing);
     return {
       content: [{ type: 'text', text: `🧠 已记住: ${args.key}` }],
     };
@@ -62,10 +67,14 @@ const recallTool = tool(
     tag: z.string().optional().describe('按标签筛选'),
   },
   async (args) => {
-    const memories = memoryStore.get('memories');
+    if (!memoryRepository) {
+      return {
+        content: [{ type: 'text', text: '❌ Memory repository not initialized' }],
+      };
+    }
 
     if (args.key) {
-      const entry = memories[args.key];
+      const entry = await memoryRepository.get(args.key);
       if (!entry) {
         return {
           content: [{ type: 'text', text: `❌ 未找到记忆: ${args.key}` }],
@@ -75,17 +84,16 @@ const recallTool = tool(
         content: [
           {
             type: 'text',
-            text: `💭 ${args.key}: ${JSON.stringify(entry.value)}\n   创建: ${entry.createdAt}\n   更新: ${entry.updatedAt}`,
+            text: `💭 ${args.key}: ${entry.value}\n   创建: ${entry.createdAt.toISOString()}\n   更新: ${entry.updatedAt.toISOString()}`,
           },
         ],
       };
     }
 
     // 列出所有或按标签筛选
-    let entries = Object.values(memories);
-    if (args.tag) {
-      entries = entries.filter((e) => e.tags?.includes(args.tag!));
-    }
+    const entries = args.tag
+      ? await memoryRepository.getByTag(args.tag)
+      : Object.values(await memoryRepository.getAll());
 
     if (entries.length === 0) {
       return {
@@ -94,7 +102,7 @@ const recallTool = tool(
     }
 
     const list = entries
-      .map((e) => `- ${e.key}: ${JSON.stringify(e.value).slice(0, 50)}...`)
+      .map((e) => `- ${e.key}: ${e.value.slice(0, 50)}...`)
       .join('\n');
     return {
       content: [{ type: 'text', text: `🧠 记忆列表 (${entries.length}条):\n${list}` }],
@@ -110,15 +118,18 @@ const forgetTool = tool(
     key: z.string().describe('要遗忘的记忆键名'),
   },
   async (args) => {
-    const memories = memoryStore.get('memories');
-    if (!memories[args.key]) {
+    if (!memoryRepository) {
+      return {
+        content: [{ type: 'text', text: '❌ Memory repository not initialized' }],
+      };
+    }
+
+    const deleted = await memoryRepository.delete(args.key);
+    if (!deleted) {
       return {
         content: [{ type: 'text', text: `❌ 未找到记忆: ${args.key}` }],
       };
     }
-
-    delete memories[args.key];
-    memoryStore.set('memories', memories);
     return {
       content: [{ type: 'text', text: `🗑️ 已遗忘: ${args.key}` }],
     };
