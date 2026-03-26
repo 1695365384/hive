@@ -1,0 +1,25 @@
+{
+  "$schema": "./hive.config.schema.json",
+  "server": {
+    "port": 3000,
+    "host": "127.0.0.1",
+    "logLevel": "debug"
+  },
+  "provider": {
+    "id": "glm",
+    "apiKey": "${GLM_API_KEY}",
+    "model": "glm-4-plus"
+  },
+  "plugins": {
+    "@hive/plugin-feishu": {
+      "apps": [
+        {
+          "appId": "${FEISHU_APP_ID}",
+          "appSecret": "${FEISHU_APP_SECRET}",
+          "encryptKey": "${FEISHU_ENCRYPT_KEY}",
+          "verificationToken": "${FEISHU_VERIFICATION_TOKEN}"
+        }
+      ]
+    }
+  }
+}

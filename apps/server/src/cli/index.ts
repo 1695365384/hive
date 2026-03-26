@@ -13,7 +13,6 @@ const VERSION = '1.0.0'
 interface CliOptions {
   command: 'chat' | 'server' | 'help' | 'version'
   port?: number
-  plugins?: string[]
 }
 
 function parseArgs(args: string[]): CliOptions {
@@ -36,11 +35,6 @@ function parseArgs(args: string[]): CliOptions {
 
     if (arg === '--port' || arg === '-p') {
       options.port = parseInt(args[++i], 10)
-      continue
-    }
-
-    if (arg === '--plugins') {
-      options.plugins = args[++i]?.split(',').map((s) => s.trim()) || []
       continue
     }
 
@@ -72,14 +66,12 @@ Commands:
 
 Options:
   --port, -p <port>      Server port (default: 3000)
-  --plugins <plugins>    Comma-separated list of plugins to load
   --help, -h             Show this help message
   --version, -v          Show version number
 
 Examples:
   hive chat
   hive server --port 8080
-  hive server --plugins @larksuite/openclaw-lark
 `)
 }
 
@@ -130,17 +122,15 @@ async function runChat(): Promise<void> {
   prompt()
 }
 
-async function runServer(port?: number, plugins?: string[]): Promise<void> {
+async function runServer(port?: number): Promise<void> {
   const serverPort = port || config.port
-  const serverPlugins = plugins || config.plugins
 
   console.log(`Starting Hive server on port ${serverPort}...`)
 
-  // Update config with CLI options
+  // Update config with CLI options (preserve plugins from config)
   const serverConfig = {
     ...config,
     port: serverPort,
-    plugins: serverPlugins,
   }
 
   // Bootstrap
@@ -206,10 +196,6 @@ async function runServer(port?: number, plugins?: string[]): Promise<void> {
     console.log(`  - WebSocket: ws://localhost:${serverPort}/ws`)
     console.log(`  - Health: http://localhost:${serverPort}/health`)
     console.log()
-    console.log(`Loaded plugins: ${ctx.openClawPlugins.length}`)
-    ctx.openClawPlugins.forEach((p) => {
-      console.log(`  - ${p.getInfo().definition.name}`)
-    })
   })
 }
 
@@ -231,7 +217,7 @@ export async function main(): Promise<void> {
       break
 
     case 'server':
-      await runServer(options.port, options.plugins)
+      await runServer(options.port)
       break
   }
 }
