@@ -128,6 +128,8 @@ export interface WorkspacePaths {
   cacheDir: string;
   /** models.dev 缓存文件 */
   modelsDevCacheFile: string;
+  /** SQLite 数据库文件 */
+  dbFile: string;
 }
 
 // ============================================

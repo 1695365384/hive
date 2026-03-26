@@ -1,33 +1,21 @@
 /**
  * 会话管理测试
+ *
+ * 使用 MockSessionRepository 测试 SessionManager 和 SessionStorage
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SessionManager, createSessionManager } from '../../src/session/SessionManager.js';
 import { SessionStorage } from '../../src/session/SessionStorage.js';
-import * as fs from 'fs';
-import * as path from 'path';
-
-// 测试用的临时目录
-const TEST_DIR = './.test-sessions';
+import { MockSessionRepository, MockMemoryRepository } from '../helpers/mock-repository.js';
 
 describe('SessionStorage', () => {
   let storage: SessionStorage;
+  let repository: MockSessionRepository;
 
   beforeEach(async () => {
-    storage = new SessionStorage({ storageDir: TEST_DIR });
-    await storage.initialize();
-  });
-
-  afterEach(async () => {
-    // 清理测试目录
-    if (fs.existsSync(TEST_DIR)) {
-      await fs.promises.rm(TEST_DIR, { recursive: true });
-    }
-  });
-
-  it('should initialize storage directory', () => {
-    expect(fs.existsSync(TEST_DIR)).toBe(true);
+    repository = new MockSessionRepository();
+    storage = new SessionStorage({ repository });
   });
 
   it('should save and load session', async () => {
@@ -36,10 +24,10 @@ describe('SessionStorage', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       messages: [
-        { id: 'msg-1', role: 'user' as const, content: 'Hello', timestamp: new Date() },
+        { id: 'msg-1', role: 'user' as const, content: 'Hello', timestamp: new Date(), tokenCount: 5 },
       ],
       metadata: {
-        totalTokens: 10,
+        totalTokens: 5,
         messageCount: 1,
         compressionCount: 0,
       },
@@ -107,116 +95,47 @@ describe('SessionStorage', () => {
     expect(deleted).toBe(false);
   });
 
-  describe('Group Support', () => {
-    it('should set and get current group', () => {
-      expect(storage.getGroup()).toBe('default');
-      storage.setGroup('custom');
-      expect(storage.getGroup()).toBe('custom');
-    });
-
-    it('should change storage directory dynamically', () => {
-      const newDir = './.test-sessions-new';
-      storage.setStorageDir(newDir);
-      expect(storage.getStorageDir()).toBe(newDir);
-    });
-
-    it('should get storage directory', () => {
-      expect(storage.getStorageDir()).toBe(TEST_DIR);
-    });
+  it('should return null when getting most recent from empty storage', async () => {
+    const recent = await storage.getMostRecent();
+    expect(recent).toBeNull();
   });
 
-  describe('Edge Cases', () => {
-    it('should return null when getting most recent from empty storage', async () => {
-      const recent = await storage.getMostRecent();
-      expect(recent).toBeNull();
-    });
+  it('should get most recent session correctly', async () => {
+    const session1 = {
+      id: 'session-1',
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-02'),
+      messages: [],
+      metadata: { totalTokens: 0, messageCount: 0, compressionCount: 0 },
+    };
+    const session2 = {
+      id: 'session-2',
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-03'),
+      messages: [],
+      metadata: { totalTokens: 0, messageCount: 0, compressionCount: 0 },
+    };
 
-    it('should get most recent session correctly', async () => {
-      const session1 = {
-        id: 'session-1',
-        createdAt: new Date('2024-01-01'),
-        updatedAt: new Date('2024-01-02'),
-        messages: [],
-        metadata: { totalTokens: 0, messageCount: 0, compressionCount: 0 },
-      };
-      const session2 = {
-        id: 'session-2',
-        createdAt: new Date('2024-01-01'),
-        updatedAt: new Date('2024-01-03'),
-        messages: [],
-        metadata: { totalTokens: 0, messageCount: 0, compressionCount: 0 },
-      };
+    await storage.save(session1);
+    await storage.save(session2);
 
-      await storage.save(session1);
-      await storage.save(session2);
-
-      const recent = await storage.getMostRecent();
-      expect(recent).not.toBeNull();
-      expect(recent?.id).toBe('session-2');
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should return null when loading session with invalid JSON', async () => {
-      // 手动创建一个无效的 JSON 文件
-      const groupDir = path.join(TEST_DIR, 'default');
-      const invalidFile = path.join(groupDir, 'invalid-session.json');
-      await fs.promises.writeFile(invalidFile, 'not valid json', 'utf-8');
-
-      const loaded = await storage.load('invalid-session');
-      expect(loaded).toBeNull();
-    });
-
-    it('should skip non-JSON files in cleanup', async () => {
-      // 创建一些非 JSON 文件
-      const groupDir = path.join(TEST_DIR, 'default');
-      await fs.promises.writeFile(path.join(groupDir, 'readme.txt'), 'text file', 'utf-8');
-      await fs.promises.writeFile(path.join(groupDir, 'data.csv'), 'csv,data', 'utf-8');
-
-      // cleanup 应该跳过这些文件
-      const deletedCount = await storage.cleanup();
-      expect(deletedCount).toBe(0);
-
-      // 非 JSON 文件应该仍然存在
-      expect(fs.existsSync(path.join(groupDir, 'readme.txt'))).toBe(true);
-      expect(fs.existsSync(path.join(groupDir, 'data.csv'))).toBe(true);
-    });
-
-    it('should skip invalid files in cleanup', async () => {
-      // 创建一个无效的 JSON 文件
-      const groupDir = path.join(TEST_DIR, 'default');
-      await fs.promises.writeFile(path.join(groupDir, 'invalid.json'), 'not valid json', 'utf-8');
-
-      // cleanup 应该跳过无效文件而不报错
-      const deletedCount = await storage.cleanup();
-      expect(deletedCount).toBe(0);
-    });
-
-    it('should return 0 when cleanup directory does not exist', async () => {
-      // 创建一个指向不存在目录的 storage
-      const nonExistentStorage = new SessionStorage({ storageDir: './.non-existent-dir-cleanup' });
-      // 不初始化，直接调用 cleanup
-      const deletedCount = await nonExistentStorage.cleanup();
-      expect(deletedCount).toBe(0);
-    });
+    const recent = await storage.getMostRecent();
+    expect(recent).not.toBeNull();
+    expect(recent?.id).toBe('session-2');
   });
 });
 
 describe('SessionManager', () => {
   let manager: SessionManager;
+  let repository: MockSessionRepository;
 
   beforeEach(async () => {
+    repository = new MockSessionRepository();
     manager = createSessionManager({
-      storage: { storageDir: TEST_DIR },
+      repository,
       autoSave: true,
       enableCompression: true,
     });
-  });
-
-  afterEach(async () => {
-    if (fs.existsSync(TEST_DIR)) {
-      await fs.promises.rm(TEST_DIR, { recursive: true });
-    }
   });
 
   it('should create session', async () => {
@@ -246,10 +165,8 @@ describe('SessionManager', () => {
     await manager.addUserMessage('Message 1');
     await manager.addAssistantMessage('Response 1');
 
-    // 创建新的管理器实例
-    const manager2 = createSessionManager({
-      storage: { storageDir: TEST_DIR },
-    });
+    // 创建新的管理器实例（使用相同的 repository）
+    const manager2 = createSessionManager({ repository });
 
     // 加载会话
     const loaded = await manager2.loadSession(session1.id);
@@ -259,38 +176,25 @@ describe('SessionManager', () => {
   });
 
   it('should resume last session', async () => {
-    // 使用独立的测试目录避免干扰
-    const resumeTestDir = TEST_DIR + '-resume';
-    const resumeManager = createSessionManager({
-      storage: { storageDir: resumeTestDir },
-    });
-
     // 创建第一个会话
-    await resumeManager.createSession({ title: 'Session 1' });
-    await resumeManager.addUserMessage('Message in session 1');
-    await resumeManager.save();
+    await manager.createSession({ title: 'Session 1' });
+    await manager.addUserMessage('Message in session 1');
+    await manager.save();
 
     // 等待确保时间戳不同
     await new Promise(resolve => setTimeout(resolve, 10));
 
     // 创建第二个会话（更晚）
-    await resumeManager.createSession({ title: 'Session 2' });
-    await resumeManager.addUserMessage('Message in session 2');
-    await resumeManager.save();
+    await manager.createSession({ title: 'Session 2' });
+    await manager.addUserMessage('Message in session 2');
+    await manager.save();
 
     // 创建新管理器并恢复最近会话
-    const manager2 = createSessionManager({
-      storage: { storageDir: resumeTestDir },
-    });
+    const manager2 = createSessionManager({ repository });
 
     const resumed = await manager2.resumeLastSession();
     expect(resumed).not.toBeNull();
     expect(resumed?.metadata.title).toBe('Session 2');
-
-    // 清理测试目录
-    if (fs.existsSync(resumeTestDir)) {
-      await fs.promises.rm(resumeTestDir, { recursive: true });
-    }
   });
 
   it('should update metadata', async () => {
@@ -361,31 +265,6 @@ describe('SessionManager', () => {
       const sessions = await manager.listSessions();
       expect(sessions.length).toBe(2);
     });
-
-    it('should cleanup expired sessions', async () => {
-      // Create session with short TTL
-      const shortTtlManager = createSessionManager({
-        storage: {
-          storageDir: TEST_DIR + '-cleanup',
-          sessionTTL: 100, // 100ms
-        },
-      });
-
-      await shortTtlManager.createSession();
-      await shortTtlManager.addUserMessage('Test');
-      await shortTtlManager.save();
-
-      // Wait for TTL to expire
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      const deletedCount = await shortTtlManager.cleanup();
-      expect(deletedCount).toBe(1);
-
-      // Cleanup test directory
-      if (fs.existsSync(TEST_DIR + '-cleanup')) {
-        await fs.promises.rm(TEST_DIR + '-cleanup', { recursive: true });
-      }
-    });
   });
 
   describe('Compression', () => {
@@ -446,19 +325,10 @@ describe('SessionManager', () => {
     });
   });
 
-  describe('Storage Access', () => {
-    it('should get storage instance', () => {
-      const storage = manager.getStorage();
-      expect(storage).toBeDefined();
-      expect(storage.getStorageDir()).toBe(TEST_DIR);
-    });
-  });
-
   describe('Compression Edge Cases', () => {
     it('should handle compression with existing compressionState', async () => {
       await manager.createSession();
 
-      // 先执行一次压缩设置 compressionState
       // 添加足够多的消息以触发压缩
       for (let i = 0; i < 100; i++) {
         await manager.addUserMessage(`Message ${i}`);
@@ -488,8 +358,9 @@ describe('SessionManager', () => {
     });
 
     it('should return null when compression is disabled', async () => {
+      const noCompressRepository = new MockSessionRepository();
       const noCompressManager = createSessionManager({
-        storage: { storageDir: TEST_DIR + '-no-compress' },
+        repository: noCompressRepository,
         enableCompression: false,
       });
 
@@ -503,11 +374,6 @@ describe('SessionManager', () => {
       // 禁用压缩时应返回 null
       const result = await noCompressManager.compress();
       expect(result).toBeNull();
-
-      // 清理
-      if (fs.existsSync(TEST_DIR + '-no-compress')) {
-        await fs.promises.rm(TEST_DIR + '-no-compress', { recursive: true });
-      }
     });
 
     it('should not compress when not needed', async () => {
@@ -561,42 +427,6 @@ describe('SessionManager', () => {
       expect(manager.getCurrentSession()).not.toBeNull();
       expect(msg.content).toBe('Hello without session');
       expect(manager.getMessages().length).toBe(1);
-    });
-  });
-
-  describe('Workspace Integration', () => {
-    it('should set session group with workspace manager', async () => {
-      // 创建带有工作空间管理器的 SessionManager
-      const { WorkspaceManager } = await import('../../src/workspace/WorkspaceManager.js');
-      const wsManager = new WorkspaceManager({ path: TEST_DIR + '-ws-integration' });
-      await wsManager.initialize();
-      await wsManager.createSessionGroup('custom-group');
-
-      const wsManagerInstance = createSessionManager({
-        storage: { storageDir: TEST_DIR + '-ws-integration-sessions' },
-        workspaceManager: wsManager,
-      });
-
-      await wsManagerInstance.setSessionGroup('custom-group');
-      expect(wsManagerInstance.getCurrentSessionGroup()).toBe('custom-group');
-      expect(wsManagerInstance.getWorkspaceManager()).toBe(wsManager);
-
-      // 清理
-      if (fs.existsSync(TEST_DIR + '-ws-integration')) {
-        await fs.promises.rm(TEST_DIR + '-ws-integration', { recursive: true });
-      }
-    });
-
-    it('should set session group without workspace manager', async () => {
-      await manager.createSession();
-      manager.getStorage().setGroup('default');
-
-      await manager.setSessionGroup('custom');
-      expect(manager.getCurrentSessionGroup()).toBe('custom');
-    });
-
-    it('should return undefined when no workspace manager', () => {
-      expect(manager.getWorkspaceManager()).toBeUndefined();
     });
   });
 });

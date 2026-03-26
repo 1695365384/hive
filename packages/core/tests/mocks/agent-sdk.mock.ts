@@ -207,6 +207,6 @@ export function setupWorkflowScenario(): void {
 // ============================================
 
 export { mockQuery as query };
-export const Options = vi.fn();
-export const AgentDefinition = vi.fn();
-export const McpServerConfig = vi.fn();
+export const Options: ReturnType<typeof vi.fn> = vi.fn();
+export const AgentDefinition: ReturnType<typeof vi.fn> = vi.fn();
+export const McpServerConfig: ReturnType<typeof vi.fn> = vi.fn();

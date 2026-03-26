@@ -32,8 +32,6 @@ export interface AgentInitOptions {
   skillConfig?: SkillSystemConfig;
   /** 会话能力配置 */
   sessionConfig?: SessionCapabilityConfig;
-  /** 工作空间配置 */
-  workspace?: WorkspaceInitConfig | string;
   /** 超时配置 */
   timeout?: TimeoutConfig;
 }

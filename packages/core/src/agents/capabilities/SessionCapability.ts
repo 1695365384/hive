@@ -2,7 +2,7 @@
  * 会话能力模块
  *
  * 提供会话管理和持久化功能
- * 支持工作空间集成
+ * 使用 SQLite 作为存储后端
  */
 
 import type { AgentCapability, AgentContext } from '../core/types.js';
@@ -13,22 +13,25 @@ import type {
   CreateMessageOptions,
   CompressionState,
 } from '../../session/types.js';
-import { SessionManager, type SessionManagerConfig } from '../../session/SessionManager.js';
-import type { WorkspaceManager, WorkspaceInitConfig } from '../../workspace/index.js';
-import { initWorkspace, DEFAULT_WORKSPACE_DIR } from '../../workspace/index.js';
+import { SessionManager } from '../../session/SessionManager.js';
+import { DatabaseManager, createDatabase } from '../../storage/Database.js';
+import { SessionRepository, createSessionRepository } from '../../storage/SessionRepository.js';
+import type { WorkspaceManager } from '../../workspace/index.js';
 
 /**
  * 会话能力配置
  */
 export interface SessionCapabilityConfig {
-  /** 会话管理器配置 */
-  sessionManager?: SessionManagerConfig;
+  /** 数据库路径（可选，默认使用工作空间路径） */
+  dbPath?: string;
   /** 是否在会话开始时自动恢复上次会话 */
   autoResume?: boolean;
-  /** 工作空间配置 */
-  workspace?: WorkspaceInitConfig;
-  /** 工作空间路径（简写） */
-  workspacePath?: string;
+  /** 自动保存 */
+  autoSave?: boolean;
+  /** 是否启用压缩 */
+  enableCompression?: boolean;
+  /** 工作空间管理器（可选） */
+  workspaceManager?: WorkspaceManager;
 }
 
 /**
@@ -38,30 +41,14 @@ export class SessionCapability implements AgentCapability {
   readonly name = 'session';
   private context!: AgentContext;
   private config: SessionCapabilityConfig;
-  private sessionManager: SessionManager;
-  private workspaceManager?: WorkspaceManager;
+  private sessionManager: SessionManager | null = null;
+  private dbManager: DatabaseManager | null = null;
   private autoResume: boolean;
   private initialized: boolean = false;
 
   constructor(config?: SessionCapabilityConfig) {
     this.config = config ?? {};
     this.autoResume = config?.autoResume ?? false;
-
-    // 如果提供了工作空间配置，延迟初始化
-    if (config?.workspace || config?.workspacePath) {
-      // 先创建一个临时的 SessionManager，稍后会在 initializeAsync 中重新创建
-      this.sessionManager = new SessionManager({
-        ...config?.sessionManager,
-        storage: {
-          ...config?.sessionManager?.storage,
-          storageDir: config?.workspacePath
-            ? `${config.workspacePath}/sessions`
-            : `./${DEFAULT_WORKSPACE_DIR}/sessions`,
-        },
-      });
-    } else {
-      this.sessionManager = new SessionManager(config?.sessionManager);
-    }
   }
 
   initialize(context: AgentContext): void {
@@ -69,32 +56,33 @@ export class SessionCapability implements AgentCapability {
   }
 
   /**
-   * 异步初始化（加载会话和工作空间）
+   * 异步初始化（加载数据库和会话）
    */
   async initializeAsync(): Promise<void> {
     if (this.initialized) {
       return;
     }
 
-    // 如果有工作空间配置，初始化工作空间
-    const workspaceConfig = this.config.workspace;
-    const workspacePath = this.config.workspacePath;
+    // 确定数据库路径
+    const dbPath = this.config.dbPath
+      ?? this.config.workspaceManager?.getPaths().dbFile
+      ?? './.hive/hive.db';
 
-    if (workspaceConfig || workspacePath) {
-      const config = workspaceConfig ?? { path: workspacePath };
-      this.workspaceManager = await initWorkspace(config);
+    // 创建数据库管理器
+    this.dbManager = createDatabase({ dbPath });
+    await this.dbManager.initialize();
 
-      // 重新配置 SessionManager 使用工作空间路径
-      this.sessionManager = new SessionManager({
-        workspaceManager: this.workspaceManager,
-        autoSave: this.config.sessionManager?.autoSave ?? true,
-        enableCompression: this.config.sessionManager?.enableCompression ?? true,
-        compression: this.config.sessionManager?.compression,
-      });
-    }
+    // 创建 SessionRepository
+    const repository = createSessionRepository(this.dbManager.getDb());
 
-    await this.sessionManager.initialize();
+    // 创建 SessionManager
+    this.sessionManager = new SessionManager({
+      repository,
+      autoSave: this.config.autoSave ?? true,
+      enableCompression: this.config.enableCompression ?? true,
+    });
 
+    // 自动恢复上次会话
     if (this.autoResume) {
       await this.sessionManager.resumeLastSession();
     }
@@ -103,39 +91,20 @@ export class SessionCapability implements AgentCapability {
   }
 
   /**
-   * 获取工作空间管理器
+   * 确保已初始化
    */
-  getWorkspaceManager(): WorkspaceManager | undefined {
-    return this.workspaceManager;
-  }
-
-  /**
-   * 设置当前会话组
-   */
-  async setSessionGroup(group: string): Promise<void> {
-    await this.initializeAsync();
-    await this.sessionManager.setSessionGroup(group);
-  }
-
-  /**
-   * 获取当前会话组
-   */
-  getCurrentSessionGroup(): string {
-    return this.sessionManager.getCurrentSessionGroup();
-  }
-
-  /**
-   * 列出所有会话组
-   */
-  listSessionGroups() {
-    return this.workspaceManager?.getSessionGroups() ?? [];
+  private ensureInitialized(): void {
+    if (!this.sessionManager) {
+      throw new Error('SessionCapability not initialized. Call initializeAsync() first.');
+    }
   }
 
   /**
    * 获取会话管理器
    */
   getManager(): SessionManager {
-    return this.sessionManager;
+    this.ensureInitialized();
+    return this.sessionManager!;
   }
 
   /**
@@ -143,21 +112,21 @@ export class SessionCapability implements AgentCapability {
    */
   async createSession(config?: SessionConfig): Promise<Session> {
     await this.initializeAsync();
-    return this.sessionManager.createSession(config);
+    return this.sessionManager!.createSession(config);
   }
 
   /**
    * 获取当前会话
    */
   getCurrentSession(): Session | null {
-    return this.sessionManager.getCurrentSession();
+    return this.sessionManager?.getCurrentSession() ?? null;
   }
 
   /**
    * 获取当前会话 ID
    */
   getCurrentSessionId(): string | null {
-    return this.sessionManager.getCurrentSessionId();
+    return this.sessionManager?.getCurrentSessionId() ?? null;
   }
 
   /**
@@ -165,7 +134,7 @@ export class SessionCapability implements AgentCapability {
    */
   async loadSession(sessionId: string): Promise<Session | null> {
     await this.initializeAsync();
-    return this.sessionManager.loadSession(sessionId);
+    return this.sessionManager!.loadSession(sessionId);
   }
 
   /**
@@ -173,7 +142,7 @@ export class SessionCapability implements AgentCapability {
    */
   async resumeLastSession(): Promise<Session | null> {
     await this.initializeAsync();
-    return this.sessionManager.resumeLastSession();
+    return this.sessionManager!.resumeLastSession();
   }
 
   /**
@@ -181,7 +150,7 @@ export class SessionCapability implements AgentCapability {
    */
   async addMessage(options: CreateMessageOptions): Promise<Message> {
     await this.initializeAsync();
-    return this.sessionManager.addMessage(options);
+    return this.sessionManager!.addMessage(options);
   }
 
   /**
@@ -202,7 +171,7 @@ export class SessionCapability implements AgentCapability {
    * 获取所有消息
    */
   getMessages(): Message[] {
-    return this.sessionManager.getMessages();
+    return this.sessionManager?.getMessages() ?? [];
   }
 
   /**
@@ -233,14 +202,14 @@ export class SessionCapability implements AgentCapability {
    * 保存当前会话
    */
   async save(): Promise<void> {
-    await this.sessionManager.save();
+    await this.sessionManager?.save();
   }
 
   /**
    * 删除当前会话
    */
   async deleteCurrentSession(): Promise<boolean> {
-    return this.sessionManager.deleteCurrentSession();
+    return this.sessionManager?.deleteCurrentSession() ?? false;
   }
 
   /**
@@ -248,22 +217,14 @@ export class SessionCapability implements AgentCapability {
    */
   async listSessions() {
     await this.initializeAsync();
-    return this.sessionManager.listSessions();
-  }
-
-  /**
-   * 清理过期会话
-   */
-  async cleanup() {
-    await this.initializeAsync();
-    return this.sessionManager.cleanup();
+    return this.sessionManager!.listSessions();
   }
 
   /**
    * 检查是否需要压缩
    */
   needsCompression(): boolean {
-    return this.sessionManager.needsCompression();
+    return this.sessionManager?.needsCompression() ?? false;
   }
 
   /**
@@ -271,7 +232,7 @@ export class SessionCapability implements AgentCapability {
    */
   async compress(): Promise<CompressionState | null> {
     await this.initializeAsync();
-    return this.sessionManager.compress();
+    return this.sessionManager!.compress();
   }
 
   /**
@@ -279,7 +240,7 @@ export class SessionCapability implements AgentCapability {
    */
   async compressIfNeeded(): Promise<CompressionState | null> {
     await this.initializeAsync();
-    return this.sessionManager.compressIfNeeded();
+    return this.sessionManager!.compressIfNeeded();
   }
 
   /**
@@ -291,6 +252,8 @@ export class SessionCapability implements AgentCapability {
       await this.sessionManager.compressIfNeeded();
       await this.sessionManager.save();
     }
+    // 关闭数据库连接
+    this.dbManager?.close();
   }
 }
 

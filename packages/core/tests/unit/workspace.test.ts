@@ -454,15 +454,31 @@ describe('initWorkspace', () => {
 });
 
 describe('Integration with SessionStorage', () => {
-  it('会话应该存储在工作空间的会话组目录中', async () => {
-    const { SessionStorage } = await import('../../src/session/SessionStorage.js');
+  it('工作空间应该提供数据库文件路径', async () => {
+    const wsManager = await initWorkspace({ path: TEST_WORKSPACE_DIR });
+
+    const paths = wsManager.getPaths();
+
+    // 检查数据库文件路径已包含在工作空间路径中
+    expect(paths.dbFile).toBeDefined();
+    expect(paths.dbFile).toBe(path.join(TEST_WORKSPACE_DIR, 'hive.db'));
+
+    // 清理
+    fs.rmSync(TEST_WORKSPACE_DIR, { recursive: true });
+  });
+
+  it('会话应该存储在 SQLite 数据库中', async () => {
+    const { createDatabase } = await import('../../src/storage/Database.js');
+    const { createSessionRepository } = await import('../../src/storage/SessionRepository.js');
 
     const wsManager = await initWorkspace({ path: TEST_WORKSPACE_DIR });
-    // 使用 sessions 根目录，SessionStorage 会自动添加组名
-    const sessionsRoot = path.join(TEST_WORKSPACE_DIR, 'sessions');
+    const dbPath = wsManager.getPaths().dbFile;
 
-    const storage = new SessionStorage({ storageDir: sessionsRoot });
-    await storage.initialize();
+    // 创建数据库和仓库
+    const dbManager = createDatabase({ dbPath });
+    await dbManager.initialize(); // This runs migrations
+
+    const repository = createSessionRepository(dbManager.getDb());
 
     // 创建测试会话
     const testSession = {
@@ -477,13 +493,18 @@ describe('Integration with SessionStorage', () => {
       },
     };
 
-    await storage.save(testSession);
+    await repository.save(testSession);
 
-    // 检查文件是否存在于正确位置（sessions/default/test-session-1.json）
-    const sessionFile = path.join(sessionsRoot, 'default', 'test-session-1.json');
-    expect(fs.existsSync(sessionFile)).toBe(true);
+    // 验证会话可以加载
+    const loaded = await repository.load('test-session-1');
+    expect(loaded).not.toBeNull();
+    expect(loaded?.id).toBe('test-session-1');
+
+    // 检查数据库文件是否存在
+    expect(fs.existsSync(dbPath)).toBe(true);
 
     // 清理
+    dbManager.close();
     fs.rmSync(TEST_WORKSPACE_DIR, { recursive: true });
   });
 });
