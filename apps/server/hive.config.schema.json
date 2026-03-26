@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hive Server Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "server": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "default": 3000,
+          "description": "HTTP server port"
+        },
+        "host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host to bind to"
+        },
+        "logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "info",
+          "description": "Log level"
+        }
+      },
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Provider ID (e.g., glm, anthropic, openai, deepseek)"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "API key (supports ${ENV_VAR} interpolation)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model to use"
+        }
+      },
+      "additionalProperties": false
+    },
+    "plugins": {
+      "type": "object",
+      "description": "Plugin configurations. Key is plugin package name, value is passed as api.config",
+      "additionalProperties": {
+        "type": "object",
+        "description": "Plugin-specific configuration (passed directly to plugin as api.config)",
+        "additionalProperties": true
+      }
+    }
+  }
+}
