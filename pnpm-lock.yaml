@@ -23,6 +23,9 @@ importers:
       '@hive/orchestrator':
         specifier: workspace:*
         version: link:../../packages/orchestrator
+      '@hive/plugin-feishu':
+        specifier: workspace:*
+        version: link:../../packages/plugins/feishu
       dotenv:
         specifier: ^16.4.0
         version: 16.6.1

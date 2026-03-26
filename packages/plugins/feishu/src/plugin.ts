@@ -136,10 +136,11 @@ export class FeishuPlugin implements IPlugin {
 
     for (const app of config.apps) {
       const appConfig = app as Record<string, unknown>
-      if (!appConfig.appId || typeof appConfig.appId !== 'string') {
+      // 允许空字符串（占位符），只检查类型
+      if (appConfig.appId !== undefined && typeof appConfig.appId !== 'string') {
         throw new Error('Each app config requires "appId" string')
       }
-      if (!appConfig.appSecret || typeof appConfig.appSecret !== 'string') {
+      if (appConfig.appSecret !== undefined && typeof appConfig.appSecret !== 'string') {
         throw new Error('Each app config requires "appSecret" string')
       }
     }
