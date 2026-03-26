@@ -105,7 +105,7 @@ export function createUsageMessage(text: string, inputTokens: number = 100, outp
 /**
  * 创建 Mock query 函数
  */
-export function createMockQuery(responses: MockQueryMessage[] | string) {
+export function createMockQuery(responses: MockQueryMessage[] | string): ReturnType<typeof vi.fn> {
   const messages = typeof responses === 'string'
     ? [createSuccessMessage(responses)]
     : responses;
@@ -116,7 +116,7 @@ export function createMockQuery(responses: MockQueryMessage[] | string) {
 /**
  * 创建 Mock query 函数（支持多次调用）
  */
-export function createMockQuerySequence(responseSequences: MockQueryMessage[][]) {
+export function createMockQuerySequence(responseSequences: MockQueryMessage[][]): ReturnType<typeof vi.fn> {
   let callIndex = 0;
 
   return vi.fn().mockImplementation(() => {

@@ -64,24 +64,10 @@ export class Agent {
       externalConfig,
       skillConfig,
       sessionConfig,
-      workspace: workspaceConfig,
       timeout: timeoutConfig,
     } = options;
 
     this._context = new AgentContextImpl({ externalConfig, skillConfig, timeoutConfig });
-
-    // 处理工作空间配置
-    let finalSessionConfig = sessionConfig;
-    if (workspaceConfig) {
-      const wsConfig: WorkspaceInitConfig = typeof workspaceConfig === 'string'
-        ? { path: workspaceConfig }
-        : workspaceConfig;
-
-      finalSessionConfig = {
-        ...sessionConfig,
-        workspace: wsConfig,
-      };
-    }
 
     // 创建能力模块
     this.providerCap = new ProviderCapability();
@@ -89,7 +75,7 @@ export class Agent {
     this.chatCap = new ChatCapability();
     this.subAgentCap = new SubAgentCapability();
     this.workflowCap = new WorkflowCapability();
-    this.sessionCap = new SessionCapability(finalSessionConfig);
+    this.sessionCap = new SessionCapability(sessionConfig);
 
     // 注册并立即初始化能力模块（同步初始化）
     this.providerCap.initialize(this._context);
@@ -483,35 +469,6 @@ export class Agent {
   // ============================================
   // 工作空间管理
   // ============================================
-
-  /**
-   * 获取工作空间管理器
-   */
-  getWorkspaceManager() {
-    return this.sessionCap.getWorkspaceManager();
-  }
-
-  /**
-   * 设置当前会话组
-   */
-  async setSessionGroup(group: string): Promise<void> {
-    await this.initialize();
-    await this.sessionCap.setSessionGroup(group);
-  }
-
-  /**
-   * 获取当前会话组
-   */
-  getCurrentSessionGroup(): string {
-    return this.sessionCap.getCurrentSessionGroup();
-  }
-
-  /**
-   * 列出所有会话组
-   */
-  listSessionGroups() {
-    return this.sessionCap.listSessionGroups();
-  }
 
   // ============================================
   // 超时和心跳管理
