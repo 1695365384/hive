@@ -117,45 +117,55 @@ export function createHttpGateway(ctx: HiveContext): Hono {
     return c.json({ success: deleted })
   })
 
-  // List plugins
-  app.get('/api/plugins', (c) => {
-    const plugins = ctx.openClawPlugins.map((loader) => {
-      const info = loader.getInfo()
-      return {
-        id: info.definition.id,
-        name: info.definition.name,
-        version: info.definition.version,
-        state: info.state,
-        channels: loader.getChannels().map((ch) => ch.id),
-        tools: loader.getTools().length,
+  // Webhook endpoint for plugins (e.g., Feishu)
+  app.post('/webhook/:plugin/:appId', async (c) => {
+    try {
+      const pluginName = c.req.param('plugin')
+      const appId = c.req.param('appId')
+
+      // Get headers
+      const signature = c.req.header('X-Lark-Signature') || c.req.header('X-Feishu-Signature') || ''
+      const timestamp = c.req.header('X-Lark-Request-Timestamp') || c.req.header('X-Feishu-Timestamp') || ''
+      const nonce = c.req.header('X-Lark-Request-Nonce') || c.req.header('X-Feishu-Nonce') || ''
+
+      // Get body
+      const body = await c.req.json()
+
+      console.log(`[http] Webhook received: plugin=${pluginName}, appId=${appId}`)
+
+      // Find the plugin and get its channel
+      const plugin = ctx.plugins.find((p) => p.metadata.id === pluginName)
+      if (!plugin) {
+        return c.json({ error: 'Plugin not found' }, 404)
       }
-    })
 
-    return c.json({ plugins })
-  })
+      // Get channel from plugin
+      const channels = plugin.getChannels()
+      const channel = channels.find((ch) => {
+        // Check channel id format: "feishu:appId"
+        if (ch.id === `${pluginName}:${appId}`) return true
+        // Check if channel has appId property (for Feishu channels)
+        if ('appId' in ch && (ch as { appId: string }).appId === appId) return true
+        return false
+      })
 
-  // Get plugin details
-  app.get('/api/plugins/:id', (c) => {
-    const pluginId = c.req.param('id')
-    const loader = ctx.openClawPlugins.find((l) => l.getInfo().definition.id === pluginId)
+      if (!channel || typeof (channel as any).handleWebhook !== 'function') {
+        return c.json({ error: 'Channel not found or does not support webhooks' }, 404)
+      }
 
-    if (!loader) {
-      return c.json({ error: 'Plugin not found' }, 404)
+      // Handle webhook
+      const result = await (channel as any).handleWebhook(body, signature, timestamp, nonce)
+      return c.json(result)
+    } catch (error) {
+      console.error('[http] Webhook error:', error)
+      return c.json(
+        {
+          error: 'Webhook processing failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        },
+        500
+      )
     }
-
-    const info = loader.getInfo()
-    return c.json({
-      plugin: {
-        id: info.definition.id,
-        name: info.definition.name,
-        version: info.definition.version,
-        description: info.definition.description,
-        state: info.state,
-        channels: loader.getChannels(),
-        tools: loader.getTools(),
-        hooks: Array.from(loader.getHooks().entries()),
-      },
-    })
   })
 
   // Error handling

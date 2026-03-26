@@ -4,25 +4,83 @@
  * Initializes all core modules and returns a ready-to-use application context.
  */
 
-import { createAgent, type Agent } from '@hive/core'
+import { createAgent, type Agent, type IPlugin, type ILogger } from '@hive/core'
 import { MessageBus } from '@hive/orchestrator'
-import { OpenClawPluginLoader, type OpenClawPluginDefinition } from '@hive/openclaw-adapter'
 import type { ServerConfig } from './config.js'
-import { getPluginConfig } from './config.js'
 
 export interface HiveContext {
   /** Message bus for event-driven communication */
   bus: MessageBus
   /** Main agent instance */
   agent: Agent
-  /** Loaded OpenClaw plugins */
-  openClawPlugins: OpenClawPluginLoader[]
   /** Server configuration */
   config: ServerConfig
+  /** Loaded plugins */
+  plugins: IPlugin[]
 }
 
 export interface BootstrapOptions {
   config: ServerConfig
+}
+
+/**
+ * Create a simple logger
+ */
+function createLogger(level: string): ILogger {
+  const levels = { debug: 0, info: 1, warn: 2, error: 3 }
+  const currentLevel = levels[level as keyof typeof levels] ?? 1
+
+  return {
+    debug: (msg, ...args) => currentLevel <= 0 && console.log(`[DEBUG] ${msg}`, ...args),
+    info: (msg, ...args) => currentLevel <= 1 && console.log(`[INFO] ${msg}`, ...args),
+    warn: (msg, ...args) => currentLevel <= 2 && console.warn(`[WARN] ${msg}`, ...args),
+    error: (msg, ...args) => currentLevel <= 3 && console.error(`[ERROR] ${msg}`, ...args),
+  }
+}
+
+/**
+ * Load a plugin by name
+ */
+async function loadPlugin(
+  pluginName: string,
+  pluginConfig: Record<string, unknown>,
+  bus: MessageBus,
+  logger: ILogger
+): Promise<IPlugin | null> {
+  try {
+    logger.info(`[bootstrap] Loading plugin: ${pluginName}`)
+
+    // Dynamic import the plugin module
+    const module = await import(pluginName)
+
+    // Get the plugin factory function
+    const factory = module.default || module.createPlugin || module[Object.keys(module)[0]]
+
+    if (typeof factory !== 'function') {
+      logger.warn(`[bootstrap] Plugin ${pluginName} does not export a factory function`)
+      return null
+    }
+
+    // Create plugin instance
+    const plugin = factory()
+
+    // Initialize plugin
+    await plugin.initialize({
+      messageBus: bus,
+      logger,
+      config: pluginConfig,
+      registerChannel: (channel: unknown) => {
+        logger.info(`[bootstrap] Channel registered: ${(channel as { id: string }).id}`)
+        bus.emit(`channel:registered`, channel)
+      },
+    })
+
+    logger.info(`[bootstrap] Plugin loaded: ${pluginName}`)
+    return plugin
+  } catch (error) {
+    logger.error(`[bootstrap] Failed to load plugin ${pluginName}:`, error)
+    return null
+  }
 }
 
 /**
@@ -31,15 +89,17 @@ export interface BootstrapOptions {
  * This function initializes all core modules in the correct order:
  * 1. MessageBus - event-driven communication
  * 2. Create main agent
- * 3. Load plugins via OpenClaw adapter
+ * 3. Load plugins
+ * 4. Activate plugins
  */
 export async function bootstrap(options: BootstrapOptions): Promise<HiveContext> {
   const { config } = options
+  const logger = createLogger(config.logLevel)
 
-  console.log('[bootstrap] Initializing MessageBus...')
+  logger.info('[bootstrap] Initializing MessageBus...')
   const bus = new MessageBus()
 
-  console.log('[bootstrap] Creating main agent...')
+  logger.info('[bootstrap] Creating main agent...')
   const agent = createAgent({
     externalConfig: {
       providers: [
@@ -55,264 +115,33 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     },
   })
 
-  console.log('[bootstrap] Loading OpenClaw plugins...')
-  const openClawPlugins: OpenClawPluginLoader[] = []
-
+  // Load plugins
+  const plugins: IPlugin[] = []
   for (const pluginName of config.plugins) {
-    try {
-      const pluginConfig = getPluginConfig(config, pluginName)
-      const loader = await loadOpenClawPlugin(pluginName, {
-        messageBus: bus,
-        logger: createLogger(config.logLevel),
-        pluginConfig,
-      })
-      openClawPlugins.push(loader)
-      console.log(`[bootstrap] ✓ Loaded plugin: ${pluginName}`)
-    } catch (error) {
-      console.error(`[bootstrap] ✗ Failed to load plugin ${pluginName}:`)
-      console.error(error instanceof Error ? error.message : error)
-      if (error instanceof Error && error.stack) {
-        console.error(error.stack.split('\n').slice(0, 5).join('\n'))
-      }
+    const pluginConfig = config.pluginConfigs[pluginName] || {}
+    const plugin = await loadPlugin(pluginName, pluginConfig, bus, logger)
+    if (plugin) {
+      plugins.push(plugin)
     }
   }
 
-  console.log(`[bootstrap] Bootstrap complete. ${openClawPlugins.length} plugins loaded.`)
+  // Activate plugins
+  for (const plugin of plugins) {
+    try {
+      await plugin.activate()
+      logger.info(`[bootstrap] Plugin activated: ${plugin.metadata.name}`)
+    } catch (error) {
+      logger.error(`[bootstrap] Failed to activate plugin:`, error)
+    }
+  }
 
-  // Setup message bridge: Plugin events → Agent workflow
-  setupMessageBridge(bus, agent, openClawPlugins)
+  logger.info(`[bootstrap] Bootstrap complete. ${plugins.length} plugins loaded.`)
 
   return {
     bus,
     agent,
-    openClawPlugins,
     config,
-  }
-}
-
-/**
- * Setup message bridge between plugins and agent
- *
- * This is the key integration point:
- * 1. Subscribe to plugin message events on MessageBus
- * 2. Trigger plugin hooks when events arrive
- * 3. Call agent.runWorkflow() to process the message
- */
-function setupMessageBridge(
-  bus: MessageBus,
-  agent: Agent,
-  plugins: OpenClawPluginLoader[]
-): void {
-  console.log('[bootstrap] Setting up message bridge...')
-
-  // Subscribe to all plugin events
-  bus.subscribe('plugin.*', async (message) => {
-    const { topic, payload } = message
-    console.log(`[bridge] Received event: ${topic}`, payload)
-
-    // Extract event type from topic (e.g., "plugin.openclaw-lark.message:received")
-    const eventMatch = topic.match(/^plugin\.(.+?)\.(.+)$/)
-    if (!eventMatch) return
-
-    const [, pluginId, eventName] = eventMatch
-
-    // Find the plugin and trigger its hook
-    const plugin = plugins.find(p => p.getInfo().definition.id === pluginId)
-    if (plugin) {
-      try {
-        await plugin.triggerHook(eventName, payload)
-      } catch (error) {
-        console.error(`[bridge] Hook ${eventName} failed:`, error)
-      }
-    }
-  })
-
-  // Subscribe to message:received events specifically
-  bus.subscribe('plugin.*.message:received', async (message) => {
-    const payload = message.payload as {
-      from?: string
-      content?: string
-      channelId?: string
-      chatId?: string
-    }
-
-    if (!payload?.content) {
-      console.log('[bridge] No content in message, skipping')
-      return
-    }
-
-    console.log(`[bridge] Processing message from ${payload.from}: ${payload.content}`)
-
-    try {
-      // Call agent workflow
-      const result = await agent.runWorkflow(payload.content)
-
-      console.log(`[bridge] Workflow result:`, result.success ? 'success' : 'failed')
-
-      // TODO: Send response back to Feishu via plugin's sendMessage
-      // This requires getting the channel from the plugin and calling sendMessage
-      if (result.executeResult?.text) {
-        console.log(`[bridge] Response:`, result.executeResult.text.slice(0, 100))
-      }
-    } catch (error) {
-      console.error('[bridge] Workflow failed:', error)
-    }
-  })
-
-  console.log('[bootstrap] Message bridge setup complete')
-}
-
-/**
- * Load an OpenClaw plugin by name
- *
- * Uses jiti for ESM/CJS interop - same approach as OpenClaw itself.
- */
-async function loadOpenClawPlugin(
-  pluginName: string,
-  options: {
-    messageBus: MessageBus
-    logger: Logger
-    pluginConfig: Record<string, unknown>
-  }
-): Promise<OpenClawPluginLoader> {
-  console.log(`[loadOpenClawPlugin] Loading: ${pluginName}`)
-
-  // Create adapter for MessageBus
-  const busAdapter = {
-    subscribe: (topic: string, handler: unknown) => {
-      return options.messageBus.subscribe(topic, handler as (msg: unknown) => void | Promise<void>)
-    },
-    unsubscribe: (id: string) => options.messageBus.unsubscribe(id),
-    publish: async (topic: string, message: unknown) => {
-      await options.messageBus.publish(topic, message)
-    },
-  }
-
-  // Use jiti for ESM/CJS interop (same as OpenClaw)
-  const { createJiti } = await import('jiti')
-  const jiti = createJiti(import.meta.url, {
-    cache: false,
-  })
-
-  // Load the plugin module using jiti
-  const mod = jiti(pluginName)
-  const pluginDefinition: OpenClawPluginDefinition = mod.default || mod
-
-  console.log(`[loadOpenClawPlugin] ✓ Module loaded: ${pluginName} (id: ${pluginDefinition.id})`)
-
-  // Normalize Feishu plugin config BEFORE passing to the loader so that
-  // adapter.pluginConfig (returned by LarkClient.runtime.config.loadConfig())
-  // already contains channels.feishu.groups — required by the inbound handler.
-  const isFeishu = pluginDefinition.id === 'openclaw-lark' || pluginName.includes('lark') || pluginName.includes('feishu')
-  const pluginConfig = isFeishu
-    ? normalizeFeishuPluginConfig(options.pluginConfig)
-    : options.pluginConfig
-
-  const loader = new OpenClawPluginLoader(pluginDefinition, {
-    messageBus: busAdapter,
-    logger: options.logger,
-    source: `npm:${pluginName}`,
-    pluginConfig,
-  })
-
-  await loader.load()
-  await loader.activate()
-  console.log(`[loadOpenClawPlugin] loader.activate() done`)
-
-  // Start WebSocket monitor for Feishu plugin
-  if (isFeishu) {
-    console.log(`[loadOpenClawPlugin] Starting Feishu WebSocket monitor...`)
-    try {
-      const monitorFn = mod.monitorFeishuProvider
-      if (typeof monitorFn === 'function') {
-        console.log(`[loadOpenClawPlugin] Monitor config: accounts=${(pluginConfig as Record<string, unknown>).accounts ? Object.keys((pluginConfig as Record<string, unknown>).accounts as object).length : 0}`)
-
-        // Start monitor (non-blocking, runs in background).
-        // Use the same normalized pluginConfig so monitor and handler share
-        // identical config (handler reads from LarkClient.runtime.config.loadConfig()).
-        monitorFn({
-          config: pluginConfig,
-          runtime: {
-            log: options.logger.info,
-            error: options.logger.error,
-            config: {
-              loadConfig: () => pluginConfig,
-            },
-          },
-        }).catch((err: Error) => {
-          console.error(`[loadOpenClawPlugin] Monitor error:`, err)
-        })
-
-        console.log(`[loadOpenClawPlugin] ✓ Feishu monitor started`)
-      } else {
-        console.warn(`[loadOpenClawPlugin] ⚠ monitorFeishuProvider not found in module`)
-      }
-    } catch (err) {
-      console.error(`[loadOpenClawPlugin] ✗ Failed to start monitor:`, err)
-    }
-  }
-
-  console.log(`[loadOpenClawPlugin] ✓ Complete: ${pluginName}`)
-  return loader
-}
-
-/**
- * Normalize Feishu plugin config.
- *
- * Ensures `channels.feishu.groups` is always a plain object so the
- * OpenClaw inbound handler pipeline can safely read per-group settings.
- * This must be applied BEFORE the config reaches the OpenClawPluginLoader
- * because the handler reads config via LarkClient.runtime.config.loadConfig()
- * which returns adapter.pluginConfig.
- */
-export function normalizeFeishuPluginConfig(pluginConfig: Record<string, unknown>): Record<string, unknown> {
-  const channels = pluginConfig?.channels as Record<string, unknown> | undefined
-  const feishuChannel = channels?.feishu as Record<string, unknown> | undefined
-
-  if (!feishuChannel) {
-    console.warn('[normalizeFeishuPluginConfig] No feishu channel config found')
-    return pluginConfig
-  }
-
-  const normalizedGroups = isPlainObject(feishuChannel.groups)
-    ? feishuChannel.groups
-    : {}
-
-  return {
-    ...pluginConfig,
-    channels: {
-      ...channels,
-      feishu: {
-        ...feishuChannel,
-        groups: normalizedGroups,
-      },
-    },
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/**
- * Simple logger interface
- */
-interface Logger {
-  debug(message: string, ...args: unknown[]): void
-  info(message: string, ...args: unknown[]): void
-  warn(message: string, ...args: unknown[]): void
-  error(message: string, ...args: unknown[]): void
-}
-
-function createLogger(level: string): Logger {
-  const levels = { debug: 0, info: 1, warn: 2, error: 3 }
-  const currentLevel = levels[level as keyof typeof levels] ?? 1
-
-  return {
-    debug: (msg, ...args) => currentLevel <= 0 && console.log(`[DEBUG] ${msg}`, ...args),
-    info: (msg, ...args) => currentLevel <= 1 && console.log(`[INFO] ${msg}`, ...args),
-    warn: (msg, ...args) => currentLevel <= 2 && console.warn(`[WARN] ${msg}`, ...args),
-    error: (msg, ...args) => currentLevel <= 3 && console.error(`[ERROR] ${msg}`, ...args),
+    plugins,
   }
 }
 
@@ -322,13 +151,13 @@ function createLogger(level: string): Logger {
 export async function shutdown(ctx: HiveContext): Promise<void> {
   console.log('[shutdown] Starting graceful shutdown...')
 
-  // Log plugin unload
-  for (const loader of ctx.openClawPlugins) {
+  // Deactivate plugins
+  for (const plugin of ctx.plugins) {
     try {
-      const info = loader.getInfo()
-      console.log(`[shutdown] Unloaded plugin: ${info.definition.id}`)
+      await plugin.deactivate()
+      console.log(`[shutdown] Plugin deactivated: ${plugin.metadata.name}`)
     } catch (error) {
-      console.error(`[shutdown] Error unloading plugin:`, error)
+      console.error(`[shutdown] Failed to deactivate plugin:`, error)
     }
   }
 

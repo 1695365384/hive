@@ -11,21 +11,52 @@ pnpm build
 
 ## 配置
 
-复制示例配置文件：
+### 方式一：使用 hive.config.json（推荐）
+
+创建 `hive.config.json` 文件：
+
+```json
+{
+  "server": {
+    "port": 3000,
+    "logLevel": "info"
+  },
+  "provider": {
+    "id": "glm",
+    "apiKey": "${GLM_API_KEY}",
+    "model": "glm-4-plus"
+  },
+  "plugins": {
+    "@hive/plugin-feishu": {
+      "apps": [
+        {
+          "appId": "${FEISHU_APP_ID}",
+          "appSecret": "${FEISHU_APP_SECRET}"
+        }
+      ]
+    }
+  }
+}
+```
+
+环境变量使用 `${VAR_NAME}` 语法，会自动从 `.env` 文件或系统环境变量中读取。
+
+### 方式二：使用 .env 文件
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，配置你的 API Key：
+编辑 `.env` 文件：
 
 ```env
 # LLM 提供商配置
-PROVIDER_ID=glm  # 或 anthropic, openai, deepseek
+PROVIDER_ID=glm
 API_KEY=your-api-key-here
 
-# 插件（可选）
-PLUGINS=@larksuite/openclaw-lark
+# 飞书插件（可选）
+FEISHU_APP_ID=cli_xxxxxx
+FEISHU_APP_SECRET=xxxxxx
 ```
 
 ## 使用
@@ -47,9 +78,6 @@ hive server
 
 # 指定端口启动
 hive server --port 8080
-
-# 加载插件启动
-hive server --plugins @larksuite/openclaw-lark
 ```
 
 ### HTTP API
@@ -62,7 +90,7 @@ hive server --plugins @larksuite/openclaw-lark
 | `/api/chat` | POST | 发送聊天消息 |
 | `/api/sessions` | GET | 获取会话列表 |
 | `/api/sessions/:id` | GET | 获取会话详情 |
-| `/api/plugins` | GET | 获取已加载插件 |
+| `/webhook/:plugin/:appId` | POST | 插件 Webhook |
 
 #### 聊天示例
 
@@ -88,16 +116,68 @@ ws.onmessage = (event) => {
 }
 ```
 
-## 插件开发
+## 插件系统
 
-Hive 支持加载 OpenClaw 兼容的插件：
+Hive 支持通过插件扩展通道能力。
 
-```bash
-# 安装插件
-pnpm add @larksuite/openclaw-lark
+### 配置插件
 
-# 配置启用
-PLUGINS=@larksuite/openclaw-lark
+在 `hive.config.json` 中配置插件：
+
+```json
+{
+  "plugins": {
+    "@hive/plugin-feishu": {
+      "apps": [
+        {
+          "appId": "cli_xxxxxx",
+          "appSecret": "xxxxxx"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Webhook 配置
+
+对于飞书等需要接收事件的平台，配置 Webhook URL：
+
+```
+https://your-server.com/webhook/feishu/{appId}
+```
+
+### 开发插件
+
+创建新插件需要实现 `IPlugin` 接口：
+
+```typescript
+import type { IPlugin, IChannel, PluginContext } from '@hive/core'
+
+export class MyPlugin implements IPlugin {
+  readonly metadata = {
+    id: 'my-plugin',
+    name: 'My Plugin',
+    version: '1.0.0'
+  }
+
+  async initialize(context: PluginContext): Promise<void> {
+    // 初始化逻辑
+  }
+
+  async activate(): Promise<void> {
+    // 激活插件
+  }
+
+  async deactivate(): Promise<void> {
+    // 停用插件
+  }
+
+  getChannels(): IChannel[] {
+    // 返回通道列表
+    return []
+  }
+}
 ```
 
 ## 架构
@@ -111,20 +191,19 @@ PLUGINS=@larksuite/openclaw-lark
 ┌───────────────────────▼─────────────────────────────┐
 │                    Bootstrap                        │
 │                 (src/bootstrap.ts)                  │
-│  ┌─────────┐  ┌────────┐  ┌──────────────────────┐ │
-│  │Agent    │  │Message │  │OpenClaw Plugin       │ │
-│  │         │  │Bus     │  │Loader                │ │
-│  └────┬────┘  └────┬───┘  └──────────┬───────────┘ │
-└───────┼────────────┼─────────────────┼─────────────┘
-        │            │                 │
-┌───────▼────────────▼─────────────────▼─────────────┐
+│  ┌─────────┐  ┌────────┐                            │
+│  │Agent    │  │Message │                            │
+│  │         │  │Bus     │                            │
+│  └────┬────┘  └────┬───┘                            │
+└───────┼────────────┼────────────────────────────────┘
+        │            │
+┌───────▼────────────▼─────────────────────────────────┐
 │                   Gateways                          │
-│  ┌─────────────────────┐  ┌──────────────────────┐ │
-│  │HTTP (Hono)          │  │WebSocket             │ │
-│  │- /api/chat          │  │- Real-time chat      │ │
-│  │- /api/sessions      │  │- Event streaming     │ │
-│  │- /api/plugins       │  │- Session management  │ │
-│  └─────────────────────┘  └──────────────────────┘ │
+│  ┌─────────────────────┐  ┌──────────────────────┐  │
+│  │HTTP (Hono)          │  │WebSocket             │  │
+│  │- /api/chat          │  │- Real-time chat      │  │
+│  │- /api/sessions      │  │- Event streaming     │  │
+│  └─────────────────────┘  └──────────────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
 
