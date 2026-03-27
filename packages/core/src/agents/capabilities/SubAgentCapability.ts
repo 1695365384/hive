@@ -1,11 +1,11 @@
 /**
  * 子 Agent 能力
  *
- * 提供子 Agent 便捷方法
+ * 提供核心三代理便捷方法
  */
 
 import type { AgentCapability, AgentContext, AgentResult, ThoroughnessLevel, AgentType } from '../core/types.js';
-import { AGENT_NAMES, CORE_AGENT_NAMES, EXTENDED_AGENT_NAMES } from '../core/agents.js';
+import { AGENT_NAMES } from '../core/agents.js';
 import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
 
 /**
@@ -36,7 +36,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium'): Promise<string> {
     const result = await this.runWithHooks(
-      CORE_AGENT_NAMES.EXPLORE,
+      AGENT_NAMES.EXPLORE,
       buildExplorePrompt(prompt, thoroughness)
     );
     return result.text;
@@ -47,7 +47,7 @@ export class SubAgentCapability implements AgentCapability {
    */
   async plan(prompt: string): Promise<string> {
     const result = await this.runWithHooks(
-      CORE_AGENT_NAMES.PLAN,
+      AGENT_NAMES.PLAN,
       buildPlanPrompt(prompt)
     );
     return result.text;
@@ -57,7 +57,7 @@ export class SubAgentCapability implements AgentCapability {
    * 使用 General Agent 执行任务
    */
   async general(prompt: string): Promise<string> {
-    const result = await this.runWithHooks(CORE_AGENT_NAMES.GENERAL, prompt);
+    const result = await this.runWithHooks(AGENT_NAMES.GENERAL, prompt);
     return result.text;
   }
 
@@ -113,75 +113,5 @@ export class SubAgentCapability implements AgentCapability {
 
       throw error;
     }
-  }
-
-  // ============================================
-  // 扩展 Agent 方法
-  // ============================================
-
-  /**
-   * 代码审查
-   */
-  async reviewCode(target: string): Promise<string> {
-    const result = await this.runWithHooks(
-      EXTENDED_AGENT_NAMES.CODE_REVIEWER,
-      `Review the code: ${target}`
-    );
-    return result.text;
-  }
-
-  /**
-   * 生成测试
-   */
-  async generateTests(target: string): Promise<string> {
-    const result = await this.runWithHooks(
-      EXTENDED_AGENT_NAMES.TEST_ENGINEER,
-      `Generate tests for: ${target}`
-    );
-    return result.text;
-  }
-
-  /**
-   * 编写文档
-   */
-  async writeDocs(target: string): Promise<string> {
-    const result = await this.runWithHooks(
-      EXTENDED_AGENT_NAMES.DOC_WRITER,
-      `Write documentation for: ${target}`
-    );
-    return result.text;
-  }
-
-  /**
-   * 调试
-   */
-  async debug(target: string): Promise<string> {
-    const result = await this.runWithHooks(
-      EXTENDED_AGENT_NAMES.DEBUGGER,
-      `Debug this issue: ${target}`
-    );
-    return result.text;
-  }
-
-  /**
-   * 重构
-   */
-  async refactor(target: string): Promise<string> {
-    const result = await this.runWithHooks(
-      EXTENDED_AGENT_NAMES.REFACTORER,
-      `Refactor this code: ${target}`
-    );
-    return result.text;
-  }
-
-  /**
-   * 安全审计
-   */
-  async securityAudit(target: string): Promise<string> {
-    const result = await this.runWithHooks(
-      EXTENDED_AGENT_NAMES.SECURITY_AUDITOR,
-      `Audit security of: ${target}`
-    );
-    return result.text;
   }
 }

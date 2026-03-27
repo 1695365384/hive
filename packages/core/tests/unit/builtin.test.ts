@@ -7,11 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   CORE_AGENTS,
-  EXTENDED_AGENTS,
   BUILTIN_AGENTS,
   getAgentConfig,
-  getCoreAgentNames,
-  getExtendedAgentNames,
   getAllAgentNames,
 } from '../../src/agents/core/agents.js';
 import {
@@ -65,41 +62,16 @@ describe('Builtin Agents', () => {
     });
   });
 
-  describe('EXTENDED_AGENTS', () => {
-    it('should have extended agents', () => {
-      const names = Object.keys(EXTENDED_AGENTS);
-      expect(names.length).toBeGreaterThanOrEqual(3);
-    });
-
-    it('should have code-reviewer agent', () => {
-      expect(EXTENDED_AGENTS['code-reviewer']).toBeDefined();
-      expect(EXTENDED_AGENTS['code-reviewer'].type).toBe('code-reviewer');
-    });
-
-    it('should have test-engineer agent', () => {
-      expect(EXTENDED_AGENTS['test-engineer']).toBeDefined();
-      expect(EXTENDED_AGENTS['test-engineer'].type).toBe('test-engineer');
-    });
-
-    it('should have doc-writer agent', () => {
-      expect(EXTENDED_AGENTS['doc-writer']).toBeDefined();
-      expect(EXTENDED_AGENTS['doc-writer'].type).toBe('doc-writer');
-    });
-  });
-
   describe('BUILTIN_AGENTS', () => {
-    it('should contain all core and extended agents', () => {
+    it('should contain all core agents', () => {
       const names = Object.keys(BUILTIN_AGENTS);
       expect(names).toContain('explore');
       expect(names).toContain('plan');
       expect(names).toContain('general');
-      expect(names).toContain('code-reviewer');
-      expect(names).toContain('test-engineer');
-      expect(names).toContain('doc-writer');
     });
 
-    it('should have at least 6 agents', () => {
-      expect(Object.keys(BUILTIN_AGENTS).length).toBeGreaterThanOrEqual(6);
+    it('should have exactly 3 agents', () => {
+      expect(Object.keys(BUILTIN_AGENTS).length).toBe(3);
     });
   });
 
@@ -115,20 +87,10 @@ describe('Builtin Agents', () => {
       expect(config).toBeUndefined();
     });
 
-    it('getCoreAgentNames should return 3 names', () => {
-      const names = getCoreAgentNames();
-      expect(names).toHaveLength(3);
-      expect(names).toEqual(expect.arrayContaining(['explore', 'plan', 'general']));
-    });
-
-    it('getExtendedAgentNames should return extended agent names', () => {
-      const names = getExtendedAgentNames();
-      expect(names.length).toBeGreaterThanOrEqual(3);
-    });
-
     it('getAllAgentNames should return all agent names', () => {
       const names = getAllAgentNames();
-      expect(names.length).toBeGreaterThanOrEqual(6);
+      expect(names).toHaveLength(3);
+      expect(names).toEqual(expect.arrayContaining(['explore', 'plan', 'general']));
     });
   });
 

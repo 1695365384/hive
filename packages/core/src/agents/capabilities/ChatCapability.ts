@@ -12,7 +12,7 @@ import type {
   AgentThinkingHookContext,
   TaskProgressHookContext,
 } from '../../hooks/types.js';
-import { BUILTIN_AGENTS, EXTENDED_AGENTS } from '../core/agents.js';
+import { BUILTIN_AGENTS } from '../core/agents.js';
 import { TimeoutError } from '../core/types.js';
 
 /**
@@ -126,8 +126,6 @@ export class ChatCapability implements AgentCapability {
       for (const name of options.agents) {
         if (name in BUILTIN_AGENTS) {
           agents[name] = BUILTIN_AGENTS[name] as AgentDefinition;
-        } else if (name in EXTENDED_AGENTS) {
-          agents[name] = EXTENDED_AGENTS[name] as AgentDefinition;
         }
       }
     }

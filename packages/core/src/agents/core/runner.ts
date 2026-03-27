@@ -440,14 +440,7 @@ export class AgentRunner {
     options?: AgentExecuteOptions
   ): Promise<void> {
     for await (const message of query({ prompt, options: queryOptions })) {
-      // 处理最终结果
-      if (isResultMessage(message) && message.result) {
-        const text = String(message.result);
-        result.text += text;
-        options?.onText?.(text);
-      }
-
-      // 处理 assistant 消息 - 提取文本内容
+      // 处理 assistant 消息 - 提取文本内容（流式）
       if (isAssistantMessage(message)) {
         const content = message.message?.content;
         if (content && Array.isArray(content)) {
@@ -465,6 +458,15 @@ export class AgentRunner {
               }
             }
           }
+        }
+      }
+
+      // 处理最终结果 - 仅作为 fallback（assistant 消息通常已包含文本）
+      if (isResultMessage(message) && message.result) {
+        if (!result.text) {
+          const text = String(message.result);
+          result.text = text;
+          options?.onText?.(text);
         }
       }
 

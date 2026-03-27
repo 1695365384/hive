@@ -32,7 +32,11 @@ import { ChatCapability } from '../capabilities/ChatCapability.js';
 import { SubAgentCapability } from '../capabilities/SubAgentCapability.js';
 import { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
+import { SwarmCapability } from '../capabilities/SwarmCapability.js';
 import { SessionDelegation } from './session-delegation.js';
+import { PipelineExecutor } from '../pipeline/executor.js';
+import { BUILTIN_TEMPLATES } from '../swarm/templates.js';
+import { generatePipelineReport } from '../pipeline/tracer.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Session, Message } from '../../session/index.js';
@@ -52,6 +56,7 @@ export class Agent {
   private subAgentCap: SubAgentCapability;
   private workflowCap: WorkflowCapability;
   private sessionCap: SessionCapability;
+  private swarmCap: SwarmCapability;
   private sessionDelegation: SessionDelegation;
   private timeoutDelegation: TimeoutDelegation;
   private notificationDelegation: NotificationDelegation;
@@ -79,6 +84,7 @@ export class Agent {
     this.chatCap = new ChatCapability();
     this.subAgentCap = new SubAgentCapability();
     this.workflowCap = new WorkflowCapability();
+    this.swarmCap = new SwarmCapability();
     this.sessionCap = new SessionCapability(sessionConfig);
     this.sessionDelegation = new SessionDelegation(this.sessionCap);
     this.timeoutDelegation = new TimeoutDelegation(this._context);
@@ -93,6 +99,7 @@ export class Agent {
     this._context.registerCapability(this.chatCap);
     this._context.registerCapability(this.subAgentCap);
     this._context.registerCapability(this.workflowCap);
+    this._context.registerCapability(this.swarmCap);
   }
 
   /**
@@ -223,31 +230,6 @@ export class Agent {
     return this.subAgentCap.run(name, prompt);
   }
 
-  // 扩展 Agent 便捷方法
-  async reviewCode(target: string): Promise<string> {
-    return this.subAgentCap.reviewCode(target);
-  }
-
-  async generateTests(target: string): Promise<string> {
-    return this.subAgentCap.generateTests(target);
-  }
-
-  async writeDocs(target: string): Promise<string> {
-    return this.subAgentCap.writeDocs(target);
-  }
-
-  async debug(target: string): Promise<string> {
-    return this.subAgentCap.debug(target);
-  }
-
-  async refactor(target: string): Promise<string> {
-    return this.subAgentCap.refactor(target);
-  }
-
-  async securityAudit(target: string): Promise<string> {
-    return this.subAgentCap.securityAudit(target);
-  }
-
   // ============================================
   // 工作流（委托给 WorkflowCapability）
   // ============================================
@@ -258,6 +240,52 @@ export class Agent {
 
   async runWorkflow(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
     return this.workflowCap.run(task, options);
+  }
+
+  /**
+   * 蜂群协作（多 Agent DAG 并行执行）
+   */
+  async swarm(task: string, options?: import('../swarm/types.js').SwarmOptions): Promise<import('../swarm/types.js').SwarmResult> {
+    return this.swarmCap.run(task, options);
+  }
+
+  /**
+   * 预览蜂群匹配结果
+   */
+  previewSwarm(task: string, templateName?: string): import('../swarm/types.js').SwarmPreview | null {
+    return this.swarmCap.preview(task, templateName);
+  }
+
+  /**
+   * 注册自定义蜂群模板
+   */
+  registerSwarmTemplate(template: import('../swarm/types.js').SwarmTemplate): void {
+    this.swarmCap.registerTemplate(template);
+  }
+
+  get swarmCapability(): SwarmCapability {
+    return this.swarmCap;
+  }
+
+  /**
+   * Pipeline 编排（多阶段 Swarm 串行执行）
+   */
+  async pipeline(
+    stages: import('../pipeline/types.js').PipelineStage[],
+    task: string,
+    options?: import('../pipeline/types.js').PipelineOptions
+  ): Promise<import('../pipeline/types.js').PipelineResult> {
+    const runner = this._context.runner;
+    const templates = [...BUILTIN_TEMPLATES, ...this.swarmCap.listTemplates().map(t => {
+      // listTemplates returns summary, we need full templates from registry
+      // Use built-in templates + any registered custom templates
+      return this.swarmCap['templates']?.get(
+        t.variant ? `${t.name}:${t.variant}` : t.name
+      );
+    }).filter(Boolean) as import('../swarm/types.js').SwarmTemplate[]];
+
+    const executor = new PipelineExecutor(runner, templates);
+    return executor.execute(stages, task, options);
   }
 
   async preview(task: string, options?: WorkflowOptions): Promise<{
