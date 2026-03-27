@@ -42,9 +42,12 @@ beforeAll(() => {
   // 测试开始前的设置
 });
 
-afterEach(() => {
+afterEach(async () => {
   // 每个测试后清理 mock
   vi.clearAllMocks();
+  // Reset DatabaseManager singleton for test isolation
+  const { DatabaseManager } = await import('../src/storage/Database.js');
+  DatabaseManager.resetInstances();
 });
 
 afterAll(() => {

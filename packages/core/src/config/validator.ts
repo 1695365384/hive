@@ -5,7 +5,7 @@
  */
 
 import Ajv from 'ajv';
-import type { ValidateFunction } from 'ajv';
+import type { ValidateFunction, ErrorObject } from 'ajv';
 import type { ExternalConfig, ProviderConfig, McpServerConfig } from '../providers/types.js';
 import { getAgentConfigSchema, getProviderConfigSchema } from '../schemas/index.js';
 
@@ -33,7 +33,7 @@ export interface ValidationResult {
 /**
  * 格式化 Ajv 错误
  */
-function formatErrors(errors: any[]): ValidationResult['errors'] {
+function formatErrors(errors: ErrorObject[]): ValidationResult['errors'] {
   return errors.map(err => ({
     path: err.instancePath || '/',
     message: err.message || 'Unknown error',
@@ -45,7 +45,7 @@ function formatErrors(errors: any[]): ValidationResult['errors'] {
  */
 export function validateAgentConfig(config: unknown): ValidationResult {
   if (!_validateAgentConfig) {
-    _validateAgentConfig = ajv.compile(getAgentConfigSchema() as any);
+    _validateAgentConfig = ajv.compile(getAgentConfigSchema());
   }
 
   const valid = _validateAgentConfig(config);
@@ -65,7 +65,7 @@ export function validateAgentConfig(config: unknown): ValidationResult {
  */
 export function validateProviderConfig(config: unknown): ValidationResult {
   if (!_validateProviderConfig) {
-    _validateProviderConfig = ajv.compile(getProviderConfigSchema() as any);
+    _validateProviderConfig = ajv.compile(getProviderConfigSchema());
   }
 
   const valid = _validateProviderConfig(config);

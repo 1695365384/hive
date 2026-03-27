@@ -11,9 +11,7 @@
 
 export {
   ProviderManager,
-  getProviderManager,
   createProviderManager,
-  providerManager,
 } from './ProviderManager.js';
 
 // ============================================

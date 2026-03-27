@@ -34,6 +34,8 @@ interface HeartbeatState {
   running: boolean;
   /** 配置 */
   config: HeartbeatConfig;
+  /** AbortController 用于 abort action */
+  abortController?: AbortController;
 }
 
 /**
@@ -43,7 +45,7 @@ const DEFAULT_TIMEOUT_CONFIG: Required<TimeoutConfig> = {
   apiTimeout: 120000, // 2 分钟
   executionTimeout: 600000, // 10 分钟
   heartbeatInterval: 30000, // 30 秒
-  stallTimeout: 60000, // 1 分钟
+  stallTimeout: 120000, // 2 分钟
   retryOnTimeout: false,
   maxRetries: 0,
 };
@@ -248,8 +250,9 @@ export class TimeoutCapability implements AgentCapability {
    * 启动心跳检测
    *
    * @param config - 心跳配置
+   * @param abortController - 可选的 AbortController，用于 abort action
    */
-  startHeartbeat(config: HeartbeatConfig): void {
+  startHeartbeat(config: HeartbeatConfig, abortController?: AbortController): void {
     // 停止现有的心跳
     this.stopHeartbeat();
 
@@ -257,6 +260,7 @@ export class TimeoutCapability implements AgentCapability {
       lastActivity: Date.now(),
       running: true,
       config,
+      abortController,
     };
 
     // 启动心跳定时器
@@ -295,6 +299,17 @@ export class TimeoutCapability implements AgentCapability {
         });
 
         config.onStalled?.(this.heartbeatState.lastActivity);
+
+        // abort action: 中断正在执行的 Promise
+        if (config.action === 'abort' && this.heartbeatState.abortController) {
+          this.heartbeatState.abortController.abort(
+            new TimeoutError(
+              `Agent stalled for ${timeSinceLastActivity}ms (timeout: ${config.stallTimeout}ms)`,
+              'stalled',
+              config.stallTimeout
+            )
+          );
+        }
       }
     }, config.stallTimeout);
   }

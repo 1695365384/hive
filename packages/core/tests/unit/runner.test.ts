@@ -28,6 +28,18 @@ vi.mock('../../src/agents/prompts/prompts.js', () => ({
   buildPlanPrompt: vi.fn((task: string) => `Plan: ${task}`),
 }));
 
+// Mock SDK - provide async generator for query
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: vi.fn(async function* () {
+    yield { type: 'result', result: 'Mock response' };
+  }),
+  tool: vi.fn(),
+  createSdkMcpServer: vi.fn(),
+  Options: vi.fn(),
+  AgentDefinition: vi.fn(),
+  McpServerConfig: vi.fn(),
+}));
+
 describe('AgentRunner', () => {
   let runner: AgentRunner;
 

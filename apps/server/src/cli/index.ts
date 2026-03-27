@@ -6,7 +6,7 @@
  * Command-line interface for Hive server.
  */
 
-import { config } from '../config.js'
+import { getConfig } from '../config.js'
 
 const VERSION = '1.0.0'
 
@@ -65,7 +65,7 @@ Commands:
   server            Start HTTP/WebSocket server
 
 Options:
-  --port, -p <port>      Server port (default: 3000)
+  --port, -p <port>      Server port (default: 4450)
   --help, -h             Show this help message
   --version, -v          Show version number
 
@@ -91,7 +91,8 @@ async function runChat(): Promise<void> {
 
   // Bootstrap agent
   const { bootstrap } = await import('../bootstrap.js')
-  const ctx = await bootstrap({ config: { ...config, plugins: [] } })
+  const cfg = getConfig()
+  const ctx = await bootstrap({ config: { ...cfg, plugins: [] } })
 
   const prompt = () => {
     rl.question('You: ', async (input) => {
@@ -123,13 +124,14 @@ async function runChat(): Promise<void> {
 }
 
 async function runServer(port?: number): Promise<void> {
-  const serverPort = port || config.port
+  const cfg = getConfig()
+  const serverPort = port || cfg.port
 
   console.log(`Starting Hive server on port ${serverPort}...`)
 
   // Update config with CLI options (preserve plugins from config)
   const serverConfig = {
-    ...config,
+    ...cfg,
     port: serverPort,
   }
 

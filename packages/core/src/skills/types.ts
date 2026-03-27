@@ -68,6 +68,8 @@ export interface SkillLoaderOptions {
   recursive?: boolean;
   /** 文件编码 */
   encoding?: BufferEncoding;
+  /** 日志器 */
+  logger?: import('../plugins/types.js').ILogger;
 }
 
 /**

@@ -6,6 +6,8 @@
  */
 
 import type { ConfigSource, ProviderConfig, McpServerConfig, ModelsDevProvider } from '../types.js';
+import type { ILogger } from '../../plugins/types.js';
+import { noopLogger } from '../../plugins/types.js';
 import { getModelsDevClient } from '../metadata/models-dev.js';
 
 /**
@@ -16,9 +18,14 @@ import { getModelsDevClient } from '../metadata/models-dev.js';
 export class ModelsDevSource implements ConfigSource {
   readonly name = 'models-dev';
 
+  private readonly logger: ILogger;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private providers: Map<string, ProviderConfig> = new Map();
+
+  constructor(logger?: ILogger) {
+    this.logger = logger ?? noopLogger;
+  }
 
   /**
    * 初始化 - 预加载提供商信息
@@ -61,7 +68,7 @@ export class ModelsDevSource implements ConfigSource {
 
       this.initialized = true;
     } catch (error) {
-      console.warn('Models.dev 初始化失败:', error);
+      this.logger.warn('Models.dev 初始化失败:', error);
       this.initialized = true; // 仍然标记为已初始化，避免重复尝试
     }
   }

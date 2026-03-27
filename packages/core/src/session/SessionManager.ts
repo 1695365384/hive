@@ -133,6 +133,8 @@ export class SessionManager {
       await this.createSession();
     }
 
+    const session = this.currentSession!;
+
     const message: Message = {
       id: this.generateMessageId(),
       role: options.role,
@@ -141,16 +143,19 @@ export class SessionManager {
       tokenCount: options.tokenCount,
     };
 
-    this.currentSession!.messages.push(message);
-    this.currentSession!.updatedAt = new Date();
-    this.currentSession!.metadata.messageCount = this.currentSession!.messages.length;
-
-    if (message.tokenCount) {
-      this.currentSession!.metadata.totalTokens += message.tokenCount;
-    }
+    this.currentSession = {
+      ...session,
+      messages: [...session.messages, message],
+      updatedAt: new Date(),
+      metadata: {
+        ...session.metadata,
+        messageCount: session.messages.length + 1,
+        totalTokens: session.metadata.totalTokens + (message.tokenCount ?? 0),
+      },
+    };
 
     if (this.autoSave) {
-      await this.repository.save(this.currentSession!);
+      await this.repository.save(this.currentSession);
     }
 
     return message;
@@ -199,9 +204,16 @@ export class SessionManager {
       return;
     }
 
-    this.currentSession.compressionState = state;
-    this.currentSession.metadata.lastCompressedAt = state.lastCompressedAt;
-    this.currentSession.metadata.compressionCount++;
+    const session = this.currentSession;
+    this.currentSession = {
+      ...session,
+      compressionState: state,
+      metadata: {
+        ...session.metadata,
+        lastCompressedAt: state.lastCompressedAt,
+        compressionCount: session.metadata.compressionCount + 1,
+      },
+    };
 
     if (this.autoSave) {
       await this.repository.save(this.currentSession);
@@ -216,17 +228,28 @@ export class SessionManager {
       return;
     }
 
-    const oldCount = this.currentSession.messages.length;
-    this.currentSession.messages = messages;
-    this.currentSession.metadata.messageCount = messages.length;
-    this.currentSession.metadata.totalTokens -= tokensSaved;
-    this.currentSession.updatedAt = new Date();
+    const session = this.currentSession;
+    const oldCount = session.messages.length;
+    const updatedCompressionState = session.compressionState
+      ? {
+          ...session.compressionState,
+          originalMessageCount: oldCount,
+          compressedMessageCount: messages.length,
+          tokensSaved,
+        }
+      : undefined;
 
-    if (this.currentSession.compressionState) {
-      this.currentSession.compressionState.originalMessageCount = oldCount;
-      this.currentSession.compressionState.compressedMessageCount = messages.length;
-      this.currentSession.compressionState.tokensSaved = tokensSaved;
-    }
+    this.currentSession = {
+      ...session,
+      messages,
+      updatedAt: new Date(),
+      metadata: {
+        ...session.metadata,
+        messageCount: messages.length,
+        totalTokens: session.metadata.totalTokens - tokensSaved,
+      },
+      compressionState: updatedCompressionState,
+    };
 
     if (this.autoSave) {
       await this.repository.save(this.currentSession);
@@ -241,8 +264,11 @@ export class SessionManager {
       return;
     }
 
-    Object.assign(this.currentSession.metadata, updates);
-    this.currentSession.updatedAt = new Date();
+    this.currentSession = {
+      ...this.currentSession,
+      metadata: { ...this.currentSession.metadata, ...updates },
+      updatedAt: new Date(),
+    };
 
     if (this.autoSave) {
       await this.repository.save(this.currentSession);

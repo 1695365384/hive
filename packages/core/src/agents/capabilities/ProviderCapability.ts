@@ -10,6 +10,7 @@ import type { WorkspaceManager } from '../../workspace/index.js';
 import { getKnownProvidersSync, getProviderType } from '../../providers/adapters/index.js';
 import { getProviderRegistry } from '../../providers/metadata/provider-registry.js';
 import { createWorkspacePersistence } from '../../providers/metadata/workspace-persistence.js';
+import type { SessionCapability } from './SessionCapability.js';
 
 /**
  * Provider 预设信息（用于 UI 展示）
@@ -41,16 +42,12 @@ export class ProviderCapability implements AgentCapability {
     if (this.persistenceConfigured) return;
 
     try {
-      // 获取 SessionCapability
-      const sessionCap: { getWorkspaceManager?: () => WorkspaceManager | undefined } =
-        this.context.getCapability('session') as unknown as {
-          getWorkspaceManager?: () => WorkspaceManager | undefined
-        };
+      const sessionCap = this.context.getSessionCap?.();
+      if (!sessionCap) return;
 
-      const workspaceManager = sessionCap?.getWorkspaceManager?.();
-
+      const workspaceManager = sessionCap.getWorkspaceManager();
       if (workspaceManager?.isInitialized()) {
-        const persistence = createWorkspacePersistence(workspaceManager);
+        const persistence = createWorkspacePersistence(workspaceManager.getPaths().modelsDevCacheFile);
         getProviderRegistry().setPersistence(persistence);
         this.persistenceConfigured = true;
       }
@@ -60,11 +57,12 @@ export class ProviderCapability implements AgentCapability {
   }
 
   /**
-   * 异步初始化（配置持久化）
+   * 异步初始化（通过 AgentCapability 接口调用）
    *
-   * 应在 Agent.initialize() 中调用
+   * 配置持久化 + 预加载提供商数据。
+   * 在所有能力的 initialize() 完成后由 AgentContextImpl.initializeAll() 自动调用。
    */
-  async initializeAsync(): Promise<void> {
+  async initializeAsync(_context: AgentContext): Promise<void> {
     this.configurePersistenceIfNeeded();
     // 预加载提供商数据
     await getProviderRegistry().preload();

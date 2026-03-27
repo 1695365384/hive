@@ -19,6 +19,13 @@ if (existsSync(resolve(process.cwd(), '.env'))) {
 /**
  * Raw JSON configuration structure
  */
+export interface HeartbeatConfigJson {
+  enabled?: boolean
+  intervalMs?: number
+  model?: string
+  prompt?: string
+}
+
 export interface HiveConfigJson {
   server?: {
     port?: number
@@ -29,13 +36,22 @@ export interface HiveConfigJson {
     id: string
     apiKey?: string
     model?: string
+    baseUrl?: string
   }
+  heartbeat?: HeartbeatConfigJson
   plugins?: Record<string, Record<string, unknown>>
 }
 
 /**
  * Resolved server configuration
  */
+export interface HeartbeatConfig {
+  enabled: boolean
+  intervalMs: number
+  model?: string
+  prompt?: string
+}
+
 export interface ServerConfig {
   /** HTTP server port */
   port: number
@@ -53,7 +69,11 @@ export interface ServerConfig {
     apiKey: string
     /** Model to use */
     model?: string
+    /** API base URL */
+    baseUrl?: string
   }
+  /** Heartbeat schedule configuration */
+  heartbeat: HeartbeatConfig
   /** Plugin configurations (key = plugin name, value = config to pass) */
   pluginConfigs: Record<string, Record<string, unknown>>
 }
@@ -139,11 +159,14 @@ export function loadConfig(): ServerConfig {
   // Provider config
   const provider = jsonConfig.provider || { id: 'glm' }
 
+  // Heartbeat config
+  const heartbeat = jsonConfig.heartbeat || {}
+
   // Plugin list (keys of plugins object)
   const plugins = jsonConfig.plugins ? Object.keys(jsonConfig.plugins) : []
 
   return {
-    port: server.port ?? parseInt(process.env.PORT || '3000', 10),
+    port: server.port ?? parseInt(process.env.PORT || '4450', 10),
     host: server.host ?? process.env.HOST ?? '127.0.0.1',
     logLevel: server.logLevel ?? (process.env.LOG_LEVEL as ServerConfig['logLevel']) ?? 'info',
     plugins,
@@ -151,6 +174,13 @@ export function loadConfig(): ServerConfig {
       id: provider.id || process.env.PROVIDER_ID || 'glm',
       apiKey: provider.apiKey || process.env.API_KEY || process.env.GLM_API_KEY || '',
       model: provider.model || process.env.MODEL,
+      baseUrl: provider.baseUrl || process.env.BASE_URL,
+    },
+    heartbeat: {
+      enabled: heartbeat.enabled ?? process.env.HEARTBEAT_ENABLED === 'true',
+      intervalMs: heartbeat.intervalMs ?? parseInt(process.env.HEARTBEAT_INTERVAL_MS || '300000', 10),
+      model: heartbeat.model || process.env.HEARTBEAT_MODEL,
+      prompt: heartbeat.prompt || process.env.HEARTBEAT_PROMPT,
     },
     pluginConfigs: jsonConfig.plugins || {},
   }
@@ -163,5 +193,22 @@ export function getPluginConfig(config: ServerConfig, pluginName: string): Recor
   return config.pluginConfigs[pluginName] || {}
 }
 
-/** Default config instance */
-export const config = loadConfig()
+/** Cached config instance */
+let _config: ServerConfig | null = null
+
+/**
+ * Get configuration (lazy-loaded singleton)
+ */
+export function getConfig(): ServerConfig {
+  if (!_config) {
+    _config = loadConfig()
+  }
+  return _config
+}
+
+/**
+ * Reset cached config (for testing)
+ */
+export function resetConfig(): void {
+  _config = null
+}

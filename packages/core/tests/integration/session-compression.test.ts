@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Agent, createAgent } from '../../src/agents/core/Agent.js';
+import { Agent, createAgent } from '../../src/agents/core/index.js';
 import { SimpleTokenCounter, createTokenCounter } from '../../src/compression/TokenCounter.js';
 import { MockSessionRepository } from '../helpers/mock-repository.js';
 

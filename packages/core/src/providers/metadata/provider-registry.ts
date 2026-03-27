@@ -5,6 +5,8 @@
  */
 
 import type { ProviderType } from '../types.js';
+import type { ILogger } from '../../plugins/types.js';
+import { noopLogger } from '../../plugins/types.js';
 import { getModelsDevClient, type ModelsDevPersistence } from './models-dev.js';
 
 /**
@@ -81,7 +83,7 @@ const STATIC_PROVIDERS: Record<string, ProviderInfo> = {
   litellm: {
     providerId: 'litellm',
     name: 'LiteLLM',
-    baseUrl: 'http://localhost:4000/v1',
+    baseUrl: '',
     defaultModel: 'gpt-4o',
     type: 'openai-compatible',
     envKeys: ['LITELLM_API_KEY'],
@@ -131,10 +133,15 @@ const STATIC_PROVIDERS: Record<string, ProviderInfo> = {
  * 动态获取提供商信息，支持缓存和 fallback
  */
 class ProviderRegistryImpl {
+  private readonly logger: ILogger;
   private cache: Map<string, ProviderInfo> = new Map();
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private persistenceConfigured = false;
+
+  constructor(logger?: ILogger) {
+    this.logger = logger ?? noopLogger;
+  }
 
   /**
    * 设置持久化层
@@ -193,7 +200,7 @@ class ProviderRegistryImpl {
 
       this.loaded = true;
     } catch (error) {
-      console.warn('从 models.dev 加载提供商失败，使用静态数据:', error);
+      this.logger.warn('从 models.dev 加载提供商失败，使用静态数据:', error);
       // 使用静态 fallback
       for (const [id, info] of Object.entries(STATIC_PROVIDERS)) {
         this.cache.set(id, info);

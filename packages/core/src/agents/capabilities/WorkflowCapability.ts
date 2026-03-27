@@ -11,6 +11,7 @@ import type {
   WorkflowResult,
   TaskAnalysis,
 } from '../core/types.js';
+import { TimeoutError } from '../core/types.js';
 import type {
   WorkflowPhaseHookContext,
   TaskProgressHookContext,
@@ -18,6 +19,7 @@ import type {
   NotificationType,
 } from '../../hooks/types.js';
 import { getPromptTemplate } from '../prompts/index.js';
+import type { SessionCapability } from './SessionCapability.js';
 
 /**
  * 工作流能力实现
@@ -29,6 +31,13 @@ export class WorkflowCapability implements AgentCapability {
 
   initialize(context: AgentContext): void {
     this.context = context;
+  }
+
+  /**
+   * 获取 SessionCapability（可能未注册，如 CLI 模式）
+   */
+  private getSessionCap(): SessionCapability | null {
+    return this.context.getSessionCap?.() ?? null;
   }
 
   /**
@@ -140,6 +149,18 @@ export class WorkflowCapability implements AgentCapability {
     };
 
     try {
+      // 启动心跳检测和执行超时
+      const timeoutConfig = this.context.timeoutCap.getConfig();
+      const abortController = new AbortController();
+      this.context.timeoutCap.startHeartbeat(
+        {
+          interval: timeoutConfig.heartbeatInterval,
+          stallTimeout: timeoutConfig.stallTimeout,
+        },
+        abortController
+      );
+
+      try {
       // 触发开始通知
       await this.emitNotification(
         sessionId,
@@ -158,7 +179,28 @@ export class WorkflowCapability implements AgentCapability {
       await emitPhaseChange('execute', '执行任务...');
       await this.emitProgress(sessionId, workflowId, '执行任务中', 30, '执行', 3);
 
-      const intelligentPrompt = this.buildIntelligentPrompt(task);
+      // 如果有 chatId，通过 SessionCapability 加载持久化历史
+      const chatId = options?.chatId;
+      let intelligentPrompt: string;
+
+      if (chatId) {
+        const sessionCap = this.getSessionCap();
+        if (sessionCap) {
+          // 尝试加载已有会话，不存在则创建
+          let session = await sessionCap.loadSession(chatId);
+          if (!session) {
+            session = await sessionCap.createSession({ id: chatId });
+          }
+          const historyText = sessionCap.getFormattedHistory();
+          intelligentPrompt = historyText
+            ? this.buildIntelligentPrompt(`${historyText}\n\n用户: ${task}`)
+            : this.buildIntelligentPrompt(task);
+        } else {
+          intelligentPrompt = this.buildIntelligentPrompt(task);
+        }
+      } else {
+        intelligentPrompt = this.buildIntelligentPrompt(task);
+      }
 
       result.executeResult = await this.context.runner.execute('general', intelligentPrompt, {
         cwd: options?.cwd,
@@ -170,6 +212,17 @@ export class WorkflowCapability implements AgentCapability {
       });
 
       result.success = result.executeResult.success;
+
+      // 持久化本轮对话到 SQLite
+      if (chatId && result.executeResult) {
+        const sessionCap = this.getSessionCap();
+        if (sessionCap) {
+          await sessionCap.addUserMessage(task);
+          if (result.executeResult.text) {
+            await sessionCap.addAssistantMessage(result.executeResult.text);
+          }
+        }
+      }
 
       // Phase 3: 完成
       await emitPhaseChange('complete', result.success ? '任务完成' : '任务失败');
@@ -185,6 +238,9 @@ export class WorkflowCapability implements AgentCapability {
           : `工作流执行失败: ${result.error || '未知错误'}`,
         { workflowId, analysis: result.analysis }
       );
+      } finally {
+        this.context.timeoutCap.stopHeartbeat();
+      }
     } catch (error) {
       result.success = false;
       result.error = error instanceof Error ? error.message : String(error);

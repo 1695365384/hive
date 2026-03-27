@@ -31,23 +31,9 @@ export {
   getExtendedAgentNames,
   getAllAgentNames,
 
-  // 运行器
+  // 运行器（含 Task 系统）
   AgentRunner,
   createAgentRunner,
-  runAgent,
-  runExplore,
-  runPlan,
-  runGeneral,
-
-  // Task 系统
-  Task,
-  createTask,
-  runTask,
-  runParallel,
-  mapParallel,
-  runExploreTask,
-  runPlanTask,
-  runGeneralTask,
 
   // 类型
   type AgentOptions,
