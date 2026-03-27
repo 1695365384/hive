@@ -105,6 +105,18 @@ export interface ChannelCapabilities {
 }
 
 /**
+ * Webhook 处理器接口
+ *
+ * 支持 webhook 回调的通道可实现此接口。
+ */
+export interface IWebhookHandler {
+  /**
+   * 处理 webhook 回调
+   */
+  handleWebhook(body: unknown, signature?: string, timestamp?: string, nonce?: string): Promise<unknown>
+}
+
+/**
  * 通道接口
  *
  * 所有消息平台通道必须实现此接口。
@@ -157,15 +169,9 @@ export interface IMessageBus {
   emit(event: string, data: unknown): void
 }
 
-/**
- * 日志接口
- */
-export interface ILogger {
-  debug(message: string, ...args: unknown[]): void
-  info(message: string, ...args: unknown[]): void
-  warn(message: string, ...args: unknown[]): void
-  error(message: string, ...args: unknown[]): void
-}
+// Import ILogger for local use and re-export for backward compatibility
+import { type ILogger, noopLogger } from '../types/logger.js'
+export { type ILogger, noopLogger }
 
 /**
  * 插件上下文

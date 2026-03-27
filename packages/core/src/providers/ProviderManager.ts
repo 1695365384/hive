@@ -7,6 +7,8 @@
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ProviderConfig, McpServerConfig, ModelSpec, ConfigSource, ProviderType, ExternalConfig } from './types.js';
+import type { ILogger } from '../plugins/types.js';
+import { noopLogger } from '../plugins/types.js';
 import { createAdapter, adapterRegistry, getProviderType } from './adapters/index.js';
 import { createConfigChain } from './sources/index.js';
 import { getModelsDevClient, fetchProviderModels, fetchModelSpec } from './metadata/index.js';
@@ -28,6 +30,8 @@ export interface ProviderManagerOptions {
   externalConfig?: ExternalConfig;
   /** 是否使用环境变量作为 fallback */
   useEnvFallback?: boolean;
+  /** Logger instance (defaults to no-op) */
+  logger?: ILogger;
 }
 
 /**
@@ -38,10 +42,12 @@ export class ProviderManager {
   private activeId: string | null = null;
   private sources: ConfigSource[];
   private externalConfig: ExternalConfig | null;
+  private readonly logger: ILogger;
   private readonly CACHE_TTL = 3600000; // 1 小时
 
   constructor(options: ProviderManagerOptions = {}) {
     this.externalConfig = options.externalConfig ?? null;
+    this.logger = options.logger ?? noopLogger;
 
     // 如果提供了外部配置，优先使用
     if (this.externalConfig) {
@@ -154,7 +160,7 @@ export class ProviderManager {
    */
   switch(id: string, apiKey?: string): boolean {
     if (!this.providers.has(id)) {
-      console.error(`未找到 Provider: ${id}`);
+      this.logger.error(`未找到 Provider: ${id}`);
       return false;
     }
 
@@ -187,7 +193,7 @@ export class ProviderManager {
    */
   unregister(id: string): boolean {
     if (this.activeId === id) {
-      console.warn(`不能注销当前活跃的 Provider: ${id}`);
+      this.logger.warn(`不能注销当前活跃的 Provider: ${id}`);
       return false;
     }
     return this.providers.delete(id);
@@ -435,44 +441,11 @@ export class ProviderManager {
     return this.getMcpServers();
   }
 
-  /**
-   * 应用配置到环境变量（兼容旧代码）
-   *
-   * @deprecated 不再需要，AI SDK 直接使用配置
-   */
-  applyToEnv(): void {
-    const config = this.active;
-    if (!config) return;
-
-    process.env.ANTHROPIC_BASE_URL = config.baseUrl;
-
-    if (config.apiKey) {
-      process.env.ANTHROPIC_API_KEY = config.apiKey;
-    }
-
-    if (config.model) {
-      process.env.ANTHROPIC_MODEL = config.model;
-    }
-  }
 }
 
 // ============================================
-// 单例导出
+// 工厂函数
 // ============================================
-
-let _instance: ProviderManager | null = null;
-
-/**
- * 获取全局 Provider 管理器实例
- *
- * @param options 可选配置，仅在首次调用时生效
- */
-export function getProviderManager(options?: ProviderManagerOptions): ProviderManager {
-  if (!_instance) {
-    _instance = new ProviderManager(options);
-  }
-  return _instance;
-}
 
 /**
  * 创建新的 Provider 管理器实例
@@ -482,16 +455,3 @@ export function getProviderManager(options?: ProviderManagerOptions): ProviderMa
 export function createProviderManager(options?: ProviderManagerOptions): ProviderManager {
   return new ProviderManager(options);
 }
-
-/**
- * 重置全局实例（用于测试或重新初始化）
- */
-export function resetProviderManager(): void {
-  _instance = null;
-}
-
-/**
- * 全局实例（便捷访问）
- * @deprecated 推荐使用 getProviderManager(options) 以传入配置
- */
-export const providerManager = getProviderManager();

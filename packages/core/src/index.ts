@@ -85,20 +85,8 @@ export {
   // Agent 运行器
   AgentRunner,
   createAgentRunner,
-  runAgent,
-  runExplore,
-  runPlan,
-  runGeneral,
 
-  // Task 系统（类似 Claude Code 的 Task Tool）
-  Task,
-  createTask,
-  runTask,
-  runParallel,
-  mapParallel,
-  runExploreTask,
-  runPlanTask,
-  runGeneralTask,
+  // Task 系统（合并到 AgentRunner）
   type TaskConfig,
   type TaskResult,
   type ParallelTaskConfig,
@@ -119,9 +107,7 @@ export {
 export {
   // 核心类
   ProviderManager,
-  getProviderManager,
   createProviderManager,
-  providerManager,
 
   // 配置来源
   EnvSource,
@@ -433,10 +419,10 @@ export {
   // 通道接口
   type ChannelCapabilities,
   type IChannel,
+  type IWebhookHandler,
 
   // 插件上下文
   type IMessageBus,
-  type ILogger,
   type PluginContext,
 
   // 插件接口
@@ -447,3 +433,18 @@ export {
   type PluginLoadOptions,
   type IPluginLoader,
 } from './plugins/index.js';
+
+// ============================================
+// 共享类型（从 types 模块直接导出）
+// ============================================
+
+export {
+  type ILogger,
+  noopLogger,
+} from './types/logger.js';
+
+// ============================================
+// 工具函数
+// ============================================
+
+export { safeJsonParse } from './utils/safe-json-parse.js';

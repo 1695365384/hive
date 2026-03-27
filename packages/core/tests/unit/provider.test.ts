@@ -8,7 +8,6 @@ import { describe, it, expect } from 'vitest';
 import {
   ProviderManager,
   createProviderManager,
-  getProviderManager,
   getKnownProvidersSync,
   isKnownProvider,
   getProviderType,
@@ -27,19 +26,14 @@ describe('Provider Manager', () => {
     expect(manager).toBeDefined();
   });
 
-  it('should get global provider manager', () => {
-    const manager = getProviderManager();
-    expect(manager).toBeDefined();
-  });
-
   it('should list all providers', () => {
-    const manager = getProviderManager();
+    const manager = createProviderManager();
     const providers = manager.getAllProviders();
     expect(Array.isArray(providers)).toBe(true);
   });
 
   it('should get active provider', () => {
-    const manager = getProviderManager();
+    const manager = createProviderManager();
     const active = manager.getActiveProvider();
     // May be null if no providers configured
     expect(active === null || typeof active === 'object').toBe(true);

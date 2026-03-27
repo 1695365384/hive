@@ -4,8 +4,9 @@
  * Initializes all core modules and returns a ready-to-use application context.
  */
 
-import { createAgent, type Agent, type IPlugin, type ILogger } from '@hive/core'
+import { createAgent, type Agent, type IPlugin, type ILogger, type ChannelMessage } from '@hive/core'
 import { MessageBus } from '@hive/orchestrator'
+import { HeartbeatScheduler } from './heartbeat-scheduler.js'
 import type { ServerConfig } from './config.js'
 
 export interface HiveContext {
@@ -17,6 +18,8 @@ export interface HiveContext {
   config: ServerConfig
   /** Loaded plugins */
   plugins: IPlugin[]
+  /** Heartbeat scheduler */
+  heartbeatScheduler: HeartbeatScheduler | null
 }
 
 export interface BootstrapOptions {
@@ -108,12 +111,16 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
           name: config.provider.id.toUpperCase(),
           apiKey: config.provider.apiKey,
           model: config.provider.model,
-          baseUrl: `https://api.${config.provider.id}.com`,
+          baseUrl: config.provider.baseUrl || `https://api.${config.provider.id}.com`,
         },
       ],
       activeProvider: config.provider.id,
     },
   })
+
+  // Initialize agent
+  logger.info('[bootstrap] Initializing agent...')
+  await agent.initialize()
 
   // Load plugins
   const plugins: IPlugin[] = []
@@ -137,11 +144,67 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
 
   logger.info(`[bootstrap] Bootstrap complete. ${plugins.length} plugins loaded.`)
 
+  // Start heartbeat scheduler
+  let heartbeatScheduler: HeartbeatScheduler | null = null
+  if (config.heartbeat.enabled) {
+    heartbeatScheduler = new HeartbeatScheduler({ agent, config: config.heartbeat, bus })
+    heartbeatScheduler.start()
+    logger.info(`[bootstrap] Heartbeat scheduler started (interval: ${config.heartbeat.intervalMs}ms)`)
+  }
+
+  // 桥接：通道消息 → Agent 处理 → 回复
+  bus.subscribe('message:received', async (message: { payload: unknown }) => {
+    const channelMessage = message.payload as ChannelMessage
+    logger.info(`[bootstrap] Message received, dispatching to agent: ${channelMessage.content.slice(0, 50)}`)
+
+    // 根据入站消息类型决定回复格式：卡片→卡片，其他→markdown
+    const replyType = channelMessage.type === 'card' ? 'card' : 'markdown'
+
+    try {
+      const result = await agent.runWorkflow(channelMessage.content, {
+        chatId: channelMessage.to?.id,
+        onPhase: (phase, message) => {
+          logger.info(`[agent] [${phase}] ${message}`)
+        },
+        onText: (text) => {
+          logger.info(`[agent] [text] ${text.slice(0, 100)}`)
+        },
+        onTool: (tool, input) => {
+          logger.info(`[agent] [tool] ${tool}`)
+        },
+      })
+
+      // 提取回复文本
+      const replyText = result.executeResult?.text
+        || (result.success ? `任务完成：${result.analysis?.type || 'simple'}` : `任务失败：${result.error || '未知错误'}`)
+
+      bus.publish('message:response', {
+        channelId: channelMessage.metadata?.channelId,
+        chatId: channelMessage.to?.id,
+        replyTo: channelMessage.id,
+        content: replyText,
+        type: replyType,
+      })
+
+      logger.info(`[bootstrap] Agent response sent to channel (format: ${replyType})`)
+    } catch (error) {
+      logger.error(`[bootstrap] Agent workflow failed:`, error)
+      bus.publish('message:response', {
+        channelId: channelMessage.metadata?.channelId,
+        chatId: channelMessage.to?.id,
+        replyTo: channelMessage.id,
+        content: `处理失败：${error instanceof Error ? error.message : '未知错误'}`,
+        type: replyType,
+      })
+    }
+  })
+
   return {
     bus,
     agent,
     config,
     plugins,
+    heartbeatScheduler,
   }
 }
 
@@ -150,6 +213,11 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
  */
 export async function shutdown(ctx: HiveContext): Promise<void> {
   console.log('[shutdown] Starting graceful shutdown...')
+
+  // Stop heartbeat scheduler
+  if (ctx.heartbeatScheduler) {
+    ctx.heartbeatScheduler.stop()
+  }
 
   // Deactivate plugins
   for (const plugin of ctx.plugins) {

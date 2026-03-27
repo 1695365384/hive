@@ -15,6 +15,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import type { ILogger } from '../../plugins/types.js';
+import { noopLogger } from '../../plugins/types.js';
 
 // ES 模块中获取 __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -34,6 +36,12 @@ export type TemplateVariables = Record<string, string | number | boolean>;
 export class PromptTemplate {
   private cache: Map<string, string> = new Map();
   private warnOnFallback: boolean = true;
+  private logger: ILogger;
+
+  constructor(options?: { warnOnFallback?: boolean; logger?: ILogger }) {
+    this.warnOnFallback = options?.warnOnFallback ?? true;
+    this.logger = options?.logger ?? noopLogger;
+  }
 
   /**
    * 加载模板文件
@@ -62,7 +70,7 @@ export class PromptTemplate {
     const inlineTemplate = this.getInlineTemplate(name);
     if (inlineTemplate) {
       if (this.warnOnFallback) {
-        console.warn(
+        this.logger.warn(
           `[PromptTemplate] Using inline template for '${name}'. ` +
             `Create templates/${name}.md for customization.`
         );
@@ -105,6 +113,13 @@ export class PromptTemplate {
    */
   clearTemplateCache(name: string): boolean {
     return this.cache.delete(name);
+  }
+
+  /**
+   * 检查模板是否已缓存
+   */
+  isCached(name: string): boolean {
+    return this.cache.has(name);
   }
 
   /**

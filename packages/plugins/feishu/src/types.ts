@@ -174,9 +174,15 @@ export interface IFeishuChannel extends IChannel {
   /** 应用 ID */
   readonly appId: string
 
-  /** 处理 Webhook 请求 */
-  handleWebhook(body: unknown, signature: string, timestamp: string, nonce: string): Promise<unknown>
+  /** 启动通道（建立 WebSocket 长连接） */
+  start(): Promise<void>
 
-  /** 获取飞书 Client */
-  getClient(): unknown
+  /** 停止通道（关闭 WebSocket 连接） */
+  stop(): Promise<void>
+
+  /** 处理 Webhook 请求（可选，Webhook 模式备用） */
+  handleWebhook?(body: unknown, signature: string, timestamp: string, nonce: string): Promise<unknown>
+
+  /** 获取飞书 API Client */
+  getClient(): import('@larksuiteoapi/node-sdk').Client
 }

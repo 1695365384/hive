@@ -7,6 +7,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
+import { safeJsonParse } from '../utils/safe-json-parse.js';
+import {
+  DEFAULT_WORKSPACE_DIR,
+  DEFAULT_WORKSPACE_NAME,
+  WORKSPACE_VERSION,
+  DEFAULT_SESSION_GROUPS,
+} from './index.js';
 import type {
   WorkspaceMetadata,
   WorkspaceConfig,
@@ -16,12 +23,6 @@ import type {
   Preferences,
   SessionConfig,
   StorageConfig,
-} from './types.js';
-import {
-  DEFAULT_WORKSPACE_DIR,
-  DEFAULT_WORKSPACE_NAME,
-  WORKSPACE_VERSION,
-  DEFAULT_SESSION_GROUPS,
 } from './types.js';
 
 /**
@@ -97,30 +98,33 @@ export class WorkspaceManager {
 
     // 加载元数据
     const metadataContent = await fs.promises.readFile(paths.metadataFile, 'utf-8');
-    const parsedMetadata = JSON.parse(metadataContent);
+    const parsedMetadata = safeJsonParse<Partial<WorkspaceMetadata>>(metadataContent, {});
 
     // 转换日期
     this.metadata = {
-      ...parsedMetadata,
-      createdAt: new Date(parsedMetadata.createdAt),
-      lastAccessedAt: new Date(parsedMetadata.lastAccessedAt),
-      sessionGroups: parsedMetadata.sessionGroups.map((g: SessionGroup) => ({
+      name: parsedMetadata.name ?? DEFAULT_WORKSPACE_NAME,
+      version: parsedMetadata.version ?? WORKSPACE_VERSION,
+      defaultSessionGroup: parsedMetadata.defaultSessionGroup ?? 'default',
+      sessionGroups: (parsedMetadata.sessionGroups ?? DEFAULT_SESSION_GROUPS).map((g: SessionGroup) => ({
         ...g,
         createdAt: new Date(g.createdAt),
       })),
+      createdAt: new Date(parsedMetadata.createdAt ?? Date.now()),
+      lastAccessedAt: new Date(parsedMetadata.lastAccessedAt ?? Date.now()),
     };
 
     // 加载配置
     if (fs.existsSync(paths.configFile)) {
       const configContent = await fs.promises.readFile(paths.configFile, 'utf-8');
-      this.config = JSON.parse(configContent);
+      this.config = safeJsonParse<WorkspaceConfig>(configContent, this.config);
     }
 
     // 更新最后访问时间
-    this.metadata!.lastAccessedAt = new Date();
-    await this.saveMetadata();
-
-    this.currentGroup = this.metadata!.defaultSessionGroup;
+    if (this.metadata) {
+      this.metadata.lastAccessedAt = new Date();
+      await this.saveMetadata();
+      this.currentGroup = this.metadata.defaultSessionGroup;
+    }
     this.initialized = true;
   }
 

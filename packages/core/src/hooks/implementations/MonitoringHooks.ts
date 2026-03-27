@@ -17,6 +17,8 @@ import {
   type SessionEndHookContext,
   type HookResult,
 } from '../index.js';
+import type { ILogger } from '../../plugins/types.js';
+import { noopLogger } from '../../plugins/types.js';
 
 /**
  * 工具调用统计
@@ -109,14 +111,16 @@ export class MonitoringHooks {
   private registry: HookRegistry;
   private config: Required<Pick<MonitoringHooksConfig, 'slowCallThreshold' | 'enableStats' | 'verbose'>> & MonitoringHooksConfig;
   private registeredHookIds: string[] = [];
+  private logger: ILogger;
 
   // 统计数据
   private toolStats: Map<string, ToolCallStats> = new Map();
   private sessionStats: Map<string, SessionStats> = new Map();
   private pendingToolCalls: Map<string, number> = new Map(); // toolCallId -> startTime
 
-  constructor(registry: HookRegistry, config: MonitoringHooksConfig = {}) {
+  constructor(registry: HookRegistry, config: MonitoringHooksConfig = {}, logger?: ILogger) {
     this.registry = registry;
+    this.logger = logger ?? noopLogger;
     this.config = {
       slowCallThreshold: config.slowCallThreshold ?? 5000, // 默认 5 秒
       enableStats: config.enableStats ?? true,
@@ -181,7 +185,7 @@ export class MonitoringHooks {
    */
   private async handleSessionStart(context: SessionStartHookContext): Promise<HookResult> {
     if (this.config.verbose) {
-      console.log(`[Monitoring] Session started: ${context.sessionId}`);
+      this.logger.info(`[Monitoring] Session started: ${context.sessionId}`);
     }
 
     this.sessionStats.set(context.sessionId, {
@@ -210,7 +214,7 @@ export class MonitoringHooks {
       stats.success = context.success;
 
       if (this.config.verbose) {
-        console.log(
+        this.logger.info(
           `[Monitoring] Session ended: ${context.sessionId}, ` +
           `duration: ${context.duration}ms, ` +
           `tool calls: ${stats.toolCallCount}, ` +
@@ -232,7 +236,7 @@ export class MonitoringHooks {
     this.pendingToolCalls.set(callId, Date.now());
 
     if (this.config.verbose) {
-      console.log(`[Monitoring] Tool call started: ${context.toolName}`);
+      this.logger.info(`[Monitoring] Tool call started: ${context.toolName}`);
     }
 
     return { proceed: true };
@@ -297,7 +301,7 @@ export class MonitoringHooks {
 
     if (this.config.verbose) {
       const status = success ? '✓' : '✗';
-      console.log(`[Monitoring] Tool call ${status}: ${toolName} (${duration}ms)`);
+      this.logger.info(`[Monitoring] Tool call ${status}: ${toolName} (${duration}ms)`);
     }
 
     return { proceed: true };

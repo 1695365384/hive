@@ -4,7 +4,7 @@
  * Unified entry point for both CLI and HTTP/WebSocket server.
  */
 
-import { config } from './config.js'
+import { getConfig } from './config.js'
 import { bootstrap, shutdown, type HiveContext } from './bootstrap.js'
 
 export interface ServerOptions {
@@ -19,10 +19,11 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   context: HiveContext
   close: () => Promise<void>
 }> {
+  const cfg = getConfig()
   const serverConfig = {
-    ...config,
-    port: options.port || config.port,
-    plugins: options.plugins || config.plugins,
+    ...cfg,
+    port: options.port || cfg.port,
+    plugins: options.plugins || cfg.plugins,
   }
 
   console.log('[hive] Bootstrapping...')
@@ -113,4 +114,3 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export { bootstrap, shutdown, type HiveContext }
-export { config }

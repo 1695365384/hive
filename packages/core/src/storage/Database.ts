@@ -161,6 +161,16 @@ export class DatabaseManager {
     }
     this.instances.clear();
   }
+
+  /**
+   * Reset all instances (for test isolation)
+   */
+  static resetInstances(): void {
+    for (const instance of this.instances.values()) {
+      instance.close();
+    }
+    this.instances.clear();
+  }
 }
 
 /**

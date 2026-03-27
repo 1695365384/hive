@@ -30,9 +30,7 @@ pnpm add @hive/plugin-feishu
       "apps": [
         {
           "appId": "${FEISHU_APP_ID}",
-          "appSecret": "${FEISHU_APP_SECRET}",
-          "encryptKey": "${FEISHU_ENCRYPT_KEY}",
-          "verificationToken": "${FEISHU_VERIFY_TOKEN}"
+          "appSecret": "${FEISHU_APP_SECRET}"
         }
       ]
     }
@@ -43,11 +41,13 @@ pnpm add @hive/plugin-feishu
 ### 环境变量
 
 ```bash
-# .env
+# .env - 必需
 FEISHU_APP_ID=cli_xxxxxx
 FEISHU_APP_SECRET=xxxxxx
-FEISHU_ENCRYPT_KEY=xxxxxx  # 可选，用于签名验证
-FEISHU_VERIFY_TOKEN=xxxxxx  # 可选，用于签名验证
+
+# 可选（用于签名验证）
+# FEISHU_ENCRYPT_KEY=xxxxxx
+# FEISHU_VERIFY_TOKEN=xxxxxx
 ```
 
 ### 多租户配置
@@ -73,14 +73,33 @@ FEISHU_VERIFY_TOKEN=xxxxxx  # 可选，用于签名验证
 
 ## Webhook 配置
 
-1. 在飞书开放平台配置事件订阅 URL：
+### 1. 飞书开放平台权限配置
+
+在飞书开放平台 → 应用 → 权限管理中开通以下权限：
+
+| 权限 | 说明 |
+|------|------|
+| `im:message` | 获取与发送单聊、群组消息 |
+| `im:message:send_as_bot` | 以应用身份发消息 |
+| `im:chat` | 获取群组信息 |
+| `im:chat:readonly` | 获取群组列表 |
+
+### 2. 事件订阅
+
+在飞书开放平台 → 应用 → 事件订阅中配置：
 
 ```
 https://your-server.com/webhook/feishu/{appId}
 ```
 
-2. 订阅消息事件：
-   - `im.message.receive_v1` - 接收消息
+订阅事件：
+- `im.message.receive_v1` - 接收消息
+
+### 3. 机器人能力
+
+在飞书开放平台 → 应用 → 机器人配置中：
+- 启用机器人
+- 配置消息卡片（可选）
 
 ## 消息格式
 

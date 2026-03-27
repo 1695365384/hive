@@ -35,7 +35,6 @@ describe('Agent Module Exports', () => {
       const agent = new Agent();
 
       expect(typeof agent.analyzeTask).toBe('function');
-      expect(typeof agent.currentProvider).toBeDefined();
       expect(typeof agent.listProviders).toBe('function');
       expect(typeof agent.useProvider).toBe('function');
       expect(typeof agent.explore).toBe('function');
@@ -130,23 +129,6 @@ describe('Agent Module Exports', () => {
       };
       expect(result).toBeDefined();
     });
-  });
-});
-
-describe('Task System Exports', () => {
-  it('should export Task class', async () => {
-    const { Task } = await import('../../src/agents/index.js');
-    expect(Task).toBeDefined();
-  });
-
-  it('should export createTask function', async () => {
-    const { createTask } = await import('../../src/agents/index.js');
-    expect(createTask).toBeDefined();
-  });
-
-  it('should export runParallel function', async () => {
-    const { runParallel } = await import('../../src/agents/index.js');
-    expect(runParallel).toBeDefined();
   });
 });
 

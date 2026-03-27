@@ -13,7 +13,9 @@ import type {
   ModelsDevProvider,
   ModelsDevResponse,
 } from '../types.js';
-import type { ModelsDevCache, CachedProviderInfo, CachedModelInfo } from '../../workspace/types.js';
+import type { ModelsDevCache, CachedProviderInfo, CachedModelInfo } from './types.js';
+import type { ILogger } from '../../plugins/types.js';
+import { noopLogger } from '../../plugins/types.js';
 
 /**
  * 持久化接口
@@ -38,11 +40,16 @@ export class ModelsDevClient {
   private static readonly FILE_CACHE_TTL = 86400000; // 文件缓存 24 小时
   private static readonly CACHE_VERSION = '1.0.0';
 
+  private readonly logger: ILogger;
   private providersCache: Map<string, ModelsDevProvider> = new Map();
   private allProvidersCache: ModelsDevProvider[] | null = null;
   private cacheTime: number = 0;
   private fetchPromise: Promise<ModelsDevResponse> | null = null;
   private persistence: ModelsDevPersistence | null = null;
+
+  constructor(logger?: ILogger) {
+    this.logger = logger ?? noopLogger;
+  }
 
   /**
    * 从 API 获取数据
@@ -243,7 +250,7 @@ export class ModelsDevClient {
     try {
       await this.persistence.save(cache);
     } catch (error) {
-      console.warn('保存 models.dev 缓存失败:', error);
+      this.logger.warn('保存 models.dev 缓存失败:', error);
     }
   }
 
@@ -280,10 +287,10 @@ export class ModelsDevClient {
       // 4. 保存到本地缓存
       await this.saveToCache();
     } catch (error) {
-      console.warn('从 Models.dev 获取数据失败:', error);
+      this.logger.warn('从 Models.dev 获取数据失败:', error);
       // 尝试使用过期的本地缓存作为 fallback
       if (await this.loadFromCache(true)) {
-        console.warn('使用过期的本地缓存作为 fallback');
+        this.logger.warn('使用过期的本地缓存作为 fallback');
       }
     }
   }

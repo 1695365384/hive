@@ -28,5 +28,14 @@ export {
   type MemoryEntry
 } from './MemoryRepository.js';
 
+// Row types (for consumers extending storage)
+export type {
+  SessionRow,
+  MessageRow,
+  MemoryRow,
+  SessionListRow,
+  IdRow
+} from './types.js';
+
 // Migrations (auto-registers on import)
 import './migrations/index.js';

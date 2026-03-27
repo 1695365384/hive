@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Skill, SkillMetadata, SkillLoaderOptions } from './types.js';
+import { noopLogger } from '../plugins/types.js';
 
 // 重新导出类型以保持兼容
 export type { SkillLoaderOptions } from './types.js';
@@ -233,6 +234,7 @@ function discoverResources(skillDir: string): {
  */
 export class SkillLoader {
   private options: SkillLoaderOptions;
+  private logger: import('../plugins/types.js').ILogger;
 
   constructor(options: SkillLoaderOptions) {
     this.options = {
@@ -240,6 +242,7 @@ export class SkillLoader {
       encoding: 'utf-8',
       ...options,
     };
+    this.logger = options.logger ?? noopLogger;
   }
 
   /**
@@ -293,7 +296,7 @@ export class SkillLoader {
           const skill = this.loadSkill(skillDir);
           skills.push(skill);
         } catch (error) {
-          console.warn(`Failed to load skill from ${skillDir}:`, error);
+          this.logger.warn(`Failed to load skill from ${skillDir}:`, error);
         }
       }
 

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Agent, createAgent } from '../../src/agents/core/Agent.js';
+import { Agent, createAgent } from '../../src/agents/core/index.js';
 
 describe('Agent + Hooks Integration', () => {
   // ============================================

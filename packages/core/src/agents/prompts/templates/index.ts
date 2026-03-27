@@ -112,7 +112,7 @@ export function getTemplateInfo(name: string): {
   return {
     name,
     exists: template.hasTemplateFile(name),
-    cached: (template as any).cache.has(name),
+    cached: template.isCached(name),
     path: filePath,
   };
 }

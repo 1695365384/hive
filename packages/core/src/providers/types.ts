@@ -197,27 +197,6 @@ export interface ProviderPreset {
 }
 
 // ============================================
-// 配置文件结构
-// ============================================
-
-/**
- * providers.json 配置结构（已废弃，保留向后兼容）
- * @deprecated 使用 ExternalConfig 替代
- */
-export interface ProvidersConfig {
-  version: string;
-  description?: string;
-  default?: string;
-  providers: Record<string, Omit<ProviderConfig, 'id'>>;
-  mcp_servers?: Record<string, McpServerConfig>;
-  agent_defaults?: {
-    explore?: AgentDefaults;
-    plan?: AgentDefaults;
-    general?: AgentDefaults;
-  };
-}
-
-// ============================================
 // 外部配置（新版 API）
 // ============================================
 

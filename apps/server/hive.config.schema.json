@@ -45,6 +45,10 @@
         "model": {
           "type": "string",
           "description": "Model to use"
+        },
+        "baseUrl": {
+          "type": "string",
+          "description": "API base URL"
         }
       },
       "additionalProperties": false
@@ -57,6 +61,31 @@
         "description": "Plugin-specific configuration (passed directly to plugin as api.config)",
         "additionalProperties": true
       }
+    },
+    "heartbeat": {
+      "type": "object",
+      "description": "Heartbeat schedule configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable heartbeat scheduling"
+        },
+        "intervalMs": {
+          "type": "integer",
+          "default": 300000,
+          "description": "Heartbeat check interval in milliseconds (default: 5 minutes)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Override model for heartbeat checks"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Custom heartbeat prompt (default: reads HEARTBEAT.md)"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

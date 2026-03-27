@@ -6,6 +6,8 @@
 
 import type Database from 'better-sqlite3';
 import type { Session, Message, SessionListItem } from '../session/types.js';
+import type { SessionRow, MessageRow, SessionListRow, IdRow } from './types.js';
+import { safeJsonParse } from '../utils/safe-json-parse.js';
 
 export interface ISessionRepository {
   save(session: Session): Promise<void>;
@@ -83,7 +85,7 @@ export class SessionRepository implements ISessionRepository {
   async load(sessionId: string): Promise<Session | null> {
     const sessionRow = this.db
       .prepare('SELECT * FROM sessions WHERE id = ?')
-      .get(sessionId) as any;
+      .get(sessionId) as SessionRow | undefined;
 
     if (!sessionRow) {
       return null;
@@ -92,7 +94,7 @@ export class SessionRepository implements ISessionRepository {
     // Load messages
     const messages = this.db
       .prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY sequence')
-      .all(sessionId) as any[];
+      .all(sessionId) as MessageRow[];
 
     return this.rowToSession(sessionRow, messages);
   }
@@ -128,7 +130,7 @@ export class SessionRepository implements ISessionRepository {
       LEFT JOIN messages m ON s.id = m.session_id
     `;
 
-    const params: any[] = [];
+    const params: (string | number)[] = [];
 
     if (group) {
       sql += ' WHERE s.group_name = ?';
@@ -138,15 +140,15 @@ export class SessionRepository implements ISessionRepository {
     sql += ' GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
-    const rows = this.db.prepare(sql).all(...params) as any[];
+    const rows = this.db.prepare(sql).all(...params) as SessionListRow[];
 
     return rows.map(row => ({
       id: row.id,
-      title: row.title,
+      title: row.title ?? undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       messageCount: row.message_count,
-      totalTokens: JSON.parse(row.metadata || '{}').totalTokens ?? 0,
+      totalTokens: safeJsonParse<{ totalTokens?: number }>(row.metadata ?? '{}', {}).totalTokens ?? 0,
     }));
   }
 
@@ -156,7 +158,7 @@ export class SessionRepository implements ISessionRepository {
   async getMostRecent(): Promise<Session | null> {
     const row = this.db
       .prepare('SELECT id FROM sessions ORDER BY updated_at DESC LIMIT 1')
-      .get() as any;
+      .get() as IdRow | undefined;
 
     if (!row) {
       return null;
@@ -178,8 +180,22 @@ export class SessionRepository implements ISessionRepository {
   /**
    * Convert database row to Session object
    */
-  private rowToSession(sessionRow: any, messages: any[]): Session {
-    const metadata = JSON.parse(sessionRow.metadata || '{}');
+  private rowToSession(sessionRow: SessionRow, messages: MessageRow[]): Session {
+    const metadata = safeJsonParse<Record<string, unknown>>(sessionRow.metadata ?? '{}', {});
+
+    let compressionState: Session['compressionState'];
+    if (sessionRow.compression_state) {
+      const parsed = safeJsonParse<Record<string, unknown> & { lastCompressedAt?: string }>(
+        sessionRow.compression_state,
+        {}
+      );
+      compressionState = {
+        ...parsed,
+        lastCompressedAt: parsed.lastCompressedAt
+          ? new Date(parsed.lastCompressedAt)
+          : undefined,
+      } as Session['compressionState'];
+    }
 
     return {
       id: sessionRow.id,
@@ -187,23 +203,23 @@ export class SessionRepository implements ISessionRepository {
       updatedAt: new Date(sessionRow.updated_at),
       messages: messages.map(msg => ({
         id: msg.id,
-        role: msg.role as 'user' | 'assistant' | 'system',
+        role: msg.role as Message['role'],
         content: msg.content,
         timestamp: new Date(msg.timestamp),
         tokenCount: msg.token_count ?? undefined,
       })),
       metadata: {
-        totalTokens: metadata.totalTokens ?? 0,
+        totalTokens: (metadata.totalTokens as number) ?? 0,
         messageCount: messages.length,
         lastCompressedAt: metadata.lastCompressedAt
-          ? new Date(metadata.lastCompressedAt)
+          ? new Date(metadata.lastCompressedAt as string)
           : undefined,
-        compressionCount: metadata.compressionCount ?? 0,
+        compressionCount: (metadata.compressionCount as number) ?? 0,
         title: sessionRow.title ?? undefined,
+        providerId: metadata.providerId as string | undefined,
+        model: metadata.model as string | undefined,
       },
-      compressionState: sessionRow.compression_state
-        ? JSON.parse(sessionRow.compression_state)
-        : undefined,
+      compressionState,
     };
   }
 }

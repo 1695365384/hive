@@ -447,6 +447,18 @@ export class AuditHooks {
   getRegisteredHookIds(): string[] {
     return [...this.registeredHookIds];
   }
+
+  /**
+   * Dispose: flush remaining logs and clear timers.
+   * Safe to call multiple times (idempotent).
+   */
+  dispose(): void {
+    this.flushBatch();
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+  }
 }
 
 /**

@@ -14,6 +14,7 @@ import type { AgentCapability, AgentContext, SkillSystemConfig, TimeoutConfig } 
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Skill, SkillMatchResult } from '../../skills/index.js';
 import { TimeoutCapability, createTimeoutCapability } from '../capabilities/TimeoutCapability.js';
+import { CapabilityRegistry } from './CapabilityRegistry.js';
 
 /**
  * Agent 上下文选项
@@ -37,7 +38,9 @@ export class AgentContextImpl implements AgentContext {
   /** 内置超时能力 */
   readonly timeoutCap: TimeoutCapability;
 
-  private capabilities: Map<string, AgentCapability> = new Map();
+  /** 能力注册表 */
+  readonly capabilityRegistry: CapabilityRegistry;
+
   private initialized: boolean = false;
 
   constructor(options: AgentContextOptions = {}) {
@@ -48,6 +51,7 @@ export class AgentContextImpl implements AgentContext {
     this.skillRegistry = createSkillRegistry(skillConfig);
     this.agentRegistry = new AgentRegistryImpl();
     this.hookRegistry = new HookRegistry();
+    this.capabilityRegistry = new CapabilityRegistry();
 
     // 创建内置超时能力
     this.timeoutCap = createTimeoutCapability(timeoutConfig);
@@ -57,18 +61,14 @@ export class AgentContextImpl implements AgentContext {
    * 注册能力模块
    */
   registerCapability(capability: AgentCapability): void {
-    this.capabilities.set(capability.name, capability);
+    this.capabilityRegistry.register(capability);
   }
 
   /**
-   * 获取能力模块
+   * 获取能力模块（类型安全）
    */
   getCapability<T extends AgentCapability>(name: string): T {
-    const capability = this.capabilities.get(name);
-    if (!capability) {
-      throw new Error(`Capability not found: ${name}`);
-    }
-    return capability as T;
+    return this.capabilityRegistry.get<T>(name);
   }
 
   /**
@@ -85,8 +85,8 @@ export class AgentContextImpl implements AgentContext {
     // 初始化内置超时能力（最先初始化，供其他能力使用）
     this.timeoutCap.initialize(this);
 
-    // 初始化所有能力模块
-    for (const capability of this.capabilities.values()) {
+    // 初始化所有能力模块（同步）
+    for (const capability of this.capabilityRegistry.getAll()) {
       // 触发 capability:init hook
       await this.hookRegistry.emit('capability:init', {
         capabilityName: capability.name,
@@ -100,6 +100,13 @@ export class AgentContextImpl implements AgentContext {
       }
     }
 
+    // 异步初始化：在所有 initialize() 完成后，按注册顺序调用 initializeAsync()
+    for (const capability of this.capabilityRegistry.getAll()) {
+      if (capability.initializeAsync) {
+        await capability.initializeAsync(this);
+      }
+    }
+
     this.initialized = true;
   }
 
@@ -108,7 +115,7 @@ export class AgentContextImpl implements AgentContext {
    */
   async disposeAll(): Promise<void> {
     // 销毁所有能力模块
-    for (const capability of this.capabilities.values()) {
+    for (const capability of this.capabilityRegistry.getAll()) {
       // 触发 capability:dispose hook
       await this.hookRegistry.emit('capability:dispose', {
         capabilityName: capability.name,
@@ -127,7 +134,7 @@ export class AgentContextImpl implements AgentContext {
       }
     }
 
-    this.capabilities.clear();
+    this.capabilityRegistry.clear();
 
     // 销毁内置超时能力（最后销毁）
     if (this.timeoutCap.dispose) {
@@ -155,5 +162,25 @@ export class AgentContextImpl implements AgentContext {
 
   getAgentConfig(name: string) {
     return this.agentRegistry.get(name);
+  }
+
+  // ============================================
+  // 类型安全的能力访问器
+  // ============================================
+
+  getSessionCap(): import('../capabilities/SessionCapability.js').SessionCapability | null {
+    try {
+      return this.capabilityRegistry.get<import('../capabilities/SessionCapability.js').SessionCapability>('session');
+    } catch {
+      return null;
+    }
+  }
+
+  getProviderCap(): import('../capabilities/ProviderCapability.js').ProviderCapability | null {
+    try {
+      return this.capabilityRegistry.get<import('../capabilities/ProviderCapability.js').ProviderCapability>('provider');
+    } catch {
+      return null;
+    }
   }
 }

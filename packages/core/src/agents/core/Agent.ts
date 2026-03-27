@@ -16,15 +16,15 @@ import type {
   AgentResult,
   TimeoutConfig,
   HeartbeatConfig,
+  HeartbeatTaskConfig,
+  HeartbeatResult,
 } from './types.js';
 import type {
-  SessionStartHookContext,
-  SessionEndHookContext,
-  SessionErrorHookContext,
   NotificationType,
 } from '../../hooks/types.js';
 import { AgentContextImpl } from './AgentContext.js';
-import type { AgentContextOptions } from './AgentContext.js';
+import { TimeoutDelegation, NotificationDelegation } from './notification.js';
+import { withHeartbeat } from './heartbeat-wrapper.js';
 import { TimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { ProviderCapability } from '../capabilities/ProviderCapability.js';
 import { SkillCapability } from '../capabilities/SkillCapability.js';
@@ -32,11 +32,12 @@ import { ChatCapability } from '../capabilities/ChatCapability.js';
 import { SubAgentCapability } from '../capabilities/SubAgentCapability.js';
 import { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
+import { SessionDelegation } from './session-delegation.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Session, Message } from '../../session/index.js';
-import type { SessionCapabilityConfig } from '../capabilities/SessionCapability.js';
-import type { WorkspaceInitConfig } from '../../workspace/index.js';
+
+
 
 /**
  * Agent 核心类
@@ -51,6 +52,9 @@ export class Agent {
   private subAgentCap: SubAgentCapability;
   private workflowCap: WorkflowCapability;
   private sessionCap: SessionCapability;
+  private sessionDelegation: SessionDelegation;
+  private timeoutDelegation: TimeoutDelegation;
+  private notificationDelegation: NotificationDelegation;
   private initialized: boolean = false;
   private disposed: boolean = false;
 
@@ -76,14 +80,19 @@ export class Agent {
     this.subAgentCap = new SubAgentCapability();
     this.workflowCap = new WorkflowCapability();
     this.sessionCap = new SessionCapability(sessionConfig);
+    this.sessionDelegation = new SessionDelegation(this.sessionCap);
+    this.timeoutDelegation = new TimeoutDelegation(this._context);
+    this.notificationDelegation = new NotificationDelegation(this._context);
 
-    // 注册并立即初始化能力模块（同步初始化）
-    this.providerCap.initialize(this._context);
-    this.skillCap.initialize(this._context);
-    this.chatCap.initialize(this._context);
-    this.subAgentCap.initialize(this._context);
-    this.workflowCap.initialize(this._context);
-    this.sessionCap.initialize(this._context);
+    // 注册能力模块到上下文（使 getCapability() 可用）
+    // 注意：注册顺序决定 initializeAsync 的调用顺序
+    // session 必须先于 provider，因为 provider 的持久化依赖 session 的数据库
+    this._context.registerCapability(this.sessionCap);
+    this._context.registerCapability(this.providerCap);
+    this._context.registerCapability(this.skillCap);
+    this._context.registerCapability(this.chatCap);
+    this._context.registerCapability(this.subAgentCap);
+    this._context.registerCapability(this.workflowCap);
   }
 
   /**
@@ -101,10 +110,6 @@ export class Agent {
   async initialize(): Promise<void> {
     if (!this.initialized) {
       await this._context.initializeAll();
-      // 初始化会话能力（异步部分）
-      await this.sessionCap.initializeAsync();
-      // 初始化提供商能力（配置持久化）
-      await this.providerCap.initializeAsync();
       this.initialized = true;
     }
   }
@@ -191,151 +196,11 @@ export class Agent {
   // ============================================
 
   async chat(prompt: string, options?: AgentOptions): Promise<string> {
-    const sessionId = this._context.hookRegistry.getSessionId();
-    const startTime = Date.now();
-
-    // 获取执行超时配置
-    const timeoutConfig = this._context.timeoutCap.getConfig();
-    const executionTimeout = options?.executionTimeout ?? timeoutConfig.executionTimeout;
-
-    // 触发 session:start hook
-    await this._context.hookRegistry.emit('session:start', {
-      sessionId,
-      prompt,
-      timestamp: new Date(),
-    });
-
-    // 启动心跳检测
-    this._context.timeoutCap.startHeartbeat({
-      interval: timeoutConfig.heartbeatInterval,
-      stallTimeout: timeoutConfig.stallTimeout,
-      onStalled: async (lastActivity) => {
-        // 心跳检测到卡住时触发 hook
-        await this._context.hookRegistry.emit('timeout:stalled', {
-          sessionId,
-          lastActivity,
-          stallDuration: Date.now() - lastActivity,
-          stallTimeout: timeoutConfig.stallTimeout,
-          timestamp: new Date(),
-        });
-      },
-    });
-
-    try {
-      // 使用执行超时包装
-      const result = await this._context.timeoutCap.withTimeout(
-        this.chatCap.send(prompt, options),
-        executionTimeout,
-        `Agent execution timed out after ${executionTimeout}ms`
-      );
-
-      // 触发 session:end hook
-      await this._context.hookRegistry.emit('session:end', {
-        sessionId,
-        success: true,
-        timestamp: new Date(),
-        duration: Date.now() - startTime,
-      });
-
-      return result;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-
-      // 触发 session:error hook
-      await this._context.hookRegistry.emit('session:error', {
-        sessionId,
-        error: err,
-        timestamp: new Date(),
-        recoverable: false,
-      });
-
-      // 触发 session:end hook（失败）
-      await this._context.hookRegistry.emit('session:end', {
-        sessionId,
-        success: false,
-        reason: err.message,
-        timestamp: new Date(),
-        duration: Date.now() - startTime,
-      });
-
-      throw error;
-    } finally {
-      // 停止心跳检测
-      this._context.timeoutCap.stopHeartbeat();
-    }
+    return withHeartbeat(this._context, this.chatCap.send(prompt, options), prompt, options);
   }
 
   async chatStream(prompt: string, options?: AgentOptions): Promise<void> {
-    const sessionId = this._context.hookRegistry.getSessionId();
-    const startTime = Date.now();
-
-    // 获取执行超时配置
-    const timeoutConfig = this._context.timeoutCap.getConfig();
-    const executionTimeout = options?.executionTimeout ?? timeoutConfig.executionTimeout;
-
-    // 触发 session:start hook
-    await this._context.hookRegistry.emit('session:start', {
-      sessionId,
-      prompt,
-      timestamp: new Date(),
-    });
-
-    // 启动心跳检测
-    this._context.timeoutCap.startHeartbeat({
-      interval: timeoutConfig.heartbeatInterval,
-      stallTimeout: timeoutConfig.stallTimeout,
-      onStalled: async (lastActivity) => {
-        // 心跳检测到卡住时触发 hook
-        await this._context.hookRegistry.emit('timeout:stalled', {
-          sessionId,
-          lastActivity,
-          stallDuration: Date.now() - lastActivity,
-          stallTimeout: timeoutConfig.stallTimeout,
-          timestamp: new Date(),
-        });
-      },
-    });
-
-    try {
-      // 使用执行超时包装
-      await this._context.timeoutCap.withTimeout(
-        this.chatCap.sendStream(prompt, options),
-        executionTimeout,
-        `Agent execution timed out after ${executionTimeout}ms`
-      );
-
-      // 触发 session:end hook
-      await this._context.hookRegistry.emit('session:end', {
-        sessionId,
-        success: true,
-        timestamp: new Date(),
-        duration: Date.now() - startTime,
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-
-      // 触发 session:error hook
-      await this._context.hookRegistry.emit('session:error', {
-        sessionId,
-        error: err,
-        timestamp: new Date(),
-        recoverable: false,
-      });
-
-      // 触发 session:end hook（失败）
-      await this._context.hookRegistry.emit('session:end', {
-        sessionId,
-        success: false,
-        reason: err.message,
-        timestamp: new Date(),
-        duration: Date.now() - startTime,
-      });
-
-      throw error;
-    } finally {
-      // 停止心跳检测
-      this._context.timeoutCap.stopHeartbeat();
-    }
+    return withHeartbeat(this._context, this.chatCap.sendStream(prompt, options), prompt, options);
   }
 
   // ============================================
@@ -403,67 +268,43 @@ export class Agent {
   }
 
   // ============================================
-  // 会话管理（委托给 SessionCapability）
+  // 会话管理（委托）
   // ============================================
 
-  /**
-   * 获取当前会话
-   */
   get currentSession(): Session | null {
-    return this.sessionCap.getCurrentSession();
+    return this.sessionDelegation.currentSession;
   }
 
-  /**
-   * 创建新会话
-   */
   async createSession(config?: { title?: string; providerId?: string; model?: string }): Promise<Session> {
     await this.initialize();
-    return this.sessionCap.createSession(config);
+    return this.sessionDelegation.createSession(config);
   }
 
-  /**
-   * 加载会话
-   */
   async loadSession(sessionId: string): Promise<Session | null> {
     await this.initialize();
-    return this.sessionCap.loadSession(sessionId);
+    return this.sessionDelegation.loadSession(sessionId);
   }
 
-  /**
-   * 恢复最近的会话
-   */
   async resumeLastSession(): Promise<Session | null> {
     await this.initialize();
-    return this.sessionCap.resumeLastSession();
+    return this.sessionDelegation.resumeLastSession();
   }
 
-  /**
-   * 获取会话消息历史
-   */
   getSessionMessages(): Message[] {
-    return this.sessionCap.getMessages();
+    return this.sessionDelegation.getSessionMessages();
   }
 
-  /**
-   * 获取格式化的会话历史
-   */
   getFormattedHistory(): string {
-    return this.sessionCap.getFormattedHistory();
+    return this.sessionDelegation.getFormattedHistory();
   }
 
-  /**
-   * 列出所有会话
-   */
   async listSessions() {
     await this.initialize();
-    return this.sessionCap.listSessions();
+    return this.sessionDelegation.listSessions();
   }
 
-  /**
-   * 删除当前会话
-   */
   async deleteCurrentSession(): Promise<boolean> {
-    return this.sessionCap.deleteCurrentSession();
+    return this.sessionDelegation.deleteCurrentSession();
   }
 
   // ============================================
@@ -471,69 +312,59 @@ export class Agent {
   // ============================================
 
   // ============================================
-  // 超时和心跳管理
+  // 超时和心跳管理（委托）
+  // ============================================
+
+  get timeoutCap(): TimeoutCapability {
+    return this.timeoutDelegation.timeoutCap;
+  }
+
+  startHeartbeat(config: HeartbeatConfig): void {
+    this.timeoutDelegation.startHeartbeat(config);
+  }
+
+  stopHeartbeat(): void {
+    this.timeoutDelegation.stopHeartbeat();
+  }
+
+  updateActivity(): void {
+    this.timeoutDelegation.updateActivity();
+  }
+
+  isStalled(): boolean {
+    return this.timeoutDelegation.isStalled();
+  }
+
+  getLastActivity(): number | null {
+    return this.timeoutDelegation.getLastActivity();
+  }
+
+  getTimeoutConfig(): Required<TimeoutConfig> {
+    return this.timeoutDelegation.getTimeoutConfig();
+  }
+
+  updateTimeoutConfig(config: Partial<TimeoutConfig>): void {
+    this.timeoutDelegation.updateTimeoutConfig(config);
+  }
+
+  // ============================================
+  // 心跳任务（Layer 2 原语）
   // ============================================
 
   /**
-   * 获取超时能力实例
+   * 执行一次心跳巡检
    *
-   * 用于直接访问超时控制功能
-   */
-  get timeoutCap(): TimeoutCapability {
-    return this._context.timeoutCap;
-  }
-
-  /**
-   * 启动心跳检测
+   * SDK 层心跳原语，供宿主应用调度周期性任务。
+   * 宿主应用负责调度（setInterval / node-cron / agenda 等）。
    *
-   * @param config - 心跳配置
+   * @param config - 心跳任务配置
+   * @returns 心跳结果
    */
-  startHeartbeat(config: HeartbeatConfig): void {
-    this._context.timeoutCap.startHeartbeat(config);
-  }
-
-  /**
-   * 停止心跳检测
-   */
-  stopHeartbeat(): void {
-    this._context.timeoutCap.stopHeartbeat();
-  }
-
-  /**
-   * 更新活动状态
-   *
-   * 在外部事件发生时调用，防止被误判为卡住
-   */
-  updateActivity(): void {
-    this._context.timeoutCap.updateActivity();
-  }
-
-  /**
-   * 检查是否卡住
-   */
-  isStalled(): boolean {
-    return this._context.timeoutCap.isStalled();
-  }
-
-  /**
-   * 获取最后活动时间
-   */
-  getLastActivity(): number | null {
-    return this._context.timeoutCap.getLastActivity();
-  }
-
-  /**
-   * 获取超时配置
-   */
-  getTimeoutConfig(): Required<TimeoutConfig> {
-    return this._context.timeoutCap.getConfig();
-  }
-
-  /**
-   * 更新超时配置
-   */
-  updateTimeoutConfig(config: Partial<TimeoutConfig>): void {
-    this._context.timeoutCap.updateConfig(config);
+  async runHeartbeatOnce(config?: HeartbeatTaskConfig): Promise<HeartbeatResult> {
+    return this.timeoutDelegation.runHeartbeatOnce(
+      (prompt, opts) => this.chat(prompt, { modelId: opts?.modelId }),
+      config
+    );
   }
 
   // ============================================
@@ -554,26 +385,9 @@ export class Agent {
     message: string,
     metadata?: Record<string, unknown>
   ): Promise<void> {
-    const sessionId = this._context.hookRegistry.getSessionId();
-    await this._context.hookRegistry.emit('notification:push', {
-      sessionId,
-      type,
-      title,
-      message,
-      timestamp: new Date(),
-      metadata,
-    });
+    return this.notificationDelegation.notify(type, title, message, metadata);
   }
 
-  /**
-   * 更新任务进度
-   *
-   * @param taskId - 任务 ID
-   * @param progress - 进度百分比 (0-100)
-   * @param description - 任务描述
-   * @param currentStep - 当前步骤
-   * @param totalSteps - 总步骤数
-   */
   async updateProgress(
     taskId: string,
     progress: number,
@@ -581,82 +395,14 @@ export class Agent {
     currentStep?: string,
     totalSteps?: number
   ): Promise<void> {
-    const sessionId = this._context.hookRegistry.getSessionId();
-    await this._context.hookRegistry.emit('task:progress', {
-      sessionId,
-      taskId,
-      progress,
-      description,
-      currentStep,
-      totalSteps,
-      timestamp: new Date(),
-    });
+    return this.notificationDelegation.updateProgress(taskId, progress, description, currentStep, totalSteps);
   }
 
-  /**
-   * 触发思考过程事件
-   *
-   * @param thought - 思考内容
-   * @param type - 思考类型
-   * @param metadata - 可选元数据
-   */
   async emitThinking(
     thought: string,
     type: 'analyzing' | 'planning' | 'executing' | 'reflecting',
     metadata?: Record<string, unknown>
   ): Promise<void> {
-    const sessionId = this._context.hookRegistry.getSessionId();
-    await this._context.hookRegistry.emit('agent:thinking', {
-      sessionId,
-      thought,
-      type,
-      timestamp: new Date(),
-      metadata,
-    });
+    return this.notificationDelegation.emitThinking(thought, type, metadata);
   }
-}
-
-// ============================================
-// 全局实例和便捷函数
-// ============================================
-
-/** 全局 Agent 实例 */
-let globalAgent: Agent | null = null;
-
-/** 获取全局 Agent 实例 */
-export function getAgent(): Agent {
-  if (!globalAgent) {
-    globalAgent = new Agent();
-  }
-  return globalAgent;
-}
-
-/** 创建新的 Agent 实例 */
-export function createAgent(options: AgentInitOptions = {}): Agent {
-  return new Agent(options);
-}
-
-/** 快速对话 */
-export async function ask(prompt: string, options?: AgentOptions): Promise<string> {
-  return getAgent().chat(prompt, options);
-}
-
-/** 快速探索 */
-export async function explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium'): Promise<string> {
-  return getAgent().explore(prompt, thoroughness);
-}
-
-/** 快速计划 */
-export async function plan(prompt: string): Promise<string> {
-  return getAgent().plan(prompt);
-}
-
-/** 快速执行通用任务 */
-export async function general(prompt: string): Promise<string> {
-  return getAgent().general(prompt);
-}
-
-/** 快速执行工作流 */
-export async function runWorkflow(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
-  return getAgent().runWorkflow(task, options);
 }

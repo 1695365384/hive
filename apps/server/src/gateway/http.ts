@@ -8,6 +8,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import type { HiveContext } from '../bootstrap.js'
+import type { IChannel, IWebhookHandler } from '@hive/core'
 
 // Simple in-memory session store
 const sessions = new Map<string, { id: string; messages: Array<{ role: string; content: string }> }>()
@@ -149,12 +150,13 @@ export function createHttpGateway(ctx: HiveContext): Hono {
         return false
       })
 
-      if (!channel || typeof (channel as any).handleWebhook !== 'function') {
+      const webhookChannel = channel as IChannel & IWebhookHandler
+      if (!channel || typeof webhookChannel.handleWebhook !== 'function') {
         return c.json({ error: 'Channel not found or does not support webhooks' }, 404)
       }
 
       // Handle webhook
-      const result = await (channel as any).handleWebhook(body, signature, timestamp, nonce)
+      const result = await webhookChannel.handleWebhook(body, signature, timestamp, nonce)
       return c.json(result)
     } catch (error) {
       console.error('[http] Webhook error:', error)

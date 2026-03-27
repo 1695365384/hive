@@ -1,269 +1,36 @@
 /**
- * Agent 核心类型定义
+ * Agent 核心类型定义（重导出）
  *
- * 定义能力组合模式的核心接口
+ * 所有类型已合并到 agents/types.ts，此文件仅做重导出以保持向后兼容。
  */
 
-import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderManager, ProviderConfig, ExternalConfig } from '../../providers/index.js';
-import type { SkillRegistry, Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
-import type { AgentRunner } from './runner.js';
-import type { AgentConfig, AgentResult, ThoroughnessLevel, AgentType } from '../types.js';
-import type { HookRegistry } from '../../hooks/index.js';
-import type { SessionCapabilityConfig } from '../capabilities/SessionCapability.js';
-import type { WorkspaceInitConfig } from '../../workspace/index.js';
+/**
+ * Interface for objects that hold resources requiring explicit cleanup.
+ */
+export interface IDisposable {
+  dispose(): void;
+}
 
 // 重导出 SkillSystemConfig
 export type { SkillSystemConfig } from '../../skills/index.js';
 
-// ============================================
-// Agent 构造函数选项
-// ============================================
-
-/**
- * Agent 构造函数选项
- *
- * 用于创建 Agent 实例时传入配置
- */
-export interface AgentInitOptions {
-  /** 外部配置（由应用层管理） */
-  externalConfig?: ExternalConfig;
-  /** 技能系统配置 */
-  skillConfig?: SkillSystemConfig;
-  /** 会话能力配置 */
-  sessionConfig?: SessionCapabilityConfig;
-  /** 超时配置 */
-  timeout?: TimeoutConfig;
-}
-
-// ============================================
-// 核心接口
-// ============================================
-
-/**
- * Agent 能力接口
- *
- * 所有能力模块必须实现此接口
- */
-export interface AgentCapability {
-  /** 能力名称（唯一标识） */
-  readonly name: string;
-
-  /**
-   * 初始化能力
-   *
-   * @param context - Agent 上下文
-   */
-  initialize(context: AgentContext): void | Promise<void>;
-
-  /**
-   * 销毁能力（可选）
-   *
-   * 用于清理资源、取消订阅等
-   */
-  dispose?(): void | Promise<void>;
-}
-
-/**
- * Agent 上下文
- *
- * 依赖注入容器，管理所有共享资源
- */
-export interface AgentContext {
-  /** 提供商管理器 */
-  providerManager: ProviderManager;
-  /** Agent 运行器 */
-  runner: AgentRunner;
-  /** 技能注册表 */
-  skillRegistry: SkillRegistry;
-  /** Agent 注册表 */
-  agentRegistry: AgentRegistry;
-  /** Hook 注册表 */
-  hookRegistry: HookRegistry;
-
-  // 能力模块访问
-  /** 获取能力模块 */
-  getCapability<T extends AgentCapability>(name: string): T;
-
-  // 便捷访问器
-  /** 获取当前提供商 */
-  getActiveProvider(): ProviderConfig | null;
-  /** 获取技能 */
-  getSkill(name: string): Skill | undefined;
-  /** 匹配技能 */
-  matchSkill(input: string): SkillMatchResult | null;
-  /** 获取 Agent 配置 */
-  getAgentConfig(name: string): AgentConfig | undefined;
-
-  // 超时能力（内置）
-  /** 超时能力实例 */
-  timeoutCap: import('../capabilities/TimeoutCapability.js').TimeoutCapability;
-}
-
-/**
- * Agent 注册表接口
- */
-export interface AgentRegistry {
-  /** 获取 Agent 配置 */
-  get(name: string): AgentConfig | undefined;
-  /** 获取所有 Agent 名称 */
-  getAllNames(): string[];
-  /** 注册 Agent */
-  register(name: string, config: AgentConfig): void;
-  /** 检查 Agent 是否存在 */
-  has(name: string): boolean;
-}
-
-// ============================================
-// 超时配置
-// ============================================
-
-/**
- * 超时配置
- *
- * 控制 Agent 执行的超时和心跳检测
- */
-export interface TimeoutConfig {
-  /** API 调用超时（毫秒），默认 120000 (2分钟) */
-  apiTimeout?: number;
-  /** 整体执行超时（毫秒），默认 600000 (10分钟) */
-  executionTimeout?: number;
-  /** 心跳间隔（毫秒），默认 30000 (30秒) */
-  heartbeatInterval?: number;
-  /** 无进展超时（毫秒），默认 60000 (1分钟) */
-  stallTimeout?: number;
-  /** 超时后是否自动重试 */
-  retryOnTimeout?: boolean;
-  /** 最大重试次数 */
-  maxRetries?: number;
-}
-
-/**
- * 心跳配置
- */
-export interface HeartbeatConfig {
-  /** 心跳间隔（毫秒） */
-  interval: number;
-  /** 无进展超时（毫秒） */
-  stallTimeout: number;
-  /** 心跳回调 */
-  onHeartbeat?: (lastActivity: number) => void;
-  /** 检测到卡住时的回调 */
-  onStalled?: (lastActivity: number) => void;
-}
-
-/**
- * 超时错误
- */
-export class TimeoutError extends Error {
-  constructor(
-    message: string,
-    public readonly type: 'api' | 'execution' | 'stalled',
-    public readonly duration: number
-  ) {
-    super(message);
-    this.name = 'TimeoutError';
-  }
-}
-
-// ============================================
-// 选项类型
-// ============================================
-
-/**
- * Agent 选项
- */
-export interface AgentOptions {
-  /** 指定 Provider（仅本次请求） */
-  providerId?: string;
-  /** 指定模型（仅本次请求） */
-  modelId?: string;
-  /** 指定会话（仅本次请求） */
-  sessionId?: string;
-  /** 工作目录 */
-  cwd?: string;
-  /** 允许的工具 */
-  tools?: string[];
-  /** 最大轮次 */
-  maxTurns?: number;
-  /** 系统提示 */
-  systemPrompt?: string;
-  /** 使用的子 Agent */
-  agents?: AgentType[];
-  /** 自定义子 Agent */
-  customAgents?: Record<string, AgentDefinition>;
-  /** API 调用超时（毫秒） */
-  apiTimeout?: number;
-  /** 执行超时（毫秒） */
-  executionTimeout?: number;
-  /** 外部取消信号 */
-  abortSignal?: AbortSignal;
-  /** 回调：收到文本 */
-  onText?: (text: string) => void;
-  /** 回调：工具使用 */
-  onTool?: (toolName: string, input?: unknown) => void;
-  /** 回调：错误 */
-  onError?: (error: Error) => void;
-}
-
-/**
- * 工作流选项
- */
-export interface WorkflowOptions {
-  /** 工作目录 */
-  cwd?: string;
-  /** 最大轮次 */
-  maxTurns?: number;
-  /** 回调：阶段变化 */
-  onPhase?: (phase: string, message: string) => void;
-  /** 回调：工具使用 */
-  onTool?: (tool: string, input?: unknown) => void;
-  /** 回调：文本输出 */
-  onText?: (text: string) => void;
-}
-
-/**
- * 工作流结果
- */
-export interface WorkflowResult {
-  /** 任务分析结果 */
-  analysis: TaskAnalysis;
-  /** 探索结果（如果执行了探索） */
-  exploreResult?: AgentResult;
-  /** 生成的执行计划 */
-  executionPlan?: string;
-  /** 执行结果 */
-  executeResult?: AgentResult;
-  /** 是否成功 */
-  success: boolean;
-  /** 错误信息 */
-  error?: string;
-}
-
-/**
- * 任务分析结果
- */
-export interface TaskAnalysis {
-  /** 任务类型 */
-  type: 'simple' | 'moderate' | 'complex';
-  /** 需要探索 */
-  needsExploration: boolean;
-  /** 需要计划 */
-  needsPlanning: boolean;
-  /** 推荐的 Agent */
-  recommendedAgents: string[];
-  /** 理由 */
-  reason: string;
-}
-
-// ============================================
-// 重导出
-// ============================================
-
+// 重导出所有类型和值
 export type {
+  AgentCapability,
+  AgentContext,
+  AgentRegistry,
+  AgentOptions,
+  AgentInitOptions,
+  AgentExecuteOptions,
+  WorkflowOptions,
+  WorkflowResult,
+  TaskAnalysis,
+  TimeoutConfig,
+  HeartbeatConfig,
+  HeartbeatTaskConfig,
+  HeartbeatResult,
   AgentConfig,
   AgentResult,
-  AgentExecuteOptions,
   ThoroughnessLevel,
   AgentType,
   ContentBlock,
@@ -277,6 +44,7 @@ export type {
 } from '../types.js';
 
 export {
+  TimeoutError,
   isResultMessage,
   isAssistantMessage,
   isToolProgressMessage,

@@ -5,6 +5,8 @@
  */
 
 import type Database from 'better-sqlite3';
+import type { MemoryRow } from './types.js';
+import { safeJsonParse } from '../utils/safe-json-parse.js';
 
 export interface MemoryEntry {
   key: string;
@@ -63,7 +65,7 @@ export class MemoryRepository implements IMemoryRepository {
   async get(key: string): Promise<MemoryEntry | null> {
     const row = this.db
       .prepare('SELECT * FROM memories WHERE key = ?')
-      .get(key) as any;
+      .get(key) as MemoryRow | undefined;
 
     if (!row) {
       return null;
@@ -78,7 +80,7 @@ export class MemoryRepository implements IMemoryRepository {
   async getAll(): Promise<Record<string, MemoryEntry>> {
     const rows = this.db
       .prepare('SELECT * FROM memories ORDER BY key')
-      .all() as any[];
+      .all() as MemoryRow[];
 
     const result: Record<string, MemoryEntry> = {};
     for (const row of rows) {
@@ -95,7 +97,7 @@ export class MemoryRepository implements IMemoryRepository {
     // SQLite JSON contains: check if tag exists in tags array
     const rows = this.db
       .prepare(`SELECT * FROM memories WHERE tags LIKE ? ORDER BY key`)
-      .all(`%"${tag}"%`) as any[];
+      .all(`%"${tag}"%`) as MemoryRow[];
 
     // Double-check with JSON parsing to avoid false positives
     return rows
@@ -124,11 +126,11 @@ export class MemoryRepository implements IMemoryRepository {
   /**
    * Convert database row to MemoryEntry
    */
-  private rowToEntry(row: any): MemoryEntry {
+  private rowToEntry(row: MemoryRow): MemoryEntry {
     return {
       key: row.key,
       value: row.value,
-      tags: JSON.parse(row.tags || '[]'),
+      tags: safeJsonParse<string[]>(row.tags ?? '[]', []),
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };

@@ -4,8 +4,9 @@ node_modules/
 # Build output
 **/**/dist/
 
-# Environment variables
+# Environment variables (keep .env.example)
 .env
+!.env.example
 .env.local
 .env.*.local
 
@@ -68,3 +69,5 @@ packages/app/dist/
 # Coverage 报告
 coverage/
 *.lcov
+
+.hive

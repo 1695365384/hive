@@ -50,7 +50,7 @@ describe('TimeoutCapability', () => {
       expect(config.apiTimeout).toBe(120000);
       expect(config.executionTimeout).toBe(600000);
       expect(config.heartbeatInterval).toBe(30000);
-      expect(config.stallTimeout).toBe(60000);
+      expect(config.stallTimeout).toBe(120000);
     });
 
     it('应该支持自定义配置', () => {

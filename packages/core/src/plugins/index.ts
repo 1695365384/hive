@@ -18,10 +18,12 @@ export {
   // 通道接口
   type ChannelCapabilities,
   type IChannel,
+  type IWebhookHandler,
 
   // 插件上下文
   type IMessageBus,
   type ILogger,
+  noopLogger,
   type PluginContext,
 
   // 插件接口

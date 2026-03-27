@@ -8,6 +8,13 @@
 
 export {
   Agent,
+} from './Agent.js';
+
+// ============================================
+// 全局实例和便捷函数
+// ============================================
+
+export {
   getAgent,
   createAgent,
   ask,
@@ -15,7 +22,7 @@ export {
   plan,
   general,
   runWorkflow,
-} from './Agent.js';
+} from './singleton.js';
 
 // ============================================
 // Agent 上下文
@@ -38,35 +45,22 @@ export {
 } from './agents.js';
 
 // ============================================
-// Agent 运行器
+// Agent 运行器（含 Task 系统）
 // ============================================
 
 export {
   AgentRunner,
   createAgentRunner,
-  runAgent,
-  runExplore,
-  runPlan,
-  runGeneral,
-} from './runner.js';
-
-// ============================================
-// Task 系统
-// ============================================
-
-export {
-  Task,
-  createTask,
-  runTask,
-  runParallel,
-  mapParallel,
-  runExploreTask,
-  runPlanTask,
-  runGeneralTask,
   type TaskConfig,
   type TaskResult,
   type ParallelTaskConfig,
-} from './task.js';
+} from './runner.js';
+
+// ============================================
+// CapabilityRegistry
+// ============================================
+
+export { CapabilityRegistry } from './CapabilityRegistry.js';
 
 // ============================================
 // 类型定义
