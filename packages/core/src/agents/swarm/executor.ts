@@ -25,10 +25,12 @@ const DEFAULT_NODE_TIMEOUT = 60_000;
 export class SwarmExecutor {
   private runner: AgentRunner;
   private options: SwarmOptions;
+  private readonly prefix: string;
 
   constructor(runner: AgentRunner, options: SwarmOptions = {}) {
     this.runner = runner;
     this.options = options;
+    this.prefix = options.nodeIdPrefix ? `${options.nodeIdPrefix}.` : '';
   }
 
   /**
@@ -145,10 +147,10 @@ export class SwarmExecutor {
         duration: 0,
       };
 
-      blackboard.set(nodeId, result);
+      blackboard.set(this.prefix + nodeId, result);
       tracer.record({
         type: 'node.skipped',
-        nodeId,
+        nodeId: this.prefix + nodeId,
         layerIndex,
         error: result.skipReason,
       });
@@ -184,11 +186,11 @@ export class SwarmExecutor {
         duration,
       };
 
-      blackboard.set(nodeId, result);
+      blackboard.set(this.prefix + nodeId, result);
 
       tracer.record({
         type: 'node.complete',
-        nodeId,
+        nodeId: this.prefix + nodeId,
         layerIndex,
         agent: node.agent,
         model: node.model,
@@ -214,11 +216,11 @@ export class SwarmExecutor {
         duration,
       };
 
-      blackboard.set(nodeId, result);
+      blackboard.set(this.prefix + nodeId, result);
 
       tracer.record({
         type: 'node.error',
-        nodeId,
+        nodeId: this.prefix + nodeId,
         layerIndex,
         agent: node.agent,
         error: errMsg,

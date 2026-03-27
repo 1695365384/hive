@@ -247,6 +247,10 @@ export interface SwarmOptions {
   blackboardMaxLen?: number;
   /** 是否启用 LLM 分类（默认 true） */
   classify?: boolean;
+  /** 节点 ID 前缀（Pipeline 阶段隔离用） */
+  nodeIdPrefix?: string;
+  /** 外部共享黑板（Pipeline 多阶段共享用） */
+  blackboard?: import('./blackboard.js').Blackboard;
   /** 回调：文本流式输出 */
   onText?: (nodeId: string, text: string) => void;
   /** 回调：阶段变化 */

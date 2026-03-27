@@ -2,7 +2,7 @@
  * Blackboard 单元测试
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Blackboard } from '../../../src/agents/swarm/blackboard.js';
 
 describe('Blackboard', () => {
