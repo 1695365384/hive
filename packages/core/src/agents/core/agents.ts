@@ -1,7 +1,7 @@
 /**
  * 内置 Agent 定义
  *
- * 核心三代理 + 扩展 Agent 配置
+ * 核心三代理：Explore / Plan / General
  */
 
 import type { AgentType, AgentConfig } from './types.js';
@@ -15,27 +15,11 @@ import {
 // Agent 名称常量
 // ============================================
 
-/** 核心 Agent 名称 */
-export const CORE_AGENT_NAMES = {
+/** 所有内置 Agent 名称 */
+export const AGENT_NAMES = {
   EXPLORE: 'explore',
   PLAN: 'plan',
   GENERAL: 'general',
-} as const;
-
-/** 扩展 Agent 名称 */
-export const EXTENDED_AGENT_NAMES = {
-  CODE_REVIEWER: 'code-reviewer',
-  TEST_ENGINEER: 'test-engineer',
-  DOC_WRITER: 'doc-writer',
-  DEBUGGER: 'debugger',
-  REFACTORER: 'refactorer',
-  SECURITY_AUDITOR: 'security-auditor',
-} as const;
-
-/** 所有内置 Agent 名称 */
-export const AGENT_NAMES = {
-  ...CORE_AGENT_NAMES,
-  ...EXTENDED_AGENT_NAMES,
 } as const;
 
 // ============================================
@@ -72,81 +56,11 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = 
   },
 };
 
-// ============================================
-// 扩展 Agent 配置
-// ============================================
-
 /**
- * 扩展 Agent 模板
- */
-export const EXTENDED_AGENTS: Record<string, AgentConfig> = {
-  'code-reviewer': {
-    type: 'code-reviewer',
-    description: 'Expert code reviewer for quality and security reviews.',
-    prompt: `You are a senior code reviewer. Analyze code quality and suggest improvements.
-Focus on:
-1. Security vulnerabilities (OWASP Top 10)
-2. Performance issues
-3. Code maintainability
-4. Best practices
-
-Always provide specific line numbers and suggestions.`,
-    tools: ['Read', 'Glob', 'Grep'],
-    maxTurns: 10,
-  },
-
-  'test-engineer': {
-    type: 'test-engineer',
-    description: 'Test generation specialist.',
-    prompt: `You are a test engineer. Generate comprehensive tests.
-Focus on: Unit tests, Edge cases, Integration tests, Test coverage`,
-    tools: ['Read', 'Write', 'Edit', 'Glob', 'Grep'],
-    maxTurns: 15,
-  },
-
-  'doc-writer': {
-    type: 'doc-writer',
-    description: 'Technical writer for documentation.',
-    prompt: `You are a technical writer. Create clear documentation.
-Focus on: API documentation, Usage examples, Installation guides`,
-    tools: ['Read', 'Write', 'Edit', 'Glob', 'Grep'],
-    maxTurns: 10,
-  },
-
-  'debugger': {
-    type: 'debugger',
-    description: 'Bug detective that analyzes and fixes issues.',
-    prompt: `You are a debugging expert. Find and fix bugs.
-Focus on: Root cause analysis, Stack trace interpretation, Reproduction steps`,
-    tools: ['Read', 'Glob', 'Grep', 'Bash'],
-    maxTurns: 15,
-  },
-
-  'refactorer': {
-    type: 'refactorer',
-    description: 'Code refactoring specialist.',
-    prompt: `You are a refactoring expert. Improve code quality.
-Focus on: Reducing complexity, Improving readability, Applying design patterns`,
-    tools: ['Read', 'Write', 'Edit', 'Glob', 'Grep'],
-    maxTurns: 20,
-  },
-
-  'security-auditor': {
-    type: 'security-auditor',
-    description: 'Security specialist for identifying vulnerabilities.',
-    prompt: `You are a security auditor. Identify security risks.
-Focus on: OWASP Top 10, Secure coding practices, Authentication flaws`,
-    tools: ['Read', 'Glob', 'Grep'],
-    maxTurns: 10,
-  },
-};
-
-/**
- * 所有内置 Agent
+ * 所有内置 Agent（= 核心三代理）
  */
 export const BUILTIN_AGENTS: Record<string, AgentConfig> = {
   ...CORE_AGENTS,
-  ...EXTENDED_AGENTS,
 };
 
 // ============================================
@@ -158,20 +72,6 @@ export const BUILTIN_AGENTS: Record<string, AgentConfig> = {
  */
 export function getAgentConfig(name: string): AgentConfig | undefined {
   return BUILTIN_AGENTS[name];
-}
-
-/**
- * 获取核心 Agent 名称列表
- */
-export function getCoreAgentNames(): string[] {
-  return Object.keys(CORE_AGENTS);
-}
-
-/**
- * 获取扩展 Agent 名称列表
- */
-export function getExtendedAgentNames(): string[] {
-  return Object.keys(EXTENDED_AGENTS);
 }
 
 /**

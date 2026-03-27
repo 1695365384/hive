@@ -12,10 +12,7 @@ import {
   getAgent,
   AgentRunner,
   BUILTIN_AGENTS,
-  EXTENDED_AGENTS,
   getAllAgentNames,
-  getCoreAgentNames,
-  getExtendedAgentNames,
 
   // Provider 模块
   ProviderManager,
@@ -29,7 +26,7 @@ import {
 describe('Agent 模块', () => {
   describe('内置 Agent 类型', () => {
     it('should have core agents', () => {
-      const coreAgents = getCoreAgentNames();
+      const coreAgents = getAllAgentNames();
       expect(coreAgents).toContain('explore');
       expect(coreAgents).toContain('plan');
       expect(coreAgents).toContain('general');
@@ -37,19 +34,10 @@ describe('Agent 模块', () => {
     });
   });
 
-  describe('扩展 Agent', () => {
-    it('should have extended agents', () => {
-      const extendedAgents = getExtendedAgentNames();
-      expect(extendedAgents).toContain('code-reviewer');
-      expect(extendedAgents).toContain('test-engineer');
-      expect(extendedAgents).toContain('doc-writer');
-    });
-  });
-
   describe('所有 Agent', () => {
     it('should have all agents', () => {
       const allAgents = getAllAgentNames();
-      expect(allAgents.length).toBeGreaterThanOrEqual(6);
+      expect(allAgents.length).toBeGreaterThanOrEqual(3);
     });
   });
 

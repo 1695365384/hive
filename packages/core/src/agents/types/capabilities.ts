@@ -9,7 +9,7 @@ import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 /**
  * Agent 类型
  */
-export type AgentType = 'explore' | 'plan' | 'general' | 'code-reviewer' | 'test-engineer' | 'doc-writer' | 'debugger' | 'refactorer' | 'security-auditor' | 'custom';
+export type AgentType = 'explore' | 'plan' | 'general' | 'custom';
 
 /**
  * Agent 配置

@@ -16,4 +16,5 @@ export { WorkflowCapability } from './WorkflowCapability.js';
 export { SessionCapability, createSessionCapability } from './SessionCapability.js';
 export type { SessionCapabilityConfig } from './SessionCapability.js';
 export { TimeoutCapability, createTimeoutCapability } from './TimeoutCapability.js';
+export { SwarmCapability } from './SwarmCapability.js';
 

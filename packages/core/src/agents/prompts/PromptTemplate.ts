@@ -48,7 +48,7 @@ export class PromptTemplate {
    *
    * 优先级: 文件 > 内联模板
    *
-   * @param name - 模板名称（不含扩展名，支持子目录如 'agents/code-reviewer'）
+   * @param name - 模板名称（不含扩展名，支持子目录如 'agents/explore'）
    * @returns 模板内容
    */
   load(name: string): string {

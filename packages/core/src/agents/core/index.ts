@@ -36,11 +36,8 @@ export { AgentContextImpl } from './AgentContext.js';
 
 export {
   CORE_AGENTS,
-  EXTENDED_AGENTS,
   BUILTIN_AGENTS,
   getAgentConfig,
-  getCoreAgentNames,
-  getExtendedAgentNames,
   getAllAgentNames,
 } from './agents.js';
 

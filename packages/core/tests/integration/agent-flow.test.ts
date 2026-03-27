@@ -40,8 +40,7 @@ describe('Agent Module Exports', () => {
       expect(typeof agent.explore).toBe('function');
       expect(typeof agent.plan).toBe('function');
       expect(typeof agent.general).toBe('function');
-      expect(typeof agent.reviewCode).toBe('function');
-      expect(typeof agent.generateTests).toBe('function');
+      expect(typeof agent.swarm).toBe('function');
     });
   });
 

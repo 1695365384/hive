@@ -5,10 +5,10 @@
  */
 
 import type { AgentConfig } from '../types.js';
-import { BUILTIN_AGENTS, CORE_AGENTS, EXTENDED_AGENTS } from '../core/agents.js';
+import { BUILTIN_AGENTS, CORE_AGENTS } from '../core/agents.js';
 
 // 重新导出供外部使用
-export { CORE_AGENTS, EXTENDED_AGENTS, BUILTIN_AGENTS };
+export { CORE_AGENTS, BUILTIN_AGENTS };
 
 /**
  * Agent 注册表实现
@@ -63,20 +63,6 @@ export class AgentRegistryImpl {
    */
   has(name: string): boolean {
     return this.agents.has(name);
-  }
-
-  /**
-   * 获取核心 Agent 名称
-   */
-  getCoreAgentNames(): string[] {
-    return Object.keys(CORE_AGENTS);
-  }
-
-  /**
-   * 获取扩展 Agent 名称
-   */
-  getExtendedAgentNames(): string[] {
-    return Object.keys(EXTENDED_AGENTS);
   }
 
   /**
