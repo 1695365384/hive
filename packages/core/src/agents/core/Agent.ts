@@ -35,8 +35,6 @@ import { SessionCapability } from '../capabilities/SessionCapability.js';
 import { SwarmCapability } from '../capabilities/SwarmCapability.js';
 import { SessionDelegation } from './session-delegation.js';
 import { PipelineExecutor } from '../pipeline/executor.js';
-import { BUILTIN_TEMPLATES } from '../swarm/templates.js';
-import { generatePipelineReport } from '../pipeline/tracer.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Session, Message } from '../../session/index.js';
@@ -275,16 +273,7 @@ export class Agent {
     task: string,
     options?: import('../pipeline/types.js').PipelineOptions
   ): Promise<import('../pipeline/types.js').PipelineResult> {
-    const runner = this._context.runner;
-    const templates = [...BUILTIN_TEMPLATES, ...this.swarmCap.listTemplates().map(t => {
-      // listTemplates returns summary, we need full templates from registry
-      // Use built-in templates + any registered custom templates
-      return this.swarmCap['templates']?.get(
-        t.variant ? `${t.name}:${t.variant}` : t.name
-      );
-    }).filter(Boolean) as import('../swarm/types.js').SwarmTemplate[]];
-
-    const executor = new PipelineExecutor(runner, templates);
+    const executor = new PipelineExecutor(this.swarmCap);
     return executor.execute(stages, task, options);
   }
 
