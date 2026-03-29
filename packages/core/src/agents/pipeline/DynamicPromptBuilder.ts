@@ -85,7 +85,7 @@ export class DynamicPromptBuilder {
    * Load the base template for an agent type
    */
   private loadBaseTemplate(agentType: AgentType): string {
-    const templateMap: Record<AgentType, string> = {
+    const templateMap: Partial<Record<AgentType, string>> = {
       explore: 'explore',
       plan: 'plan',
       general: 'intelligent',
@@ -244,7 +244,7 @@ export class DynamicPromptBuilder {
    * Get human-readable label for a phase
    */
   private getPhaseLabel(phase: AgentType): string {
-    const labels: Record<AgentType, string> = {
+    const labels: Partial<Record<AgentType, string>> = {
       explore: 'Exploration Phase',
       plan: 'Planning Phase',
       general: 'Execution Phase',

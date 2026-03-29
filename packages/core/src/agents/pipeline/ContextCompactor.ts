@@ -65,7 +65,13 @@ export class ContextCompactor {
       return this.createPhaseResult(result.text, [], [], [], phase, originalLength);
     }
 
-    const resolvedConfig = { ...DEFAULT_CONFIG, ...config };
+    const resolvedConfig = {
+      preserveRaw: config?.preserveRaw ?? DEFAULT_CONFIG.preserveRaw,
+      maxSummaryLength: config?.maxSummaryLength ?? DEFAULT_CONFIG.maxSummaryLength,
+      maxFindings: config?.maxFindings ?? DEFAULT_CONFIG.maxFindings,
+      maxSuggestions: config?.maxSuggestions ?? DEFAULT_CONFIG.maxSuggestions,
+      model: config?.model,
+    };
 
     try {
       const compressed = await this.callLLM(result.text, phase, resolvedConfig);
@@ -93,7 +99,13 @@ export class ContextCompactor {
   private async callLLM(
     rawText: string,
     phase: AgentType,
-    config: Required<CompactorConfig>,
+    config: {
+      preserveRaw: boolean;
+      maxSummaryLength: number;
+      maxFindings: number;
+      maxSuggestions: number;
+      model?: string;
+    },
   ): Promise<{ summary: string; keyFiles: string[]; findings: string[]; suggestions: string[] }> {
     // Truncate raw text to avoid exceeding model context
     const truncatedRaw = rawText.length > 30000 ? rawText.slice(0, 30000) + '\n...[truncated]' : rawText;
@@ -118,7 +130,6 @@ export class ContextCompactor {
         model,
         system: systemPrompt,
         prompt: userPrompt,
-        maxSteps: 1,
         abortSignal: abortController.signal,
       });
 
@@ -157,7 +168,13 @@ export class ContextCompactor {
     text: string,
     phase: AgentType,
     originalLength: number,
-    config: Required<CompactorConfig>,
+    config: {
+      preserveRaw: boolean;
+      maxSummaryLength: number;
+      maxFindings: number;
+      maxSuggestions: number;
+      model?: string;
+    },
   ): AgentPhaseResult {
     const summary = this.truncate(text, config.maxSummaryLength);
     return {

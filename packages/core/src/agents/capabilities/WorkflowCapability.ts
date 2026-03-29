@@ -256,7 +256,23 @@ export class WorkflowCapability implements AgentCapability {
     const subAgentCap = this.getSubAgentCap();
 
     if (!subAgentCap) {
-      return this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId);
+      const { executeResult } = await this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId);
+      if (!executeResult) {
+        throw new Error('Simple task returned no execute result');
+      }
+      return {
+        exploreResult: { text: '', tools: [], success: false, error: 'SubAgent not available' },
+        explorePhaseResult: {
+          summary: '', keyFiles: [], findings: [], suggestions: [],
+          rawText: '', phase: 'explore', originalLength: 0, compressedLength: 0,
+        },
+        executionPlan: '',
+        planPhaseResult: {
+          summary: '', keyFiles: [], findings: [], suggestions: [],
+          rawText: '', phase: 'plan', originalLength: 0, compressedLength: 0,
+        },
+        executeResult,
+      };
     }
 
     // Phase: Explore

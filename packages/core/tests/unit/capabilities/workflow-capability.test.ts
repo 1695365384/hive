@@ -519,8 +519,10 @@ describe('WorkflowCapability', () => {
 
       expect(result.success).toBe(true);
       expect(result.executeResult).toBeDefined();
-      expect(result.exploreResult).toBeUndefined();
-      expect(result.executionPlan).toBeUndefined();
+      // When SubAgent is unavailable, degrade returns default phase results
+      expect(result.exploreResult).toBeDefined();
+      expect(result.exploreResult?.success).toBe(false);
+      expect(result.executionPlan).toBe('');
     });
 
     it('should handle explore phase failure gracefully', async () => {
