@@ -108,6 +108,20 @@ export class WorkflowCapability implements AgentCapability {
       };
     }
 
+    // Short message without action verbs → simple (greetings, casual chat, etc.)
+    const ACTION_VERB_RE = /修复|实现|重构|添加|创建|删除|优化|排查|调试|fix|implement|refactor|create|delete|debug/i;
+    const isShortMessage = task.length < 30 && !task.includes('\n');
+
+    if (isShortMessage && !ACTION_VERB_RE.test(task)) {
+      return {
+        type: 'simple',
+        needsExploration: false,
+        needsPlanning: false,
+        recommendedAgents: ['general'],
+        reason: 'Short message, no action verbs detected',
+      };
+    }
+
     return {
       type: 'moderate',
       needsExploration: true,
