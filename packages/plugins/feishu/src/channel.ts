@@ -7,6 +7,8 @@
 
 import * as lark from '@larksuiteoapi/node-sdk'
 import crypto from 'crypto'
+import fs from 'fs'
+import path from 'path'
 import type {
   IChannel,
   ChannelCapabilities,
@@ -60,8 +62,10 @@ export class FeishuChannel implements IFeishuChannel {
   private messageBus: IMessageBus
   private logger: ILogger
   private config: FeishuAppConfig
+  /** 文件接收存储目录 */
+  private readonly receivedDir: string
 
-  constructor(config: FeishuAppConfig, messageBus: IMessageBus, logger: ILogger) {
+  constructor(config: FeishuAppConfig, messageBus: IMessageBus, logger: ILogger, workspaceDir?: string | null) {
     this.appId = config.appId
     this.id = `feishu:${config.appId}`
     this.name = `Feishu Channel (${config.appId.slice(0, 8)})`
@@ -97,6 +101,11 @@ export class FeishuChannel implements IFeishuChannel {
     })
 
     this.logger.info(`[FeishuChannel] Created channel for app ${this.appId}`)
+
+    // 文件接收目录
+    this.receivedDir = workspaceDir
+      ? path.join(workspaceDir, 'files', 'feishu', 'received')
+      : path.join(process.cwd(), 'files', 'feishu', 'received')
   }
 
   /**
@@ -133,13 +142,24 @@ export class FeishuChannel implements IFeishuChannel {
    */
   async send(options: ChannelSendOptions): Promise<ChannelSendResult> {
     try {
+      const filePath = options.filePath ?? (options.metadata?.filePath as string | undefined)
+      const msgType = this.resolveSendType(options.type, filePath)
+
+      // 文件/图片：先上传再发送
+      if (msgType === 'file' && filePath) {
+        return this.sendFileMessage(options.to, filePath)
+      }
+      if (msgType === 'image' && filePath) {
+        return this.sendImageMessage(options.to, filePath)
+      }
+
       const response = await this.client.im.v1.message.create({
         params: {
           receive_id_type: 'chat_id',
         },
         data: {
           receive_id: options.to,
-          msg_type: this.mapMessageType(options.type || 'text'),
+          msg_type: this.mapMessageType(msgType),
           content: this.buildContent(options),
         },
       })
@@ -169,13 +189,24 @@ export class FeishuChannel implements IFeishuChannel {
    */
   async reply(messageId: string, options: ChannelSendOptions): Promise<ChannelSendResult> {
     try {
+      const filePath = options.filePath ?? (options.metadata?.filePath as string | undefined)
+      const msgType = this.resolveSendType(options.type, filePath)
+
+      // 文件/图片：先上传再回复
+      if (msgType === 'file' && filePath) {
+        return this.replyFileMessage(messageId, filePath)
+      }
+      if (msgType === 'image' && filePath) {
+        return this.replyImageMessage(messageId, filePath)
+      }
+
       const response = await this.client.im.v1.message.reply({
         path: {
           message_id: messageId,
         },
         data: {
           content: this.buildContent(options),
-          msg_type: this.mapMessageType(options.type || 'text'),
+          msg_type: this.mapMessageType(msgType),
         },
       })
 
@@ -240,7 +271,7 @@ export class FeishuChannel implements IFeishuChannel {
    * 处理 WebSocket 接收到的消息事件
    */
   private async handleWSMessageEvent(data: FeishuWSEventData): Promise<void> {
-    const message = this.convertWSMessage(data)
+    const message = await this.convertWSMessage(data)
 
     if (message) {
       this.logger.info(
@@ -254,7 +285,7 @@ export class FeishuChannel implements IFeishuChannel {
   /**
    * 转换 WebSocket 事件数据为通用消息格式
    */
-  private convertWSMessage(data: FeishuWSEventData): ChannelMessage | null {
+  private async convertWSMessage(data: FeishuWSEventData): Promise<ChannelMessage | null> {
     const sender = data.sender
     const msg = data.message
     if (!sender?.sender_id || !msg?.message_id) {
@@ -263,16 +294,21 @@ export class FeishuChannel implements IFeishuChannel {
     }
 
     let content = ''
+    const msgType = msg.message_type || 'text'
     try {
-      if (msg.message_type === 'text' && msg.content) {
+      if (msgType === 'text' && msg.content) {
         const textContent = JSON.parse(msg.content) as { text: string }
         content = textContent.text
-      } else if (msg.message_type === 'interactive' && msg.content) {
+      } else if (msgType === 'interactive' && msg.content) {
         content = this.extractCardText(msg.content)
-      } else if (msg.message_type === 'post' && msg.content) {
+      } else if (msgType === 'post' && msg.content) {
         content = this.extractPostText(msg.content)
+      } else if (msgType === 'image' && msg.content) {
+        content = await this.handleReceiveImage(msg.content)
+      } else if ((msgType === 'file' || msgType === 'audio' || msgType === 'media') && msg.content) {
+        content = await this.handleReceiveFile(msg.content)
       } else {
-        content = msg.content || `[${msg.message_type || 'unknown'}]`
+        content = msg.content || `[${msgType}]`
       }
     } catch {
       content = msg.content || ''
@@ -281,7 +317,7 @@ export class FeishuChannel implements IFeishuChannel {
     return {
       id: msg.message_id,
       content,
-      type: this.mapToMessageType(msg.message_type || 'text'),
+      type: this.mapToMessageType(msgType),
       from: {
         id: sender.sender_id.open_id || sender.sender_id.user_id || '',
         type: 'user',
@@ -306,7 +342,7 @@ export class FeishuChannel implements IFeishuChannel {
    * 处理 Webhook 消息事件
    */
   private async handleWebhookMessageEvent(event: FeishuMessageEvent): Promise<void> {
-    const message = this.convertWebhookMessage(event)
+    const message = await this.convertWebhookMessage(event)
 
     if (message) {
       this.logger.info(
@@ -320,16 +356,21 @@ export class FeishuChannel implements IFeishuChannel {
   /**
    * 转换 Webhook 消息为通用格式
    */
-  private convertWebhookMessage(event: FeishuMessageEvent): ChannelMessage | null {
+  private async convertWebhookMessage(event: FeishuMessageEvent): Promise<ChannelMessage | null> {
     const { sender, message: msg } = event.event
 
     let content = ''
+    const msgType = msg.message_type || 'text'
     try {
-      if (msg.message_type === 'text') {
+      if (msgType === 'text') {
         const textContent = JSON.parse(msg.content) as { text: string }
         content = textContent.text
+      } else if (msgType === 'image' && msg.content) {
+        content = await this.handleReceiveImage(msg.content)
+      } else if ((msgType === 'file' || msgType === 'audio' || msgType === 'media') && msg.content) {
+        content = await this.handleReceiveFile(msg.content)
       } else {
-        content = `[${msg.message_type}]`
+        content = `[${msgType}]`
       }
     } catch {
       content = msg.content
@@ -338,7 +379,7 @@ export class FeishuChannel implements IFeishuChannel {
     return {
       id: msg.message_id,
       content,
-      type: this.mapToMessageType(msg.message_type),
+      type: this.mapToMessageType(msgType),
       from: {
         id: sender.sender_id.open_id || sender.sender_id.user_id,
         type: 'user',
@@ -466,6 +507,230 @@ export class FeishuChannel implements IFeishuChannel {
   // ============================
 
   /**
+   * 图片扩展名集合
+   */
+  private static readonly IMAGE_EXTENSIONS = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg',
+  ])
+
+  /**
+   * 根据文件扩展名推断发送类型
+   */
+  private resolveSendType(type: string | undefined, filePath?: string): string {
+    if (type === 'file' || type === 'image') return type
+    if (filePath) {
+      const ext = path.extname(filePath).toLowerCase()
+      if (FeishuChannel.IMAGE_EXTENSIONS.has(ext)) return 'image'
+    }
+    return type || 'text'
+  }
+
+  /**
+   * 上传文件到飞书
+   *
+   * @returns file_key
+   */
+  private async uploadFile(filePath: string): Promise<string> {
+    const absolutePath = path.resolve(filePath)
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`File not found: ${absolutePath}`)
+    }
+
+    const ext = path.extname(absolutePath).slice(1).toLowerCase() || 'bin'
+    const fileName = path.basename(absolutePath)
+
+    const response = await this.client.im.file.create({
+      data: {
+        file_type: ext as 'pdf' | 'doc' | 'xls' | 'ppt' | 'mp4' | 'opus' | 'stream',
+        file_name: fileName,
+        file: fs.readFileSync(absolutePath),
+      },
+    })
+
+    if (!response || !response.file_key) {
+      throw new Error('Upload file failed: no file_key returned')
+    }
+
+    return response.file_key
+  }
+
+  /**
+   * 上传图片到飞书
+   *
+   * @returns image_key
+   */
+  private async uploadImage(filePath: string): Promise<string> {
+    const absolutePath = path.resolve(filePath)
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`Image not found: ${absolutePath}`)
+    }
+
+    const response = await this.client.im.image.create({
+      data: {
+        image_type: 'message',
+        image: fs.readFileSync(absolutePath),
+      },
+    })
+
+    if (!response || !response.image_key) {
+      throw new Error('Upload image failed: no image_key returned')
+    }
+
+    return response.image_key
+  }
+
+  /**
+   * 下载文件并保存到本地
+   *
+   * @returns 本地文件路径，失败时返回 null
+   */
+  private async downloadFile(fileKey: string, fileName: string): Promise<string | null> {
+    try {
+      fs.mkdirSync(this.receivedDir, { recursive: true })
+      const date = new Date().toISOString().slice(0, 10)
+      const ext = path.extname(fileName) || '.bin'
+      const localPath = path.join(this.receivedDir, `${date}_${fileKey}${ext}`)
+
+      const resp = await this.client.im.file.get({
+        path: { file_key: fileKey },
+      })
+      await resp.writeFile(localPath)
+
+      this.logger.info(`[FeishuChannel] File downloaded: ${localPath}`)
+      return localPath
+    } catch (error) {
+      this.logger.error(`[FeishuChannel] Download file failed (key=${fileKey}):`, error)
+      return null
+    }
+  }
+
+  /**
+   * 下载图片并保存到本地
+   *
+   * @returns 本地文件路径，失败时返回 null
+   */
+  private async downloadImage(imageKey: string): Promise<string | null> {
+    try {
+      fs.mkdirSync(this.receivedDir, { recursive: true })
+      const date = new Date().toISOString().slice(0, 10)
+      const localPath = path.join(this.receivedDir, `${date}_${imageKey}.png`)
+
+      const resp = await this.client.im.image.get({
+        path: { image_key: imageKey },
+      })
+      await resp.writeFile(localPath)
+
+      this.logger.info(`[FeishuChannel] Image downloaded: ${localPath}`)
+      return localPath
+    } catch (error) {
+      this.logger.error(`[FeishuChannel] Download image failed (key=${imageKey}):`, error)
+      return null
+    }
+  }
+
+  /**
+   * 发送文件消息（上传 + 发送）
+   */
+  private async sendFileMessage(chatId: string, filePath: string): Promise<ChannelSendResult> {
+    try {
+      const fileKey = await this.uploadFile(filePath)
+      const response = await this.client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          msg_type: 'file',
+          content: JSON.stringify({ file_key: fileKey }),
+        },
+      })
+
+      if (response.code !== 0) {
+        return { success: false, error: `Feishu API error: ${response.msg}` }
+      }
+
+      return { success: true, messageId: response.data?.message_id }
+    } catch (error) {
+      this.logger.error(`[FeishuChannel] Send file message failed:`, error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }
+
+  /**
+   * 发送图片消息（上传 + 发送）
+   */
+  private async sendImageMessage(chatId: string, filePath: string): Promise<ChannelSendResult> {
+    try {
+      const imageKey = await this.uploadImage(filePath)
+      const response = await this.client.im.v1.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: {
+          receive_id: chatId,
+          msg_type: 'image',
+          content: JSON.stringify({ image_key: imageKey }),
+        },
+      })
+
+      if (response.code !== 0) {
+        return { success: false, error: `Feishu API error: ${response.msg}` }
+      }
+
+      return { success: true, messageId: response.data?.message_id }
+    } catch (error) {
+      this.logger.error(`[FeishuChannel] Send image message failed:`, error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }
+
+  /**
+   * 回复文件消息（上传 + 回复）
+   */
+  private async replyFileMessage(messageId: string, filePath: string): Promise<ChannelSendResult> {
+    try {
+      const fileKey = await this.uploadFile(filePath)
+      const response = await this.client.im.v1.message.reply({
+        path: { message_id: messageId },
+        data: {
+          msg_type: 'file',
+          content: JSON.stringify({ file_key: fileKey }),
+        },
+      })
+
+      if (response.code !== 0) {
+        return { success: false, error: `Feishu API error: ${response.msg}` }
+      }
+
+      return { success: true, messageId: response.data?.message_id }
+    } catch (error) {
+      this.logger.error(`[FeishuChannel] Reply file message failed:`, error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }
+
+  /**
+   * 回复图片消息（上传 + 回复）
+   */
+  private async replyImageMessage(messageId: string, filePath: string): Promise<ChannelSendResult> {
+    try {
+      const imageKey = await this.uploadImage(filePath)
+      const response = await this.client.im.v1.message.reply({
+        path: { message_id: messageId },
+        data: {
+          msg_type: 'image',
+          content: JSON.stringify({ image_key: imageKey }),
+        },
+      })
+
+      if (response.code !== 0) {
+        return { success: false, error: `Feishu API error: ${response.msg}` }
+      }
+
+      return { success: true, messageId: response.data?.message_id }
+    } catch (error) {
+      this.logger.error(`[FeishuChannel] Reply image message failed:`, error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }
+
+  /**
    * 验证飞书签名
    */
   private verifySignature(
@@ -486,6 +751,39 @@ export class FeishuChannel implements IFeishuChannel {
     const hash = crypto.createHash('sha256').update(signBase).digest('hex')
 
     return hash === signature
+  }
+
+  /**
+   * 处理接收到的图片消息，下载并返回本地路径
+   */
+  private async handleReceiveImage(contentJson: string): Promise<string> {
+    try {
+      const parsed = JSON.parse(contentJson) as { image_key?: string }
+      const imageKey = parsed.image_key
+      if (!imageKey) return contentJson
+
+      const localPath = await this.downloadImage(imageKey)
+      return localPath ?? `[image: ${imageKey}]`
+    } catch {
+      return contentJson
+    }
+  }
+
+  /**
+   * 处理接收到的文件消息，下载并返回本地路径
+   */
+  private async handleReceiveFile(contentJson: string): Promise<string> {
+    try {
+      const parsed = JSON.parse(contentJson) as { file_key?: string; file_name?: string }
+      const fileKey = parsed.file_key
+      const fileName = parsed.file_name ?? 'unknown'
+      if (!fileKey) return contentJson
+
+      const localPath = await this.downloadFile(fileKey, fileName)
+      return localPath ?? `[file: ${fileName}]`
+    } catch {
+      return contentJson
+    }
   }
 
   /**

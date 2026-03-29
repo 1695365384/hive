@@ -474,6 +474,7 @@ export {
 
   // 插件接口
   type PluginMetadata,
+  type PluginContext,
   type IPlugin,
 
   // 插件加载

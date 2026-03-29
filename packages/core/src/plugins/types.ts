@@ -60,6 +60,8 @@ export interface ChannelSendOptions {
   type?: ChannelMessageType
   /** 目标 ID（用户 ID 或群聊 ID） */
   to: string
+  /** 本地文件路径（发送文件/图片时使用） */
+  filePath?: string
   /** 回复的消息 ID */
   replyTo?: string
   /** 元数据 */
@@ -178,6 +180,16 @@ export { type ILogger, noopLogger }
 // ============================================
 
 /**
+ * 插件运行时上下文
+ *
+ * 由 Server 在 initialize() 时注入，提供运行时环境信息。
+ */
+export interface PluginContext {
+  /** 工作空间根目录（只读，插件不应修改此目录本身的结构） */
+  workspaceDir: string
+}
+
+/**
  * 插件元数据
  */
 export interface PluginMetadata {
@@ -216,7 +228,7 @@ export interface IPlugin {
    *
    * 在此阶段进行配置验证和资源准备。
    */
-  initialize(messageBus: IMessageBus, logger: ILogger, registerChannel: (channel: IChannel) => void): Promise<void>
+  initialize(messageBus: IMessageBus, logger: ILogger, registerChannel: (channel: IChannel) => void, context?: PluginContext): Promise<void>
 
   /**
    * 激活插件

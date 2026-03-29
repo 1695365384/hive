@@ -15,9 +15,11 @@ import {
   createWebSearchTool,
   createWebFetchTool,
   createAskUserTool,
+  createSendFileTool,
   type AskUserCallback,
 } from './built-in/index.js';
 import { setAskUserCallback } from './built-in/ask-user-tool.js';
+import { setSendFileCallback, type SendFileCallback } from './built-in/send-file-tool.js';
 
 /** Agent 类型 */
 export type AgentType = 'explore' | 'plan' | 'general';
@@ -51,6 +53,7 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'web-search', factory: () => createWebSearchTool() },
     { name: 'web-fetch', factory: () => createWebFetchTool() },
     { name: 'ask-user', factory: () => createAskUserTool() },
+    { name: 'send-file', factory: () => createSendFileTool() },
   ],
 };
 
@@ -124,6 +127,13 @@ export class ToolRegistry {
    */
   setAskUserCallback(cb: AskUserCallback): void {
     setAskUserCallback(cb);
+  }
+
+  /**
+   * 设置 send-file 回调
+   */
+  setSendFileCallback(cb: SendFileCallback): void {
+    setSendFileCallback(cb);
   }
 }
 

@@ -1,9 +1,4 @@
-# feishu-channel Specification
-
-## Purpose
-TBD - created by archiving change feishu-channel-plugin. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 接收飞书消息事件
 系统 SHALL 通过飞书事件订阅接收用户发送给机器人的消息，包括文件和图片类型。
@@ -33,8 +28,10 @@ TBD - created by archiving change feishu-channel-plugin. Update Purpose after ar
 - **AND** 发布的消息中 `content` SHALL 包含本地文件路径
 - **AND** `type` SHALL 为 `'image'`
 
+## MODIFIED Requirements
+
 ### Requirement: 发送飞书消息
-系统 SHALL 能够向飞书用户或群组发送消息，包括文件和图片类型。文件路径 SHALL 从 `ChannelSendOptions.filePath` 读取。
+系统 SHALL 能够向飞书用户或群组发送消息，包括文件和图片类型。
 
 #### Scenario: 发送文本消息
 - **WHEN** 系统调用 `sendMessage` 方法发送文本
@@ -50,36 +47,11 @@ TBD - created by archiving change feishu-channel-plugin. Update Purpose after ar
 - **THEN** 系统 SHALL 使用飞书消息回复 API
 
 #### Scenario: 发送文件消息
-- **WHEN** 系统调用 `send()` 且 `type` 为 `'file'`，`filePath` 包含本地文件路径
+- **WHEN** 系统调用 `send()` 且 `type` 为 `'file'`，`metadata.filePath` 包含本地文件路径
 - **THEN** 系统 SHALL 先通过 `client.im.file.create()` 上传文件获取 `file_key`
 - **AND** 再通过飞书消息 API 发送 `msg_type: 'file'` 消息
 
 #### Scenario: 发送图片消息
-- **WHEN** 系统调用 `send()` 且 `type` 为 `'image'`，`filePath` 包含本地图片路径
+- **WHEN** 系统调用 `send()` 且 `type` 为 `'image'`，`metadata.filePath` 包含本地图片路径
 - **THEN** 系统 SHALL 先通过 `client.im.image.create()` 上传图片获取 `image_key`
 - **AND** 再通过飞书消息 API 发送 `msg_type: 'image'` 消息
-
-#### Scenario: 兼容 metadata.filePath
-- **WHEN** `filePath` 未设置但 `metadata.filePath` 有值
-- **THEN** 系统 SHALL 降级读取 `metadata.filePath`（向后兼容）
-
-### Requirement: 多租户支持
-
-系统 SHALL 支持同时运行多个飞书应用实例。
-
-#### Scenario: 配置多个飞书应用
-- **WHEN** 配置中包含多个飞书应用的凭证
-- **THEN** 系统 SHALL 为每个应用创建独立的客户端实例
-- **AND** 消息事件 SHALL 包含 `appId` 标识来源应用
-
-### Requirement: 错误处理与重试
-
-系统 SHALL 妥善处理飞书 API 错误。
-
-#### Scenario: API 限流处理
-- **WHEN** 飞书 API 返回限流错误
-- **THEN** 系统 SHALL 实现指数退避重试
-
-#### Scenario: Token 过期刷新
-- **WHEN** 飞书 access_token 过期
-- **THEN** 系统 SHALL 自动刷新 token 并重试请求
