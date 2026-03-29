@@ -32,6 +32,7 @@ import { ChatCapability } from '../capabilities/ChatCapability.js';
 import { SubAgentCapability } from '../capabilities/SubAgentCapability.js';
 import { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
+import { ScheduleCapability } from '../capabilities/ScheduleCapability.js';
 import { SessionDelegation } from './session-delegation.js';
 import { Dispatcher } from '../dispatch/Dispatcher.js';
 import type { DispatchOptions, DispatchResult } from '../dispatch/types.js';
@@ -54,9 +55,11 @@ export class Agent {
   private subAgentCap: SubAgentCapability;
   private workflowCap: WorkflowCapability;
   private sessionCap: SessionCapability;
+  private scheduleCap: ScheduleCapability;
   private sessionDelegation: SessionDelegation;
   private timeoutDelegation: TimeoutDelegation;
   private notificationDelegation: NotificationDelegation;
+  private dispatcher: Dispatcher;
   private initialized: boolean = false;
   private disposed: boolean = false;
 
@@ -82,9 +85,11 @@ export class Agent {
     this.subAgentCap = new SubAgentCapability();
     this.workflowCap = new WorkflowCapability();
     this.sessionCap = new SessionCapability(sessionConfig);
+    this.scheduleCap = new ScheduleCapability();
     this.sessionDelegation = new SessionDelegation(this.sessionCap);
     this.timeoutDelegation = new TimeoutDelegation(this._context);
     this.notificationDelegation = new NotificationDelegation(this._context);
+    this.dispatcher = new Dispatcher(this._context);
 
     // 注册能力模块到上下文（使 getCapability() 可用）
     // 注意：注册顺序决定 initializeAsync 的调用顺序
@@ -95,6 +100,7 @@ export class Agent {
     this._context.registerCapability(this.chatCap);
     this._context.registerCapability(this.subAgentCap);
     this._context.registerCapability(this.workflowCap);
+    this._context.registerCapability(this.scheduleCap);
   }
 
   /**
@@ -104,6 +110,13 @@ export class Agent {
    */
   get context(): AgentContext {
     return this._context;
+  }
+
+  /**
+   * 获取定时任务能力
+   */
+  get schedule(): ScheduleCapability {
+    return this.scheduleCap;
   }
 
   /**
@@ -194,13 +207,13 @@ export class Agent {
   }
 
   // ============================================
-  // 对话功能（委托给 ChatCapability）
+  // 对话功能（委托给 dispatch + forceLayer='chat'）
   // ============================================
 
   async chat(prompt: string, options?: AgentOptions): Promise<string> {
     return withHeartbeat(
       this._context,
-      this.dispatch(prompt, { forceLayer: 'chat', cwd: options?.cwd }).then(r => r.text),
+      Promise.resolve().then(() => this.chatCap.send(prompt, options)),
       prompt,
       options
     );
@@ -227,7 +240,7 @@ export class Agent {
   }
 
   // ============================================
-  // 工作流（委托给 WorkflowCapability）
+  // 工作流（委托给 dispatch + forceLayer='workflow'）
   // ============================================
 
   analyzeTask(task: string): TaskAnalysis {
@@ -235,7 +248,22 @@ export class Agent {
   }
 
   async runWorkflow(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
-    return this.workflowCap.run(task, options);
+    const result = await this.dispatch(task, {
+      forceLayer: 'workflow',
+      cwd: options?.cwd,
+      onPhase: options?.onPhase,
+      onText: options?.onText,
+      onTool: options?.onTool,
+    });
+
+    return {
+      analysis: result.analysis ?? this.workflowCap.analyzeTask(task),
+      exploreResult: result.exploreResult,
+      executionPlan: result.executionPlan,
+      executeResult: result.executeResult,
+      success: result.success,
+      error: result.error,
+    };
   }
 
   /**
@@ -244,8 +272,7 @@ export class Agent {
    * 自动将任务路由到 chat / workflow。
    */
   async dispatch(task: string, options?: DispatchOptions): Promise<DispatchResult> {
-    const dispatcher = new Dispatcher(this._context);
-    return dispatcher.dispatch(task, options);
+    return this.dispatcher.dispatch(task, options);
   }
 
   async preview(task: string, options?: WorkflowOptions): Promise<{

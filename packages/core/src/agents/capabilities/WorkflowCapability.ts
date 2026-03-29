@@ -7,7 +7,6 @@
 import type {
   AgentCapability,
   AgentContext,
-  AgentResult,
   WorkflowOptions,
   WorkflowResult,
   TaskAnalysis,
@@ -123,23 +122,188 @@ export class WorkflowCapability implements AgentCapability {
    */
   async run(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
     const sessionId = this.context.hookRegistry.getSessionId();
-    let previousPhase: string | undefined;
-
     this.workflowCounter++;
     const workflowId = `workflow-${this.workflowCounter}`;
 
-    const result: WorkflowResult = {
-      analysis: {
-        type: 'simple',
-        needsExploration: false,
-        needsPlanning: false,
-        recommendedAgents: [],
-        reason: '',
-      },
-      success: true,
-    };
+    const emitPhaseChange = this.createPhaseEmitter(sessionId, options);
 
-    const emitPhaseChange = async (phase: string, message: string) => {
+    try {
+      const timeoutConfig = this.context.timeoutCap.getConfig();
+      const abortController = new AbortController();
+      this.context.timeoutCap.startHeartbeat(
+        { interval: timeoutConfig.heartbeatInterval, stallTimeout: timeoutConfig.stallTimeout },
+        abortController
+      );
+
+      try {
+        await this.emitNotification(sessionId, 'info', '工作流开始',
+          `开始执行任务: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}`);
+
+        const analysis = this.analyzeTask(task);
+        await emitPhaseChange('analyze', '分析任务...');
+        await this.emitProgress(sessionId, workflowId, '分析任务中', 10, '分析', 3);
+
+        const executionResult = analysis.type === 'simple'
+          ? await this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId)
+          : await this.runComplexTask(task, options, emitPhaseChange, sessionId, workflowId);
+
+        const result: WorkflowResult = {
+          analysis,
+          ...executionResult,
+          success: executionResult.executeResult?.success ?? true,
+        };
+
+        if (options?.chatId && result.executeResult) {
+          await this.persistSession(options.chatId, task, result.executeResult.text);
+        }
+
+        await emitPhaseChange('complete', result.success ? '任务完成' : '任务失败');
+        await this.emitProgress(sessionId, workflowId, '工作流完成', 100, '完成', 4);
+
+        await this.emitNotification(
+          sessionId,
+          result.success ? 'success' : 'error',
+          result.success ? '任务完成' : '任务失败',
+          result.success ? '工作流执行成功完成' : `工作流执行失败: ${result.error || '未知错误'}`,
+          { workflowId, analysis }
+        );
+
+        return result;
+      } finally {
+        this.context.timeoutCap.stopHeartbeat();
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await emitPhaseChange('error', errorMsg);
+      await this.emitProgress(sessionId, workflowId, '工作流出错', 100, '错误', 4);
+      await this.emitNotification(sessionId, 'error', '工作流错误', errorMsg, { workflowId, error: true });
+
+      return {
+        analysis: this.analyzeTask(task),
+        success: false,
+        error: errorMsg,
+      };
+    }
+  }
+
+  /**
+   * 执行简单任务（直接执行，无 explore/plan）
+   */
+  private async runSimpleTask(
+    task: string,
+    options: WorkflowOptions | undefined,
+    emitPhaseChange: (phase: string, message: string) => Promise<void>,
+    sessionId: string,
+    workflowId: string,
+  ): Promise<Pick<WorkflowResult, 'executeResult'>> {
+    await emitPhaseChange('execute', '执行任务...');
+    await this.emitProgress(sessionId, workflowId, '执行任务中', 30, '执行', 1);
+
+    const executePrompt = this.buildExecutePrompt(task);
+    const executeResult = await this.context.runner.execute('general', executePrompt, {
+      cwd: options?.cwd,
+      onText: options?.onText,
+      onTool: options?.onTool ? (name, input) => options.onTool!(name, input) : undefined,
+      maxTurns: 20,
+    });
+
+    return { executeResult };
+  }
+
+  /**
+   * 执行复杂任务（explore → plan → execute 三阶段）
+   */
+  private async runComplexTask(
+    task: string,
+    options: WorkflowOptions | undefined,
+    emitPhaseChange: (phase: string, message: string) => Promise<void>,
+    sessionId: string,
+    workflowId: string,
+  ): Promise<Pick<WorkflowResult, 'exploreResult' | 'executionPlan' | 'executeResult'>> {
+    const subAgentCap = this.getSubAgentCap();
+
+    if (!subAgentCap) {
+      return this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId);
+    }
+
+    // Phase: Explore
+    await emitPhaseChange('explore', '探索代码库...');
+    await this.emitProgress(sessionId, workflowId, '探索代码库中', 20, '探索', 4);
+
+    const exploreResult = await this.runExplorePhase(subAgentCap, task, emitPhaseChange);
+
+    // Auto-compress after explore phase
+    await this.autoCompress();
+
+    // Phase: Plan
+    await emitPhaseChange('plan', '制定执行方案...');
+    await this.emitProgress(sessionId, workflowId, '制定执行方案中', 40, '规划', 4);
+
+    const executionPlan = await this.runPlanPhase(subAgentCap, task, exploreResult.text, emitPhaseChange);
+
+    // Auto-compress after plan phase
+    await this.autoCompress();
+
+    // Phase: Execute
+    await emitPhaseChange('execute', '执行任务...');
+    await this.emitProgress(sessionId, workflowId, '执行任务中', 60, '执行', 4);
+
+    const executePrompt = this.buildExecutePrompt(task, exploreResult.text, executionPlan);
+    const executeResult = await this.context.runner.execute('general', executePrompt, {
+      cwd: options?.cwd,
+      onText: options?.onText,
+      onTool: options?.onTool ? (name, input) => options.onTool!(name, input) : undefined,
+      maxTurns: 20,
+    });
+
+    return { exploreResult, executionPlan, executeResult };
+  }
+
+  /**
+   * Explore 阶段
+   */
+  private async runExplorePhase(
+    subAgentCap: SubAgentCapability,
+    task: string,
+    emitPhaseChange: (phase: string, message: string) => Promise<void>,
+  ): Promise<import('../core/types.js').AgentResult> {
+    try {
+      const text = await subAgentCap.explore(task);
+      return { text, success: true, tools: [] };
+    } catch (error) {
+      const text = `探索失败: ${error instanceof Error ? error.message : String(error)}`;
+      await emitPhaseChange('explore', `探索阶段失败: ${text.slice(0, 100)}`);
+      return { text, success: false, tools: [] };
+    }
+  }
+
+  /**
+   * Plan 阶段
+   */
+  private async runPlanPhase(
+    subAgentCap: SubAgentCapability,
+    task: string,
+    exploreText: string,
+    emitPhaseChange: (phase: string, message: string) => Promise<void>,
+  ): Promise<string> {
+    try {
+      return await subAgentCap.plan(`任务: ${task}\n\n探索发现:\n${exploreText}`);
+    } catch (error) {
+      const planText = `规划失败: ${error instanceof Error ? error.message : String(error)}`;
+      await emitPhaseChange('plan', `规划阶段失败: ${planText.slice(0, 100)}`);
+      return planText;
+    }
+  }
+
+  /**
+   * 创建阶段事件发射器
+   */
+  private createPhaseEmitter(
+    sessionId: string,
+    options: WorkflowOptions | undefined,
+  ): (phase: string, message: string) => Promise<void> {
+    let previousPhase: string | undefined;
+    return async (phase: string, message: string) => {
       const hookContext: WorkflowPhaseHookContext = {
         sessionId,
         phase,
@@ -151,153 +315,6 @@ export class WorkflowCapability implements AgentCapability {
       previousPhase = phase;
       options?.onPhase?.(phase, message);
     };
-
-    try {
-      const timeoutConfig = this.context.timeoutCap.getConfig();
-      const abortController = new AbortController();
-      this.context.timeoutCap.startHeartbeat(
-        {
-          interval: timeoutConfig.heartbeatInterval,
-          stallTimeout: timeoutConfig.stallTimeout,
-        },
-        abortController
-      );
-
-      try {
-        await this.emitNotification(
-          sessionId,
-          'info',
-          '工作流开始',
-          `开始执行任务: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}`
-        );
-
-        // Phase 1: 分析
-        await emitPhaseChange('analyze', '分析任务...');
-        await this.emitProgress(sessionId, workflowId, '分析任务中', 10, '分析', 3);
-        result.analysis = this.analyzeTask(task);
-
-        const chatId = options?.chatId;
-
-        if (result.analysis.type === 'simple') {
-          // 简单任务：直接执行
-          await emitPhaseChange('execute', '执行任务...');
-          await this.emitProgress(sessionId, workflowId, '执行任务中', 30, '执行', 1);
-
-          const executePrompt = this.buildExecutePrompt(task, undefined, undefined);
-          result.executeResult = await this.context.runner.execute('general', executePrompt, {
-            cwd: options?.cwd,
-            onText: options?.onText,
-            onTool: options?.onTool
-              ? (name, input) => options.onTool!(name, input)
-              : undefined,
-            maxTurns: 20,
-          });
-
-          result.success = result.executeResult.success;
-
-          if (chatId && result.executeResult) {
-            await this.persistSession(chatId, task, result.executeResult.text);
-          }
-        } else {
-          // 复杂任务：explore → plan → execute 三阶段
-          const subAgentCap = this.getSubAgentCap();
-
-          if (!subAgentCap) {
-            // SubAgent 不可用时退化为直接执行
-            await emitPhaseChange('execute', '执行任务（subAgent 不可用，直接执行）...');
-            const executePrompt = this.buildExecutePrompt(task, undefined, undefined);
-            result.executeResult = await this.context.runner.execute('general', executePrompt, {
-              cwd: options?.cwd,
-              onText: options?.onText,
-              onTool: options?.onTool
-                ? (name, input) => options.onTool!(name, input)
-                : undefined,
-              maxTurns: 20,
-            });
-            result.success = result.executeResult.success;
-          } else {
-            // Phase 2: Explore
-            await emitPhaseChange('explore', '探索代码库...');
-            await this.emitProgress(sessionId, workflowId, '探索代码库中', 20, '探索', 4);
-
-            let exploreText: string;
-            try {
-              exploreText = await subAgentCap.explore(task);
-              result.exploreResult = { text: exploreText, success: true, tools: [] };
-            } catch (error) {
-              exploreText = `探索失败: ${error instanceof Error ? error.message : String(error)}`;
-              result.exploreResult = { text: exploreText, success: false, tools: [] };
-              await emitPhaseChange('explore', `探索阶段失败: ${exploreText.slice(0, 100)}`);
-            }
-
-            // Phase 3: Plan
-            await emitPhaseChange('plan', '制定执行方案...');
-            await this.emitProgress(sessionId, workflowId, '制定执行方案中', 40, '规划', 4);
-
-            let planText: string;
-            try {
-              planText = await subAgentCap.plan(`任务: ${task}\n\n探索发现:\n${exploreText}`);
-              result.executionPlan = planText;
-            } catch (error) {
-              planText = `规划失败: ${error instanceof Error ? error.message : String(error)}`;
-              await emitPhaseChange('plan', `规划阶段失败: ${planText.slice(0, 100)}`);
-            }
-
-            // Phase 4: Execute
-            await emitPhaseChange('execute', '执行任务...');
-            await this.emitProgress(sessionId, workflowId, '执行任务中', 60, '执行', 4);
-
-            const executePrompt = this.buildExecutePrompt(task, exploreText, planText);
-            result.executeResult = await this.context.runner.execute('general', executePrompt, {
-              cwd: options?.cwd,
-              onText: options?.onText,
-              onTool: options?.onTool
-                ? (name, input) => options.onTool!(name, input)
-                : undefined,
-              maxTurns: 20,
-            });
-
-            result.success = result.executeResult.success;
-
-            if (chatId && result.executeResult) {
-              await this.persistSession(chatId, task, result.executeResult.text);
-            }
-          }
-        }
-
-        // Phase 5: 完成
-        await emitPhaseChange('complete', result.success ? '任务完成' : '任务失败');
-        await this.emitProgress(sessionId, workflowId, '工作流完成', 100, '完成', 4);
-
-        await this.emitNotification(
-          sessionId,
-          result.success ? 'success' : 'error',
-          result.success ? '任务完成' : '任务失败',
-          result.success
-            ? '工作流执行成功完成'
-            : `工作流执行失败: ${result.error || '未知错误'}`,
-          { workflowId, analysis: result.analysis }
-        );
-      } finally {
-        this.context.timeoutCap.stopHeartbeat();
-      }
-    } catch (error) {
-      result.success = false;
-      result.error = error instanceof Error ? error.message : String(error);
-
-      await emitPhaseChange('error', result.error);
-      await this.emitProgress(sessionId, workflowId, '工作流出错', 100, '错误', 4);
-
-      await this.emitNotification(
-        sessionId,
-        'error',
-        '工作流错误',
-        result.error,
-        { workflowId, error: true }
-      );
-    }
-
-    return result;
   }
 
   /**
@@ -368,6 +385,21 @@ export class WorkflowCapability implements AgentCapability {
     await sessionCap.addUserMessage(task);
     if (responseText) {
       await sessionCap.addAssistantMessage(responseText);
+    }
+  }
+
+  /**
+   * 自动压缩（在阶段间调用）
+   *
+   * 当 SessionCapability 不可用时静默跳过。
+   */
+  private async autoCompress(): Promise<void> {
+    try {
+      const sessionCap = this.getSessionCap();
+      if (!sessionCap) return;
+      await sessionCap.compressIfNeeded();
+    } catch {
+      // compression is best-effort, never block workflow
     }
   }
 }

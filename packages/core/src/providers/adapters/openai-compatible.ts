@@ -124,7 +124,7 @@ export function getKnownProvidersSync(): string[] {
   const registry = getProviderRegistry();
   // 返回静态 fallback 中的提供商
   return [
-    'deepseek', 'glm', 'qwen', 'kimi', 'openrouter',
+    'deepseek', 'glm', 'qwen', 'kimi', 'ernie', 'openrouter',
     'litellm', 'groq', 'anthropic', 'openai', 'google',
   ];
 }
@@ -135,4 +135,42 @@ export function getKnownProvidersSync(): string[] {
 export function isKnownProvider(providerId: string): boolean {
   const registry = getProviderRegistry();
   return registry.isKnownProvider(providerId);
+}
+
+/**
+ * 预处理请求参数，适配不同提供商的 API 差异
+ *
+ * @param providerId - 提供商 ID（小写）
+ * @param params - 原始请求参数
+ * @returns 适配后的请求参数
+ */
+export function preprocessParams(providerId: string, params: Record<string, unknown>): Record<string, unknown> {
+  const lower = providerId.toLowerCase();
+  const result = { ...params };
+
+  switch (lower) {
+    case 'glm': {
+      // GLM 不支持 reasoning_effort 和 temperature 超范围，使用解构排除
+      const { reasoning_effort: _, temperature: temp, ...rest } = result as Record<string, unknown>;
+      const filtered: Record<string, unknown> = rest;
+      if (typeof temp === 'number' && temp >= 0 && temp <= 1) {
+        filtered.temperature = temp;
+      }
+      return filtered;
+    }
+
+    case 'kimi': {
+      // Kimi 的 stream 参数必须是布尔值，不能是字符串
+      if ('stream' in result && typeof result.stream !== 'boolean') {
+        result.stream = result.stream === 'true' || result.stream === 1;
+      }
+      break;
+    }
+
+    default:
+      // 未知提供商：返回参数不变
+      break;
+  }
+
+  return result;
 }

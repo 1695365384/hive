@@ -77,7 +77,10 @@ describe('SubAgentCapability', () => {
       expect(result).toBe('Agent completed successfully');
       expect(context.runner.execute).toHaveBeenCalledWith(
         'explore',
-        expect.stringContaining('Find all API endpoints')
+        expect.stringContaining('Find all API endpoints'),
+        expect.objectContaining({
+          tools: ['Read', 'Glob', 'Grep'],
+        })
       );
     });
 
@@ -102,6 +105,30 @@ describe('SubAgentCapability', () => {
       const callArgs = vi.mocked(context.runner.execute).mock.calls[0];
       // 实际 prompt 使用 THOROUGHNESS_PROMPTS['very-thorough']
       expect(callArgs[1]).toContain('comprehensive analysis');
+    });
+
+    it('should pass restricted tools by default', async () => {
+      await capability.explore('Find files');
+
+      expect(context.runner.execute).toHaveBeenCalledWith(
+        'explore',
+        expect.any(String),
+        expect.objectContaining({
+          tools: ['Read', 'Glob', 'Grep'],
+        })
+      );
+    });
+
+    it('should allow custom tools to override defaults', async () => {
+      await capability.explore('Find files', 'medium', { tools: ['Read', 'Glob'] });
+
+      expect(context.runner.execute).toHaveBeenCalledWith(
+        'explore',
+        expect.any(String),
+        expect.objectContaining({
+          tools: ['Read', 'Glob'],
+        })
+      );
     });
 
     it('should trigger agent:spawn hook', async () => {
@@ -139,7 +166,34 @@ describe('SubAgentCapability', () => {
       expect(result).toBe('Agent completed successfully');
       expect(context.runner.execute).toHaveBeenCalledWith(
         'plan',
-        expect.stringContaining('Implement user authentication')
+        expect.stringContaining('Implement user authentication'),
+        expect.objectContaining({
+          tools: ['Read', 'Glob', 'Grep'],
+        })
+      );
+    });
+
+    it('should pass restricted tools by default', async () => {
+      await capability.plan('Plan feature');
+
+      expect(context.runner.execute).toHaveBeenCalledWith(
+        'plan',
+        expect.any(String),
+        expect.objectContaining({
+          tools: ['Read', 'Glob', 'Grep'],
+        })
+      );
+    });
+
+    it('should allow custom tools to override defaults', async () => {
+      await capability.plan('Plan feature', { tools: ['Read'] });
+
+      expect(context.runner.execute).toHaveBeenCalledWith(
+        'plan',
+        expect.any(String),
+        expect.objectContaining({
+          tools: ['Read'],
+        })
       );
     });
 
@@ -166,7 +220,8 @@ describe('SubAgentCapability', () => {
       expect(result).toBe('Agent completed successfully');
       expect(context.runner.execute).toHaveBeenCalledWith(
         'general',
-        'Write a function to sort array'
+        'Write a function to sort array',
+        undefined
       );
     });
 
@@ -191,7 +246,7 @@ describe('SubAgentCapability', () => {
       const result = await capability.run('general', 'Test task');
 
       expect(result).toEqual(mockAgentResult);
-      expect(context.runner.execute).toHaveBeenCalledWith('general', 'Test task');
+      expect(context.runner.execute).toHaveBeenCalledWith('general', 'Test task', undefined);
     });
 
     it('should return full AgentResult', async () => {
@@ -201,6 +256,16 @@ describe('SubAgentCapability', () => {
       expect(result.success).toBe(true);
       expect(result.tools).toEqual(['Read', 'Write']);
       expect(result.usage).toEqual({ input: 100, output: 50 });
+    });
+
+    it('should pass custom options to runner', async () => {
+      await capability.run('general', 'Test task', { tools: ['Read', 'Write'] });
+
+      expect(context.runner.execute).toHaveBeenCalledWith(
+        'general',
+        'Test task',
+        expect.objectContaining({ tools: ['Read', 'Write'] })
+      );
     });
   });
 

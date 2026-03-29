@@ -80,6 +80,8 @@ export interface SessionMetadata {
   providerId?: string;
   /** 关联的模型 */
   model?: string;
+  /** Dispatch traces (JSON serialized) */
+  dispatchTraces?: string;
 }
 
 // ============================================

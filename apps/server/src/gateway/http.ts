@@ -9,25 +9,47 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import type { HiveContext } from '../bootstrap.js'
 import type { IChannel, IWebhookHandler } from '@hive/core'
+import { createAuthMiddleware } from './auth.js'
 
-// Simple in-memory session store
+/** Maximum message length (100KB) */
+const MAX_MESSAGE_LENGTH = 100_000
+
+/** Maximum in-memory sessions (LRU eviction) */
+const MAX_SESSIONS = 10_000
+
+// Simple in-memory session store with LRU eviction
 const sessions = new Map<string, { id: string; messages: Array<{ role: string; content: string }> }>()
+
+function setSession(key: string, value: { id: string; messages: Array<{ role: string; content: string }> }): void {
+  if (sessions.size >= MAX_SESSIONS) {
+    const firstKey = sessions.keys().next().value
+    if (firstKey !== undefined) sessions.delete(firstKey)
+  }
+  sessions.set(key, value)
+}
 
 export function createHttpGateway(ctx: HiveContext): Hono {
   const app = new Hono()
 
   // Middleware
   app.use('*', logger())
+  const allowedOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
+    : ['http://localhost:3000'];
+
   app.use(
     '*',
     cors({
-      origin: '*',
+      origin: allowedOrigins,
       allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Content-Type', 'Authorization'],
     })
   )
 
-  // Health check
+  // API authentication
+  app.use('/api/*', createAuthMiddleware(ctx.config))
+
+  // Health check (no auth required)
   app.get('/health', (c) => {
     return c.json({ status: 'ok', timestamp: new Date().toISOString() })
   })
@@ -42,13 +64,17 @@ export function createHttpGateway(ctx: HiveContext): Hono {
         return c.json({ error: 'Missing message' }, 400)
       }
 
+      if (typeof message !== 'string' || message.length > MAX_MESSAGE_LENGTH) {
+        return c.json({ error: `Message too long (max ${MAX_MESSAGE_LENGTH} chars)` }, 413)
+      }
+
       const sid = sessionId || 'default'
 
       // Get or create session
       let session = sessions.get(sid)
       if (!session) {
         session = { id: sid, messages: [] }
-        sessions.set(sid, session)
+        setSession(sid, session)
       }
 
       // Add user message
@@ -61,8 +87,9 @@ export function createHttpGateway(ctx: HiveContext): Hono {
         timestamp: Date.now(),
       })
 
-      // Send to agent
-      const response = await ctx.agent.chat(message)
+      // Send to agent (dispatch for smart routing)
+      const result = await ctx.agent.dispatch(message)
+      const response = result.text
 
       // Add assistant message
       session.messages.push({ role: 'assistant', content: response })
@@ -79,11 +106,11 @@ export function createHttpGateway(ctx: HiveContext): Hono {
         sessionId: sid,
       })
     } catch (error) {
-      console.error('[http] Chat error:', error)
+      const isDev = process.env.NODE_ENV !== 'production'
       return c.json(
         {
           error: 'Internal server error',
-          message: error instanceof Error ? error.message : 'Unknown error',
+          ...(isDev ? { message: error instanceof Error ? error.message : 'Unknown error' } : {}),
         },
         500
       )
@@ -132,8 +159,6 @@ export function createHttpGateway(ctx: HiveContext): Hono {
       // Get body
       const body = await c.req.json()
 
-      console.log(`[http] Webhook received: plugin=${pluginName}, appId=${appId}`)
-
       // Find the plugin and get its channel
       const plugin = ctx.plugins.find((p) => p.metadata.id === pluginName)
       if (!plugin) {
@@ -159,11 +184,11 @@ export function createHttpGateway(ctx: HiveContext): Hono {
       const result = await webhookChannel.handleWebhook(body, signature, timestamp, nonce)
       return c.json(result)
     } catch (error) {
-      console.error('[http] Webhook error:', error)
+      const isDev = process.env.NODE_ENV !== 'production'
       return c.json(
         {
           error: 'Webhook processing failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
+          ...(isDev ? { message: error instanceof Error ? error.message : 'Unknown error' } : {}),
         },
         500
       )
@@ -176,8 +201,11 @@ export function createHttpGateway(ctx: HiveContext): Hono {
   })
 
   app.onError((err, c) => {
-    console.error('[http] Error:', err)
-    return c.json({ error: 'Internal server error', message: err.message }, 500)
+    const isDev = process.env.NODE_ENV !== 'production'
+    return c.json(
+      { error: 'Internal server error', ...(isDev ? { message: err.message } : {}) },
+      500
+    )
   })
 
   return app

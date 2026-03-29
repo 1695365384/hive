@@ -15,11 +15,17 @@ import type {
 } from './types.js';
 import type { CreateMessageOptions } from './types.js';
 import type { ISessionRepository } from '../storage/SessionRepository.js';
+import type { DispatchTraceEvent } from '../agents/dispatch/types.js';
 import {
   CompressionService,
   createCompressionService,
   type CompressionServiceConfig,
 } from '../compression/index.js';
+
+/**
+ * Trace 存储键
+ */
+const TRACE_KEY = 'dispatch_traces';
 
 /**
  * 会话管理器配置
@@ -361,6 +367,53 @@ export class SessionManager {
    */
   getRepository(): ISessionRepository {
     return this.repository;
+  }
+
+  // ============================================
+  // Trace 持久化
+  // ============================================
+
+  /**
+   * 保存 dispatch trace 事件
+   *
+   * 将 trace 事件数组存储到当前会话的元数据中。
+   */
+  async saveTrace(trace: DispatchTraceEvent[]): Promise<void> {
+    if (!this.currentSession || trace.length === 0) {
+      return;
+    }
+
+    const existingTraces = this.getTraces();
+    existingTraces.push(trace);
+
+    await this.updateMetadata({
+      dispatchTraces: JSON.stringify(existingTraces),
+    } as Partial<SessionMetadata>);
+  }
+
+  /**
+   * 获取当前会话的所有 dispatch trace
+   */
+  getTraces(): DispatchTraceEvent[][] {
+    if (!this.currentSession) {
+      return [];
+    }
+
+    const raw = this.currentSession.metadata?.dispatchTraces;
+    if (!raw || typeof raw !== 'string') {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed as DispatchTraceEvent[][];
+      }
+    } catch {
+      // corrupted data, ignore
+    }
+
+    return [];
   }
 }
 

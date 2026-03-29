@@ -97,8 +97,12 @@ export class ChatCapability implements AgentCapability {
     );
     const combinedSignal = this.combineAbortSignals(controller.signal, options?.abortSignal);
 
-    // 构建环境变量
-    const envVars: Record<string, string | undefined> = { ...process.env };
+    // 构建最小化环境变量（不暴露全部 process.env）
+    const envVars: Record<string, string | undefined> = {
+      HOME: process.env.HOME,
+      PATH: process.env.PATH,
+      NODE_ENV: process.env.NODE_ENV,
+    };
     if (provider) {
       envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
       envVars.ANTHROPIC_API_KEY = provider.apiKey;
@@ -131,7 +135,7 @@ export class ChatCapability implements AgentCapability {
       mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
       agents: Object.keys(agents).length > 0 ? agents : undefined,
       env: envVars,
-      permissionMode: 'bypassPermissions',
+      permissionMode: options?.permissionMode ?? 'default',
     };
 
     if (combinedSignal) {
@@ -236,42 +240,7 @@ export class ChatCapability implements AgentCapability {
       // 处理工具调用开始 (tool:before hook)
       if ('type' in message && message.type === 'tool_progress') {
         const toolMsg = message as { tool_name: string; tool_input?: unknown };
-        const toolName = toolMsg.tool_name;
-        const toolInput = toolMsg.tool_input as Record<string, unknown> | undefined;
-
-        // 记录开始时间
-        toolStartTimes.set(toolName, Date.now());
-        toolCallCount++;
-
-        // 触发执行思考
-        await this.emitThinking(
-          sessionId,
-          `准备调用工具: ${toolName}`,
-          'executing',
-          { toolName, toolInput }
-        );
-
-        // 触发 tool:before hook
-        const hookContext: ToolBeforeHookContext = {
-          sessionId,
-          toolName,
-          input: toolInput ?? {},
-          timestamp: new Date(),
-        };
-        await this.context.hookRegistry.emit('tool:before', hookContext);
-
-        // 更新进度（限制最大 95%，保留 5% 给完成）
-        const progress = Math.min(95, 33 + (toolCallCount * 20));
-        await this.emitProgress(
-          sessionId,
-          taskId,
-          `正在执行工具: ${toolName}`,
-          progress,
-          `工具调用 #${toolCallCount}`,
-          3
-        );
-
-        options?.onTool?.(toolName, toolInput);
+        await this.handleToolUse(toolMsg.tool_name, toolMsg.tool_input, sessionId, taskId, toolStartTimes, toolCallCount++, options);
       }
 
       // 处理 assistant 消息中的 content blocks (tool_use 表示工具调用开始)
@@ -282,42 +251,8 @@ export class ChatCapability implements AgentCapability {
             if (typeof block === 'object' && block !== null) {
               const b = block as { type?: string; name?: string; input?: unknown };
               if (b.type === 'tool_use' && b.name) {
-                const toolName = b.name;
-                const toolInput = b.input as Record<string, unknown> | undefined;
-
-                // 记录开始时间
-                toolStartTimes.set(toolName, Date.now());
+                await this.handleToolUse(b.name, b.input, sessionId, taskId, toolStartTimes, toolCallCount++, options);
                 toolCallCount++;
-
-                // 触发执行思考
-                await this.emitThinking(
-                  sessionId,
-                  `准备调用工具: ${toolName}`,
-                  'executing',
-                  { toolName, toolInput }
-                );
-
-                // 触发 tool:before hook
-                const hookContext: ToolBeforeHookContext = {
-                  sessionId,
-                  toolName,
-                  input: toolInput ?? {},
-                  timestamp: new Date(),
-                };
-                await this.context.hookRegistry.emit('tool:before', hookContext);
-
-                // 更新进度（限制最大 95%，保留 5% 给完成）
-                const progress = Math.min(95, 33 + (toolCallCount * 20));
-                await this.emitProgress(
-                  sessionId,
-                  taskId,
-                  `正在执行工具: ${toolName}`,
-                  progress,
-                  `工具调用 #${toolCallCount}`,
-                  3
-                );
-
-                options?.onTool?.(toolName, toolInput);
               }
             }
           }
@@ -357,6 +292,38 @@ export class ChatCapability implements AgentCapability {
 
     // 触发完成进度
     await this.emitProgress(sessionId, taskId, '对话完成', 100, '完成', 3);
+  }
+
+  /**
+   * 处理工具调用事件（去重逻辑）
+   */
+  private async handleToolUse(
+    toolName: string,
+    rawInput: unknown,
+    sessionId: string,
+    taskId: string,
+    toolStartTimes: Map<string, number>,
+    toolCallIndex: number,
+    options: AgentOptions | undefined,
+  ): Promise<void> {
+    const toolInput = rawInput as Record<string, unknown> | undefined;
+
+    toolStartTimes.set(toolName, Date.now());
+
+    await this.emitThinking(sessionId, `准备调用工具: ${toolName}`, 'executing', { toolName, toolInput });
+
+    const hookContext: ToolBeforeHookContext = {
+      sessionId,
+      toolName,
+      input: toolInput ?? {},
+      timestamp: new Date(),
+    };
+    await this.context.hookRegistry.emit('tool:before', hookContext);
+
+    const progress = Math.min(95, 33 + (toolCallIndex * 20));
+    await this.emitProgress(sessionId, taskId, `正在执行工具: ${toolName}`, progress, `工具调用 #${toolCallIndex}`, 3);
+
+    options?.onTool?.(toolName, toolInput);
   }
 
   private combineAbortSignals(...signals: Array<AbortSignal | undefined>): AbortSignal | undefined {

@@ -167,6 +167,165 @@ describe('ChatCapability', () => {
   });
 
   // ============================================
+  // streaming behavior 测试
+  // ============================================
+
+  describe('streaming behavior', () => {
+    it('should invoke onText callback for each chunk and accumulate result', async () => {
+      const texts: string[] = [];
+      mockQuery.mockImplementation(async function* () {
+        yield { result: 'chunk1' };
+        yield { result: 'chunk2' };
+        yield { result: 'chunk3' };
+      });
+
+      const result = await capability.send('Hello', {
+        onText: (t) => texts.push(t),
+      });
+
+      expect(result).toBe('chunk1chunk2chunk3');
+      expect(texts).toEqual(['chunk1', 'chunk2', 'chunk3']);
+    });
+
+    it('should accumulate result correctly without onText callback', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { result: 'a' };
+        yield { result: 'b' };
+        yield { result: 'c' };
+      });
+
+      const result = await capability.send('Hello');
+
+      expect(result).toBe('abc');
+    });
+
+    it('should respect abort signal before iteration starts', async () => {
+      const abortController = new AbortController();
+      abortController.abort();
+
+      mockQuery.mockImplementation(async function* () {
+        yield { result: 'should not reach' };
+      });
+
+      await expect(
+        capability.send('Hello', { abortSignal: abortController.signal })
+      ).rejects.toThrow('Request aborted');
+    });
+
+    it('should respect abort signal during iteration', async () => {
+      const abortController = new AbortController();
+
+      mockQuery.mockImplementation(async function* () {
+        yield { result: 'first' };
+        // Abort after first chunk
+        abortController.abort();
+        yield { result: 'should not reach' };
+      });
+
+      await expect(
+        capability.send('Hello', { abortSignal: abortController.signal })
+      ).rejects.toThrow('Request aborted');
+    });
+
+    it('should emit tool:before hook for tool_progress messages', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'tool_progress', tool_name: 'Bash', tool_input: { command: 'ls' } };
+        yield { result: 'done' };
+      });
+
+      await capability.send('Hello');
+
+      const emitCalls = vi.mocked(context.hookRegistry.emit).mock.calls;
+      const toolBeforeCalls = emitCalls.filter(
+        (call) => call[0] === 'tool:before'
+      );
+
+      expect(toolBeforeCalls.length).toBeGreaterThanOrEqual(1);
+      expect(toolBeforeCalls[0][1]).toMatchObject({
+        toolName: 'Bash',
+        input: { command: 'ls' },
+      });
+    });
+
+    it('should emit tool:before hook for tool_use content blocks', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          message: {
+            content: [
+              { type: 'tool_use', name: 'Read', input: { file_path: '/tmp/test.txt' } },
+            ],
+          },
+        };
+        yield { result: 'file contents' };
+      });
+
+      await capability.send('Hello');
+
+      const emitCalls = vi.mocked(context.hookRegistry.emit).mock.calls;
+      const toolBeforeCalls = emitCalls.filter(
+        (call) => call[0] === 'tool:before'
+      );
+
+      expect(toolBeforeCalls.length).toBeGreaterThanOrEqual(1);
+      expect(toolBeforeCalls[0][1]).toMatchObject({
+        toolName: 'Read',
+        input: { file_path: '/tmp/test.txt' },
+      });
+    });
+
+    it('should emit tool:after hook when result arrives after tool calls', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'tool_progress', tool_name: 'Bash', tool_input: { command: 'ls' } };
+        yield { result: 'output' };
+      });
+
+      await capability.send('Hello');
+
+      const emitCalls = vi.mocked(context.hookRegistry.emit).mock.calls;
+      const toolAfterCalls = emitCalls.filter(
+        (call) => call[0] === 'tool:after'
+      );
+
+      expect(toolAfterCalls.length).toBeGreaterThanOrEqual(1);
+      expect(toolAfterCalls[0][1]).toMatchObject({
+        toolName: 'Bash',
+        success: true,
+        output: 'output',
+      });
+    });
+
+    it('should invoke onTool callback for tool_progress messages', async () => {
+      const onTool = vi.fn();
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'tool_progress', tool_name: 'Write', tool_input: { path: '/tmp/a.txt' } };
+        yield { result: 'written' };
+      });
+
+      await capability.send('Hello', { onTool });
+
+      expect(onTool).toHaveBeenCalledWith('Write', { path: '/tmp/a.txt' });
+    });
+
+    it('should invoke onTool callback for tool_use content blocks', async () => {
+      const onTool = vi.fn();
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          message: {
+            content: [
+              { type: 'tool_use', name: 'Edit', input: { file_path: '/tmp/b.txt' } },
+            ],
+          },
+        };
+        yield { result: 'edited' };
+      });
+
+      await capability.send('Hello', { onTool });
+
+      expect(onTool).toHaveBeenCalledWith('Edit', { file_path: '/tmp/b.txt' });
+    });
+  });
+
+  // ============================================
   // 集成测试
   // ============================================
 

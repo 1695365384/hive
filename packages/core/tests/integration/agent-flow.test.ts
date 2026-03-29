@@ -41,6 +41,11 @@ describe('Agent Module Exports', () => {
       expect(typeof agent.plan).toBe('function');
       expect(typeof agent.general).toBe('function');
       expect(typeof agent.dispatch).toBe('function');
+      // Verify dispatch returns a Promise (actual DispatchResult structure is validated in dispatcher unit tests)
+      const dispatchResult = agent.dispatch('test');
+      expect(dispatchResult).toBeInstanceOf(Promise);
+      // Note: dispatch will reject without agent.initialize() — expected behavior
+      dispatchResult.catch(() => {}); // prevent unhandled rejection warning
     });
   });
 

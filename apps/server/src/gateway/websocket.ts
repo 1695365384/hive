@@ -6,6 +6,10 @@
 
 import type { Server as HttpServer } from 'http'
 import type { HiveContext } from '../bootstrap.js'
+import { validateWsApiKey } from './auth.js'
+
+/** Maximum message length (100KB) — shared with HTTP gateway */
+const MAX_MESSAGE_LENGTH = 100_000
 
 interface WebSocketClient {
   id: string
@@ -42,11 +46,17 @@ export function createWebSocketGateway(
     if (!url) return
 
     try {
-      const pathname = new URL(url, `http://${request.headers.host || 'localhost'}`).pathname
+      const parsedUrl = new URL(url, `http://${request.headers.host || 'localhost'}`)
+      const pathname = parsedUrl.pathname
       if (pathname !== '/ws') return
 
-      // For now, just log - in production use 'ws' package
-      console.log(`[ws] Client upgrade request received`)
+      // Validate API key from query param
+      const apiKey = parsedUrl.searchParams.get('apiKey')
+      if (!validateWsApiKey(ctx.config, apiKey)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        socket.end()
+        return
+      }
     } catch {
       // Invalid URL, ignore
     }
@@ -112,6 +122,14 @@ export function createWebSocketGateway(
       return
     }
 
+    if (typeof text !== 'string' || text.length > MAX_MESSAGE_LENGTH) {
+      send(client, {
+        type: 'error',
+        message: `Message too long (max ${MAX_MESSAGE_LENGTH} chars)`,
+      })
+      return
+    }
+
     try {
       // Emit message received event
       ctx.bus?.emit('message:received', {
@@ -121,8 +139,9 @@ export function createWebSocketGateway(
         timestamp: Date.now(),
       })
 
-      // Send to agent
-      const response = await ctx.agent.chat(text)
+      // Send to agent (dispatch for smart routing)
+      const result = await ctx.agent.dispatch(text)
+      const response = result.text
 
       // Emit message sent event
       ctx.bus?.emit('message:sent', {
@@ -138,9 +157,10 @@ export function createWebSocketGateway(
         sessionId: sessionId || client.sessionId,
       })
     } catch (error) {
+      const isDev = process.env.NODE_ENV !== 'production'
       send(client, {
         type: 'error',
-        message: error instanceof Error ? error.message : 'Internal error',
+        message: isDev && error instanceof Error ? error.message : 'Internal error',
       })
     }
   }

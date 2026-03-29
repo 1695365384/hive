@@ -58,6 +58,8 @@ export {
   ChatCapability,
   SubAgentCapability,
   WorkflowCapability,
+  ScheduleCapability,
+  createScheduleCapability,
 } from './capabilities/index.js';
 
 // ============================================

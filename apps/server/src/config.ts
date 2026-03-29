@@ -32,6 +32,10 @@ export interface HiveConfigJson {
     host?: string
     logLevel?: 'debug' | 'info' | 'warn' | 'error'
   }
+  auth?: {
+    enabled?: boolean
+    apiKey?: string
+  }
   provider?: {
     id: string
     apiKey?: string
@@ -61,6 +65,13 @@ export interface ServerConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error'
   /** Plugin packages to load */
   plugins: string[]
+  /** Authentication configuration */
+  auth: {
+    /** Whether API key authentication is enabled */
+    enabled: boolean
+    /** API key for authentication */
+    apiKey: string
+  }
   /** LLM provider configuration */
   provider: {
     /** Provider ID (e.g., glm, anthropic, openai) */
@@ -156,6 +167,9 @@ export function loadConfig(): ServerConfig {
   // Server config with defaults
   const server = jsonConfig.server || {}
 
+  // Auth config
+  const auth = jsonConfig.auth || {}
+
   // Provider config
   const provider = jsonConfig.provider || { id: 'glm' }
 
@@ -169,6 +183,10 @@ export function loadConfig(): ServerConfig {
     port: server.port ?? parseInt(process.env.PORT || '4450', 10),
     host: server.host ?? process.env.HOST ?? '127.0.0.1',
     logLevel: server.logLevel ?? (process.env.LOG_LEVEL as ServerConfig['logLevel']) ?? 'info',
+    auth: {
+      enabled: auth.enabled ?? process.env.AUTH_ENABLED === 'true',
+      apiKey: auth.apiKey || process.env.AUTH_API_KEY || '',
+    },
     plugins,
     provider: {
       id: provider.id || process.env.PROVIDER_ID || 'glm',

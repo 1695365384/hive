@@ -72,6 +72,14 @@ const BUILTIN_PRESETS: ProviderPreset[] = [
     defaultModel: 'moonshot-v1-8k',
   },
   {
+    id: 'ernie',
+    name: 'ERNIE (文心一言)',
+    envKey: 'ERNIE_API_KEY',
+    baseUrl: 'https://aip.baidubce.com',
+    type: 'openai-compatible',
+    defaultModel: 'ernie-4.0-8k',
+  },
+  {
     id: 'google',
     name: 'Google AI',
     envKey: 'GOOGLE_API_KEY',

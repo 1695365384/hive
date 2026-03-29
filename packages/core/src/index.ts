@@ -380,11 +380,41 @@ export {
   createSessionRepository,
   type ISessionRepository,
 
+  ScheduleRepository,
+  createScheduleRepository,
+  type IScheduleRepository,
+
   MemoryRepository,
   createMemoryRepository,
   type IMemoryRepository,
   type MemoryEntry,
 } from './storage/index.js';
+
+// ============================================
+// 定时任务调度
+// ============================================
+
+export {
+  ScheduleEngine,
+  createScheduleEngine,
+  isValidCron,
+  getNextRunTime,
+} from './scheduler/index.js';
+
+export type {
+  Schedule,
+  ScheduleRun,
+  ScheduleAction,
+  ScheduleStatus,
+  ScheduleRunStatus,
+  CreateScheduleInput,
+  UpdateScheduleInput,
+  ScheduleEngineConfig,
+  ScheduleEngineStatus,
+  TriggerContext,
+  TriggerCallback,
+  IScheduleEngine,
+} from './scheduler/index.js';
 
 // ============================================
 // 配置系统（外部配置支持）
