@@ -35,24 +35,7 @@ export {
 } from './types/core.js';
 
 export type {
-  TextContentBlock,
-  ToolUseContentBlock,
-  ContentBlock,
-  ResultMessage,
-  AssistantMessage,
-  ToolProgressMessage,
-  UsageMessage,
-  SdkMessage,
   WorkflowOptions,
   WorkflowResult,
   TaskAnalysis,
-} from './types/runner.js';
-
-export {
-  isResultMessage,
-  isAssistantMessage,
-  isToolProgressMessage,
-  isUsageMessage,
-  isTextBlock,
-  isToolUseBlock,
 } from './types/runner.js';

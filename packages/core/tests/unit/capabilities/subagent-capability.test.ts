@@ -78,9 +78,7 @@ describe('SubAgentCapability', () => {
       expect(context.runner.execute).toHaveBeenCalledWith(
         'explore',
         expect.stringContaining('Find all API endpoints'),
-        expect.objectContaining({
-          tools: ['Read', 'Glob', 'Grep'],
-        })
+        undefined,
       );
     });
 
@@ -107,14 +105,14 @@ describe('SubAgentCapability', () => {
       expect(callArgs[1]).toContain('comprehensive analysis');
     });
 
-    it('should pass restricted tools by default', async () => {
-      await capability.explore('Find files');
+    it('should pass options through', async () => {
+      await capability.explore('Find files', 'medium', { tools: ['Read', 'Glob'] });
 
       expect(context.runner.execute).toHaveBeenCalledWith(
         'explore',
         expect.any(String),
         expect.objectContaining({
-          tools: ['Read', 'Glob', 'Grep'],
+          tools: ['Read', 'Glob'],
         })
       );
     });
@@ -167,20 +165,18 @@ describe('SubAgentCapability', () => {
       expect(context.runner.execute).toHaveBeenCalledWith(
         'plan',
         expect.stringContaining('Implement user authentication'),
-        expect.objectContaining({
-          tools: ['Read', 'Glob', 'Grep'],
-        })
+        undefined,
       );
     });
 
-    it('should pass restricted tools by default', async () => {
-      await capability.plan('Plan feature');
+    it('should pass options through for plan', async () => {
+      await capability.plan('Plan feature', { tools: ['Read'] });
 
       expect(context.runner.execute).toHaveBeenCalledWith(
         'plan',
         expect.any(String),
         expect.objectContaining({
-          tools: ['Read', 'Glob', 'Grep'],
+          tools: ['Read'],
         })
       );
     });

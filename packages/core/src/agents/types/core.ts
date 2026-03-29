@@ -4,7 +4,6 @@
  * 包含 Agent 选项、状态、注册表、上下文、超时等核心类型
  */
 
-import type { AgentDefinition, Options } from '@anthropic-ai/claude-agent-sdk';
 import type { ProviderManager, ProviderConfig, ExternalConfig } from '../../providers/index.js';
 import type { SkillRegistry, Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { HookRegistry } from '../../hooks/index.js';
@@ -20,7 +19,7 @@ export type { AgentType, AgentConfig, AgentCapability } from './capabilities.js'
 /**
  * Agent 执行选项
  */
-export interface AgentExecuteOptions extends Omit<Options, 'agents'> {
+export interface AgentExecuteOptions {
   /** 子 Agent 超时（毫秒），超时后返回错误结果 */
   timeout?: number;
   /** 回调：文本输出 */
@@ -99,8 +98,6 @@ export interface AgentOptions {
   systemPrompt?: string;
   /** 使用的子 Agent */
   agents?: import('./capabilities.js').AgentType[];
-  /** 自定义子 Agent */
-  customAgents?: Record<string, AgentDefinition>;
   /** API 调用超时（毫秒） */
   apiTimeout?: number;
   /** 执行超时（毫秒） */
@@ -113,8 +110,6 @@ export interface AgentOptions {
   onTool?: (toolName: string, input?: unknown) => void;
   /** 回调：错误 */
   onError?: (error: Error) => void;
-  /** SDK 权限模式（默认 'default'） */
-  permissionMode?: 'default' | 'bypassPermissions';
 }
 
 // ============================================

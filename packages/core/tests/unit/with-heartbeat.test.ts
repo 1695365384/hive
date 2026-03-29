@@ -35,7 +35,7 @@ describe('Agent.withHeartbeat()', () => {
 
       // session:end 应该包含 success: true
       const sessionEndCall = emitSpy.mock.calls.find(c => c[0] === 'session:end');
-      expect(sessionEndCall?.[1].success).toBe(true);
+      expect((sessionEndCall?.[1] as any)?.success).toBe(true);
     });
 
     it('session:start 应包含 prompt 和 sessionId', async () => {
@@ -46,8 +46,8 @@ describe('Agent.withHeartbeat()', () => {
       await agent.chat('What is AI?');
 
       const startCall = emitSpy.mock.calls.find(c => c[0] === 'session:start');
-      expect(startCall?.[1].prompt).toBe('What is AI?');
-      expect(startCall?.[1].sessionId).toBeDefined();
+      expect((startCall?.[1] as any)?.prompt).toBe('What is AI?');
+      expect((startCall?.[1] as any)?.sessionId).toBeDefined();
     });
 
     it('失败时应触发 session:error 和 session:end hooks', async () => {
@@ -63,11 +63,11 @@ describe('Agent.withHeartbeat()', () => {
       expect(calls).toContain('session:end');
 
       const errorCall = emitSpy.mock.calls.find(c => c[0] === 'session:error');
-      expect(errorCall?.[1].error.message).toBe('LLM unavailable');
+      expect((errorCall?.[1] as any)?.error?.message).toBe('LLM unavailable');
 
       const endCall = emitSpy.mock.calls.find(c => c[0] === 'session:end');
-      expect(endCall?.[1].success).toBe(false);
-      expect(endCall?.[1].reason).toBe('LLM unavailable');
+      expect((endCall?.[1] as any)?.success).toBe(false);
+      expect((endCall?.[1] as any)?.reason).toBe('LLM unavailable');
     });
 
     it('完成后应停止心跳', async () => {

@@ -4,8 +4,6 @@
  * 包含 AgentCapability 接口、AgentConfig、AgentType 等能力模块相关类型
  */
 
-import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
-
 /**
  * Agent 类型
  */
@@ -14,11 +12,13 @@ export type AgentType = 'explore' | 'plan' | 'general' | 'custom';
 /**
  * Agent 配置
  */
-export interface AgentConfig extends Omit<AgentDefinition, 'description'> {
+export interface AgentConfig {
   /** Agent 类型标识 */
   type: AgentType;
   /** 描述 */
   description?: string;
+  /** Agent prompt */
+  prompt?: string;
   /** 使用的模型 */
   model?: string;
   /** 最大轮次 */

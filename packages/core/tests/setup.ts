@@ -10,29 +10,33 @@ import { vi, beforeAll, afterAll, afterEach } from 'vitest';
 // 全局 Mock 设置
 // ============================================
 
-// Mock Agent SDK - 完整 mock
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: vi.fn(async function* () {
-    yield { result: 'Mock response' };
+// Mock AI SDK - generateText / streamText
+vi.mock('ai', () => ({
+  generateText: vi.fn().mockResolvedValue({
+    text: 'Mock response',
+    steps: [],
+    totalUsage: { inputTokens: 10, outputTokens: 20 },
+    finishReason: 'stop',
   }),
-  tool: vi.fn((name, description, schema, handler) => ({
-    name,
-    description,
-    inputSchema: schema,
-    handler,
-  })),
-  createSdkMcpServer: vi.fn((config) => ({
-    name: config.name,
-    tools: config.tools || [],
-  })),
-  Options: vi.fn(),
-  AgentDefinition: vi.fn(),
-  McpServerConfig: vi.fn(),
+  streamText: vi.fn().mockReturnValue({
+    fullStream: (async function* () {
+      yield { type: 'start' };
+      yield { type: 'text-delta', text: 'Mock response' };
+      yield { type: 'finish-step', finishReason: 'stop' };
+      yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 10, outputTokens: 20 } };
+    })(),
+    text: Promise.resolve('Mock response'),
+    finishReason: Promise.resolve('stop'),
+    steps: Promise.resolve([]),
+    totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 20 }),
+  }),
+  stepCountIs: vi.fn((n: number) => n),
+  tool: vi.fn((config: Record<string, unknown>) => config),
+  zodSchema: vi.fn((schema: unknown) => schema),
 }));
 
 // Mock 环境变量
 process.env.NODE_ENV = 'test';
-process.env.ANTHROPIC_API_KEY = 'test-api-key';
 
 // ============================================
 // 全局 Hooks

@@ -164,10 +164,13 @@ export class Dispatcher {
     try {
       const { classification, trace: classifyTrace } = await classifyForDispatch(
         task,
-        { getActiveProvider: () => {
-          const provider = this.context.getActiveProvider();
-          return provider ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey } : null;
-        } },
+        {
+          getActiveProvider: () => {
+            const provider = this.context.getActiveProvider();
+            return provider ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey } : null;
+          },
+          getModel: (modelId?: string) => this.context.providerManager.getModel(modelId),
+        },
         options?.classifierModel
       );
 

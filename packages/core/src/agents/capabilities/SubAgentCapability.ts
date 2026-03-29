@@ -38,7 +38,7 @@ export class SubAgentCapability implements AgentCapability {
     const result = await this.runWithHooks(
       AGENT_NAMES.EXPLORE,
       buildExplorePrompt(prompt, thoroughness),
-      { ...options, tools: options?.tools ?? CORE_AGENTS.explore.tools as string[] }
+      options,
     );
     return result.text;
   }
@@ -50,7 +50,7 @@ export class SubAgentCapability implements AgentCapability {
     const result = await this.runWithHooks(
       AGENT_NAMES.PLAN,
       buildPlanPrompt(prompt),
-      { ...options, tools: options?.tools ?? CORE_AGENTS.plan.tools as string[] }
+      options,
     );
     return result.text;
   }

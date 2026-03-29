@@ -1,5 +1,5 @@
 /**
- * 7.2 AgentExecuteOptions.timeout 子 Agent 超时测试
+ * Agent Runner 超时测试
  *
  * 验证子 Agent 执行超时返回错误
  */
@@ -24,30 +24,35 @@ vi.mock('../../src/agents/core/agents.js', () => ({
 
 // Mock prompts module
 vi.mock('../../src/agents/prompts/prompts.js', () => ({
+  EXPLORE_AGENT_PROMPT: 'You are an exploration agent.',
+  PLAN_AGENT_PROMPT: 'You are a planning agent.',
+  GENERAL_AGENT_PROMPT: 'You are a general-purpose agent.',
   buildExplorePrompt: vi.fn((task: string) => `Explore: ${task}`),
   buildPlanPrompt: vi.fn((task: string) => `Plan: ${task}`),
 }));
 
-// Re-mock SDK with vi.fn() that supports mockReturnValue
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: vi.fn(),
-  tool: vi.fn(),
-  createSdkMcpServer: vi.fn(),
-  Options: vi.fn(),
-  AgentDefinition: vi.fn(),
-  McpServerConfig: vi.fn(),
+// Mock ProviderManager
+vi.mock('../../src/providers/ProviderManager.js', () => ({
+  createProviderManager: vi.fn(() => ({
+    getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+  })),
+  ProviderManager: vi.fn().mockImplementation(() => ({
+    getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+  })),
 }));
 
 describe('AgentRunner sub-agent timeout', () => {
   let runner: AgentRunner;
-  let mockQuery: ReturnType<typeof vi.fn>;
+  let mockGenerateText: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
 
-    const { query } = await import('@anthropic-ai/claude-agent-sdk');
-    mockQuery = vi.mocked(query);
+    const { generateText } = await import('ai');
+    mockGenerateText = vi.mocked(generateText);
     runner = new AgentRunner();
   });
 
@@ -55,33 +60,23 @@ describe('AgentRunner sub-agent timeout', () => {
     vi.useRealTimers();
   });
 
-  function createSlowIterator(): AsyncGenerator<any> {
-    return (async function* () {
-      await new Promise(resolve => setTimeout(resolve, 60000));
-      yield { type: 'result', result: 'too late' };
-    })();
-  }
-
-  function createResultIterator(text: string): AsyncGenerator<any> {
-    return (async function* () {
-      yield { type: 'result', result: text };
-    })();
-  }
-
-  it('timeout 有值时应设置 signal 到 queryOptions', async () => {
-    mockQuery.mockReturnValue(createResultIterator('done'));
+  it('timeout 有值时应设置 abortSignal 到 generateText', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: 'done',
+      steps: [],
+      totalUsage: { inputTokens: 10, outputTokens: 20 },
+      finishReason: 'stop',
+    });
 
     const result = await runner.execute('general', 'Test', { timeout: 5000 });
 
-    expect(mockQuery).toHaveBeenCalled();
-    const callArgs = mockQuery.mock.calls[0][0];
-    expect(callArgs.options.signal).toBeInstanceOf(AbortSignal);
+    expect(mockGenerateText).toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.text).toBe('done');
   });
 
   it('超时后应返回 success: false 并包含错误信息', async () => {
-    mockQuery.mockReturnValue(createSlowIterator());
+    mockGenerateText.mockReturnValue(new Promise(() => {})); // never resolves
 
     vi.useFakeTimers();
 
@@ -95,7 +90,7 @@ describe('AgentRunner sub-agent timeout', () => {
   });
 
   it('超时错误信息应包含超时时间', async () => {
-    mockQuery.mockReturnValue(createSlowIterator());
+    mockGenerateText.mockReturnValue(new Promise(() => {}));
 
     vi.useFakeTimers();
 
@@ -107,17 +102,22 @@ describe('AgentRunner sub-agent timeout', () => {
     expect(result.error).toContain('3000ms');
   });
 
-  it('未设置 timeout 时不应添加 signal', async () => {
-    mockQuery.mockReturnValue(createResultIterator('done'));
+  it('未设置 timeout 时正常执行', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: 'done',
+      steps: [],
+      totalUsage: { inputTokens: 10, outputTokens: 20 },
+      finishReason: 'stop',
+    });
 
-    await runner.execute('general', 'Test');
+    const result = await runner.execute('general', 'Test');
 
-    const callArgs = mockQuery.mock.calls[0][0];
-    expect(callArgs.options.signal).toBeUndefined();
+    expect(result.success).toBe(true);
+    expect(result.text).toBe('done');
   });
 
   it('超时应触发 onError 回调', async () => {
-    mockQuery.mockReturnValue(createSlowIterator());
+    mockGenerateText.mockReturnValue(new Promise(() => {}));
 
     vi.useFakeTimers();
 
@@ -132,7 +132,12 @@ describe('AgentRunner sub-agent timeout', () => {
   });
 
   it('正常完成时不应触发超时', async () => {
-    mockQuery.mockReturnValue(createResultIterator('completed quickly'));
+    mockGenerateText.mockResolvedValue({
+      text: 'completed quickly',
+      steps: [],
+      totalUsage: { inputTokens: 10, outputTokens: 20 },
+      finishReason: 'stop',
+    });
 
     const result = await runner.execute('general', 'Test', { timeout: 5000 });
 

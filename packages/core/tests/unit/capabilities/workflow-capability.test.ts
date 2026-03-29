@@ -195,28 +195,30 @@ describe('WorkflowCapability', () => {
       expect(tools[0].name).toBe('Read');
     });
 
-    it('should use cwd option', async () => {
-      await capability.run('Test task', {
-        cwd: '/test/workspace',
-      });
+    it('should delegate to runner with onText/onTool callbacks', async () => {
+      const onText = vi.fn();
+      const onTool = vi.fn();
+      await capability.run('Test task', { onText, onTool });
 
       expect(context.runner.execute).toHaveBeenCalledWith(
         'general',
         expect.any(String),
         expect.objectContaining({
-          cwd: '/test/workspace',
+          onText,
+          onTool: expect.any(Function),
         })
       );
     });
 
-    it('should set maxTurns to 20', async () => {
+    it('should call runner for execution phase', async () => {
       await capability.run('Test task');
 
       expect(context.runner.execute).toHaveBeenCalledWith(
         'general',
         expect.any(String),
         expect.objectContaining({
-          maxTurns: 20,
+          onText: undefined,
+          onTool: undefined,
         })
       );
     });

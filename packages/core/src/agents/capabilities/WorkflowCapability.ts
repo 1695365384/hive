@@ -201,10 +201,8 @@ export class WorkflowCapability implements AgentCapability {
 
     const executePrompt = this.buildExecutePrompt(task);
     const executeResult = await this.context.runner.execute('general', executePrompt, {
-      cwd: options?.cwd,
       onText: options?.onText,
       onTool: options?.onTool ? (name, input) => options.onTool!(name, input) : undefined,
-      maxTurns: 20,
     });
 
     return { executeResult };
@@ -250,10 +248,8 @@ export class WorkflowCapability implements AgentCapability {
 
     const executePrompt = this.buildExecutePrompt(task, exploreResult.text, executionPlan);
     const executeResult = await this.context.runner.execute('general', executePrompt, {
-      cwd: options?.cwd,
       onText: options?.onText,
       onTool: options?.onTool ? (name, input) => options.onTool!(name, input) : undefined,
-      maxTurns: 20,
     });
 
     return { exploreResult, executionPlan, executeResult };
