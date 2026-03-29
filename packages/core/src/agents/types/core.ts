@@ -100,6 +100,8 @@ export interface AgentOptions {
   maxTurns?: number;
   /** 系统提示 */
   systemPrompt?: string;
+  /** 多轮对话历史 */
+  messages?: Array<{ role: string; content: string }>;
   /** 使用的子 Agent */
   agents?: import('./capabilities.js').AgentType[];
   /** API 调用超时（毫秒） */

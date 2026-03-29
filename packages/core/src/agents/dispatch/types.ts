@@ -87,6 +87,8 @@ export interface DispatchResult {
 export interface DispatchOptions {
   /** 强制指定执行层（跳过分类） */
   forceLayer?: ExecutionLayer;
+  /** 会话 ID（workflow 层用于 session persist） */
+  chatId?: string;
   /** 工作目录 */
   cwd?: string;
   /** 阶段回调 */

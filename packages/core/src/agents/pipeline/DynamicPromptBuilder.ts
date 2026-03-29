@@ -68,7 +68,12 @@ export class DynamicPromptBuilder {
     // 3. Task description
     sections.set('task', `## Task\n${context.task}`);
 
-    // 4. Prior phase results (formatted from structured data)
+    // 4. Session history (for context continuity between chat/workflow)
+    if (context.sessionHistory && context.sessionHistory.length > 0) {
+      sections.set('history', this.formatSessionHistory(context.sessionHistory));
+    }
+
+    // 5. Prior phase results (formatted from structured data)
     if (context.priorResults.length > 0) {
       sections.set('context', this.formatPriorResults(context.priorResults));
     }
@@ -132,6 +137,20 @@ export class DynamicPromptBuilder {
   }
 
   /**
+   * Format session history into a prompt section
+   */
+  private formatSessionHistory(messages: Array<{ role: string; content: string }>): string {
+    const lines: string[] = ['## Conversation History'];
+
+    for (const msg of messages) {
+      const roleLabel = msg.role === 'user' ? 'User' : 'Assistant';
+      lines.push(`**${roleLabel}:** ${msg.content}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
    * Apply token budget — truncate or remove low-priority sections
    */
   private applyBudget(sections: Map<string, string>): string {
@@ -139,6 +158,7 @@ export class DynamicPromptBuilder {
       base: 0,       // Always keep
       language: 0,   // Always keep
       task: 0,       // Always keep
+      history: 1,    // Session history - important for context continuity
       context: 2,    // High priority but can be truncated
       skill: 4,      // Lower priority, can be removed
     };
@@ -188,7 +208,7 @@ export class DynamicPromptBuilder {
    * Join sections into final prompt
    */
   private joinSections(sections: Map<string, string>): string {
-    const order = ['base', 'language', 'task', 'context', 'skill'];
+    const order = ['base', 'language', 'task', 'history', 'context', 'skill'];
     const parts: string[] = [];
 
     for (const name of order) {

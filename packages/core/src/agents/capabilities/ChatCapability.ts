@@ -98,9 +98,14 @@ export class ChatCapability implements AgentCapability {
     let toolCallCount = 0;
 
     // 构建 RuntimeConfig
+    // AI SDK 不允许同时传 prompt 和 messages，有历史时追加当前消息到 messages
+    const history = options?.messages;
     const runtimeConfig: RuntimeConfig = {
-      prompt,
       system: options?.systemPrompt,
+      messages: history && history.length > 0
+        ? [...history, { role: 'user', content: prompt }]
+        : undefined,
+      prompt: (!history || history.length === 0) ? prompt : undefined,
       providerId: options?.providerId,
       model: options?.modelId,
       maxSteps: options?.maxTurns,

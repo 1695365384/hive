@@ -133,7 +133,6 @@ export class FeishuPlugin implements IPlugin {
     if (!this.context) return
 
     const data = (message as { payload: unknown }).payload
-    this.context.logger.debug(`[FeishuPlugin] Processing message:`, data)
 
     // 发布到通用消息通道，供 Agent 处理
     this.context.messageBus.publish('message:received', data)
