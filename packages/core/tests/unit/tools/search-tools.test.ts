@@ -2,19 +2,13 @@
  * Glob 工具和 Grep 工具单元测试
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createGlobTool } from '../../../src/tools/built-in/glob-tool.js';
 import { createGrepTool } from '../../../src/tools/built-in/grep-tool.js';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { _resetAllowedRoots } from '../../../src/tools/built-in/utils/security.js';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
-
-// Mock child_process.exec for grep tests
-vi.mock('node:child_process', () => ({
-  exec: vi.fn(),
-}));
-import { exec } from 'node:child_process';
-const mockExec = vi.mocked(exec);
 
 describe('createGlobTool', () => {
   let tmpDir: string;
@@ -30,11 +24,13 @@ describe('createGlobTool', () => {
   });
 
   afterAll(async () => {
-    const { rm } = await import('node:fs/promises');
+    delete process.env.HIVE_WORKING_DIR;
+    _resetAllowedRoots();
     try { await rm(tmpDir, { recursive: true, force: true }); } catch {}
   });
 
   it('should match files with *.ts pattern', async () => {
+    process.env.HIVE_WORKING_DIR = tmpDir;
     const tool = createGlobTool();
     const result = await tool.execute!({
       pattern: '*.ts',
@@ -43,9 +39,11 @@ describe('createGlobTool', () => {
     expect(result).toContain('a.ts');
     expect(result).toContain('b.ts');
     expect(result).not.toContain('README.md');
+    delete process.env.HIVE_WORKING_DIR;
   });
 
   it('should match files recursively with **/*.ts', async () => {
+    process.env.HIVE_WORKING_DIR = tmpDir;
     const tool = createGlobTool();
     const result = await tool.execute!({
       pattern: '**/*.ts',
@@ -54,18 +52,22 @@ describe('createGlobTool', () => {
     expect(result).toContain('a.ts');
     expect(result).toContain('b.ts');
     expect(result).toContain('c.ts');
+    delete process.env.HIVE_WORKING_DIR;
   });
 
   it('should return empty message when no matches', async () => {
+    process.env.HIVE_WORKING_DIR = tmpDir;
     const tool = createGlobTool();
     const result = await tool.execute!({
       pattern: '*.py',
       path: tmpDir,
     }, {} as any);
     expect(result).toContain('未找到');
+    delete process.env.HIVE_WORKING_DIR;
   });
 
   it('should truncate results when exceeding maxResults', async () => {
+    process.env.HIVE_WORKING_DIR = tmpDir;
     const tool = createGlobTool();
     const result = await tool.execute!({
       pattern: '*',
@@ -73,84 +75,113 @@ describe('createGlobTool', () => {
       maxResults: 1,
     }, {} as any);
     expect(result).toContain('已截断');
+    delete process.env.HIVE_WORKING_DIR;
   });
 
-  it('should return error on invalid path', async () => {
+  it('should block path traversal', async () => {
     const tool = createGlobTool();
     const result = await tool.execute!({
       pattern: '*',
-      path: '/nonexistent/path/xyz',
+      path: '/etc',
     }, {} as any);
-    // Should not crash, may return empty or error
-    expect(typeof result).toBe('string');
+    expect(result).toContain('[Security]');
+    expect(result).toContain('不在允许的工作目录内');
+  });
+
+  it('should reject maxResults above 1000', async () => {
+    const tool = createGlobTool();
+    const schema = tool.inputSchema as any;
+    const result = schema.safeParse({ pattern: '*', maxResults: 2000 });
+    expect(result.success).toBe(false);
   });
 });
 
 describe('createGrepTool', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    _resetAllowedRoots();
+    tmpDir = join(os.tmpdir(), `hive-grep-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(tmpDir, { recursive: true });
+    await writeFile(join(tmpDir, 'a.ts'), 'export const a = 1;\nconsole.log(a);');
+    await writeFile(join(tmpDir, 'b.ts'), 'export const b = 2;\n// comment');
+    await mkdir(join(tmpDir, 'sub'), { recursive: true });
+    await writeFile(join(tmpDir, 'sub', 'c.ts'), 'export const c = 3;');
+    process.env.HIVE_WORKING_DIR = tmpDir;
+  });
+
+  afterEach(async () => {
+    delete process.env.HIVE_WORKING_DIR;
+    _resetAllowedRoots();
+    try { await rm(tmpDir, { recursive: true, force: true }); } catch {}
   });
 
   it('should search files and return matches', async () => {
-    mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
-      cb(null, 'file.ts:10:const x = 1;\nother.ts:5:const y = 2;');
-    });
     const tool = createGrepTool();
     const result = await tool.execute!({
-      pattern: 'const',
-      path: '/tmp',
+      pattern: 'export const',
+      path: tmpDir,
     }, {} as any);
-    expect(result).toContain('file.ts');
-    expect(result).toContain('other.ts');
+    expect(result).toContain('a.ts');
+    expect(result).toContain('b.ts');
+    expect(result).toContain('c.ts');
   });
 
   it('should return empty message when no matches', async () => {
-    mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
-      const err = new Error('no match') as any;
-      err.code = 1;
-      cb(err, '', '');
-    });
     const tool = createGrepTool();
     const result = await tool.execute!({
       pattern: 'nonexistent_pattern_xyz',
+      path: tmpDir,
     }, {} as any);
     expect(result).toContain('未找到');
   });
 
   it('should support case insensitive search', async () => {
-    mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
-      expect(cmd).toContain('-i');
-      cb(null, 'file.ts:1:const X = 1;');
-    });
     const tool = createGrepTool();
     const result = await tool.execute!({
-      pattern: 'x',
+      pattern: 'EXPORT',
+      path: tmpDir,
       caseInsensitive: true,
     }, {} as any);
-    expect(result).toContain('file.ts');
+    expect(result).toContain('a.ts');
   });
 
-  it('should truncate results exceeding maxResults', async () => {
-    const lines = Array.from({ length: 100 }, (_, i) => `file.ts:${i + 1}:match ${i}`);
-    mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
-      cb(null, lines.join('\n'));
-    });
+  it('should support glob filter', async () => {
     const tool = createGrepTool();
     const result = await tool.execute!({
-      pattern: 'match',
-      maxResults: 10,
+      pattern: 'export const',
+      path: tmpDir,
+      glob: '*.ts',
     }, {} as any);
-    expect(result).toContain('已截断');
+    expect(result).toContain('a.ts');
+    expect(result).toContain('b.ts');
+    // sub/c.ts should also match since glob is *.ts
+    expect(result).toContain('c.ts');
   });
 
-  it('should handle grep errors', async () => {
-    mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
-      cb(new Error('permission denied'), '', '');
-    });
+  it('should block path traversal', async () => {
     const tool = createGrepTool();
     const result = await tool.execute!({
-      pattern: 'test',
+      pattern: 'root',
+      path: '/etc',
     }, {} as any);
-    expect(result).toContain('[Error]');
+    expect(result).toContain('[Security]');
+  });
+
+  it('should handle special regex characters safely', async () => {
+    const tool = createGrepTool();
+    // Should not crash with regex injection
+    const result = await tool.execute!({
+      pattern: '(?:invalid[regex',
+      path: tmpDir,
+    }, {} as any);
+    expect(typeof result).toBe('string');
+  });
+
+  it('should reject maxResults above 1000', async () => {
+    const tool = createGrepTool();
+    const schema = tool.inputSchema as any;
+    const result = schema.safeParse({ pattern: 'test', maxResults: 2000 });
+    expect(result.success).toBe(false);
   });
 });

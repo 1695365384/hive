@@ -132,12 +132,13 @@ export class AgentRunner {
       const controller = new AbortController();
       runtimeConfig.abortSignal = controller.signal;
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
           controller.abort();
           reject(new Error(`Sub-agent timed out after ${options.timeout}ms`));
-        }, options.timeout),
-      );
+        }, options.timeout);
+      });
 
       try {
         const result = await Promise.race([
@@ -154,6 +155,8 @@ export class AgentRunner {
           options.onError(err);
         }
         return { text: '', tools: [], success: false, error: err.message };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
       }
     }
 

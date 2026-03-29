@@ -2,24 +2,27 @@
  * File 工具单元测试
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createFileTool } from '../../../src/tools/built-in/file-tool.js';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { _resetAllowedRoots } from '../../../src/tools/built-in/utils/security.js';
+import { writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
 import os from 'node:os';
 
 describe('createFileTool', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = join(os.tmpdir(), `hive-test-${Date.now()}`);
+    _resetAllowedRoots();
+    tmpDir = join(os.tmpdir(), `hive-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await mkdir(tmpDir, { recursive: true });
+    // Set working directory so isPathAllowed passes
+    process.env.HIVE_WORKING_DIR = tmpDir;
   });
 
   afterEach(async () => {
-    // 清理临时文件
-    const { rm } = await import('node:fs/promises');
+    delete process.env.HIVE_WORKING_DIR;
+    _resetAllowedRoots();
     try { await rm(tmpDir, { recursive: true, force: true }); } catch {}
   });
 
@@ -53,6 +56,74 @@ describe('createFileTool', () => {
     });
   });
 
+  describe('path containment', () => {
+    it('should block path traversal attempts', async () => {
+      const tool = createFileTool();
+      const result = await tool.execute!({
+        command: 'view',
+        file_path: '/etc/passwd',
+      }, {} as any);
+      expect(result).toContain('[Security]');
+      expect(result).toContain('不在允许的工作目录内');
+    });
+
+    it('should allow paths within working directory', async () => {
+      await writeFile(testFile(), 'safe content');
+      const tool = createFileTool();
+      const result = await tool.execute!({
+        command: 'view',
+        file_path: testFile(),
+      }, {} as any);
+      expect(result).toContain('safe content');
+    });
+
+    it('should block ../ traversal in create', async () => {
+      const tool = createFileTool();
+      const result = await tool.execute!({
+        command: 'create',
+        file_path: join(tmpDir, '..', 'etc', 'evil.txt'),
+        content: 'malicious',
+      }, {} as any);
+      expect(result).toContain('[Security]');
+    });
+  });
+
+  describe('TOCTOU fix', () => {
+    it('should return friendly error for non-existent view (no existsSync)', async () => {
+      const tool = createFileTool();
+      const result = await tool.execute!({
+        command: 'view',
+        file_path: join(tmpDir, 'nonexistent.txt'),
+      }, {} as any);
+      expect(result).toContain('[Error]');
+      expect(result).toContain('不存在');
+    });
+
+    it('should return friendly error for non-existent str_replace', async () => {
+      const tool = createFileTool();
+      const result = await tool.execute!({
+        command: 'str_replace',
+        file_path: join(tmpDir, 'nonexistent.txt'),
+        old_str: 'x',
+        new_str: 'y',
+      }, {} as any);
+      expect(result).toContain('[Error]');
+      expect(result).toContain('不存在');
+    });
+
+    it('should return friendly error for non-existent insert', async () => {
+      const tool = createFileTool();
+      const result = await tool.execute!({
+        command: 'insert',
+        file_path: join(tmpDir, 'nonexistent.txt'),
+        insert_line: 1,
+        insert_text: 'new line',
+      }, {} as any);
+      expect(result).toContain('[Error]');
+      expect(result).toContain('不存在');
+    });
+  });
+
   describe('view command', () => {
     it('should read file with line numbers', async () => {
       await writeFile(testFile(), 'line1\nline2\nline3');
@@ -81,16 +152,6 @@ describe('createFileTool', () => {
       expect(result).not.toContain('line1');
       expect(result).not.toContain('line4');
     });
-
-    it('should return error for non-existent file', async () => {
-      const tool = createFileTool();
-      const result = await tool.execute!({
-        command: 'view',
-        file_path: join(tmpDir, 'nonexistent.txt'),
-      }, {} as any);
-      expect(result).toContain('[Error]');
-      expect(result).toContain('不存在');
-    });
   });
 
   describe('create command', () => {
@@ -102,7 +163,9 @@ describe('createFileTool', () => {
         content: 'new content',
       }, {} as any);
       expect(result).toContain('[OK]');
-      expect(existsSync(testFile())).toBe(true);
+      const { readFile } = await import('node:fs/promises');
+      const content = await readFile(testFile(), 'utf-8');
+      expect(content).toBe('new content');
     });
   });
 
@@ -159,7 +222,7 @@ describe('createFileTool', () => {
       const tool = createFileTool();
       const result = await tool.execute!({
         command: 'view',
-        file_path: '/tmp/.env',
+        file_path: join(tmpDir, '.env'),
       }, {} as any);
       expect(result).toContain('[Security]');
     });
@@ -168,7 +231,7 @@ describe('createFileTool', () => {
       const tool = createFileTool();
       const result = await tool.execute!({
         command: 'create',
-        file_path: '/tmp/.env',
+        file_path: join(tmpDir, '.env'),
         content: 'SECRET=key',
       }, {} as any);
       expect(result).toContain('[Security]');
@@ -178,7 +241,7 @@ describe('createFileTool', () => {
       const tool = createFileTool();
       const result = await tool.execute!({
         command: 'view',
-        file_path: '/home/user/.ssh/id_rsa',
+        file_path: join(tmpDir, 'id_rsa'),
       }, {} as any);
       expect(result).toContain('[Security]');
     });

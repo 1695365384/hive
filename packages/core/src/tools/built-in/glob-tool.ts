@@ -2,12 +2,19 @@
  * Glob 工具 — 文件名模式匹配
  *
  * 使用 AI SDK tool() + Zod schema 定义。
+ * 路径约束、深度限制、条目数限制。
  */
 
 import { readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
+import { isPathAllowed } from './utils/security.js';
+
+/** 最大递归深度 */
+const MAX_DEPTH = 20;
+/** 最大匹配条目数 */
+const MAX_ENTRIES = 10000;
 
 /**
  * 简单的 glob 匹配（支持 * 和 **）
@@ -18,8 +25,8 @@ async function simpleGlob(dir: string, pattern: string): Promise<string[]> {
   const results: string[] = [];
   const parts = pattern.split('/').filter(Boolean);
 
-  async function walk(currentDir: string, partIndex: number): Promise<void> {
-    if (partIndex >= parts.length) return;
+  async function walk(currentDir: string, partIndex: number, depth: number): Promise<void> {
+    if (partIndex >= parts.length || depth > MAX_DEPTH || results.length >= MAX_ENTRIES) return;
     const part = parts[partIndex]!;
     const nextIndex = partIndex + 1;
     const isLast = nextIndex >= parts.length;
@@ -27,7 +34,7 @@ async function simpleGlob(dir: string, pattern: string): Promise<string[]> {
     // ** matches zero or more directory levels — also try skipping ** entirely
     if (part === '**') {
       // Zero-depth: match remaining pattern in current directory
-      await walk(currentDir, nextIndex);
+      await walk(currentDir, nextIndex, depth);
     }
 
     let entries: Array<{ name: string; isDirectory: () => boolean }>;
@@ -39,6 +46,7 @@ async function simpleGlob(dir: string, pattern: string): Promise<string[]> {
     }
 
     for (const entry of entries) {
+      if (results.length >= MAX_ENTRIES) return;
       const fullPath = join(currentDir, entry.name);
       if (entry.name.startsWith('.') && !part.startsWith('.')) continue;
 
@@ -46,19 +54,19 @@ async function simpleGlob(dir: string, pattern: string): Promise<string[]> {
         // ** matches one or more directory levels
         if (entry.isDirectory()) {
           // Stay at ** to match more nested dirs
-          await walk(fullPath, partIndex);
+          await walk(fullPath, partIndex, depth + 1);
         }
       } else if (entry.name === part || matchGlobPart(entry.name, part)) {
         if (isLast) {
           results.push(fullPath);
         } else if (entry.isDirectory()) {
-          await walk(fullPath, nextIndex);
+          await walk(fullPath, nextIndex, depth + 1);
         }
       }
     }
   }
 
-  await walk(dir, 0);
+  await walk(dir, 0, 0);
   return results;
 }
 
@@ -74,7 +82,7 @@ function matchGlobPart(name: string, pattern: string): boolean {
 const globInputSchema = z.object({
   pattern: z.string().describe('Glob 模式，如 "**/*.ts"、"src/**/*.py"'),
   path: z.string().optional().describe('搜索的根目录，默认为当前工作目录'),
-  maxResults: z.number().optional().describe('最大返回结果数，默认 100'),
+  maxResults: z.number().max(1000).optional().describe('最大返回结果数，默认 100'),
 });
 
 export type GlobToolInput = z.infer<typeof globInputSchema>;
@@ -88,10 +96,15 @@ export function createGlobTool(): Tool<GlobToolInput, string> {
     inputSchema: zodSchema(globInputSchema),
     execute: async ({ pattern, path: searchPath, maxResults }): Promise<string> => {
       const max = maxResults ?? 100;
-      const dir = searchPath || process.cwd();
+      const dir = resolve(searchPath || process.cwd());
+
+      // 路径约束检查
+      if (!isPathAllowed(dir)) {
+        return `[Security] 搜索路径不在允许的工作目录内: ${dir}`;
+      }
 
       try {
-        let files = await simpleGlob(dir, pattern);
+        const files = await simpleGlob(dir, pattern);
 
         // 按修改时间排序
         const withStats = await Promise.all(
@@ -105,18 +118,18 @@ export function createGlobTool(): Tool<GlobToolInput, string> {
           }),
         );
         withStats.sort((a, b) => b.mtime - a.mtime);
-        files = withStats.map(f => f.path);
+        const sortedFiles = withStats.map(f => f.path);
 
-        if (files.length === 0) {
+        if (sortedFiles.length === 0) {
           return `未找到匹配 "${pattern}" 的文件`;
         }
 
-        if (files.length > max) {
-          files = files.slice(0, max);
-          return files.join('\n') + `\n\n[共 ${withStats.length} 个匹配，已截断显示前 ${max} 个]`;
+        if (sortedFiles.length > max) {
+          const display = sortedFiles.slice(0, max);
+          return display.join('\n') + `\n\n[共 ${withStats.length} 个匹配，已截断显示前 ${max} 个]`;
         }
 
-        return files.join('\n');
+        return sortedFiles.join('\n');
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         return `[Error] 搜索失败: ${msg}`;
