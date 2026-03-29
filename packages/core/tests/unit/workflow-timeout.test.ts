@@ -5,12 +5,23 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WorkflowCapability } from '../../src/agents/capabilities/WorkflowCapability.js';
 import {
   createMockAgentContext,
   createTestProviderConfig,
 } from '../mocks/agent-context.mock.js';
-import type { AgentContext, AgentResult } from '../../src/agents/core/types.js';
+import type { AgentContext } from '../../src/agents/core/types.js';
+
+// Mock LLMRuntime
+const mockRuntimeRun = vi.fn();
+vi.mock('../../src/agents/runtime/LLMRuntime.js', () => {
+  return {
+    LLMRuntime: class MockLLMRuntime {
+      run = mockRuntimeRun;
+    },
+  };
+});
+
+import { WorkflowCapability } from '../../src/agents/capabilities/WorkflowCapability.js';
 
 describe('WorkflowCapability 超时保护', () => {
   let capability: WorkflowCapability;
@@ -21,19 +32,31 @@ describe('WorkflowCapability 超时保护', () => {
     name: 'Test',
   });
 
-  const mockAgentResult: AgentResult = {
-    text: 'Done',
-    success: true,
-    tools: [],
-  };
-
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockRuntimeRun.mockImplementation(async (config: any) => {
+      config.onText?.('Done');
+      return {
+        text: 'Done',
+        tools: [],
+        success: true,
+        usage: { promptTokens: 50, completionTokens: 10 },
+        steps: [],
+        duration: 50,
+      };
+    });
+
     capability = new WorkflowCapability();
     context = createMockAgentContext({
       activeProvider: testProvider,
       providers: [testProvider],
     });
-    vi.mocked(context.runner.execute).mockResolvedValue(mockAgentResult);
+    (context as any).runner = {
+      ...context.runner,
+      getToolRegistry: vi.fn(() => ({
+        getToolsForAgent: vi.fn(() => []),
+      })),
+    };
     capability.initialize(context);
   });
 
@@ -56,7 +79,7 @@ describe('WorkflowCapability 超时保护', () => {
   });
 
   it('工作流出错后应停止心跳（finally 保证）', async () => {
-    vi.mocked(context.runner.execute).mockRejectedValue(new Error('exec failed'));
+    mockRuntimeRun.mockRejectedValue(new Error('exec failed'));
 
     await capability.run('Test task');
 
@@ -84,14 +107,22 @@ describe('WorkflowCapability 超时保护', () => {
     );
   });
 
-  it('心跳停止应在 runner.execute 之后', async () => {
+  it('心跳停止应在 runtime.run 之后', async () => {
     const callOrder: string[] = [];
     vi.mocked(context.timeoutCap.startHeartbeat).mockImplementation(() => {
       callOrder.push('startHeartbeat');
     });
-    vi.mocked(context.runner.execute).mockImplementation(async () => {
-      callOrder.push('execute');
-      return mockAgentResult;
+    mockRuntimeRun.mockImplementation(async (config: any) => {
+      callOrder.push('run');
+      config.onText?.('Done');
+      return {
+        text: 'Done',
+        tools: [],
+        success: true,
+        usage: { promptTokens: 50, completionTokens: 10 },
+        steps: [],
+        duration: 50,
+      };
     });
     vi.mocked(context.timeoutCap.stopHeartbeat).mockImplementation(() => {
       callOrder.push('stopHeartbeat');
@@ -99,6 +130,6 @@ describe('WorkflowCapability 超时保护', () => {
 
     await capability.run('Test task');
 
-    expect(callOrder).toEqual(['startHeartbeat', 'execute', 'stopHeartbeat']);
+    expect(callOrder).toEqual(['startHeartbeat', 'run', 'stopHeartbeat']);
   });
 });

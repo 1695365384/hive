@@ -7,9 +7,18 @@
 
 import type {
   DispatchClassification,
-  DispatchTraceEvent,
 } from './types.js';
 import { VALID_EXECUTION_LAYERS } from './types.js';
+
+/** @deprecated Legacy trace type for classifier module */
+interface LegacyTraceEvent {
+  timestamp: number;
+  type: string;
+  layer?: string;
+  confidence?: number;
+  latency?: number;
+  reason?: string;
+}
 import type { ClassifierProvider } from './llm-utils.js';
 import { callClassifierLLM, extractJSON } from './llm-utils.js';
 
@@ -99,8 +108,8 @@ export async function classifyForDispatch(
   task: string,
   provider: ClassifierProvider,
   modelOverride?: string
-): Promise<{ classification: DispatchClassification; trace: DispatchTraceEvent[] }> {
-  const trace: DispatchTraceEvent[] = [];
+): Promise<{ classification: DispatchClassification; trace: LegacyTraceEvent[] }> {
+  const trace: LegacyTraceEvent[] = [];
   const startTime = Date.now();
   const activeProvider = provider.getActiveProvider();
   const model = modelOverride ?? activeProvider?.model;

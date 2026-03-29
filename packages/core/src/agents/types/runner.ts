@@ -4,9 +4,6 @@
  * 包含工作流类型、任务分析等执行层类型
  */
 
-import type { AgentResult } from './core.js';
-import type { AgentPhaseResult } from './pipeline.js';
-
 // ============================================
 // 工作流类型
 // ============================================
@@ -33,26 +30,25 @@ export interface WorkflowOptions {
  * 工作流结果
  */
 export interface WorkflowResult {
-  /** 任务分析结果 */
-  analysis: TaskAnalysis;
-  /** 探索阶段的结构化结果（如果执行了探索） */
-  exploreResult?: AgentResult;
-  /** 探索阶段压缩摘要 */
-  explorePhaseResult?: AgentPhaseResult;
-  /** 生成的执行计划 */
-  executionPlan?: string;
-  /** 执行计划的结构化结果 */
-  planPhaseResult?: AgentPhaseResult;
-  /** 执行结果 */
-  executeResult?: AgentResult;
+  /** 最终输出文本 */
+  text: string;
+  /** 被调用的工具 */
+  tools: string[];
   /** 是否成功 */
   success: boolean;
   /** 错误信息 */
   error?: string;
+  /** Token 用量 */
+  usage?: { input: number; output: number };
+  /** 执行耗时（毫秒） */
+  duration: number;
 }
 
 /**
  * 任务分析结果
+ *
+ * @deprecated WorkflowCapability 不再使用任务分析做路由分流。
+ * 保留此类型供外部直接调用 analyzeTask() 使用。
  */
 export interface TaskAnalysis {
   /** 任务类型 */

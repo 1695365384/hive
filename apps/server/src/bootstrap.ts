@@ -303,9 +303,9 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
       })
 
       const replyText = result.text
-        || (result.success ? `任务完成：${result.classification?.taskType || 'simple'}` : `任务失败：${result.error || '未知错误'}`)
+        || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`)
 
-      logger.info(`[agent] [${result.layer}] completed (${result.duration}ms)`)
+      logger.info(`[agent] completed (${result.duration}ms)`)
       logger.info(`[agent] [response] ${replyText}`)
 
       bus.publish('message:response', {

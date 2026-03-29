@@ -1,9 +1,10 @@
 /**
  * 工作流能力
  *
- * 提供智能工作流执行：explore → plan → execute 三子 Agent 顺序执行。
- * 阶段间通过结构化摘要（AgentPhaseResult）传递上下文，
- * 而非原始文本拼接。
+ * 单 Agent 自主循环执行：收集上下文 → 执行操作 → 验证结果。
+ * Agent 自主决定是否使用工具，阶段可交织、可回退。
+ *
+ * 取代原先的 explore → plan → execute 刚性三阶段管道。
  */
 
 import type {
@@ -14,27 +15,16 @@ import type {
   TaskAnalysis,
 } from '../core/types.js';
 import type {
+  ToolBeforeHookContext,
+  ToolAfterHookContext,
   WorkflowPhaseHookContext,
   TaskProgressHookContext,
   NotificationPushHookContext,
   NotificationType,
 } from '../../hooks/types.js';
-import type { AgentPhaseResult } from '../types/pipeline.js';
 import type { SessionCapability } from './SessionCapability.js';
-import type { SubAgentCapability } from './SubAgentCapability.js';
-import { ContextCompactor } from '../pipeline/ContextCompactor.js';
-import { DynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
-
-/**
- * 复杂任务执行结果（runComplexTask 返回）
- */
-interface ComplexTaskResult {
-  exploreResult: import('../core/types.js').AgentResult;
-  explorePhaseResult: AgentPhaseResult;
-  executionPlan: string;
-  planPhaseResult: AgentPhaseResult;
-  executeResult: import('../core/types.js').AgentResult;
-}
+import { LLMRuntime } from '../runtime/LLMRuntime.js';
+import { PromptTemplate } from '../prompts/PromptTemplate.js';
 
 /**
  * 工作流能力实现
@@ -42,14 +32,14 @@ interface ComplexTaskResult {
 export class WorkflowCapability implements AgentCapability {
   readonly name = 'workflow';
   private context!: AgentContext;
+  private runtime!: LLMRuntime;
+  private promptTemplate!: PromptTemplate;
   private workflowCounter: number = 0;
-  private compactor!: ContextCompactor;
-  private promptBuilder!: DynamicPromptBuilder;
 
   initialize(context: AgentContext): void {
     this.context = context;
-    this.compactor = new ContextCompactor(context.providerManager);
-    this.promptBuilder = new DynamicPromptBuilder();
+    this.runtime = new LLMRuntime(context.providerManager);
+    this.promptTemplate = new PromptTemplate();
   }
 
   /**
@@ -60,36 +50,6 @@ export class WorkflowCapability implements AgentCapability {
   }
 
   /**
-   * 获取 SubAgentCapability
-   */
-  private getSubAgentCap(): SubAgentCapability | null {
-    return this.context.getCapability<SubAgentCapability>('subAgent');
-  }
-
-  /**
-   * 触发任务进度 Hook
-   */
-  private async emitProgress(
-    sessionId: string,
-    taskId: string,
-    description: string,
-    progress: number,
-    currentStep?: string,
-    totalSteps?: number
-  ): Promise<void> {
-    const hookContext: TaskProgressHookContext = {
-      sessionId,
-      taskId,
-      description,
-      progress,
-      currentStep,
-      totalSteps,
-      timestamp: new Date(),
-    };
-    await this.context.hookRegistry.emit('task:progress', hookContext);
-  }
-
-  /**
    * 触发推送通知 Hook
    */
   private async emitNotification(
@@ -97,7 +57,7 @@ export class WorkflowCapability implements AgentCapability {
     type: NotificationType,
     title: string,
     message: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     const hookContext: NotificationPushHookContext = {
       sessionId,
@@ -111,7 +71,67 @@ export class WorkflowCapability implements AgentCapability {
   }
 
   /**
+   * 触发阶段变化 Hook
+   */
+  private async emitPhase(
+    sessionId: string,
+    phase: string,
+    message: string,
+    previousPhase: string | undefined,
+    options: WorkflowOptions | undefined,
+  ): Promise<void> {
+    const hookContext: WorkflowPhaseHookContext = {
+      sessionId,
+      phase,
+      message,
+      previousPhase,
+      timestamp: new Date(),
+    };
+    await this.context.hookRegistry.emit('workflow:phase', hookContext);
+    options?.onPhase?.(phase, message);
+  }
+
+  /**
+   * 触发工具调用前 Hook
+   */
+  private async emitToolBefore(
+    sessionId: string,
+    toolName: string,
+    input: unknown,
+  ): Promise<void> {
+    const hookContext: ToolBeforeHookContext = {
+      sessionId,
+      toolName,
+      input: input as Record<string, unknown> ?? {},
+      timestamp: new Date(),
+    };
+    await this.context.hookRegistry.emit('tool:before', hookContext);
+  }
+
+  /**
+   * 触发工具结果 Hook
+   */
+  private async emitToolAfter(
+    sessionId: string,
+    toolName: string,
+    output: unknown,
+  ): Promise<void> {
+    const hookContext: ToolAfterHookContext = {
+      sessionId,
+      toolName,
+      input: {},
+      output,
+      success: true,
+      duration: 0,
+      timestamp: new Date(),
+    };
+    await this.context.hookRegistry.emit('tool:after', hookContext);
+  }
+
+  /**
    * 分析任务复杂度
+   *
+   * @deprecated 不再用于路由分流，保留供外部直接调用。
    */
   analyzeTask(task: string): TaskAnalysis {
     const isPureQuestion =
@@ -127,7 +147,6 @@ export class WorkflowCapability implements AgentCapability {
       };
     }
 
-    // Short message without action verbs → simple (greetings, casual chat, etc.)
     const ACTION_VERB_RE = /修复|实现|重构|添加|创建|删除|优化|排查|调试|fix|implement|refactor|create|delete|debug/i;
     const isShortMessage = task.length < 30 && !task.includes('\n');
 
@@ -145,256 +164,117 @@ export class WorkflowCapability implements AgentCapability {
       type: 'moderate',
       needsExploration: true,
       needsPlanning: true,
-      recommendedAgents: ['explore', 'plan', 'general'],
+      recommendedAgents: ['general'],
       reason: 'Task requires exploration and execution',
     };
   }
 
   /**
-   * 执行智能工作流
+   * 执行任务
+   *
+   * 单 Agent 自主循环：Agent 自主决定收集上下文、执行操作、验证结果。
    */
   async run(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
+    const startTime = Date.now();
     const sessionId = this.context.hookRegistry.getSessionId();
     this.workflowCounter++;
     const workflowId = `workflow-${this.workflowCounter}`;
 
-    const emitPhaseChange = this.createPhaseEmitter(sessionId, options);
+    let previousPhase: string | undefined;
 
     try {
+      // 启动心跳
       const timeoutConfig = this.context.timeoutCap.getConfig();
       const abortController = new AbortController();
       this.context.timeoutCap.startHeartbeat(
         { interval: timeoutConfig.heartbeatInterval, stallTimeout: timeoutConfig.stallTimeout },
-        abortController
+        abortController,
       );
 
       try {
-        await this.emitNotification(sessionId, 'info', '工作流开始',
-          `开始执行任务: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}`);
+        await this.emitNotification(sessionId, 'info', '任务开始',
+          `开始执行: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}`);
 
-        const analysis = this.analyzeTask(task);
-        await emitPhaseChange('analyze', '分析任务...');
-        await this.emitProgress(sessionId, workflowId, '分析任务中', 10, '分析', 3);
+        previousPhase = 'start';
+        await this.emitPhase(sessionId, 'execute', '执行任务...', previousPhase, options);
 
-        const executionResult = analysis.type === 'simple'
-          ? await this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId)
-          : await this.runComplexTask(task, options, emitPhaseChange, sessionId, workflowId);
+        // 构建 system prompt
+        const systemPrompt = this.buildSystemPrompt(task);
 
-        const result: WorkflowResult = {
-          analysis,
-          ...executionResult,
-          success: executionResult.executeResult?.success ?? true,
-        };
+        // 获取全部工具
+        const tools = this.context.runner.getToolRegistry().getToolsForAgent('general');
 
-        await emitPhaseChange('complete', result.success ? '任务完成' : '任务失败');
-        await this.emitProgress(sessionId, workflowId, '工作流完成', 100, '完成', 4);
+        // 从 session 加载历史消息
+        const sessionCap = this.getSessionCap();
+        const historyMessages = sessionCap?.getMessages() ?? [];
+
+        let result = '';
+
+        const runtimeResult = await this.runtime.run({
+          system: systemPrompt,
+          messages: historyMessages.length > 0
+            ? [...historyMessages.map(m => ({ role: m.role, content: m.content })), { role: 'user', content: task }]
+            : undefined,
+          prompt: historyMessages.length === 0 ? task : undefined,
+          tools,
+          maxSteps: options?.maxTurns ?? 30,
+          streaming: true,
+          abortSignal: abortController.signal,
+          onText: (text: string) => {
+            result += text;
+            options?.onText?.(text);
+          },
+          onToolCall: (toolName: string, input: unknown) => {
+            this.emitToolBefore(sessionId, toolName, input);
+            options?.onTool?.(toolName, input);
+          },
+          onToolResult: (toolName: string, output: unknown) => {
+            this.emitToolAfter(sessionId, toolName, output);
+            // 工具结果更新活动状态（心跳）
+            this.context.timeoutCap.updateActivity();
+          },
+        });
+
+        const duration = Date.now() - startTime;
+        const success = runtimeResult.success;
+
+        previousPhase = 'execute';
+        await this.emitPhase(sessionId, 'complete', success ? '任务完成' : '任务失败', previousPhase, options);
 
         await this.emitNotification(
           sessionId,
-          result.success ? 'success' : 'error',
-          result.success ? '任务完成' : '任务失败',
-          result.success ? '工作流执行成功完成' : `工作流执行失败: ${result.error || '未知错误'}`,
-          { workflowId, analysis }
+          success ? 'success' : 'error',
+          success ? '任务完成' : '任务失败',
+          success ? '执行成功完成' : `执行失败: ${runtimeResult.error || '未知错误'}`,
+          { workflowId, duration },
         );
 
-        return result;
+        return {
+          text: result,
+          tools: runtimeResult.tools,
+          success,
+          error: runtimeResult.error,
+          usage: runtimeResult.usage
+            ? { input: runtimeResult.usage.promptTokens, output: runtimeResult.usage.completionTokens }
+            : undefined,
+          duration,
+        };
       } finally {
         this.context.timeoutCap.stopHeartbeat();
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      await emitPhaseChange('error', errorMsg);
-      await this.emitProgress(sessionId, workflowId, '工作流出错', 100, '错误', 4);
-      await this.emitNotification(sessionId, 'error', '工作流错误', errorMsg, { workflowId, error: true });
+      await this.emitPhase(sessionId, 'error', errorMsg, previousPhase, options);
+      await this.emitNotification(sessionId, 'error', '执行错误', errorMsg, { workflowId, error: true });
 
       return {
-        analysis: this.analyzeTask(task),
+        text: '',
+        tools: [],
         success: false,
         error: errorMsg,
+        duration: Date.now() - startTime,
       };
     }
-  }
-
-  /**
-   * 执行简单任务（直接执行，无 explore/plan）
-   */
-  private async runSimpleTask(
-    task: string,
-    options: WorkflowOptions | undefined,
-    emitPhaseChange: (phase: string, message: string) => Promise<void>,
-    sessionId: string,
-    workflowId: string,
-  ): Promise<Pick<WorkflowResult, 'executeResult'>> {
-    await emitPhaseChange('execute', '执行任务...');
-    await this.emitProgress(sessionId, workflowId, '执行任务中', 30, '执行', 1);
-
-    const executePrompt = this.buildExecutePrompt(task);
-    const executeResult = await this.context.runner.execute('general', executePrompt, {
-      onText: options?.onText,
-      onTool: options?.onTool ? (name, input) => options.onTool!(name, input) : undefined,
-    });
-
-    return { executeResult };
-  }
-
-  /**
-   * 执行复杂任务（explore → plan → execute 三阶段）
-   *
-   * 使用 ContextCompactor 做阶段间压缩，传递结构化摘要而非原始文本。
-   */
-  private async runComplexTask(
-    task: string,
-    options: WorkflowOptions | undefined,
-    emitPhaseChange: (phase: string, message: string) => Promise<void>,
-    sessionId: string,
-    workflowId: string,
-  ): Promise<ComplexTaskResult> {
-    const subAgentCap = this.getSubAgentCap();
-
-    if (!subAgentCap) {
-      const { executeResult } = await this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId);
-      if (!executeResult) {
-        throw new Error('Simple task returned no execute result');
-      }
-      return {
-        exploreResult: { text: '', tools: [], success: false, error: 'SubAgent not available' },
-        explorePhaseResult: {
-          summary: '', keyFiles: [], findings: [], suggestions: [],
-          rawText: '', phase: 'explore', originalLength: 0, compressedLength: 0,
-        },
-        executionPlan: '',
-        planPhaseResult: {
-          summary: '', keyFiles: [], findings: [], suggestions: [],
-          rawText: '', phase: 'plan', originalLength: 0, compressedLength: 0,
-        },
-        executeResult,
-      };
-    }
-
-    // Phase: Explore
-    await emitPhaseChange('explore', '探索代码库...');
-    await this.emitProgress(sessionId, workflowId, '探索代码库中', 20, '探索', 4);
-
-    const exploreResult = await this.runExplorePhase(subAgentCap, task, emitPhaseChange);
-
-    // Compress explore output into structured summary
-    const explorePhaseResult = await this.compactor.compressPhase(exploreResult, 'explore');
-
-    // Auto-compress session after explore phase
-    await this.autoCompress();
-
-    // Phase: Plan
-    await emitPhaseChange('plan', '制定执行方案...');
-    await this.emitProgress(sessionId, workflowId, '制定执行方案中', 40, '规划', 4);
-
-    const planPhaseResult = await this.runPlanPhase(subAgentCap, task, explorePhaseResult, emitPhaseChange);
-
-    // Auto-compress session after plan phase
-    await this.autoCompress();
-
-    // Phase: Execute — use DynamicPromptBuilder with structured prior results
-    await emitPhaseChange('execute', '执行任务...');
-    await this.emitProgress(sessionId, workflowId, '执行任务中', 60, '执行', 4);
-
-    const executionPlan = planPhaseResult.summary;
-    const executePrompt = this.buildExecutePrompt(
-      task,
-      [explorePhaseResult, planPhaseResult],
-    );
-
-    const executeResult = await this.context.runner.execute('general', executePrompt, {
-      onText: options?.onText,
-      onTool: options?.onTool ? (name, input) => options.onTool!(name, input) : undefined,
-    });
-
-    return {
-      exploreResult,
-      explorePhaseResult,
-      executionPlan,
-      planPhaseResult,
-      executeResult,
-    };
-  }
-
-  /**
-   * Explore 阶段
-   */
-  private async runExplorePhase(
-    subAgentCap: SubAgentCapability,
-    task: string,
-    emitPhaseChange: (phase: string, message: string) => Promise<void>,
-  ): Promise<import('../core/types.js').AgentResult> {
-    try {
-      const text = await subAgentCap.explore(task);
-      return { text, success: true, tools: [] };
-    } catch (error) {
-      const text = `探索失败: ${error instanceof Error ? error.message : String(error)}`;
-      await emitPhaseChange('explore', `探索阶段失败: ${text.slice(0, 100)}`);
-      return { text, success: false, tools: [] };
-    }
-  }
-
-  /**
-   * Plan 阶段
-   *
-   * 接收结构化的 explore 阶段结果，而非原始文本。
-   */
-  private async runPlanPhase(
-    subAgentCap: SubAgentCapability,
-    task: string,
-    explorePhaseResult: AgentPhaseResult,
-    emitPhaseChange: (phase: string, message: string) => Promise<void>,
-  ): Promise<AgentPhaseResult> {
-    try {
-      // Build plan prompt from structured explore results
-      const planContext = this.promptBuilder.formatPriorResults([explorePhaseResult]);
-      const planPrompt = `## Task\n${task}\n\n${planContext}\n\nBased on the exploration findings above, create a detailed execution plan.`;
-
-      const text = await subAgentCap.plan(planPrompt);
-
-      // Compress plan output into structured summary
-      return await this.compactor.compressPhase(
-        { text, success: true, tools: [] },
-        'plan',
-      );
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      await emitPhaseChange('plan', `规划阶段失败: ${errorMsg.slice(0, 100)}`);
-
-      // Return a minimal phase result on failure
-      return {
-        summary: `规划失败: ${errorMsg}`,
-        keyFiles: explorePhaseResult.keyFiles,
-        findings: [],
-        suggestions: [],
-        rawText: '',
-        phase: 'plan',
-        originalLength: 0,
-        compressedLength: errorMsg.length,
-      };
-    }
-  }
-
-  /**
-   * 创建阶段事件发射器
-   */
-  private createPhaseEmitter(
-    sessionId: string,
-    options: WorkflowOptions | undefined,
-  ): (phase: string, message: string) => Promise<void> {
-    let previousPhase: string | undefined;
-    return async (phase: string, message: string) => {
-      const hookContext: WorkflowPhaseHookContext = {
-        sessionId,
-        phase,
-        message,
-        previousPhase,
-        timestamp: new Date(),
-      };
-      await this.context.hookRegistry.emit('workflow:phase', hookContext);
-      previousPhase = phase;
-      options?.onPhase?.(phase, message);
-    };
   }
 
   /**
@@ -405,7 +285,7 @@ export class WorkflowCapability implements AgentCapability {
     intelligentPrompt: string;
   }> {
     const analysis = this.analyzeTask(task);
-    const intelligentPrompt = this.buildExecutePrompt(task);
+    const intelligentPrompt = this.buildSystemPrompt(task);
     return { analysis, intelligentPrompt };
   }
 
@@ -414,12 +294,9 @@ export class WorkflowCapability implements AgentCapability {
   // ============================================
 
   /**
-   * 构建 execute 阶段的 prompt
-   *
-   * @param task - 任务描述
-   * @param priorResults - 前置阶段的结构化结果（默认空数组）
+   * 构建 system prompt
    */
-  private buildExecutePrompt(task: string, priorResults: AgentPhaseResult[] = []): string {
+  private buildSystemPrompt(task: string): string {
     const isChineseTask = /[\u4e00-\u9fa5]/.test(task);
     const languageInstruction = isChineseTask
       ? '【重要】你必须用中文回复，与用户的语言保持一致。'
@@ -434,35 +311,10 @@ export class WorkflowCapability implements AgentCapability {
       skillSection = this.context.skillRegistry.generateSkillListDescription();
     }
 
-    // 从 session 加载历史对话（保持 chat/workflow 上下文连续）
-    const sessionCap = this.getSessionCap();
-    const sessionHistory = sessionCap?.getMessages().map(m => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    return this.promptBuilder.buildPrompt({
-      task,
-      priorResults,
-      agentType: 'general',
+    return this.promptTemplate.render('intelligent', {
       languageInstruction,
-      skillSection,
-      sessionHistory: sessionHistory && sessionHistory.length > 0 ? sessionHistory : undefined,
+      skillSection: skillSection ?? '',
+      task,
     });
-  }
-
-  /**
-   * 自动压缩（在阶段间调用）
-   *
-   * 当 SessionCapability 不可用时静默跳过。
-   */
-  private async autoCompress(): Promise<void> {
-    try {
-      const sessionCap = this.getSessionCap();
-      if (!sessionCap) return;
-      await sessionCap.compressIfNeeded();
-    } catch {
-      // compression is best-effort, never block workflow
-    }
   }
 }

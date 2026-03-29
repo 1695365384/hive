@@ -240,7 +240,7 @@ export class Agent {
   }
 
   // ============================================
-  // 工作流（委托给 dispatch + forceLayer='workflow'）
+  // 工作流（委托给 WorkflowCapability）
   // ============================================
 
   analyzeTask(task: string): TaskAnalysis {
@@ -248,22 +248,7 @@ export class Agent {
   }
 
   async runWorkflow(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
-    const result = await this.dispatch(task, {
-      forceLayer: 'workflow',
-      cwd: options?.cwd,
-      onPhase: options?.onPhase,
-      onText: options?.onText,
-      onTool: options?.onTool,
-    });
-
-    return {
-      analysis: result.analysis ?? this.workflowCap.analyzeTask(task),
-      exploreResult: result.exploreResult,
-      executionPlan: result.executionPlan,
-      executeResult: result.executeResult,
-      success: result.success,
-      error: result.error,
-    };
+    return this.workflowCap.run(task, options);
   }
 
   /**
