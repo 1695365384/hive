@@ -471,7 +471,6 @@ export {
 
   // 插件上下文
   type IMessageBus,
-  type PluginContext,
 
   // 插件接口
   type PluginMetadata,

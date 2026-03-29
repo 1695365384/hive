@@ -8,7 +8,6 @@ import type {
   IPlugin,
   IChannel,
   PluginMetadata,
-  PluginContext,
   IMessageBus,
   ILogger,
   ChannelMessageType,
@@ -28,38 +27,43 @@ export class FeishuPlugin implements IPlugin {
     author: 'Hive Team',
   }
 
-  private context: PluginContext | null = null
+  private messageBus: IMessageBus | null = null
+  private logger: ILogger | null = null
   private channels: Map<string, IFeishuChannel> = new Map()
-  private config: FeishuPluginConfig | null = null
+  private config: FeishuPluginConfig | any = null
+
+  constructor(config: Record<string, unknown>) {
+    this.config = this.validateConfig(config)
+  }
 
   /**
    * 初始化插件
    */
-  async initialize(context: PluginContext): Promise<void> {
-    this.context = context
-    this.config = this.validateConfig(context.config)
+  async initialize(messageBus: IMessageBus, logger: ILogger, registerChannel: (channel: IChannel) => void): Promise<void> {
+    this.messageBus = messageBus
+    this.logger = logger
 
-    context.logger.info(`[FeishuPlugin] Initializing with ${this.config.apps.length} app(s)`)
+    logger.info(`[FeishuPlugin] Initializing with ${this.config.apps.length} app(s)`)
 
     // 创建通道实例
     for (const appConfig of this.config.apps) {
-      const channel = new FeishuChannel(appConfig, context.messageBus, context.logger)
+      const channel = new FeishuChannel(appConfig, messageBus, logger)
       this.channels.set(channel.id, channel)
-      context.registerChannel(channel)
+      registerChannel(channel)
     }
 
-    context.logger.info(`[FeishuPlugin] Initialized successfully`)
+    logger.info(`[FeishuPlugin] Initialized successfully`)
   }
 
   /**
    * 激活插件
    */
   async activate(): Promise<void> {
-    if (!this.context) {
+    if (!this.messageBus || !this.logger) {
       throw new Error('Plugin not initialized')
     }
 
-    this.context.logger.info(`[FeishuPlugin] Activating...`)
+    this.logger.info(`[FeishuPlugin] Activating...`)
 
     // 启动所有通道的 WebSocket 连接
     for (const channel of this.channels.values()) {
@@ -68,30 +72,30 @@ export class FeishuPlugin implements IPlugin {
 
     // 订阅消息事件，转发到通用消息通道
     for (const [channelId] of this.channels) {
-      this.context.messageBus.subscribe(
+      this.messageBus.subscribe(
         `channel:${channelId}:message:received`,
         this.handleMessage.bind(this)
       )
     }
 
     // 订阅 Agent 响应，回复到飞书
-    this.context.messageBus.subscribe(
+    this.messageBus.subscribe(
       'message:response',
       this.handleResponse.bind(this)
     )
 
-    this.context.logger.info(`[FeishuPlugin] Activated successfully`)
+    this.logger.info(`[FeishuPlugin] Activated successfully`)
   }
 
   /**
    * 停用插件
    */
   async deactivate(): Promise<void> {
-    if (!this.context) {
+    if (!this.logger) {
       return
     }
 
-    this.context.logger.info(`[FeishuPlugin] Deactivating...`)
+    this.logger.info(`[FeishuPlugin] Deactivating...`)
 
     // 关闭所有通道的 WebSocket 连接
     for (const channel of this.channels.values()) {
@@ -100,7 +104,7 @@ export class FeishuPlugin implements IPlugin {
 
     this.channels.clear()
 
-    this.context.logger.info(`[FeishuPlugin] Deactivated successfully`)
+    this.logger.info(`[FeishuPlugin] Deactivated successfully`)
   }
 
   /**
@@ -108,11 +112,12 @@ export class FeishuPlugin implements IPlugin {
    */
   async destroy(): Promise<void> {
     await this.deactivate()
-    this.context = null
+    this.messageBus = null
+    this.logger = null
     this.config = null
   }
 
-  /**
+  /** 
    * 获取通道列表
    */
   getChannels(): IChannel[] {
@@ -130,19 +135,19 @@ export class FeishuPlugin implements IPlugin {
    * 处理消息事件
    */
   private handleMessage(message: unknown): void {
-    if (!this.context) return
+    if (!this.messageBus) return
 
     const data = (message as { payload: unknown }).payload
 
     // 发布到通用消息通道，供 Agent 处理
-    this.context.messageBus.publish('message:received', data)
+    this.messageBus.publish('message:received', data)
   }
 
   /**
    * 处理 Agent 响应，回复到飞书
    */
   private async handleResponse(message: unknown): Promise<void> {
-    if (!this.context) return
+    if (!this.logger) return
 
     const { channelId, chatId, content, type } = (message as { payload: unknown }).payload as {
       channelId?: string
@@ -155,20 +160,20 @@ export class FeishuPlugin implements IPlugin {
     // 根据 channelId 找到对应通道
     const channel = channelId ? this.channels.get(channelId) : undefined
     if (!channel) {
-      this.context.logger.warn(`[FeishuPlugin] No channel found for response, channelId=${channelId}`)
+      this.logger.warn(`[FeishuPlugin] No channel found for response, channelId=${channelId}`)
       return
     }
 
     if (!chatId) {
-      this.context.logger.warn(`[FeishuPlugin] No chatId in response, skipping`)
+      this.logger.warn(`[FeishuPlugin] No chatId in response, skipping`)
       return
     }
 
     try {
-      this.context.logger.info(`[FeishuPlugin] Sending reply to chat ${chatId}`)
+      this.logger.info(`[FeishuPlugin] Sending reply to chat ${chatId}`)
       await channel.send({ to: chatId, content, type: (type || 'markdown') as ChannelMessageType })
     } catch (error) {
-      this.context.logger.error(`[FeishuPlugin] Failed to send reply:`, error)
+      this.logger.error(`[FeishuPlugin] Failed to send reply:`, error)
     }
   }
 
@@ -197,11 +202,4 @@ export class FeishuPlugin implements IPlugin {
 
     return config as unknown as FeishuPluginConfig
   }
-}
-
-/**
- * 创建飞书插件实例
- */
-export function createFeishuPlugin(): FeishuPlugin {
-  return new FeishuPlugin()
 }

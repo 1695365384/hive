@@ -24,11 +24,11 @@ export {
   type IMessageBus,
   type ILogger,
   noopLogger,
-  type PluginContext,
 
   // 插件接口
   type PluginMetadata,
   type IPlugin,
+  type IPluginConstructor,
 
   // 插件加载
   type PluginLoadOptions,
