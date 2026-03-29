@@ -15,7 +15,7 @@ import type {
   IScheduleEngine,
   IScheduleRepository,
 } from './types.js';
-import { isValidCron, computeNextRunAtMs } from './cron-utils.js';
+import { isValidCron, computeNextRunAtMs, timestampToCron } from './cron-utils.js';
 
 const DEFAULT_SHUTDOWN_TIMEOUT = 30000;
 const DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -32,19 +32,6 @@ class CronHandle implements SchedulerHandle {
   stop() { this.task.stop(); }
 }
 
-/** Interval 调度器句柄 */
-class IntervalHandle implements SchedulerHandle {
-  private timer: NodeJS.Timeout;
-  constructor(timer: NodeJS.Timeout) { this.timer = timer; }
-  stop() { clearInterval(this.timer); }
-}
-
-/** Timeout 调度器句柄 */
-class TimeoutHandle implements SchedulerHandle {
-  private timer: NodeJS.Timeout;
-  constructor(timer: NodeJS.Timeout) { this.timer = timer; }
-  stop() { clearTimeout(this.timer); }
-}
 
 /**
  * ScheduleEngine 实现
@@ -174,7 +161,10 @@ export class ScheduleEngine implements IScheduleEngine {
   }
 
   /**
-   * 根据调度模式注册调度器
+   * 根据调度模式注册调度器（统一使用 cron）
+   * - at: 转换 runAt 为绝对时间 cron，触发一次后由 executeSchedule 处理删除
+   * - every: 转换 nextRunAt（计算后的下次执行时间）为 cron，触发后重新计算并再注册
+   * - cron: 直接使用 cron 表达式
    */
   private registerTask(schedule: Schedule): void {
     const execute = () => {
@@ -186,8 +176,18 @@ export class ScheduleEngine implements IScheduleEngine {
     switch (schedule.scheduleKind) {
       case 'every': {
         if (!schedule.intervalMs || schedule.intervalMs <= 0) return;
-        const timer = setInterval(execute, schedule.intervalMs);
-        this.tasks.set(schedule.id, new IntervalHandle(timer));
+        // 计算下次执行时间：当前时间 + interval
+        const nextRunAtMs = Date.now() + schedule.intervalMs;
+        const cron = timestampToCron(nextRunAtMs);
+        const task = cronSchedule(cron, () => {
+          // 触发后重新计算下次时间、更新数据库、再注册
+          this.rescheduleEveryTask(schedule.id, schedule.intervalMs!).catch(() => {
+            // 错误已在 rescheduleEveryTask 内部处理
+          });
+          execute();
+        });
+        task.start();
+        this.tasks.set(schedule.id, new CronHandle(task));
         break;
       }
       case 'at': {
@@ -196,9 +196,10 @@ export class ScheduleEngine implements IScheduleEngine {
           runAt: schedule.runAt,
         });
         if (nextMs == null) return; // 已过期，不注册
-        const delay = nextMs - Date.now();
-        const timer = setTimeout(execute, delay);
-        this.tasks.set(schedule.id, new TimeoutHandle(timer));
+        const cron = timestampToCron(nextMs);
+        const task = cronSchedule(cron, execute);
+        task.start();
+        this.tasks.set(schedule.id, new CronHandle(task));
         break;
       }
       case 'cron':
@@ -210,6 +211,21 @@ export class ScheduleEngine implements IScheduleEngine {
         break;
       }
     }
+  }
+
+  /**
+   * 重新计算 every 任务的下次执行时间，更新数据库，并重新注册 cron
+   */
+  private async rescheduleEveryTask(scheduleId: string, intervalMs: number): Promise<void> {
+    const schedule = await this.repository.findById(scheduleId);
+    if (!schedule || !schedule.enabled) return;
+
+    const nextRunAt = new Date(Date.now() + intervalMs);
+    await this.repository.update(scheduleId, { nextRunAt });
+
+    // 重新注册（先停止旧的）
+    this.pauseTask(scheduleId);
+    this.registerTask({ ...schedule, nextRunAt });
   }
 
   /**
@@ -252,8 +268,9 @@ export class ScheduleEngine implements IScheduleEngine {
           completedAt: new Date(),
         });
 
-        // 重置连续失败计数
-        await this.repository.update(schedule.id, { consecutiveErrors: 0 });
+        // 更新上次执行时间（at 任务会删除，every 任务会被 rescheduleEveryTask 覆盖 nextRunAt）
+        const lastRunAt = new Date();
+        await this.repository.update(schedule.id, { consecutiveErrors: 0, lastRunAt });
 
         // 一次性任务执行成功后自动删除
         if (schedule.deleteAfterRun) {

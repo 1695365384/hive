@@ -46,6 +46,20 @@ export function isValidCron(expression: string): boolean {
 }
 
 /**
+ * 将绝对时间戳转换为 cron 表达式（5 字段格式）
+ * 用于将 at/every 的绝对时间转换为可注册的 cron 表达式
+ */
+export function timestampToCron(ts: number): string {
+  const d = new Date(ts);
+  const minute = d.getMinutes();
+  const hour = d.getHours();
+  const day = d.getDate();
+  const month = d.getMonth() + 1;
+  // day-of-week 使用 *（不限制），因为我们用绝对日期
+  return `${minute} ${hour} ${day} ${month} *`;
+}
+
+/**
  * 获取 cron 表达式的下次执行时间
  * 通过临时调度获取下次触发时间
  */
