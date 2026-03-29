@@ -4,8 +4,8 @@
  * 提供核心三代理便捷方法
  */
 
-import type { AgentCapability, AgentContext, AgentResult, ThoroughnessLevel, AgentType } from '../core/types.js';
-import { AGENT_NAMES } from '../core/agents.js';
+import type { AgentCapability, AgentContext, AgentExecuteOptions, AgentResult, ThoroughnessLevel, AgentType } from '../core/types.js';
+import { AGENT_NAMES, CORE_AGENTS } from '../core/agents.js';
 import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
 
 /**
@@ -34,10 +34,11 @@ export class SubAgentCapability implements AgentCapability {
   /**
    * 使用 Explore Agent 探索代码库
    */
-  async explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium'): Promise<string> {
+  async explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium', options?: AgentExecuteOptions): Promise<string> {
     const result = await this.runWithHooks(
       AGENT_NAMES.EXPLORE,
-      buildExplorePrompt(prompt, thoroughness)
+      buildExplorePrompt(prompt, thoroughness),
+      { ...options, tools: options?.tools ?? CORE_AGENTS.explore.tools as string[] }
     );
     return result.text;
   }
@@ -45,10 +46,11 @@ export class SubAgentCapability implements AgentCapability {
   /**
    * 使用 Plan Agent 研究代码库
    */
-  async plan(prompt: string): Promise<string> {
+  async plan(prompt: string, options?: AgentExecuteOptions): Promise<string> {
     const result = await this.runWithHooks(
       AGENT_NAMES.PLAN,
-      buildPlanPrompt(prompt)
+      buildPlanPrompt(prompt),
+      { ...options, tools: options?.tools ?? CORE_AGENTS.plan.tools as string[] }
     );
     return result.text;
   }
@@ -64,14 +66,14 @@ export class SubAgentCapability implements AgentCapability {
   /**
    * 运行指定子 Agent（带 Hooks）
    */
-  async run(name: AgentType, prompt: string): Promise<AgentResult> {
-    return this.runWithHooks(name, prompt);
+  async run(name: AgentType, prompt: string, options?: AgentExecuteOptions): Promise<AgentResult> {
+    return this.runWithHooks(name, prompt, options);
   }
 
   /**
    * 内部方法：带 Hook 触发的 Agent 执行
    */
-  private async runWithHooks(agentName: string, prompt: string): Promise<AgentResult> {
+  private async runWithHooks(agentName: string, prompt: string, options?: AgentExecuteOptions): Promise<AgentResult> {
     const startTime = Date.now();
 
     // 触发 agent:spawn hook
@@ -83,7 +85,7 @@ export class SubAgentCapability implements AgentCapability {
     });
 
     try {
-      const result = await this.context.runner.execute(agentName as AgentType, prompt);
+      const result = await this.context.runner.execute(agentName as AgentType, prompt, options);
       const duration = Date.now() - startTime;
 
       // 触发 agent:complete hook

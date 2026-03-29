@@ -172,8 +172,12 @@ export class Scheduler extends EventEmitter {
   private async routeToAgent(info: AgentInfo, message: BusMessage): Promise<void> {
     const agent = info.agent;
 
-    // Try different methods to send message to agent
-    if (typeof agent.chat === 'function') {
+    // Prefer dispatch (unified entry), fallback to chat, then sendMessage
+    if (typeof agent.dispatch === 'function') {
+      const payload = message.payload as { content?: string; text?: string };
+      const prompt = payload?.content ?? payload?.text ?? JSON.stringify(message.payload);
+      await agent.dispatch(prompt);
+    } else if (typeof agent.chat === 'function') {
       const payload = message.payload as { content?: string; text?: string };
       const prompt = payload?.content ?? payload?.text ?? JSON.stringify(message.payload);
       await agent.chat(prompt);

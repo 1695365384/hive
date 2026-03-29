@@ -52,6 +52,7 @@ describe('Provider Adapters', () => {
       expect(isKnownProvider('deepseek')).toBe(true);
       expect(isKnownProvider('glm')).toBe(true);
       expect(isKnownProvider('qwen')).toBe(true);
+      expect(isKnownProvider('ernie')).toBe(true);
       expect(isKnownProvider('unknown-provider')).toBe(false);
     });
   });
@@ -62,6 +63,7 @@ describe('Provider Adapters', () => {
       expect(getProviderType('anthropic')).toBe('anthropic');
       expect(getProviderType('google')).toBe('google');
       expect(getProviderType('deepseek')).toBe('openai-compatible');
+      expect(getProviderType('ernie')).toBe('openai-compatible');
     });
   });
 

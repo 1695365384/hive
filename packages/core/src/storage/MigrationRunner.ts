@@ -111,8 +111,16 @@ export class MigrationRunner {
     let applied = 0;
     for (const migration of migrations) {
       if (migration.version > currentVersion) {
-        await this.runMigration(migration);
-        applied++;
+        try {
+          await this.runMigration(migration);
+          applied++;
+        } catch (err: unknown) {
+          // Skip if migration was already applied (concurrent access / shared DB)
+          if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+            continue;
+          }
+          throw err;
+        }
       }
     }
 
@@ -140,7 +148,7 @@ export const REGISTERED_MIGRATIONS: Migration[] = [];
 export function registerMigration(migration: Migration): void {
   const existing = REGISTERED_MIGRATIONS.find(m => m.version === migration.version);
   if (existing) {
-    throw new Error(`Migration version ${migration.version} already registered`);
+    return; // Already registered, skip (idempotent)
   }
   REGISTERED_MIGRATIONS.push(migration);
   REGISTERED_MIGRATIONS.sort((a, b) => a.version - b.version);

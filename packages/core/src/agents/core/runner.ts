@@ -212,9 +212,13 @@ export class AgentRunner {
       }
     }
 
-    // 构建环境变量
+    // 构建最小化环境变量
     const provider = this.providerManager.getActiveProvider();
-    const envVars: Record<string, string | undefined> = { ...process.env };
+    const envVars: Record<string, string | undefined> = {
+      HOME: process.env.HOME,
+      PATH: process.env.PATH,
+      NODE_ENV: process.env.NODE_ENV,
+    };
     if (provider) {
       envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
       if (provider.apiKey) {
@@ -229,7 +233,7 @@ export class AgentRunner {
       model,
       systemPrompt,
       env: envVars,
-      permissionMode: 'bypassPermissions',
+      permissionMode: 'default',
     };
 
     try {
@@ -420,7 +424,7 @@ export class AgentRunner {
 
     return {
       cwd: options?.cwd,
-      tools: config.tools || options?.allowedTools,
+      tools: options?.tools || config.tools,
       maxTurns: config.maxTurns || options?.maxTurns || 10,
       model: config.model || options?.model,
       systemPrompt: config.prompt,

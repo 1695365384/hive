@@ -429,4 +429,59 @@ describe('SessionManager', () => {
       expect(manager.getMessages().length).toBe(1);
     });
   });
+
+  describe('Trace Persistence', () => {
+    it('should save and retrieve trace events', async () => {
+      await manager.createSession();
+
+      const trace = [
+        { timestamp: Date.now(), type: 'dispatch.start' as const },
+        { timestamp: Date.now(), type: 'dispatch.route' as const, layer: 'chat' as const },
+        { timestamp: Date.now(), type: 'dispatch.complete' as const, layer: 'chat' as const, duration: 1234 },
+      ];
+
+      await manager.saveTrace(trace);
+
+      const traces = manager.getTraces();
+      expect(traces.length).toBe(1);
+      expect(traces[0]).toEqual(trace);
+    });
+
+    it('should accumulate multiple traces', async () => {
+      await manager.createSession();
+
+      await manager.saveTrace([
+        { timestamp: 1, type: 'dispatch.start' as const },
+      ]);
+      await manager.saveTrace([
+        { timestamp: 2, type: 'dispatch.start' as const },
+      ]);
+
+      const traces = manager.getTraces();
+      expect(traces.length).toBe(2);
+    });
+
+    it('should return empty array when no session', () => {
+      const traces = manager.getTraces();
+      expect(traces).toEqual([]);
+    });
+
+    it('should return empty array when no traces saved', async () => {
+      await manager.createSession();
+      const traces = manager.getTraces();
+      expect(traces).toEqual([]);
+    });
+
+    it('should handle corrupted trace data gracefully', async () => {
+      await manager.createSession();
+
+      // Directly inject corrupted data via updateMetadata
+      await manager.updateMetadata({
+        dispatch_traces: 'not-valid-json' as unknown as string,
+      });
+
+      const traces = manager.getTraces();
+      expect(traces).toEqual([]);
+    });
+  });
 });

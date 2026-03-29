@@ -66,6 +66,7 @@ export {
   getKnownProviders,
   getKnownProvidersSync,
   isKnownProvider,
+  preprocessParams,
   adapterRegistry,
 } from './adapters/index.js';
 

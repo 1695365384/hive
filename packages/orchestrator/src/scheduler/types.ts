@@ -19,6 +19,8 @@ export interface AgentLike {
   };
   /** Chat method for sending messages */
   chat?: (prompt: string) => Promise<unknown>;
+  /** Dispatch method for smart routing */
+  dispatch?: (prompt: string, options?: Record<string, unknown>) => Promise<{ text: string }>;
   /** Alternative message handler */
   sendMessage?: (msg: unknown) => Promise<unknown>;
 }

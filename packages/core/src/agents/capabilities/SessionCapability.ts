@@ -13,6 +13,7 @@ import type {
   CreateMessageOptions,
   CompressionState,
 } from '../../session/types.js';
+import type { DispatchTraceEvent } from '../dispatch/types.js';
 import { SessionManager } from '../../session/SessionManager.js';
 import { DatabaseManager, createDatabase } from '../../storage/Database.js';
 import { SessionRepository, createSessionRepository } from '../../storage/SessionRepository.js';
@@ -268,6 +269,14 @@ export class SessionCapability implements AgentCapability {
   async compressIfNeeded(): Promise<CompressionState | null> {
     const sm = await this.requireSessionManager();
     return sm.compressIfNeeded();
+  }
+
+  /**
+   * 保存 dispatch trace 事件
+   */
+  async saveTrace(trace: DispatchTraceEvent[]): Promise<void> {
+    const sm = await this.requireSessionManager();
+    return sm.saveTrace(trace);
   }
 
   /**

@@ -285,7 +285,7 @@ async function handleCommand(line: string): Promise<boolean> {
         console.log(`  ID: ${provider.id}`);
         console.log(`  名称: ${provider.name}`);
         console.log(`  Base URL: ${provider.baseUrl}`);
-        console.log(`  API Key: ${provider.apiKey ? provider.apiKey.substring(0, 10) + '...' : '(未设置)'}`);
+        console.log(`  API Key: ${provider.apiKey ? '(已配置)' : '(未设置)'}`);
         console.log(`  Model: ${provider.model || '(默认)'}`);
       } else {
         console.log('  未配置提供商');

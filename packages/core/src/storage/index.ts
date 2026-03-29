@@ -28,6 +28,13 @@ export {
   type MemoryEntry
 } from './MemoryRepository.js';
 
+export {
+  ScheduleRepository,
+  createScheduleRepository,
+} from './ScheduleRepository.js';
+
+export type { IScheduleRepository } from '../scheduler/types.js';
+
 // Row types (for consumers extending storage)
 export type {
   SessionRow,

@@ -113,6 +113,8 @@ export interface AgentOptions {
   onTool?: (toolName: string, input?: unknown) => void;
   /** 回调：错误 */
   onError?: (error: Error) => void;
+  /** SDK 权限模式（默认 'default'） */
+  permissionMode?: 'default' | 'bypassPermissions';
 }
 
 // ============================================

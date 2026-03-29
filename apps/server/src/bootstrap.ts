@@ -4,9 +4,10 @@
  * Initializes all core modules and returns a ready-to-use application context.
  */
 
-import { createAgent, type Agent, type IPlugin, type ILogger, type ChannelMessage } from '@hive/core'
+import { createAgent, type Agent, type IPlugin, type ILogger, type ChannelMessage, createScheduleEngine, createScheduleRepository, type ScheduleEngine } from '@hive/core'
 import { MessageBus } from '@hive/orchestrator'
 import { HeartbeatScheduler } from './heartbeat-scheduler.js'
+import { resolve } from 'path'
 import type { ServerConfig } from './config.js'
 
 export interface HiveContext {
@@ -20,10 +21,38 @@ export interface HiveContext {
   plugins: IPlugin[]
   /** Heartbeat scheduler */
   heartbeatScheduler: HeartbeatScheduler | null
+  /** Schedule engine for cron tasks */
+  scheduleEngine: ScheduleEngine | null
 }
 
 export interface BootstrapOptions {
   config: ServerConfig
+}
+
+// ============================================
+// Session → Channel 映射（用于 last 推送策略）
+// ============================================
+
+const SESSION_CHANNEL_MAP_MAX_SIZE = 10000
+const sessionChannelMap = new Map<string, { channelId: string; chatId: string }>()
+
+/**
+ * 添加 session→channel 映射，超过上限时淘汰最早的条目
+ */
+function setSessionChannelMapping(sessionId: string, channelId: string, chatId: string): void {
+  if (sessionChannelMap.size >= SESSION_CHANNEL_MAP_MAX_SIZE) {
+    const firstKey = sessionChannelMap.keys().next().value
+    if (firstKey !== undefined) sessionChannelMap.delete(firstKey)
+  }
+  sessionChannelMap.set(sessionId, { channelId, chatId })
+}
+
+/**
+ * 添加 schedule→channel 映射（定时任务创建时记录）
+ */
+function setScheduleChannelMapping(scheduleId: string, channelId: string, chatId: string): void {
+  // 复用 sessionChannelMap，以 scheduleId 为 key
+  sessionChannelMap.set(`schedule:${scheduleId}`, { channelId, chatId })
 }
 
 /**
@@ -44,6 +73,12 @@ function createLogger(level: string): ILogger {
 /**
  * Load a plugin by name
  */
+function isValidPluginPath(name: string): boolean {
+  if (name.startsWith('/') || name.startsWith('.')) return false;
+  if (name.includes('..')) return false;
+  return /^[a-z0-9@/._-]+$/i.test(name);
+}
+
 async function loadPlugin(
   pluginName: string,
   pluginConfig: Record<string, unknown>,
@@ -53,10 +88,12 @@ async function loadPlugin(
   try {
     logger.info(`[bootstrap] Loading plugin: ${pluginName}`)
 
-    // Dynamic import the plugin module
-    const module = await import(pluginName)
+    if (!isValidPluginPath(pluginName)) {
+      logger.warn(`[bootstrap] Plugin path rejected (invalid format): ${pluginName}`)
+      return null
+    }
 
-    // Get the plugin factory function
+    const module = await import(pluginName)
     const factory = module.default || module.createPlugin || module[Object.keys(module)[0]]
 
     if (typeof factory !== 'function') {
@@ -64,10 +101,8 @@ async function loadPlugin(
       return null
     }
 
-    // Create plugin instance
     const plugin = factory()
 
-    // Initialize plugin
     await plugin.initialize({
       messageBus: bus,
       logger,
@@ -86,14 +121,40 @@ async function loadPlugin(
   }
 }
 
+// ============================================
+// 推送通知辅助函数
+// ============================================
+
+/**
+ * 解析推送目标
+ * 支持 channel='last' 策略（先查 session 映射，再查 schedule 映射）
+ */
+function resolveNotifyTarget(notifyConfig: { channel?: string; to?: string }, contextId?: string): { channelId: string; chatId: string } | null {
+  if (!notifyConfig.channel && !notifyConfig.to) return null
+
+  if (notifyConfig.channel === 'last') {
+    if (contextId) {
+      const mapping = sessionChannelMap.get(contextId)
+      if (mapping) return mapping
+      const scheduleMapping = sessionChannelMap.get(`schedule:${contextId}`)
+      if (scheduleMapping) return scheduleMapping
+    }
+    return null
+  }
+
+  if (notifyConfig.channel && notifyConfig.to) {
+    return { channelId: notifyConfig.channel, chatId: notifyConfig.to }
+  }
+
+  return null
+}
+
+// ============================================
+// Bootstrap
+// ============================================
+
 /**
  * Bootstrap the Hive server
- *
- * This function initializes all core modules in the correct order:
- * 1. MessageBus - event-driven communication
- * 2. Create main agent
- * 3. Load plugins
- * 4. Activate plugins
  */
 export async function bootstrap(options: BootstrapOptions): Promise<HiveContext> {
   const { config } = options
@@ -118,7 +179,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     },
   })
 
-  // Initialize agent
   logger.info('[bootstrap] Initializing agent...')
   await agent.initialize()
 
@@ -152,12 +212,83 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     logger.info(`[bootstrap] Heartbeat scheduler started (interval: ${config.heartbeat.intervalMs}ms)`)
   }
 
-  // 桥接：通道消息 → Agent 处理 → 回复
+  // Initialize schedule engine
+  let scheduleEngine: ScheduleEngine | null = null
+  try {
+    const { createDatabase: createDb } = await import('@hive/core')
+    const dbManager = createDb({ dbPath: resolve(process.cwd(), '.hive/hive.db') })
+    await dbManager.initialize()
+    const scheduleRepo = createScheduleRepository(dbManager.getDb())
+
+    scheduleEngine = createScheduleEngine(scheduleRepo, async ({ schedule: task }) => {
+      logger.info(`[scheduler] Executing schedule: ${task.name}`)
+      try {
+        const result = await agent.chat(task.prompt, {
+          sessionId: undefined,
+        })
+        const sessionId = agent.context.hookRegistry.getSessionId()
+        logger.info(`[scheduler] Schedule "${task.name}" completed, session: ${sessionId}`)
+
+        // 发送 schedule:completed 事件
+        bus.emit('schedule:completed', {
+          scheduleId: task.id,
+          result: result,
+          status: 'success',
+          consecutiveErrors: 0,
+          notifyConfig: task.notifyConfig,
+          scheduleName: task.name,
+        })
+
+        return { sessionId, success: true }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        logger.error(`[scheduler] Schedule "${task.name}" failed: ${msg}`)
+
+        // 发送 schedule:completed 事件（失败）
+        // 注意：circuit-break 由 ScheduleEngine 内部处理，bootstrap 不重复
+        bus.emit('schedule:completed', {
+          scheduleId: task.id,
+          result: undefined,
+          status: 'failed',
+          consecutiveErrors: (task.consecutiveErrors ?? 0) + 1,
+          notifyConfig: task.notifyConfig,
+          scheduleName: task.name,
+        })
+
+        return { sessionId: '', success: false, error: msg }
+      }
+    }, {
+      onCircuitBreak: (event) => {
+        logger.warn(`[schedule:circuit-break] Task "${event.name}" paused after ${event.consecutiveErrors} consecutive failures`)
+        bus.emit('schedule:circuit-break', event)
+      },
+    })
+
+    const taskCount = await scheduleEngine.start()
+    logger.info(`[bootstrap] Schedule engine started (${taskCount} tasks loaded)`)
+  } catch (error) {
+    logger.warn(`[bootstrap] Schedule engine not available: ${error instanceof Error ? error.message : error}`)
+  }
+
+  // ============================================
+  // Subscriber: message:received
+  // 记录 session → channel 映射 + Agent 处理
+  // ============================================
   bus.subscribe('message:received', async (message: { payload: unknown }) => {
     const channelMessage = message.payload as ChannelMessage
     logger.info(`[bootstrap] Message received, dispatching to agent: ${channelMessage.content.slice(0, 50)}`)
 
-    // 根据入站消息类型决定回复格式：卡片→卡片，其他→markdown
+    // 记录 session → channel 映射（用于 last 推送策略）
+    const sessionId = channelMessage.metadata?.sessionId as string | undefined
+    const channelId = channelMessage.metadata?.channelId as string | undefined
+    if (sessionId && channelId && channelMessage.to?.id) {
+      setSessionChannelMapping(
+        sessionId,
+        channelId,
+        channelMessage.to.id,
+      )
+    }
+
     const replyType = channelMessage.type === 'card' ? 'card' : 'markdown'
 
     try {
@@ -174,7 +305,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
         },
       })
 
-      // 提取回复文本
       const replyText = result.executeResult?.text
         || (result.success ? `任务完成：${result.analysis?.type || 'simple'}` : `任务失败：${result.error || '未知错误'}`)
 
@@ -199,12 +329,77 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     }
   })
 
+  // ============================================
+  // Subscriber: schedule:completed
+  // 将执行结果推送到目标 Channel
+  // ============================================
+  bus.subscribe('schedule:completed', async (event: { payload: unknown }) => {
+    const payload = event.payload as {
+      scheduleId: string;
+      result?: string;
+      status: 'success' | 'failed';
+      consecutiveErrors: number;
+      notifyConfig?: { mode: string; channel?: string; to?: string; bestEffort?: boolean };
+      scheduleName: string;
+    }
+
+    if (!payload.notifyConfig || payload.notifyConfig.mode === 'none') {
+      return // 不推送
+    }
+
+    if (payload.notifyConfig.mode !== 'announce') {
+      return
+    }
+
+    const target = resolveNotifyTarget(payload.notifyConfig, payload.scheduleId)
+
+    if (!target) {
+      if (payload.notifyConfig.bestEffort) {
+        logger.info(`[schedule:notify] Target not found, bestEffort skip: ${payload.scheduleName}`)
+        return // 静默跳过
+      }
+      logger.warn(`[schedule:notify] Target not found for: ${payload.scheduleName}`)
+      return
+    }
+
+    const statusEmoji = payload.status === 'success' ? '✅' : '❌'
+    const content = `${statusEmoji} 定时任务「${payload.scheduleName}」执行${payload.status === 'success' ? '成功' : '失败'}\n${payload.result ? `\n${payload.result}` : ''}`
+
+    bus.publish('message:response', {
+      channelId: target.channelId,
+      chatId: target.chatId,
+      content,
+      type: 'markdown',
+    })
+
+    logger.info(`[schedule:notify] Pushed result to ${target.channelId}/${target.chatId}: ${payload.scheduleName}`)
+  })
+
+  // ============================================
+  // Subscriber: schedule:circuit-break
+  // 连续失败熔断通知
+  // ============================================
+  bus.subscribe('schedule:circuit-break', async (event: { payload: unknown }) => {
+    const payload = event.payload as {
+      scheduleId: string;
+      name: string;
+      consecutiveErrors: number;
+    }
+
+    logger.warn(`[schedule:circuit-break] Task "${payload.name}" paused after ${payload.consecutiveErrors} consecutive failures`)
+
+    // 尝试推送到 last channel
+    // 目前 circuit-break 通知没有 notifyConfig，暂用日志记录
+    // 未来可扩展：读取任务的 notifyConfig 进行推送
+  })
+
   return {
     bus,
     agent,
     config,
     plugins,
     heartbeatScheduler,
+    scheduleEngine,
   }
 }
 
@@ -214,12 +409,15 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
 export async function shutdown(ctx: HiveContext): Promise<void> {
   console.log('[shutdown] Starting graceful shutdown...')
 
-  // Stop heartbeat scheduler
   if (ctx.heartbeatScheduler) {
     ctx.heartbeatScheduler.stop()
   }
 
-  // Deactivate plugins
+  if (ctx.scheduleEngine) {
+    await ctx.scheduleEngine.stop()
+    console.log('[shutdown] Schedule engine stopped')
+  }
+
   for (const plugin of ctx.plugins) {
     try {
       await plugin.deactivate()

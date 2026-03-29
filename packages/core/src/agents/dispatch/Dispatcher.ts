@@ -13,7 +13,9 @@ import type {
   ExecutionLayer,
 } from './types.js';
 import type { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
+import type { SessionCapability } from '../capabilities/SessionCapability.js';
 import { classifyForDispatch, regexClassify } from './classifier.js';
+import { getModelPricing } from '../../providers/metadata/pricing.js';
 
 const VALID_LAYERS: ReadonlySet<string> = new Set(['chat', 'workflow']);
 
@@ -52,6 +54,7 @@ export class Dispatcher {
         success: false,
         duration: Date.now() - startTime,
         error: 'Task is empty',
+        trace,
       };
     }
 
@@ -99,9 +102,10 @@ export class Dispatcher {
         timestamp: Date.now(),
         type: 'dispatch.complete',
         layer: result.layer,
+        duration: result.duration,
       });
 
-      return result;
+      return { ...result, trace };
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
 
@@ -119,7 +123,7 @@ export class Dispatcher {
       options?.onPhase?.('fallback', `Routing failed, falling back to chat: ${errMsg}`);
 
       try {
-        return await this.executeChat(task, classification, startTime, options);
+        return { ...(await this.executeChat(task, classification, startTime, options)), trace };
       } catch (chatError) {
         return {
           layer: 'chat',
@@ -128,7 +132,20 @@ export class Dispatcher {
           success: false,
           duration: Date.now() - startTime,
           error: chatError instanceof Error ? chatError.message : String(chatError),
+          trace,
         };
+      }
+    } finally {
+      // 持久化 trace 到 SessionManager（best-effort）
+      if (trace.length > 0) {
+        try {
+          const sessionCap = this.context.getSessionCap?.();
+          if (sessionCap) {
+            await sessionCap.saveTrace(trace);
+          }
+        } catch {
+          // trace persistence is best-effort
+        }
       }
     }
   }
@@ -162,7 +179,8 @@ export class Dispatcher {
 
       options?.onPhase?.('classify', `LLM confidence low (${classification.confidence}), using regex fallback`);
       return regexClassify(task);
-    } catch {
+    } catch (error) {
+      console.debug(`[dispatcher] LLM classification failed, using regex fallback: ${error instanceof Error ? error.message : error}`);
       return regexClassify(task);
     }
   }
@@ -190,14 +208,45 @@ export class Dispatcher {
         error: 'Chat capability not available',
       };
     }
-    const text = await chatCap.send(task);
+    const text = await chatCap.send(task, {
+      cwd: options?.cwd,
+      onText: options?.onText,
+      onTool: options?.onTool,
+    });
 
+    const modelId = this.context.getActiveProvider()?.model;
     return {
       layer: 'chat',
       classification,
       text,
       success: true,
       duration: Date.now() - startTime,
+      cost: this.calculateCost(undefined, modelId),
+    };
+  }
+
+  // ============================================
+  // Cost calculation
+  // ============================================
+
+  private calculateCost(
+    usage: { input: number; output: number } | undefined,
+    modelId: string | undefined,
+  ): { input: number; output: number; total: number } | undefined {
+    if (!usage || !modelId) {
+      return undefined;
+    }
+    const pricing = getModelPricing(modelId);
+    if (!pricing) {
+      return undefined;
+    }
+    // pricing is per 1M tokens, usage is in tokens
+    const inputCost = (usage.input / 1_000_000) * pricing.input;
+    const outputCost = (usage.output / 1_000_000) * pricing.output;
+    return {
+      input: inputCost,
+      output: outputCost,
+      total: inputCost + outputCost,
     };
   }
 
@@ -224,16 +273,25 @@ export class Dispatcher {
     const result = await workflowCap.run(task, {
       cwd: options?.cwd,
       onPhase: options?.onPhase,
+      onText: options?.onText,
+      onTool: options?.onTool,
     });
+
+    const modelId = this.context.getActiveProvider()?.model;
 
     return {
       layer: 'workflow',
       classification,
-      text: result.executeResult?.text ?? '',
+      text: result.executeResult?.text ?? result.exploreResult?.text ?? '',
       success: result.success,
       duration: Date.now() - startTime,
       usage: result.executeResult?.usage,
+      cost: this.calculateCost(result.executeResult?.usage, modelId),
       error: result.error,
+      analysis: result.analysis,
+      exploreResult: result.exploreResult,
+      executionPlan: result.executionPlan,
+      executeResult: result.executeResult,
     };
   }
 }

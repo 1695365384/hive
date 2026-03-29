@@ -109,6 +109,8 @@ describe('WorkflowCapability', () => {
       `);
 
       expect(analysis.type).toBe('moderate');
+      expect(analysis.needsExploration).toBe(true);
+      expect(analysis.needsPlanning).toBe(true);
     });
 
     it('should return moderate for complex-looking single questions', () => {
@@ -178,18 +180,19 @@ describe('WorkflowCapability', () => {
       );
     });
 
-    it('should call onTool callback', async () => {
-      await capability.run('Test task', {
-        onTool: () => {},
-      });
-
-      expect(context.runner.execute).toHaveBeenCalledWith(
-        'general',
-        expect.any(String),
-        expect.objectContaining({
-          onTool: expect.any(Function),
-        })
+    it('should invoke onTool callback during execution', async () => {
+      vi.mocked(context.runner.execute).mockImplementation(
+        async (_agent: string, _prompt: string, opts?: any) => {
+          opts?.onTool?.('Read', { file_path: '/test.ts' });
+          return mockAgentResult;
+        }
       );
+      const tools: Array<{ name: string; input: unknown }> = [];
+      await capability.run('Test task', {
+        onTool: (name, input) => tools.push({ name, input }),
+      });
+      expect(tools.length).toBeGreaterThan(0);
+      expect(tools[0].name).toBe('Read');
     });
 
     it('should use cwd option', async () => {
@@ -529,7 +532,7 @@ describe('WorkflowCapability', () => {
 
       // Should continue to execute even if plan fails
       expect(result.exploreResult!.success).toBe(true);
-      expect(result.executionPlan).toBeUndefined();
+      expect(result.executionPlan).toContain('规划失败');
       expect(result.executeResult).toBeDefined();
       expect(result.success).toBe(true);
     });
@@ -583,6 +586,118 @@ describe('WorkflowCapability', () => {
 
       expect(mockSubAgentCap.explore).not.toHaveBeenCalled();
       expect(mockSubAgentCap.plan).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================
+  // 自动压缩测试
+  // ============================================
+
+  describe('自动压缩', () => {
+    it('should call compressIfNeeded after explore and plan phases', async () => {
+      const mockCompressIfNeeded = vi.fn();
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Found files'),
+        plan: vi.fn(async () => 'Plan details'),
+        initialize: vi.fn(),
+      };
+
+      // Set up context with SessionCapability
+      (context as any).getSessionCap = vi.fn(() => ({
+        compressIfNeeded: mockCompressIfNeeded,
+      }));
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      await capability.run('Implement a feature');
+
+      // compressIfNeeded should be called twice: after explore and after plan
+      expect(mockCompressIfNeeded).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not throw when SessionCapability is not available', async () => {
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Found files'),
+        plan: vi.fn(async () => 'Plan details'),
+        initialize: vi.fn(),
+      };
+
+      // getSessionCap returns null
+      (context as any).getSessionCap = vi.fn(() => null);
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      // Should not throw
+      const result = await capability.run('Implement a feature');
+      expect(result.success).toBe(true);
+    });
+
+    it('should not throw when getSessionCap is undefined', async () => {
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Found files'),
+        plan: vi.fn(async () => 'Plan details'),
+        initialize: vi.fn(),
+      };
+
+      // getSessionCap is not defined at all
+      delete (context as any).getSessionCap;
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      const result = await capability.run('Implement a feature');
+      expect(result.success).toBe(true);
+    });
+
+    it('should not block workflow when compression throws', async () => {
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Found files'),
+        plan: vi.fn(async () => 'Plan details'),
+        initialize: vi.fn(),
+      };
+
+      (context as any).getSessionCap = vi.fn(() => ({
+        compressIfNeeded: vi.fn().mockRejectedValue(new Error('Compression failed')),
+      }));
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      // Should not throw even if compression fails
+      const result = await capability.run('Implement a feature');
+      expect(result.success).toBe(true);
+    });
+
+    it('should not compress for simple tasks', async () => {
+      const mockCompressIfNeeded = vi.fn();
+
+      (context as any).getSessionCap = vi.fn(() => ({
+        compressIfNeeded: mockCompressIfNeeded,
+      }));
+
+      // Simple task - no subAgent needed
+      await capability.run('What is TypeScript?');
+
+      // compressIfNeeded should NOT be called for simple tasks
+      expect(mockCompressIfNeeded).not.toHaveBeenCalled();
     });
   });
 });

@@ -71,6 +71,15 @@ const STATIC_PROVIDERS: Record<string, ProviderInfo> = {
     envKeys: ['MOONSHOT_API_KEY', 'KIMI_API_KEY'],
     npmPackage: '@ai-sdk/openai-compatible',
   },
+  ernie: {
+    providerId: 'ernie',
+    name: 'ERNIE (文心一言)',
+    baseUrl: 'https://aip.baidubce.com',
+    defaultModel: 'ernie-4.0-8k',
+    type: 'openai-compatible',
+    envKeys: ['ERNIE_API_KEY'],
+    npmPackage: '@ai-sdk/openai-compatible',
+  },
   openrouter: {
     providerId: 'openrouter',
     name: 'OpenRouter',

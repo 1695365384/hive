@@ -90,6 +90,7 @@ export async function classifyForDispatch(
 ): Promise<{ classification: DispatchClassification; trace: DispatchTraceEvent[] }> {
   const trace: DispatchTraceEvent[] = [];
   const startTime = Date.now();
+  const activeProvider = provider.getActiveProvider();
   const model = modelOverride ?? 'claude-haiku-4-5-20251001';
 
   try {
@@ -163,6 +164,17 @@ export function parseDispatchClassification(text: string): DispatchClassificatio
  * 当 LLM 分类不可用或低置信度时使用。
  */
 export function regexClassify(task: string): DispatchClassification {
+  // 代码任务关键词 → workflow（优先于短问题启发式）
+  if (/代码|实现|添加|修复|重构|review|implement|fix bug|refactor|添加功能|新增|创建/i.test(task)) {
+    return {
+      layer: 'workflow',
+      taskType: 'code-task',
+      complexity: 'moderate',
+      confidence: 0.3,
+      reason: 'Code task keywords detected',
+    };
+  }
+
   // 短问题 → chat
   if (task.length < 100 && task.trim().endsWith('?') && !task.includes('\n')) {
     return {
@@ -171,17 +183,6 @@ export function regexClassify(task: string): DispatchClassification {
       complexity: 'simple',
       confidence: 0.3,
       reason: 'Short question heuristic',
-    };
-  }
-
-  // 代码任务关键词 → workflow
-  if (/代码|实现|添加|修复|重构|review|implement|fix bug|refactor|添加功能|新增|创建/i.test(task)) {
-    return {
-      layer: 'workflow',
-      taskType: 'code-task',
-      complexity: 'moderate',
-      confidence: 0.3,
-      reason: 'Code task keywords detected',
     };
   }
 

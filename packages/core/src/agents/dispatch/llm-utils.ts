@@ -42,7 +42,11 @@ export async function callClassifierLLM(
 ): Promise<string> {
   const activeProvider = provider.getActiveProvider();
 
-  const envVars: Record<string, string | undefined> = { ...process.env };
+  const envVars: Record<string, string | undefined> = {
+    HOME: process.env.HOME,
+    PATH: process.env.PATH,
+    NODE_ENV: process.env.NODE_ENV,
+  };
   if (activeProvider) {
     envVars.ANTHROPIC_BASE_URL = activeProvider.baseUrl;
     if (activeProvider.apiKey) {
@@ -55,55 +59,52 @@ export async function callClassifierLLM(
 
   let responseText = '';
 
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`Classifier LLM timed out after ${timeoutMs}ms`)), timeoutMs)
-  );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  await Promise.race([
-    (async () => {
-      for await (const message of query({
-        prompt,
-        options: {
-          model,
-          systemPrompt,
-          maxTurns: 1,
-          tools: [],
-          // Safety: tools=[] means no tool execution. bypassPermissions is required
-          // by the SDK even for tool-less calls (consistent with runner.ts).
-          permissionMode: 'bypassPermissions',
-          env: envVars,
-        },
-      })) {
-        if (
-          message &&
-          typeof message === 'object' &&
-          'message' in message &&
-          message.message?.content
-        ) {
-          const content = message.message.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === 'text' && block.text) {
-                responseText += block.text;
-              }
+  try {
+    for await (const message of query({
+      prompt,
+      options: {
+        model,
+        systemPrompt,
+        maxTurns: 1,
+        tools: [],
+        env: envVars,
+        permissionMode: 'default',
+        ...(controller.signal ? { signal: controller.signal } : {}),
+      },
+    })) {
+      if (
+        message &&
+        typeof message === 'object' &&
+        'message' in message &&
+        message.message?.content
+      ) {
+        const content = message.message.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === 'text' && block.text) {
+              responseText += block.text;
             }
           }
         }
-        if (
-          message &&
-          typeof message === 'object' &&
-          'result' in message &&
-          message.result
-        ) {
-          const result = message.result;
-          if (typeof result === 'string') {
-            responseText += result;
-          }
+      }
+      if (
+        message &&
+        typeof message === 'object' &&
+        'result' in message &&
+        message.result
+      ) {
+        const result = message.result;
+        if (typeof result === 'string') {
+          responseText += result;
         }
       }
-    })(),
-    timeoutPromise,
-  ]);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 
   return responseText.trim();
 }
