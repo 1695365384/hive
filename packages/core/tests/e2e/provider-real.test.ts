@@ -150,20 +150,6 @@ if (providers.length > 0) {
           }
         }, E2E_TIMEOUT.MEDIUM);
 
-        // 只对第一个提供商运行完整测试
-        if (provider.id === providers[0].id) {
-          it('should handle streaming', async () => {
-            if (!ctx) return;
-
-            const chunks: string[] = [];
-
-            await ctx.agent.chatStream('说一个字', {
-              onText: (text) => chunks.push(text),
-            });
-
-            expect(chunks.length).toBeGreaterThan(0);
-          }, E2E_TIMEOUT.MEDIUM);
-        }
       });
     }
   });

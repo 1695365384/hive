@@ -2,6 +2,7 @@
 
 ## Task
 {{task}}
+{{contextSection}}
 
 ## Your Capabilities
 

@@ -70,24 +70,12 @@ export class ChatCapability implements AgentCapability {
   }
 
   /**
-   * 发送消息并返回完整响应
+   * 发送消息并返回完整响应（带超时控制）
    */
   async send(prompt: string, options?: AgentOptions): Promise<string> {
     let result = '';
-    await this.sendStream(prompt, {
-      ...options,
-      onText: (text) => {
-        result += text;
-        options?.onText?.(text);
-      },
-    });
-    return result;
-  }
+    const originalOnText = options?.onText;
 
-  /**
-   * 流式对话（带超时控制）
-   */
-  async sendStream(prompt: string, options?: AgentOptions): Promise<void> {
     const provider = options?.providerId
       ? this.context.providerManager.get(options.providerId) ?? null
       : this.context.providerManager.getActiveProvider();
@@ -130,6 +118,11 @@ export class ChatCapability implements AgentCapability {
       }
     }
 
+    // 包装 onText 以累加完整响应
+    const streamOptions = originalOnText
+      ? { ...options, onText: (text: string) => { result += text; originalOnText(text); } }
+      : { ...options, onText: (text: string) => { result += text; } };
+
     const queryOptions: Options = {
       cwd: options?.cwd,
       tools: options?.tools,
@@ -157,7 +150,7 @@ export class ChatCapability implements AgentCapability {
       const streamPromise = this.processStream(
         prompt,
         queryOptions,
-        options,
+        streamOptions,
         sessionId,
         toolStartTimes,
         combinedSignal
@@ -188,6 +181,8 @@ export class ChatCapability implements AgentCapability {
     } finally {
       clear();
     }
+
+    return result;
   }
 
   /**

@@ -58,44 +58,27 @@ export {
   ChatCapability,
   SubAgentCapability,
   WorkflowCapability,
-  SwarmCapability,
 } from './capabilities/index.js';
 
 // ============================================
-// 蜂群协作
+// 智能分发
 // ============================================
 
 export {
-  // 类
-  Blackboard,
-  SwarmTracer,
-  SwarmExecutor,
+  Dispatcher,
+  classifyForDispatch,
+  regexClassify,
+} from './dispatch/index.js';
 
-  // 辅助函数
-  matchTemplate,
-  topologicalSort,
-  detectCycle,
-  buildGraph,
-  aggregate,
-  sumUsage,
-
-  // 内置模板
-  BUILTIN_TEMPLATES,
-
-  // 类型
-  type CyclicDependencyError,
-  type SwarmTemplate,
-  type SwarmNode,
-  type SwarmAggregateConfig,
-  type AggregateFormat,
-  type SwarmOptions,
-  type SwarmResult,
-  type SwarmPreview,
-  type NodeResult,
-  type TraceEvent,
-  type ExecutableGraph,
-  type BlackboardConfig,
-} from './swarm/index.js';
+export type {
+  ExecutionLayer,
+  DispatchClassification,
+  DispatchResult,
+  DispatchOptions,
+  DispatchTraceEventType,
+  DispatchTraceEvent,
+  ClassifierProvider,
+} from './dispatch/index.js';
 
 // ============================================
 // Prompt 系统
@@ -168,27 +151,3 @@ export {
 // ============================================
 
 export type { AgentCapability, AgentContext } from './capabilities/index.js';
-
-// ============================================
-// Pipeline 编排
-// ============================================
-
-export {
-  PipelineExecutor,
-  evaluateTrigger,
-  generatePipelineReport,
-} from './pipeline/index.js';
-
-export type {
-  TriggerCondition,
-  FieldOperator,
-  FieldMatchRule,
-  PipelineStage,
-  StageResult,
-  PipelineResult,
-  PipelineTraceEventType,
-  PipelineTraceEvent,
-  PipelineOptions,
-} from './pipeline/index.js';
-
-export type { TriggerContext } from './pipeline/trigger.js';
