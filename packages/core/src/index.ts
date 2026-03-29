@@ -147,10 +147,39 @@ export {
 export type { ProviderConfig as CCProvider, McpServerConfig as CCMcpServer } from './providers/index.js';
 
 // ============================================
-// MCP 服务器（高级用户）
+// 统一工具系统
 // ============================================
 
-export { memoryMcpServer } from './tools/memory-tools.js';
+export {
+  ToolRegistry,
+  createToolRegistry,
+  type ToolAgentType,
+
+  createBashTool,
+  bashTool,
+  createFileTool,
+  fileTool,
+  fileToolReadOnly,
+  createGlobTool,
+  globTool,
+  createGrepTool,
+  grepTool,
+  createWebSearchTool,
+  webSearchTool,
+  createWebFetchTool,
+  webFetchTool,
+  createAskUserTool,
+  askUserTool,
+  setAskUserCallback,
+
+  type BashToolOptions,
+  type FileToolOptions,
+  type AskUserCallback,
+
+  truncateOutput,
+  isDangerousCommand,
+  isSensitiveFile,
+} from './tools/index.js';
 
 // ============================================
 // 技能系统

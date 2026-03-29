@@ -2,7 +2,11 @@
  * 共享 LLM 分类工具
  *
  * 为 dispatch/classifier 提供 LLM 调用逻辑。
+ * 使用 Vercel AI SDK generateText()。
  */
+
+import { generateText } from 'ai';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
 
 // ============================================
 // 提供商接口
@@ -12,7 +16,10 @@
  * 分类器所需的提供商接口
  */
 export interface ClassifierProvider {
+  /** 获取当前活跃的提供商 */
   getActiveProvider(): { baseUrl: string; apiKey?: string } | null;
+  /** 获取 AI SDK 模型实例 */
+  getModel(modelId?: string): LanguageModelV3 | null;
 }
 
 // ============================================
@@ -38,75 +45,30 @@ export async function callClassifierLLM(
   systemPrompt: string,
   provider: ClassifierProvider,
   model: string,
-  timeoutMs = DEFAULT_CLASSIFIER_TIMEOUT
+  timeoutMs = DEFAULT_CLASSIFIER_TIMEOUT,
 ): Promise<string> {
-  const activeProvider = provider.getActiveProvider();
+  const modelInstance = provider.getModel(model);
 
-  const envVars: Record<string, string | undefined> = {
-    HOME: process.env.HOME,
-    PATH: process.env.PATH,
-    NODE_ENV: process.env.NODE_ENV,
-  };
-  if (activeProvider) {
-    envVars.ANTHROPIC_BASE_URL = activeProvider.baseUrl;
-    if (activeProvider.apiKey) {
-      envVars.ANTHROPIC_API_KEY = activeProvider.apiKey;
-    }
+  if (!modelInstance) {
+    throw new Error(`No model available for classifier (model: ${model})`);
   }
-
-  // Dynamic import to avoid hard dependency at module level
-  const { query } = await import('@anthropic-ai/claude-agent-sdk');
-
-  let responseText = '';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    for await (const message of query({
+    const result = await generateText({
+      model: modelInstance,
       prompt,
-      options: {
-        model,
-        systemPrompt,
-        maxTurns: 1,
-        tools: [],
-        env: envVars,
-        permissionMode: 'default',
-        ...(controller.signal ? { signal: controller.signal } : {}),
-      },
-    })) {
-      if (
-        message &&
-        typeof message === 'object' &&
-        'message' in message &&
-        message.message?.content
-      ) {
-        const content = message.message.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === 'text' && block.text) {
-              responseText += block.text;
-            }
-          }
-        }
-      }
-      if (
-        message &&
-        typeof message === 'object' &&
-        'result' in message &&
-        message.result
-      ) {
-        const result = message.result;
-        if (typeof result === 'string') {
-          responseText += result;
-        }
-      }
-    }
+      system: systemPrompt,
+      stopWhen: undefined, // 单步，不执行工具
+      abortSignal: controller.signal,
+    });
+
+    return result.text.trim();
   } finally {
     clearTimeout(timer);
   }
-
-  return responseText.trim();
 }
 
 // ============================================

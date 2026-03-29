@@ -328,28 +328,44 @@ Markdown 文件定义技能，YAML frontmatter 声明元数据，系统自动加
 ## 架构概览
 
 ```
-                    Client
-                       │
-                  Gateway (HTTP / WS)
-                       │
-              agent.dispatch(task)
-                       │
-                Dispatcher
-              ┌────────┴────────┐
-           chat 层          workflow 层
-              │           ┌────┼────┐
-           ChatCap    explore plan execute
-              │         │     │     │
-              └─────────┴─────┴─────┘
-                          │
-                   AgentRunner
-                          │
-               @anthropic-ai/claude-agent-sdk
-                          │
-                   LLM Provider
+                          Client
+                    ┌─────┴─────┐
+                  HTTP/WS       CLI
+                    │             │
+               ┌────┴─────────────┴────┐
+               │   apps/server          │
+               │  Gateway + Bootstrap   │
+               └────────────┬───────────┘
+                            │
+               ┌────────────┴───────────┐
+               │        Agent           │
+               │      (唯一入口)         │
+               └────────────┬───────────┘
+                            │  dispatch()
+               ┌────────────┴───────────┐
+               │     Dispatcher         │
+               │  LLM 分类 + regex      │
+               └──┬─────────────────┬───┘
+                  │                 │
+           ┌──────┴──┐      ┌──────┴──────────────────┐
+           │  chat   │      │       workflow            │
+           │ 直接对话 │      │  explore → plan → execute │
+           └──────┬──┘      │  Haiku    主模型  主模型   │
+                  │         │  只读     只读    全权限    │
+                  │         └──────┬──────────────────┘
+                  │                │
+               ┌──┴────────────────┴───────────────────┐
+               │           Capabilities                 │
+               │ Chat · Workflow · SubAgent · Schedule   │
+               │ Provider · Session · Skill · Timeout    │
+               └──────────────┬────────────────────────┘
+                              │
+         ┌────────┬───────────┼───────────┬────────────┐
+         ▼        ▼           ▼           ▼            ▼
+    Providers  Storage    Scheduler   Hooks/Skills  Plugins
+    GLM/DS    SQLite     cron/every   生命周期      飞书...
+    Claude    会话+任务   at/一次性    事件拦截      ...
 ```
-
-完整架构图见 [docs/architecture.md](docs/architecture.md)。
 
 ---
 

@@ -4,7 +4,32 @@
  * 核心功能测试
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock ProviderManager for AgentRunner (needed by index.test.ts)
+vi.mock('../../src/providers/ProviderManager.js', () => ({
+  createProviderManager: vi.fn(() => ({
+    getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getActiveProvider: vi.fn().mockReturnValue({
+      id: 'mock',
+      baseUrl: 'https://api.test.com',
+      apiKey: 'test-key',
+      model: 'mock-model',
+    }),
+  })),
+  ProviderManager: vi.fn().mockImplementation(() => ({
+    getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getActiveProvider: vi.fn().mockReturnValue({
+      id: 'mock',
+      baseUrl: 'https://api.test.com',
+      apiKey: 'test-key',
+      model: 'mock-model',
+    }),
+  })),
+}));
+
 import {
   // Agent 模块
   Agent,

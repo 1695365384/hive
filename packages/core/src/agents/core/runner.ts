@@ -2,47 +2,20 @@
  * Agent 运行器
  *
  * 统一的 Agent 执行引擎：子 Agent 执行 + 并行任务
+ * 内部委托给 LLMRuntime（Vercel AI SDK）
  */
 
-import { query, type Options, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import { createProviderManager } from '../../providers/ProviderManager.js';
+import type { ProviderManager } from '../../providers/ProviderManager.js';
 import type { AgentConfig, AgentExecuteOptions, AgentResult, ThoroughnessLevel } from './types.js';
-import {
-  isResultMessage,
-  isAssistantMessage,
-  isToolProgressMessage,
-  isUsageMessage,
-  isTextBlock,
-  isToolUseBlock,
-} from './types.js';
+import type { RuntimeConfig, RuntimeResult } from '../runtime/types.js';
+import { LLMRuntime, AGENT_PRESETS } from '../runtime/LLMRuntime.js';
 import { getAgentConfig } from './agents.js';
 import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
+import { ToolRegistry, type AgentType as ToolAgentType } from '../../tools/tool-registry.js';
 
 // ============================================
-// Provider Manager 接口
-// ============================================
-
-/**
- * 提供商信息
- */
-export interface ProviderInfo {
-  baseUrl: string;
-  apiKey?: string;
-}
-
-/**
- * Provider Manager 接口
- *
- * 定义 Agent 运行器所需的提供商管理能力
- */
-export interface ProviderManagerLike {
-  /** 获取当前活跃的提供商 */
-  getActiveProvider: () => ProviderInfo | null;
-  /** 获取 Agent 可用的 MCP 服务器 */
-  getMcpServersForAgent: () => Record<string, McpServerConfig>;
-}
-
-// ============================================
-// Task 类型定义（从 task.ts 合并）
+// Task 类型定义
 // ============================================
 
 /**
@@ -94,16 +67,20 @@ export interface ParallelTaskConfig extends Omit<TaskConfig, 'name'> {
 /**
  * Agent 运行器
  *
- * 统一的执行引擎：子 Agent 执行 + 并行任务
+ * 内部使用 LLMRuntime，提供向后兼容的 API
  */
 export class AgentRunner {
-  private providerManager: ProviderManagerLike;
+  private runtime: LLMRuntime;
+  private toolRegistry: ToolRegistry;
 
-  constructor(providerManager?: ProviderManagerLike) {
-    this.providerManager = providerManager || {
-      getActiveProvider: () => null,
-      getMcpServersForAgent: () => ({}),
-    };
+  constructor(providerManager?: ProviderManager) {
+    if (providerManager) {
+      this.runtime = new LLMRuntime(providerManager);
+    } else {
+      this.runtime = new LLMRuntime(createProviderManager({ useEnvFallback: true }));
+    }
+    this.toolRegistry = new ToolRegistry();
+    this.toolRegistry.registerBuiltInTools();
   }
 
   // ============================================
@@ -116,7 +93,7 @@ export class AgentRunner {
   async execute(
     agentName: string,
     prompt: string,
-    options?: AgentExecuteOptions
+    options?: AgentExecuteOptions,
   ): Promise<AgentResult> {
     const agentConfig = getAgentConfig(agentName);
     if (!agentConfig) {
@@ -137,49 +114,73 @@ export class AgentRunner {
   private async executeWithConfig(
     config: AgentConfig,
     prompt: string,
-    options?: AgentExecuteOptions
+    options?: AgentExecuteOptions,
   ): Promise<AgentResult> {
-    const result: AgentResult = {
-      text: '',
-      tools: [],
-      success: true,
+    const preset = AGENT_PRESETS[config.type];
+    const runtimeConfig: RuntimeConfig = {
+      prompt,
+      system: config.prompt || preset?.system,
+      model: config.model || preset?.model,
+      maxSteps: config.maxTurns || preset?.maxSteps || 10,
+      streaming: false,
+      tools: this.toolRegistry.getToolsForAgent(config.type as ToolAgentType),
+      onText: options?.onText,
+      onToolCall: options?.onTool,
     };
 
-    const queryOptions = this.buildQueryOptions(config, options);
+    if (options?.timeout) {
+      const controller = new AbortController();
+      runtimeConfig.abortSignal = controller.signal;
 
-    try {
-      const timeout = options?.timeout;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          controller.abort();
+          reject(new Error(`Sub-agent timed out after ${options.timeout}ms`));
+        }, options.timeout),
+      );
 
-      if (timeout) {
-        const controller = new AbortController();
-        (queryOptions as Options & { signal?: AbortSignal }).signal = controller.signal;
-
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => {
-            controller.abort();
-            reject(new Error(`Sub-agent timed out after ${timeout}ms`));
-          }, timeout)
-        );
-
-        await Promise.race([
-          this.executeQuery(prompt, queryOptions, result, options),
+      try {
+        const result = await Promise.race([
+          this.runtime.run(runtimeConfig),
           timeoutPromise,
         ]);
-      } else {
-        await this.executeQuery(prompt, queryOptions, result, options);
+        if (!result.success && options?.onError) {
+          options.onError(new Error(result.error));
+        }
+        return this.mapToAgentResult(result);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (options?.onError) {
+          options.onError(err);
+        }
+        return { text: '', tools: [], success: false, error: err.message };
       }
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      result.success = false;
-      result.error = err.message;
-      options?.onError?.(err);
     }
 
-    return result;
+    const result = await this.runtime.run(runtimeConfig);
+    if (!result.success && options?.onError) {
+      options.onError(new Error(result.error));
+    }
+    return this.mapToAgentResult(result);
+  }
+
+  /**
+   * 将 RuntimeResult 映射为 AgentResult（usage 字段名适配）
+   */
+  private mapToAgentResult(result: RuntimeResult): AgentResult {
+    return {
+      text: result.text,
+      tools: result.tools,
+      usage: result.usage
+        ? { input: result.usage.promptTokens, output: result.usage.completionTokens }
+        : undefined,
+      success: result.success,
+      error: result.error,
+    };
   }
 
   // ============================================
-  // Task 执行（从 task.ts 合并）
+  // Task 执行
   // ============================================
 
   /**
@@ -187,88 +188,43 @@ export class AgentRunner {
    */
   async runTask(config: TaskConfig): Promise<TaskResult> {
     const startTime = Date.now();
-    const result: TaskResult = {
-      name: config.name,
-      text: '',
-      tools: [],
-      success: true,
-      duration: 0,
-    };
 
-    // 获取系统提示和工具配置
+    // 如果指定了 agentType，使用预设配置
     let systemPrompt = config.systemPrompt;
-    let allowedTools = config.tools;
     let model = config.model;
-    let maxTurns = config.maxTurns;
+    let maxSteps = config.maxTurns || 5;
 
-    // 如果指定了 agentType，使用该 Agent 的配置
     if (config.agentType) {
       const agentConfig = getAgentConfig(config.agentType);
       if (agentConfig) {
         systemPrompt = systemPrompt || agentConfig.prompt;
-        allowedTools = allowedTools || agentConfig.tools as string[];
         model = model || agentConfig.model;
-        maxTurns = maxTurns || agentConfig.maxTurns;
+        maxSteps = maxSteps || agentConfig.maxTurns || 5;
       }
     }
 
-    // 构建最小化环境变量
-    const provider = this.providerManager.getActiveProvider();
-    const envVars: Record<string, string | undefined> = {
-      HOME: process.env.HOME,
-      PATH: process.env.PATH,
-      NODE_ENV: process.env.NODE_ENV,
+    const preset = config.agentType ? AGENT_PRESETS[config.agentType] : undefined;
+
+    const result = await this.runtime.run({
+      prompt: config.prompt,
+      system: systemPrompt || preset?.system,
+      model: model || preset?.model,
+      maxSteps,
+      streaming: false,
+      tools: this.toolRegistry.getToolsForAgent((config.agentType || 'general') as ToolAgentType),
+    });
+
+    return {
+      name: config.name,
+      text: result.text,
+      tools: result.tools,
+      usage: result.usage
+        ? { input: result.usage.promptTokens, output: result.usage.completionTokens }
+        : undefined,
+      success: result.success,
+      error: result.error,
+      duration: Date.now() - startTime,
     };
-    if (provider) {
-      envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
-      if (provider.apiKey) {
-        envVars.ANTHROPIC_API_KEY = provider.apiKey;
-      }
-    }
-
-    const queryOptions: Options = {
-      cwd: config.cwd,
-      tools: allowedTools,
-      maxTurns: maxTurns || 5,
-      model,
-      systemPrompt,
-      env: envVars,
-      permissionMode: 'default',
-    };
-
-    try {
-      for await (const message of query({ prompt: config.prompt, options: queryOptions })) {
-        if (isResultMessage(message) && message.result) {
-          result.text += String(message.result);
-        }
-
-        if (isAssistantMessage(message)) {
-          const content = message.message?.content;
-          if (content && Array.isArray(content)) {
-            for (const block of content) {
-              if (isToolUseBlock(block) && block.name) {
-                if (!result.tools.includes(block.name)) {
-                  result.tools.push(block.name);
-                }
-              }
-            }
-          }
-        }
-
-        if (isUsageMessage(message)) {
-          result.usage = {
-            input: message.usage.input_tokens || 0,
-            output: message.usage.output_tokens || 0,
-          };
-        }
-      }
-    } catch (error) {
-      result.success = false;
-      result.error = error instanceof Error ? error.message : String(error);
-    }
-
-    result.duration = Date.now() - startTime;
-    return result;
   }
 
   /**
@@ -276,7 +232,7 @@ export class AgentRunner {
    */
   async runParallel(
     tasks: ParallelTaskConfig[],
-    maxConcurrent: number = 10
+    maxConcurrent: number = 10,
   ): Promise<TaskResult[]> {
     const results: TaskResult[] = [];
     const queue = [...tasks];
@@ -284,21 +240,16 @@ export class AgentRunner {
 
     const generateName = () => `task-${++taskIndex}`;
 
-    const executeBatch = async (batch: ParallelTaskConfig[]): Promise<TaskResult[]> => {
-      return Promise.all(
-        batch.map((config) => {
-          const taskConfig: TaskConfig = {
-            ...config,
-            name: config.name || generateName(),
-          };
-          return this.runTask(taskConfig);
-        })
-      );
-    };
-
     while (queue.length > 0) {
       const batch = queue.splice(0, maxConcurrent);
-      const batchResults = await executeBatch(batch);
+      const batchResults = await Promise.all(
+        batch.map((config) =>
+          this.runTask({
+            ...config,
+            name: config.name || generateName(),
+          }),
+        ),
+      );
       results.push(...batchResults);
     }
 
@@ -306,12 +257,19 @@ export class AgentRunner {
   }
 
   /**
-   * 映射执行（类似 Promise.all 但支持并发控制）
+   * 获取工具注册表（用于注册自定义工具或 Memory 工具）
+   */
+  getToolRegistry(): ToolRegistry {
+    return this.toolRegistry;
+  }
+
+  /**
+   * 映射执行（并发控制）
    */
   async mapParallel<T, R>(
     items: T[],
     fn: (item: T, index: number) => Promise<R>,
-    maxConcurrent: number = 10
+    maxConcurrent: number = 10,
   ): Promise<R[]> {
     const results: R[] = new Array(items.length);
     let currentIndex = 0;
@@ -336,14 +294,14 @@ export class AgentRunner {
   // ============================================
 
   /**
-   * 快速探索（使用统一的 prompt 模板）
+   * 快速探索
    */
   async explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium'): Promise<AgentResult> {
     return this.execute('explore', buildExplorePrompt(prompt, thoroughness));
   }
 
   /**
-   * 计划研究（使用统一的 prompt 模板）
+   * 计划研究
    */
   async plan(prompt: string): Promise<AgentResult> {
     return this.execute('plan', buildPlanPrompt(prompt));
@@ -357,7 +315,7 @@ export class AgentRunner {
   }
 
   /**
-   * 快速执行单个 Task（便捷方法）
+   * 快速执行单个 Task
    */
   async quickTask(prompt: string, options?: Partial<TaskConfig>): Promise<TaskResult> {
     return this.runTask({
@@ -399,99 +357,6 @@ export class AgentRunner {
       agentType: 'general',
     });
   }
-
-  // ============================================
-  // 内部方法
-  // ============================================
-
-  /**
-   * 构建 query 选项（子 Agent 用）
-   */
-  private buildQueryOptions(
-    config: AgentConfig,
-    options?: AgentExecuteOptions
-  ): Options {
-    const provider = this.providerManager.getActiveProvider();
-    const mcpServers = this.providerManager.getMcpServersForAgent();
-
-    const envVars: Record<string, string | undefined> = { ...process.env };
-    if (provider) {
-      envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
-      if (provider.apiKey) {
-        envVars.ANTHROPIC_API_KEY = provider.apiKey;
-      }
-    }
-
-    return {
-      cwd: options?.cwd,
-      tools: options?.tools || config.tools,
-      maxTurns: config.maxTurns || options?.maxTurns || 10,
-      model: config.model || options?.model,
-      systemPrompt: config.prompt,
-      mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-      permissionMode: options?.permissionMode || 'bypassPermissions',
-      env: envVars,
-    };
-  }
-
-  /**
-   * 执行查询并处理消息流
-   */
-  private async executeQuery(
-    prompt: string,
-    queryOptions: Options,
-    result: AgentResult,
-    options?: AgentExecuteOptions
-  ): Promise<void> {
-    for await (const message of query({ prompt, options: queryOptions })) {
-      // 处理 assistant 消息 - 提取文本内容（流式）
-      if (isAssistantMessage(message)) {
-        const content = message.message?.content;
-        if (content && Array.isArray(content)) {
-          for (const block of content) {
-            // 提取文本块
-            if (isTextBlock(block) && block.text) {
-              result.text += block.text;
-              options?.onText?.(block.text);
-            }
-            // 记录工具调用
-            if (isToolUseBlock(block) && block.name) {
-              if (!result.tools.includes(block.name)) {
-                result.tools.push(block.name);
-                options?.onTool?.(block.name, block.input);
-              }
-            }
-          }
-        }
-      }
-
-      // 处理最终结果 - 仅作为 fallback（assistant 消息通常已包含文本）
-      if (isResultMessage(message) && message.result) {
-        if (!result.text) {
-          const text = String(message.result);
-          result.text = text;
-          options?.onText?.(text);
-        }
-      }
-
-      // 处理工具调用进度
-      if (isToolProgressMessage(message)) {
-        const toolName = message.tool_name;
-        if (!result.tools.includes(toolName)) {
-          result.tools.push(toolName);
-          options?.onTool?.(toolName, { tool_use_id: message.tool_use_id });
-        }
-      }
-
-      // 处理 usage
-      if (isUsageMessage(message)) {
-        result.usage = {
-          input: message.usage.input_tokens || 0,
-          output: message.usage.output_tokens || 0,
-        };
-      }
-    }
-  }
 }
 
 // ============================================
@@ -501,6 +366,6 @@ export class AgentRunner {
 /**
  * 创建 Agent 运行器
  */
-export function createAgentRunner(providerManager?: ProviderManagerLike): AgentRunner {
+export function createAgentRunner(providerManager?: ProviderManager): AgentRunner {
   return new AgentRunner(providerManager);
 }

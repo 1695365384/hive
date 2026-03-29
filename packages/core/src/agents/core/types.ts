@@ -33,22 +33,8 @@ export type {
   AgentResult,
   ThoroughnessLevel,
   AgentType,
-  ContentBlock,
-  TextContentBlock,
-  ToolUseContentBlock,
-  SdkMessage,
-  ResultMessage,
-  AssistantMessage,
-  ToolProgressMessage,
-  UsageMessage,
 } from '../types.js';
 
 export {
   TimeoutError,
-  isResultMessage,
-  isAssistantMessage,
-  isToolProgressMessage,
-  isUsageMessage,
-  isTextBlock,
-  isToolUseBlock,
 } from '../types.js';

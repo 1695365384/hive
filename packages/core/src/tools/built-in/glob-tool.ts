@@ -1,0 +1,128 @@
+/**
+ * Glob 工具 — 文件名模式匹配
+ *
+ * 使用 AI SDK tool() + Zod schema 定义。
+ */
+
+import { readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tool, zodSchema, type Tool } from 'ai';
+import { z } from 'zod';
+
+/**
+ * 简单的 glob 匹配（支持 * 和 **）
+ *
+ * 足够覆盖常见使用场景，避免引入 fast-glob 额外依赖。
+ */
+async function simpleGlob(dir: string, pattern: string): Promise<string[]> {
+  const results: string[] = [];
+  const parts = pattern.split('/').filter(Boolean);
+
+  async function walk(currentDir: string, partIndex: number): Promise<void> {
+    if (partIndex >= parts.length) return;
+    const part = parts[partIndex]!;
+    const nextIndex = partIndex + 1;
+    const isLast = nextIndex >= parts.length;
+
+    // ** matches zero or more directory levels — also try skipping ** entirely
+    if (part === '**') {
+      // Zero-depth: match remaining pattern in current directory
+      await walk(currentDir, nextIndex);
+    }
+
+    let entries: Array<{ name: string; isDirectory: () => boolean }>;
+    try {
+      const rawEntries = await readdir(currentDir, { withFileTypes: true });
+      entries = rawEntries.map(e => ({ name: e.name, isDirectory: () => e.isDirectory() }));
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(currentDir, entry.name);
+      if (entry.name.startsWith('.') && !part.startsWith('.')) continue;
+
+      if (part === '**') {
+        // ** matches one or more directory levels
+        if (entry.isDirectory()) {
+          // Stay at ** to match more nested dirs
+          await walk(fullPath, partIndex);
+        }
+      } else if (entry.name === part || matchGlobPart(entry.name, part)) {
+        if (isLast) {
+          results.push(fullPath);
+        } else if (entry.isDirectory()) {
+          await walk(fullPath, nextIndex);
+        }
+      }
+    }
+  }
+
+  await walk(dir, 0);
+  return results;
+}
+
+function matchGlobPart(name: string, pattern: string): boolean {
+  const regex = pattern
+    .replace(/\./g, '\\.')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${regex}$`).test(name);
+}
+
+/** Glob 工具输入 schema */
+const globInputSchema = z.object({
+  pattern: z.string().describe('Glob 模式，如 "**/*.ts"、"src/**/*.py"'),
+  path: z.string().optional().describe('搜索的根目录，默认为当前工作目录'),
+  maxResults: z.number().optional().describe('最大返回结果数，默认 100'),
+});
+
+export type GlobToolInput = z.infer<typeof globInputSchema>;
+
+/**
+ * 创建 Glob 工具
+ */
+export function createGlobTool(): Tool<GlobToolInput, string> {
+  return tool({
+    description: '按文件名模式搜索文件路径。支持 *（匹配任意字符）和 **（匹配目录层级）。返回匹配的文件路径列表。',
+    inputSchema: zodSchema(globInputSchema),
+    execute: async ({ pattern, path: searchPath, maxResults }): Promise<string> => {
+      const max = maxResults ?? 100;
+      const dir = searchPath || process.cwd();
+
+      try {
+        let files = await simpleGlob(dir, pattern);
+
+        // 按修改时间排序
+        const withStats = await Promise.all(
+          files.map(async (f) => {
+            try {
+              const s = await stat(f);
+              return { path: f, mtime: s.mtimeMs };
+            } catch {
+              return { path: f, mtime: 0 };
+            }
+          }),
+        );
+        withStats.sort((a, b) => b.mtime - a.mtime);
+        files = withStats.map(f => f.path);
+
+        if (files.length === 0) {
+          return `未找到匹配 "${pattern}" 的文件`;
+        }
+
+        if (files.length > max) {
+          files = files.slice(0, max);
+          return files.join('\n') + `\n\n[共 ${withStats.length} 个匹配，已截断显示前 ${max} 个]`;
+        }
+
+        return files.join('\n');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return `[Error] 搜索失败: ${msg}`;
+      }
+    },
+  });
+}
+
+export const globTool = createGlobTool();

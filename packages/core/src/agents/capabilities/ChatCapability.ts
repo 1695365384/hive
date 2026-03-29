@@ -1,10 +1,10 @@
 /**
  * 对话能力
  *
- * 提供核心对话功能，支持超时控制和心跳更新
+ * 提供核心对话功能，支持超时控制和心跳更新。
+ * 内部使用 LLMRuntime (Vercel AI SDK) 替代 claude-agent-sdk。
  */
 
-import { query, type Options, type AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentCapability, AgentContext, AgentOptions } from '../core/types.js';
 import type {
   ToolBeforeHookContext,
@@ -12,8 +12,9 @@ import type {
   AgentThinkingHookContext,
   TaskProgressHookContext,
 } from '../../hooks/types.js';
-import { BUILTIN_AGENTS } from '../core/agents.js';
 import { TimeoutError } from '../core/types.js';
+import { LLMRuntime } from '../runtime/LLMRuntime.js';
+import type { RuntimeConfig } from '../runtime/types.js';
 
 /**
  * 对话能力实现
@@ -21,10 +22,12 @@ import { TimeoutError } from '../core/types.js';
 export class ChatCapability implements AgentCapability {
   readonly name = 'chat';
   private context!: AgentContext;
+  private runtime!: LLMRuntime;
   private taskCounter: number = 0;
 
   initialize(context: AgentContext): void {
     this.context = context;
+    this.runtime = new LLMRuntime(context.providerManager);
   }
 
   /**
@@ -34,7 +37,7 @@ export class ChatCapability implements AgentCapability {
     sessionId: string,
     thought: string,
     type: AgentThinkingHookContext['type'],
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     const hookContext: AgentThinkingHookContext = {
       sessionId,
@@ -55,7 +58,7 @@ export class ChatCapability implements AgentCapability {
     description: string,
     progress: number,
     currentStep?: string,
-    totalSteps?: number
+    totalSteps?: number,
   ): Promise<void> {
     const hookContext: TaskProgressHookContext = {
       sessionId,
@@ -76,15 +79,7 @@ export class ChatCapability implements AgentCapability {
     let result = '';
     const originalOnText = options?.onText;
 
-    const provider = options?.providerId
-      ? this.context.providerManager.get(options.providerId) ?? null
-      : this.context.providerManager.getActiveProvider();
-    const mcpServers = this.context.providerManager.getMcpServersForAgent();
     const sessionId = options?.sessionId ?? this.context.hookRegistry.getSessionId();
-
-    if (options?.providerId && !provider) {
-      throw new Error(`Provider not found: ${options.providerId}`);
-    }
 
     // 获取超时配置
     const timeoutConfig = this.context.timeoutCap.getConfig();
@@ -93,78 +88,67 @@ export class ChatCapability implements AgentCapability {
     // 创建 AbortController 用于超时控制
     const { controller, clear, timeoutPromise } = this.context.timeoutCap.createAbortController(
       apiTimeout,
-      `API call timed out after ${apiTimeout}ms`
+      `API call timed out after ${apiTimeout}ms`,
     );
     const combinedSignal = this.combineAbortSignals(controller.signal, options?.abortSignal);
 
-    // 构建最小化环境变量（不暴露全部 process.env）
-    const envVars: Record<string, string | undefined> = {
-      HOME: process.env.HOME,
-      PATH: process.env.PATH,
-      NODE_ENV: process.env.NODE_ENV,
+    // 生成任务 ID
+    this.taskCounter++;
+    const taskId = `chat-task-${this.taskCounter}`;
+    let toolCallCount = 0;
+
+    // 构建 RuntimeConfig
+    const runtimeConfig: RuntimeConfig = {
+      prompt,
+      system: options?.systemPrompt,
+      providerId: options?.providerId,
+      model: options?.modelId,
+      maxSteps: options?.maxTurns,
+      streaming: true,
+      abortSignal: combinedSignal,
+      onText: (text: string) => {
+        result += text;
+        originalOnText?.(text);
+      },
+      onToolCall: (toolName, input) => {
+        toolCallCount++;
+        this.handleToolUse(toolName, input, sessionId, taskId, toolCallCount, options);
+      },
+      onToolResult: (toolName, toolOutput) => {
+        this.handleToolResult(toolName, toolOutput, sessionId);
+      },
+      onReasoning: (text) => {
+        this.emitThinking(sessionId, text, 'reflecting');
+      },
     };
-    if (provider) {
-      envVars.ANTHROPIC_BASE_URL = provider.baseUrl;
-      envVars.ANTHROPIC_API_KEY = provider.apiKey;
-    }
-    if (options?.modelId || provider?.model) {
-      envVars.ANTHROPIC_MODEL = options?.modelId || provider?.model;
-    }
-
-    // 构建子 Agent 配置
-    const agents: Record<string, AgentDefinition> = {};
-
-    if (options?.agents) {
-      for (const name of options.agents) {
-        if (name in BUILTIN_AGENTS) {
-          agents[name] = BUILTIN_AGENTS[name] as AgentDefinition;
-        }
-      }
-    }
-
-    // 包装 onText 以累加完整响应
-    const streamOptions = originalOnText
-      ? { ...options, onText: (text: string) => { result += text; originalOnText(text); } }
-      : { ...options, onText: (text: string) => { result += text; } };
-
-    const queryOptions: Options = {
-      cwd: options?.cwd,
-      tools: options?.tools,
-      maxTurns: options?.maxTurns,
-      systemPrompt: options?.systemPrompt,
-      mcpServers: Object.keys(mcpServers).length > 0 ? mcpServers : undefined,
-      agents: Object.keys(agents).length > 0 ? agents : undefined,
-      env: envVars,
-      permissionMode: options?.permissionMode ?? 'default',
-    };
-
-    if (combinedSignal) {
-      (queryOptions as Options & { signal?: AbortSignal }).signal = combinedSignal;
-    }
-
-    // 追踪工具调用开始时间
-    const toolStartTimes: Map<string, number> = new Map();
 
     // 更新活动状态（开始时）
     this.context.timeoutCap.updateActivity();
 
-    try {
-      // 使用 Promise.race 实现超时控制
-      // 由于 SDK 的 query 是异步迭代器，我们需要特殊处理
-      const streamPromise = this.processStream(
-        prompt,
-        queryOptions,
-        streamOptions,
-        sessionId,
-        toolStartTimes,
-        combinedSignal
-      );
+    // 触发初始思考
+    await this.emitThinking(
+      sessionId,
+      `开始处理用户请求: ${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}`,
+      'analyzing',
+    );
+    await this.emitProgress(sessionId, taskId, '正在准备对话', 0, '初始化', 3);
 
+    try {
       // 竞争：流处理 vs 超时
-      await Promise.race([
-        streamPromise,
+      const runtimeResult = await Promise.race([
+        this.runtime.run(runtimeConfig),
         timeoutPromise,
       ]);
+
+      if (!runtimeResult.success && runtimeResult.error) {
+        options?.onError?.(new Error(runtimeResult.error));
+        throw new Error(runtimeResult.error);
+      }
+
+      // 触发完成进度
+      await this.emitProgress(sessionId, taskId, '对话完成', 100, '完成', 3);
+
+      return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
@@ -185,130 +169,20 @@ export class ChatCapability implements AgentCapability {
     } finally {
       clear();
     }
-
-    return result;
   }
 
   /**
-   * 处理流式响应（内部方法）
-   */
-  private async processStream(
-    prompt: string,
-    queryOptions: Options,
-    options: AgentOptions | undefined,
-    sessionId: string,
-    toolStartTimes: Map<string, number>,
-    abortSignal?: AbortSignal
-  ): Promise<void> {
-    // 生成任务 ID
-    this.taskCounter++;
-    const taskId = `chat-task-${this.taskCounter}`;
-
-    // 触发初始思考
-    await this.emitThinking(
-      sessionId,
-      `开始处理用户请求: ${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}`,
-      'analyzing'
-    );
-
-    // 触发初始进度
-    await this.emitProgress(sessionId, taskId, '正在准备对话', 0, '初始化', 3);
-
-    let messageCount = 0;
-    let toolCallCount = 0;
-
-    this.throwIfAborted(abortSignal);
-
-    for await (const message of query({ prompt, options: queryOptions })) {
-      this.throwIfAborted(abortSignal);
-      // 收到消息时更新活动状态（心跳）
-      this.context.timeoutCap.updateActivity();
-      messageCount++;
-
-      if ('result' in message && message.result) {
-        options?.onText?.(message.result as string);
-
-        // 触发反思思考
-        await this.emitThinking(
-          sessionId,
-          '正在生成响应',
-          'reflecting',
-          { messageLength: String(message.result).length }
-        );
-      }
-
-      // 处理工具调用开始 (tool:before hook)
-      if ('type' in message && message.type === 'tool_progress') {
-        const toolMsg = message as { tool_name: string; tool_input?: unknown };
-        await this.handleToolUse(toolMsg.tool_name, toolMsg.tool_input, sessionId, taskId, toolStartTimes, toolCallCount++, options);
-      }
-
-      // 处理 assistant 消息中的 content blocks (tool_use 表示工具调用开始)
-      if ('message' in message && message.message && typeof message.message === 'object') {
-        const msg = message.message as { content?: unknown[] };
-        if (Array.isArray(msg.content)) {
-          for (const block of msg.content) {
-            if (typeof block === 'object' && block !== null) {
-              const b = block as { type?: string; name?: string; input?: unknown };
-              if (b.type === 'tool_use' && b.name) {
-                await this.handleToolUse(b.name, b.input, sessionId, taskId, toolStartTimes, toolCallCount++, options);
-                toolCallCount++;
-              }
-            }
-          }
-        }
-      }
-
-      // 处理工具结果 (tool:after hook)
-      // 注意：SDK 流中工具结果可能以不同形式出现
-      // 当检测到 result 消息时，触发已完成工具的 after hook
-      if ('result' in message && message.result) {
-        // 对所有追踪中的工具触发 after hook
-        for (const [toolName, startTime] of toolStartTimes) {
-          const duration = Date.now() - startTime;
-
-          // 触发反思思考
-          await this.emitThinking(
-            sessionId,
-            `工具 ${toolName} 执行完成，耗时 ${duration}ms`,
-            'reflecting',
-            { toolName, duration }
-          );
-
-          const hookContext: ToolAfterHookContext = {
-            sessionId,
-            toolName,
-            input: {},
-            output: message.result,
-            success: true,
-            duration,
-            timestamp: new Date(),
-          };
-          await this.context.hookRegistry.emit('tool:after', hookContext);
-        }
-        toolStartTimes.clear();
-      }
-    }
-
-    // 触发完成进度
-    await this.emitProgress(sessionId, taskId, '对话完成', 100, '完成', 3);
-  }
-
-  /**
-   * 处理工具调用事件（去重逻辑）
+   * 处理工具调用事件（触发 tool:before hook）
    */
   private async handleToolUse(
     toolName: string,
     rawInput: unknown,
     sessionId: string,
     taskId: string,
-    toolStartTimes: Map<string, number>,
     toolCallIndex: number,
     options: AgentOptions | undefined,
   ): Promise<void> {
     const toolInput = rawInput as Record<string, unknown> | undefined;
-
-    toolStartTimes.set(toolName, Date.now());
 
     await this.emitThinking(sessionId, `准备调用工具: ${toolName}`, 'executing', { toolName, toolInput });
 
@@ -326,40 +200,46 @@ export class ChatCapability implements AgentCapability {
     options?.onTool?.(toolName, toolInput);
   }
 
+  /**
+   * 处理工具结果事件（触发 tool:after hook）
+   */
+  private async handleToolResult(
+    toolName: string,
+    output: unknown,
+    sessionId: string,
+  ): Promise<void> {
+    await this.emitThinking(sessionId, `工具 ${toolName} 执行完成`, 'reflecting', { toolName });
+
+    const hookContext: ToolAfterHookContext = {
+      sessionId,
+      toolName,
+      input: {},
+      output,
+      success: true,
+      duration: 0,
+      timestamp: new Date(),
+    };
+    await this.context.hookRegistry.emit('tool:after', hookContext);
+
+    // 收到工具结果时更新活动状态（心跳）
+    this.context.timeoutCap.updateActivity();
+  }
+
   private combineAbortSignals(...signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
     const activeSignals = signals.filter((signal): signal is AbortSignal => signal !== undefined);
-    if (activeSignals.length === 0) {
-      return undefined;
-    }
-    if (activeSignals.length === 1) {
-      return activeSignals[0];
-    }
+    if (activeSignals.length === 0) return undefined;
+    if (activeSignals.length === 1) return activeSignals[0];
 
     const controller = new AbortController();
     const abort = () => {
-      if (!controller.signal.aborted) {
-        controller.abort();
-      }
+      if (!controller.signal.aborted) controller.abort();
     };
 
     for (const signal of activeSignals) {
-      if (signal.aborted) {
-        abort();
-        break;
-      }
+      if (signal.aborted) { abort(); break; }
       signal.addEventListener('abort', abort, { once: true });
     }
 
     return controller.signal;
-  }
-
-  private throwIfAborted(signal?: AbortSignal): void {
-    if (!signal?.aborted) {
-      return;
-    }
-
-    const error = new Error('Request aborted');
-    error.name = 'AbortError';
-    throw error;
   }
 }

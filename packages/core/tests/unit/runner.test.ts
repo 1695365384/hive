@@ -24,20 +24,49 @@ vi.mock('../../src/agents/core/agents.js', () => ({
 
 // Mock the prompts module
 vi.mock('../../src/agents/prompts/prompts.js', () => ({
+  EXPLORE_AGENT_PROMPT: 'You are an exploration agent.',
+  PLAN_AGENT_PROMPT: 'You are a planning agent.',
+  GENERAL_AGENT_PROMPT: 'You are a general-purpose agent.',
   buildExplorePrompt: vi.fn((task: string) => `Explore: ${task}`),
   buildPlanPrompt: vi.fn((task: string) => `Plan: ${task}`),
 }));
 
-// Mock SDK - provide async generator for query
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: vi.fn(async function* () {
-    yield { type: 'result', result: 'Mock response' };
+// Mock AI SDK
+vi.mock('ai', () => ({
+  generateText: vi.fn().mockResolvedValue({
+    text: 'Mock LLM response',
+    steps: [],
+    totalUsage: { inputTokens: 50, outputTokens: 100 },
+    finishReason: 'stop',
   }),
-  tool: vi.fn(),
-  createSdkMcpServer: vi.fn(),
-  Options: vi.fn(),
-  AgentDefinition: vi.fn(),
-  McpServerConfig: vi.fn(),
+  streamText: vi.fn(),
+  stepCountIs: vi.fn((n: number) => n),
+  tool: vi.fn((config: Record<string, unknown>) => config),
+  zodSchema: vi.fn((schema: unknown) => schema),
+}));
+
+// Mock ProviderManager - provide getModel() for LLMRuntime
+vi.mock('../../src/providers/ProviderManager.js', () => ({
+  createProviderManager: vi.fn(() => ({
+    getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getActiveProvider: vi.fn().mockReturnValue({
+      id: 'mock',
+      baseUrl: 'https://api.test.com',
+      apiKey: 'test-key',
+      model: 'mock-model',
+    }),
+  })),
+  ProviderManager: vi.fn().mockImplementation(() => ({
+    getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getActiveProvider: vi.fn().mockReturnValue({
+      id: 'mock',
+      baseUrl: 'https://api.test.com',
+      apiKey: 'test-key',
+      model: 'mock-model',
+    }),
+  })),
 }));
 
 describe('AgentRunner', () => {
@@ -61,12 +90,15 @@ describe('AgentRunner', () => {
 
     it('should create runner with provider manager', () => {
       const providerManager = {
-        getActiveProvider: () => ({
+        getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+        getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+        getActiveProvider: vi.fn().mockReturnValue({
+          id: 'mock',
           baseUrl: 'https://api.test.com',
           apiKey: 'test-key',
+          model: 'mock-model',
         }),
-        getMcpServersForAgent: () => ({}),
-      };
+      } as any;
 
       const r = new AgentRunner(providerManager);
       expect(r).toBeDefined();
@@ -82,23 +114,24 @@ describe('AgentRunner', () => {
       expect(result.text).toBe('');
     });
 
-    it('should return explore config for explore agent', async () => {
-      // This test verifies the agent config lookup works
+    it('should return result for explore agent', async () => {
       const result = await runner.execute('explore', 'Test task');
 
-      // Since query is not mocked, it will fail, but we can check the error
-      // The important thing is that the agent config was found
       expect(result).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(result.text).toBe('Mock LLM response');
     });
 
-    it('should return plan config for plan agent', async () => {
+    it('should return result for plan agent', async () => {
       const result = await runner.execute('plan', 'Test task');
       expect(result).toBeDefined();
+      expect(result.success).toBe(true);
     });
 
-    it('should return general config for general agent', async () => {
+    it('should return result for general agent', async () => {
       const result = await runner.execute('general', 'Test task');
       expect(result).toBeDefined();
+      expect(result.success).toBe(true);
     });
   });
 
@@ -106,16 +139,19 @@ describe('AgentRunner', () => {
     it('explore should call execute with explore agent', async () => {
       const result = await runner.explore('Find files');
       expect(result).toBeDefined();
+      expect(result.success).toBe(true);
     });
 
     it('plan should call execute with plan agent', async () => {
       const result = await runner.plan('Research task');
       expect(result).toBeDefined();
+      expect(result.success).toBe(true);
     });
 
     it('general should call execute with general agent', async () => {
       const result = await runner.general('Execute task');
       expect(result).toBeDefined();
+      expect(result.success).toBe(true);
     });
   });
 });
@@ -128,9 +164,9 @@ describe('createAgentRunner', () => {
 
   it('should accept provider manager', () => {
     const providerManager = {
-      getActiveProvider: () => null,
-      getMcpServersForAgent: () => ({}),
-    };
+      getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+      getActiveProvider: vi.fn().mockReturnValue(null),
+    } as any;
     const runner = createAgentRunner(providerManager);
     expect(runner).toBeInstanceOf(AgentRunner);
   });
