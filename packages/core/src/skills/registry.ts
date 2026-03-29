@@ -11,12 +11,17 @@
 import type { Skill, SkillMetadata, SkillMatchResult, SkillSystemConfig } from './types.js';
 import { SkillLoader, createSkillLoader } from './loader.js';
 import { SkillMatcher, createSkillMatcher } from './matcher.js';
+import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 
-// 获取当前模块目录
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+function resolveBuiltinSkillsDir(): string {
+  const envSkillsDir = process.env.HIVE_SKILLS_DIR?.trim();
+  if (envSkillsDir) {
+    return path.resolve(envSkillsDir);
+  }
+
+  return path.resolve(process.cwd(), 'skills');
+}
 
 /**
  * 技能注册表类
@@ -26,11 +31,13 @@ export class SkillRegistry {
   private matcher: SkillMatcher;
   private loader: SkillLoader | null = null;
   private config: SkillSystemConfig;
+  private dirSignatures: Map<string, string> = new Map();
+  private autoRefreshEnabled = false;
 
   constructor(config: SkillSystemConfig = {}) {
     this.matcher = createSkillMatcher();
     this.config = {
-      builtinSkillsDir: path.join(__dirname, '..', '..', 'skills'),
+      builtinSkillsDir: resolveBuiltinSkillsDir(),
       enableAutoMatch: true,
       showSkillsInPrompt: true,
       ...config,
@@ -43,14 +50,103 @@ export class SkillRegistry {
    * 加载内置技能和用户技能
    */
   async initialize(): Promise<void> {
-    // 加载内置技能
-    if (this.config.builtinSkillsDir) {
-      await this.loadFromDirectory(this.config.builtinSkillsDir);
+    this.autoRefreshEnabled = true;
+    this.reloadAllSkills();
+  }
+
+  private getConfiguredSkillDirs(): string[] {
+    return [this.config.builtinSkillsDir, this.config.userSkillsDir].filter((dir): dir is string => Boolean(dir));
+  }
+
+  private collectSkillFiles(dir: string): string[] {
+    if (!fs.existsSync(dir)) {
+      return [];
     }
 
-    // 加载用户技能
-    if (this.config.userSkillsDir) {
-      await this.loadFromDirectory(this.config.userSkillsDir);
+    const files: string[] = [];
+    const walk = (currentDir: string): void => {
+      const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          walk(fullPath);
+          continue;
+        }
+        if (entry.isFile() && entry.name === 'SKILL.md') {
+          files.push(fullPath);
+        }
+      }
+    };
+
+    walk(dir);
+    return files.sort();
+  }
+
+  private computeDirSignature(dir: string): string {
+    const skillFiles = this.collectSkillFiles(dir);
+    if (skillFiles.length === 0) {
+      return 'empty';
+    }
+
+    const parts = skillFiles.map((filePath) => {
+      const stat = fs.statSync(filePath);
+      const relativePath = path.relative(dir, filePath);
+      return `${relativePath}:${stat.mtimeMs}:${stat.size}`;
+    });
+
+    return parts.join('|');
+  }
+
+  private refreshIfChanged(): void {
+    if (!this.autoRefreshEnabled) {
+      return;
+    }
+
+    const dirs = this.getConfiguredSkillDirs();
+    let changed = false;
+
+    for (const dir of dirs) {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const nextSignature = this.computeDirSignature(dir);
+      const prevSignature = this.dirSignatures.get(dir);
+      if (prevSignature !== nextSignature) {
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.reloadAllSkills();
+    }
+  }
+
+  private loadFromDirectorySync(dir: string): void {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    this.loader = createSkillLoader({
+      skillsDir: dir,
+      recursive: true,
+    });
+
+    const skills = this.loader.loadSkills();
+    for (const skill of skills) {
+      this.register(skill);
+    }
+
+    this.dirSignatures.set(dir, this.computeDirSignature(dir));
+  }
+
+  private reloadAllSkills(): void {
+    this.skills.clear();
+    this.dirSignatures.clear();
+    this.matcher.clearCache();
+
+    for (const dir of this.getConfiguredSkillDirs()) {
+      this.loadFromDirectorySync(dir);
     }
   }
 
@@ -60,16 +156,7 @@ export class SkillRegistry {
    * @param dir - 技能目录路径
    */
   async loadFromDirectory(dir: string): Promise<void> {
-    this.loader = createSkillLoader({
-      skillsDir: dir,
-      recursive: true,
-    });
-
-    const skills = this.loader.loadSkills();
-
-    for (const skill of skills) {
-      this.register(skill);
-    }
+    this.loadFromDirectorySync(dir);
   }
 
   /**
@@ -112,6 +199,7 @@ export class SkillRegistry {
    * @returns 技能对象，如果不存在则返回 undefined
    */
   get(name: string): Skill | undefined {
+    this.refreshIfChanged();
     return this.skills.get(name.toLowerCase());
   }
 
@@ -121,6 +209,7 @@ export class SkillRegistry {
    * @param name - 技能名称
    */
   has(name: string): boolean {
+    this.refreshIfChanged();
     return this.skills.has(name.toLowerCase());
   }
 
@@ -130,6 +219,7 @@ export class SkillRegistry {
    * @returns 技能数组
    */
   getAll(): Skill[] {
+    this.refreshIfChanged();
     return Array.from(this.skills.values());
   }
 
@@ -148,6 +238,7 @@ export class SkillRegistry {
    * 获取技能数量
    */
   get size(): number {
+    this.refreshIfChanged();
     return this.skills.size;
   }
 

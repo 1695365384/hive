@@ -38,21 +38,13 @@ describe('createBashTool', () => {
     });
   });
 
-  describe('allowlist check', () => {
-    it('should block commands not in allowlist', async () => {
-      const tool = createBashTool({ allowed: true });
-      const result = await tool.execute!({ command: 'malicious_command xyz', timeout: 5000 }, {} as any);
-      expect(result).toContain('[Security]');
-      expect(result).toContain('不在允许列表中');
-      expect(mockExec).not.toHaveBeenCalled();
-    });
-
-    it('should allow commands in allowlist', async () => {
+  describe('command policy check', () => {
+    it('should allow unknown non-path commands', async () => {
       mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
         cb(null, 'output', '');
       });
       const tool = createBashTool({ allowed: true });
-      const result = await tool.execute!({ command: 'git status', timeout: 5000 }, {} as any);
+      const result = await tool.execute!({ command: 'malicious_command xyz', timeout: 5000 }, {} as any);
       expect(result).toBe('output');
       expect(mockExec).toHaveBeenCalled();
     });
@@ -87,10 +79,14 @@ describe('createBashTool', () => {
       expect(result).toContain('[Security]');
     });
 
-    it('should block command substitution', async () => {
+    it('should allow command substitution', async () => {
+      mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
+        cb(null, 'user\n', '');
+      });
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'echo $(whoami)', timeout: 5000 }, {} as any);
-      expect(result).toContain('[Security]');
+      expect(result).toContain('user');
+      expect(mockExec).toHaveBeenCalled();
     });
 
     it('should block curl pipe to bash', async () => {

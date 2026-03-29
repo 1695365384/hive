@@ -9,6 +9,45 @@
 
 import type { Skill, SkillMatchResult } from './types.js';
 
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactText(text: string): string {
+  return normalizeText(text).replace(/\s+/g, '');
+}
+
+function containsHan(text: string): boolean {
+  return /\p{Script=Han}/u.test(text);
+}
+
+function buildTokenSet(text: string): Set<string> {
+  const normalized = normalizeText(text);
+  const compact = compactText(text);
+  const tokens = new Set<string>();
+  const MAX_BIGRAM_SOURCE_LENGTH = 80;
+
+  for (const token of normalized.split(' ')) {
+    if (token) {
+      tokens.add(token);
+    }
+  }
+
+  // 为中文和无空格文本增加字符二元组，提升口语化输入命中率。
+  if (compact.length >= 2 && compact.length <= MAX_BIGRAM_SOURCE_LENGTH && containsHan(compact)) {
+    for (let i = 0; i < compact.length - 1; i++) {
+      tokens.add(compact.slice(i, i + 2));
+    }
+  }
+
+  return tokens;
+}
+
 /**
  * 从技能描述中提取触发短语
  *
@@ -53,13 +92,46 @@ export function extractTriggerPhrases(description: string): string[] {
  * @returns 相似度 0-1
  */
 function calculateSimilarity(str1: string, str2: string): number {
-  const words1 = new Set(str1.toLowerCase().split(/\s+/));
-  const words2 = new Set(str2.toLowerCase().split(/\s+/));
+  const tokens1 = buildTokenSet(str1);
+  const tokens2 = buildTokenSet(str2);
 
-  const intersection = new Set([...words1].filter((x) => words2.has(x)));
-  const union = new Set([...words1, ...words2]);
+  if (tokens1.size === 0 || tokens2.size === 0) {
+    return 0;
+  }
 
-  return intersection.size / union.size;
+  const intersection = [...tokens1].filter((token) => tokens2.has(token)).length;
+  return (2 * intersection) / (tokens1.size + tokens2.size);
+}
+
+function calculateCoverage(input: string, phrase: string): number {
+  const inputTokens = buildTokenSet(input);
+  const phraseTokens = buildTokenSet(phrase);
+  if (phraseTokens.size === 0) {
+    return 0;
+  }
+
+  const hit = [...phraseTokens].filter((token) => inputTokens.has(token)).length;
+  return hit / phraseTokens.size;
+}
+
+function calculateMatchScore(userInput: string, triggerPhrase: string): number {
+  const normalizedInput = normalizeText(userInput);
+  const normalizedPhrase = normalizeText(triggerPhrase);
+  const compactInput = compactText(userInput);
+  const compactPhrase = compactText(triggerPhrase);
+
+  if (!normalizedInput || !normalizedPhrase) {
+    return 0;
+  }
+
+  // 优先处理精确子串命中（包括中文无空格场景）
+  if (normalizedInput.includes(normalizedPhrase) || compactInput.includes(compactPhrase)) {
+    return 1;
+  }
+
+  const similarity = calculateSimilarity(userInput, triggerPhrase);
+  const coverage = calculateCoverage(userInput, triggerPhrase);
+  return Math.max(similarity, coverage * 0.9);
 }
 
 /**
@@ -74,30 +146,17 @@ function calculateSimilarity(str1: string, str2: string): number {
  * @param fuzzyThreshold - 模糊匹配阈值（默认 0.8）
  * @returns 是否匹配
  */
-function isPhraseMatched(
+function getPhraseMatchScore(
   userInput: string,
   triggerPhrase: string,
   fuzzyThreshold = 0.8
-): boolean {
-  const inputLower = userInput.toLowerCase();
-  const phraseLower = triggerPhrase.toLowerCase();
+): number {
+  const score = calculateMatchScore(userInput, triggerPhrase);
+  const compactPhrase = compactText(triggerPhrase);
+  const shortPhrase = compactPhrase.length <= 6;
+  const adjustedThreshold = shortPhrase ? Math.max(0.6, fuzzyThreshold - 0.15) : fuzzyThreshold;
 
-  // 1. 精确包含匹配
-  if (inputLower.includes(phraseLower)) {
-    return true;
-  }
-
-  // 2. 对于较短的触发短语，使用模糊匹配
-  if (phraseLower.split(/\s+/).length <= 3) {
-    const words = inputLower.split(/\s+/);
-    for (const word of words) {
-      if (calculateSimilarity(word, phraseLower) >= fuzzyThreshold) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return score >= adjustedThreshold ? score : -1;
 }
 
 /**
@@ -157,19 +216,31 @@ export class SkillMatcher {
    */
   matchSingle(userInput: string, skill: Skill): SkillMatchResult | null {
     const phrases = this.getTriggerPhrases(skill);
+    let bestIndex = -1;
+    let bestScore = -1;
 
     for (let i = 0; i < phrases.length; i++) {
       const phrase = phrases[i];
-      if (isPhraseMatched(userInput, phrase, this.fuzzyThreshold)) {
-        return {
-          skill,
-          matchedPhrase: phrase,
-          matchIndex: i,
-        };
+      const score = getPhraseMatchScore(userInput, phrase, this.fuzzyThreshold);
+      if (score >= 0 && score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+
+        if (score === 1) {
+          break;
+        }
       }
     }
 
-    return null;
+    if (bestIndex === -1) {
+      return null;
+    }
+
+    return {
+      skill,
+      matchedPhrase: phrases[bestIndex],
+      matchIndex: bestIndex,
+    };
   }
 
   /**

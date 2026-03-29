@@ -19,6 +19,8 @@ import {
   parseFrontmatter,
   type Skill,
 } from '../src/skills/index.js';
+import * as fs from 'node:fs';
+import { tmpdir } from 'node:os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -44,6 +46,44 @@ function createTestSkill(overrides: Partial<Skill> = {}): Skill {
     assets: [],
     ...overrides,
   };
+}
+
+function createTempSkillsFixture(): string {
+  const baseDir = fs.mkdtempSync(path.join(tmpdir(), 'hive-skills-test-'));
+
+  const codeReviewDir = path.join(baseDir, 'code-review');
+  fs.mkdirSync(codeReviewDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(codeReviewDir, 'SKILL.md'),
+    `---
+name: Code Review
+description: This skill should be used when the user asks to "review code"
+version: 1.0.0
+---
+
+# Code Review
+
+Review code quality and risks.`,
+    'utf-8'
+  );
+
+  const apiTestingDir = path.join(baseDir, 'api-testing');
+  fs.mkdirSync(apiTestingDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(apiTestingDir, 'SKILL.md'),
+    `---
+name: API Testing
+description: This skill should be used when the user asks to "test api"
+version: 1.0.0
+---
+
+# API Testing
+
+Test API endpoints.`,
+    'utf-8'
+  );
+
+  return baseDir;
 }
 
 // ============================================
@@ -332,6 +372,36 @@ describe('SkillMatcher', () => {
       expect(result?.matchIndex).toBe(1);
       expect(result?.matchedPhrase).toBe('second phrase');
     });
+
+    it('应该匹配英文口语化表达（非连续短语）', () => {
+      const skill = createTestSkill({
+        metadata: {
+          name: 'Review Skill',
+          description: 'Use for "review code"',
+          version: '1.0.0',
+        },
+      });
+
+      const result = matcher.matchSingle('could you review the code quality for me', skill);
+
+      expect(result).not.toBeNull();
+      expect(result?.matchedPhrase).toBe('review code');
+    });
+
+    it('应该匹配中文口语化表达（标点和空格变化）', () => {
+      const skill = createTestSkill({
+        metadata: {
+          name: '中文审查',
+          description: '当用户提到 "代码审查" 时使用',
+          version: '1.0.0',
+        },
+      });
+
+      const result = matcher.matchSingle('帮我做一下代码，审查', skill);
+
+      expect(result).not.toBeNull();
+      expect(result?.matchedPhrase).toBe('代码审查');
+    });
   });
 
   describe('matchBest', () => {
@@ -434,7 +504,7 @@ describe('SkillMatcher', () => {
 describe('SkillLoader', () => {
   describe('loadSkills', () => {
     it('应该从目录加载技能', () => {
-      const skillsDir = path.join(__dirname, '..', 'skills');
+      const skillsDir = createTempSkillsFixture();
       const loader = createSkillLoader({
         skillsDir,
         recursive: true,
@@ -445,6 +515,8 @@ describe('SkillLoader', () => {
       expect(skills.length).toBeGreaterThan(0);
       expect(skills.find(s => s.metadata.name === 'Code Review')).toBeDefined();
       expect(skills.find(s => s.metadata.name === 'API Testing')).toBeDefined();
+
+      fs.rmSync(skillsDir, { recursive: true, force: true });
     });
 
     it('应该在目录不存在时返回空数组', () => {
@@ -458,7 +530,7 @@ describe('SkillLoader', () => {
     });
 
     it('应该支持非递归模式', () => {
-      const skillsDir = path.join(__dirname, '..', 'skills');
+      const skillsDir = createTempSkillsFixture();
       const loader = createSkillLoader({
         skillsDir,
         recursive: false,
@@ -468,12 +540,15 @@ describe('SkillLoader', () => {
 
       // 只加载顶层目录的技能
       expect(skills.length).toBeGreaterThanOrEqual(0);
+
+      fs.rmSync(skillsDir, { recursive: true, force: true });
     });
   });
 
   describe('loadSkill', () => {
     it('应该加载单个技能目录', () => {
-      const skillDir = path.join(__dirname, '..', 'skills', 'code-review');
+      const skillsDir = createTempSkillsFixture();
+      const skillDir = path.join(skillsDir, 'code-review');
       const loader = createSkillLoader({
         skillsDir: __dirname,
       });
@@ -482,6 +557,8 @@ describe('SkillLoader', () => {
 
       expect(skill.metadata.name).toBe('Code Review');
       expect(skill.body.length).toBeGreaterThan(0);
+
+      fs.rmSync(skillsDir, { recursive: true, force: true });
     });
 
     it('应该在 SKILL.md 不存在时抛出错误', () => {
@@ -700,7 +777,7 @@ describe('SkillRegistry', () => {
 
   describe('initialize', () => {
     it('应该从内置目录加载技能', async () => {
-      const skillsDir = path.join(__dirname, '..', 'skills');
+      const skillsDir = createTempSkillsFixture();
       const testRegistry = createSkillRegistry({
         builtinSkillsDir: skillsDir,
       });
@@ -708,6 +785,8 @@ describe('SkillRegistry', () => {
       await testRegistry.initialize();
 
       expect(testRegistry.size).toBeGreaterThan(0);
+
+      fs.rmSync(skillsDir, { recursive: true, force: true });
     });
   });
 });

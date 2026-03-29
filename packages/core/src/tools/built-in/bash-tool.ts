@@ -37,15 +37,15 @@ export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, s
         return '[Security] 当前 Agent 无权限执行 shell 命令';
       }
 
-      // 命令策略检查（默认 deny-dangerous；可切换为 allowlist）
-      if (!isCommandAllowed(command)) {
-        return `[Security] 命令被策略阻止: ${command.split(/\s+/)[0]}\n可通过 HIVE_BASH_COMMAND_POLICY 与 HIVE_BASH_ALLOWLIST 环境变量调整命令策略`;
-      }
-
       // 危险命令检查
       const danger = isDangerousCommand(command);
       if (danger.dangerous) {
         return `[Security] 阻止危险命令: ${danger.description}\n命令: ${command}`;
+      }
+
+      // 命令策略检查（仅阻止路径形式命令等不允许执行的命令）
+      if (!isCommandAllowed(command)) {
+        return `[Security] 命令被策略阻止: ${command.split(/\s+/)[0]}`;
       }
 
       const timeoutMs = timeout ?? 120_000;

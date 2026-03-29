@@ -6,7 +6,6 @@
  */
 
 import { resolve, isAbsolute, relative } from 'node:path';
-import { resolve4, resolve6 } from 'node:dns/promises';
 
 // ============================================
 // 常量
@@ -14,33 +13,6 @@ import { resolve4, resolve6 } from 'node:dns/promises';
 
 /** 默认允许的工作目录根路径（延迟初始化） */
 let _allowedRoots: string[] | null = null;
-
-/** 默认 bash 命令 allowlist */
-const DEFAULT_BASH_ALLOWLIST = [
-  'git', 'npm', 'pnpm', 'node', 'npx', 'bun',
-  'cat', 'less', 'head', 'tail', 'wc', 'sort', 'uniq', 'tee',
-  'ls', 'find', 'which', 'pwd', 'cd', 'test', 'echo', 'printf',
-  'mkdir', 'cp', 'mv', 'rm', 'rmdir', 'touch', 'chmod',
-  'grep', 'sed', 'awk', 'diff', 'patch', 'cut', 'tr', 'xargs',
-  'env', 'export', 'unset', 'source', 'type',
-  'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'zcat',
-  'curl', 'wget',
-  'docker', 'docker-compose',
-  'npm', 'yarn', 'pnpm',
-  'vitest', 'jest', 'mocha', 'pytest', 'go', 'cargo', 'rustc',
-  'sleep', 'timeout', 'time',
-];
-
-/** 私有 IP 段 */
-const PRIVATE_RANGES = [
-  { start: [127, 0, 0, 0], end: [127, 255, 255, 255] },
-  { start: [10, 0, 0, 0], end: [10, 255, 255, 255] },
-  { start: [172, 16, 0, 0], end: [172, 31, 255, 255] },
-  { start: [192, 168, 0, 0], end: [192, 168, 255, 255] },
-  { start: [169, 254, 0, 0], end: [169, 254, 255, 255] },
-  { start: [0, 0, 0, 0], end: [0, 0, 0, 0] },
-  { start: [0, 0, 0, 1], end: [0, 0, 0, 1] },
-];
 
 // ============================================
 // 危险命令模式
@@ -62,17 +34,9 @@ const DANGEROUS_COMMANDS: DangerousPattern[] = [
   { pattern: /chown\s+-R/, description: '递归修改所有者' },
   { pattern: /curl.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: '管道执行远程脚本' },
   { pattern: /wget.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: '管道执行远程脚本' },
-  { pattern: /\b(bash|sh|zsh)\b\s+-c\s+["']\s*(\.|\/|~)/, description: 'Shell -c 执行路径脚本' },
-  { pattern: /\b(python|python2|python3)\b\s+-c\b/, description: 'Python 内联代码执行' },
-  { pattern: /\b(node|nodejs)\b\s+-e\b/, description: 'Node.js 内联代码执行' },
-  { pattern: /\bperl\b\s+-e\b/, description: 'Perl 内联代码执行' },
-  { pattern: /\bruby\b\s+-e\b/, description: 'Ruby 内联代码执行' },
-  { pattern: /\bphp\b\s+-r\b/, description: 'PHP 内联代码执行' },
   { pattern: /\b(nc|ncat|netcat|socat)\b/, description: '潜在反弹 shell/隧道工具' },
   { pattern: /\b(systemctl|service|launchctl)\b/, description: '系统服务管理命令' },
   { pattern: /\b(insmod|rmmod|modprobe)\b/, description: '内核模块操作' },
-  { pattern: /\$\([^)]+\)/, description: '命令替换' },
-  { pattern: /`[^`]+`/, description: '反引号命令替换' },
 ];
 
 // ============================================
@@ -146,52 +110,17 @@ export function isPathAllowed(filePath: string): boolean {
 // SSRF 防护
 // ============================================
 
-function isPrivateIPv4(ip: string): boolean {
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(p => isNaN(p))) return false;
-
-  return PRIVATE_RANGES.some(({ start, end }) => {
-    for (let i = 0; i < 4; i++) {
-      if (parts[i]! < start[i] || parts[i]! > end[i]) return false;
-    }
-    return true;
-  });
-}
-
 /**
  * 检查 hostname 是否解析到私有 IP
+ *
+ * 当前策略：不基于私网地址做拦截，统一返回 false。
  */
 export async function isPrivateIP(
   hostname: string,
-  resolvers?: { resolve4?: typeof resolve4; resolve6?: typeof resolve6 },
+  _resolvers?: unknown,
 ): Promise<boolean> {
-  const r4 = resolvers?.resolve4 ?? resolve4;
-  const r6 = resolvers?.resolve6 ?? resolve6;
-
-  try {
-    const [v4Addresses, v6Addresses] = await Promise.all([
-      r4(hostname).catch(() => [] as string[]),
-      r6(hostname).catch(() => [] as string[]),
-    ]);
-
-    for (const addr of v4Addresses) {
-      if (isPrivateIPv4(addr)) {
-        return true;
-      }
-    }
-
-    for (const addr of v6Addresses) {
-      if (addr === '::1') {
-        return true;
-      }
-      // fc00::/7 — 仅检查 ::1，完整 fc00 范围需要更复杂处理
-    }
-
-    return false;
-  } catch {
-    // DNS 解析失败，允许请求通过（保守策略：不因 DNS 失败阻止正常请求）
-    return false;
-  }
+  void hostname;
+  return false;
 }
 
 /**
@@ -213,55 +142,24 @@ export function isAllowedUrl(url: string): { allowed: boolean; reason?: string }
 // 命令策略
 // ============================================
 
-type BashCommandPolicyMode = 'deny-dangerous' | 'allowlist';
-
-function getBashCommandPolicyMode(): BashCommandPolicyMode {
-  const rawMode = process.env.HIVE_BASH_COMMAND_POLICY?.trim().toLowerCase();
-  if (rawMode === 'allowlist') return 'allowlist';
-  if (rawMode === 'deny-dangerous') return 'deny-dangerous';
-
-  // 兼容旧配置：若设置了 HIVE_BASH_ALLOWLIST，默认启用 allowlist 策略。
-  if (process.env.HIVE_BASH_ALLOWLIST?.trim()) {
-    return 'allowlist';
-  }
-
-  // 默认更少误杀：仅依赖高危命令检测进行拦截。
-  return 'deny-dangerous';
-}
-
-function getBashAllowlist(): string[] {
-  const envAllowlist = process.env.HIVE_BASH_ALLOWLIST;
-  if (envAllowlist) {
-    return envAllowlist.split(',').map(s => s.trim()).filter(Boolean);
-  }
-  return DEFAULT_BASH_ALLOWLIST;
-}
-
 /**
  * 检查命令是否允许执行
  *
- * 默认策略为 deny-dangerous（降低误杀，允许绝大多数非高危命令）。
- * 当启用 allowlist 策略时，提取命令的第一个词（如 `git status` → `git`）进行白名单校验。
- * 以 `/`、`.` 或 `~` 开头的命令（绝对路径、相对路径或用户目录脚本）始终拒绝。
+ * 策略：仅拦截路径形式命令和已识别的危险命令。
+ * 允许代码执行类命令（如 python -c / node -e）。
  */
 export function isCommandAllowed(command: string): boolean {
   const trimmed = command.trim();
   if (!trimmed) return false;
 
   const firstWord = trimmed.split(/\s+/)[0]!;
-  const allowlist = getBashAllowlist();
 
   // 路径形式的命令（./script.sh, /usr/bin/xxx, ~/script.sh）始终拒绝
   if (firstWord.startsWith('/') || firstWord.startsWith('./') || firstWord.startsWith('../') || firstWord.startsWith('~')) {
     return false;
   }
 
-  const policyMode = getBashCommandPolicyMode();
-  if (policyMode === 'deny-dangerous') {
-    return true;
-  }
-
-  return allowlist.includes(firstWord);
+  return !isDangerousCommand(command).dangerous;
 }
 
 // ============================================
