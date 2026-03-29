@@ -5,33 +5,6 @@
  */
 
 // ============================================
-// Legacy 类型（供 classifier 模块使用）
-// ============================================
-
-/**
- * 执行层
- *
- * @deprecated Dispatcher 不再使用路由分类，保留供 classifier 模块独立使用。
- */
-export type ExecutionLayer = 'chat' | 'workflow';
-
-/** @deprecated */
-export const VALID_EXECUTION_LAYERS = ['chat', 'workflow'] as const;
-
-/**
- * 分发分类结果
- *
- * @deprecated Dispatcher 不再使用分类，保留供 classifier 模块独立使用。
- */
-export interface DispatchClassification {
-  layer: ExecutionLayer;
-  taskType: 'general' | 'code-task';
-  complexity: 'simple' | 'moderate' | 'complex';
-  confidence: number;
-  reason: string;
-}
-
-// ============================================
 // 分发结果
 // ============================================
 

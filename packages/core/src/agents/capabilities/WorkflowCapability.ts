@@ -130,8 +130,6 @@ export class WorkflowCapability implements AgentCapability {
 
   /**
    * 分析任务复杂度
-   *
-   * @deprecated 不再用于路由分流，保留供外部直接调用。
    */
   analyzeTask(task: string): TaskAnalysis {
     const isPureQuestion =

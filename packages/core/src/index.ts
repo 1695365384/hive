@@ -314,7 +314,6 @@ export {
 } from './agents/dispatch/index.js';
 
 export type {
-  ExecutionLayer,
   DispatchClassification,
   DispatchResult,
   DispatchOptions,
