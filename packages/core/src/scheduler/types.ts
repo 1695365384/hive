@@ -151,6 +151,10 @@ export interface UpdateScheduleInput {
   consecutiveErrors?: number;
   notifyConfig?: NotifyConfig | null;
   source?: ScheduleSource;
+  /** 下次执行时间（由 Engine 维护） */
+  nextRunAt?: Date;
+  /** 上次执行时间（由 Engine 维护） */
+  lastRunAt?: Date;
 }
 
 /**

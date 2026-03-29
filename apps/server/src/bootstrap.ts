@@ -4,7 +4,7 @@
  * Initializes all core modules and returns a ready-to-use application context.
  */
 
-import { createAgent, type Agent, type IPlugin, type ILogger, type ChannelMessage, createScheduleEngine, createScheduleRepository, type ScheduleEngine } from '@hive/core'
+import { createAgent, type Agent, type IPlugin, type ILogger, type ChannelMessage, createScheduleEngine, createScheduleRepository, type ScheduleEngine, type IChannel } from '@hive/core'
 import { MessageBus } from '@hive/orchestrator'
 import { HeartbeatScheduler } from './heartbeat-scheduler.js'
 import { resolve } from 'path'
@@ -37,6 +37,13 @@ export interface BootstrapOptions {
 
 const SESSION_CHANNEL_MAP_MAX_SIZE = 10000
 const sessionChannelMap = new Map<string, { channelId: string; chatId: string }>()
+
+// ============================================
+// Channel 注册表（用于 message:response 推送）
+// ============================================
+
+/** channelId → IChannel 实例注册表 */
+const channelRegistry = new Map<string, IChannel>()
 
 function setSessionChannelMapping(sessionId: string, channelId: string, chatId: string): void {
   if (sessionChannelMap.size >= SESSION_CHANNEL_MAP_MAX_SIZE) {
@@ -105,7 +112,9 @@ async function loadPlugin(
       logger,
       config: pluginConfig,
       registerChannel: (channel: unknown) => {
-        logger.info(`[bootstrap] Channel registered: ${(channel as { id: string }).id}`)
+        const ch = channel as IChannel
+        logger.info(`[bootstrap] Channel registered: ${ch.id}`)
+        channelRegistry.set(ch.id, ch)
         bus.emit(`channel:registered`, channel)
       },
     })
@@ -200,6 +209,10 @@ async function initScheduleEngine(
         bus.emit('schedule:circuit-break', event)
       },
     })
+
+    // 将 repository 和 engine 注入到 Agent.schedule
+    // 这样 agent.schedule.list() / pause() / resume() / remove() 才能正常工作
+    agent.schedule.setDependencies(scheduleRepo, engine)
 
     const taskCount = await engine.start()
     logger.info(`[bootstrap] Schedule engine started (${taskCount} tasks loaded)`)
@@ -433,6 +446,31 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
 
   subscribeMessageHandler(agent, bus, logger)
   subscribeScheduleHandlers(bus, logger)
+
+  // 订阅 message:response，将 Agent 响应通过 channel 推送给用户
+  bus.subscribe('message:response', async (event: { payload: unknown }) => {
+    const { channelId, chatId, content, type } = event.payload as {
+      channelId?: string
+      chatId?: string
+      content: string
+      type?: string
+    }
+
+    if (!channelId || !chatId) return
+
+    const channel = channelRegistry.get(channelId)
+    if (!channel) {
+      logger.debug(`[message:response] No channel found for ${channelId}, skipping`)
+      return
+    }
+
+    try {
+      await channel.send({ to: chatId, content, type: (type || 'markdown') as 'text' | 'markdown' })
+      logger.info(`[message:response] Pushed to channel ${channelId} chat ${chatId}`)
+    } catch (error) {
+      logger.error(`[message:response] Failed to push to channel ${channelId}:`, error)
+    }
+  })
 
   logger.info('[bootstrap] Bootstrap complete.')
 
