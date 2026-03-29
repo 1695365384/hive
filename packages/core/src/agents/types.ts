@@ -7,6 +7,7 @@
  * - types/core.ts — 核心类型（AgentContext, AgentOptions, TimeoutConfig, 等）
  * - types/capabilities.ts — 能力模块类型（AgentCapability, AgentConfig, AgentType）
  * - types/runner.ts — Runner/执行类型（SDK 消息、工作流、任务分析）
+ * - types/pipeline.ts — 管道类型（AgentPhaseResult, CompactorConfig, PromptBuildContext）
  */
 
 export type {
@@ -39,3 +40,9 @@ export type {
   WorkflowResult,
   TaskAnalysis,
 } from './types/runner.js';
+
+export type {
+  AgentPhaseResult,
+  CompactorConfig,
+  PromptBuildContext,
+} from './types/pipeline.js';

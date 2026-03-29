@@ -2,6 +2,8 @@
  * 工作流能力
  *
  * 提供智能工作流执行：explore → plan → execute 三子 Agent 顺序执行。
+ * 阶段间通过结构化摘要（AgentPhaseResult）传递上下文，
+ * 而非原始文本拼接。
  */
 
 import type {
@@ -17,9 +19,22 @@ import type {
   NotificationPushHookContext,
   NotificationType,
 } from '../../hooks/types.js';
-import { getPromptTemplate } from '../prompts/index.js';
+import type { AgentPhaseResult } from '../types/pipeline.js';
 import type { SessionCapability } from './SessionCapability.js';
 import type { SubAgentCapability } from './SubAgentCapability.js';
+import { ContextCompactor } from '../pipeline/ContextCompactor.js';
+import { DynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
+
+/**
+ * 复杂任务执行结果（runComplexTask 返回）
+ */
+interface ComplexTaskResult {
+  exploreResult: import('../core/types.js').AgentResult;
+  explorePhaseResult: AgentPhaseResult;
+  executionPlan: string;
+  planPhaseResult: AgentPhaseResult;
+  executeResult: import('../core/types.js').AgentResult;
+}
 
 /**
  * 工作流能力实现
@@ -28,9 +43,13 @@ export class WorkflowCapability implements AgentCapability {
   readonly name = 'workflow';
   private context!: AgentContext;
   private workflowCounter: number = 0;
+  private compactor!: ContextCompactor;
+  private promptBuilder!: DynamicPromptBuilder;
 
   initialize(context: AgentContext): void {
     this.context = context;
+    this.compactor = new ContextCompactor(context.providerManager);
+    this.promptBuilder = new DynamicPromptBuilder();
   }
 
   /**
@@ -224,6 +243,8 @@ export class WorkflowCapability implements AgentCapability {
 
   /**
    * 执行复杂任务（explore → plan → execute 三阶段）
+   *
+   * 使用 ContextCompactor 做阶段间压缩，传递结构化摘要而非原始文本。
    */
   private async runComplexTask(
     task: string,
@@ -231,11 +252,27 @@ export class WorkflowCapability implements AgentCapability {
     emitPhaseChange: (phase: string, message: string) => Promise<void>,
     sessionId: string,
     workflowId: string,
-  ): Promise<Pick<WorkflowResult, 'exploreResult' | 'executionPlan' | 'executeResult'>> {
+  ): Promise<ComplexTaskResult> {
     const subAgentCap = this.getSubAgentCap();
 
     if (!subAgentCap) {
-      return this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId);
+      const { executeResult } = await this.runSimpleTask(task, options, emitPhaseChange, sessionId, workflowId);
+      if (!executeResult) {
+        throw new Error('Simple task returned no execute result');
+      }
+      return {
+        exploreResult: { text: '', tools: [], success: false, error: 'SubAgent not available' },
+        explorePhaseResult: {
+          summary: '', keyFiles: [], findings: [], suggestions: [],
+          rawText: '', phase: 'explore', originalLength: 0, compressedLength: 0,
+        },
+        executionPlan: '',
+        planPhaseResult: {
+          summary: '', keyFiles: [], findings: [], suggestions: [],
+          rawText: '', phase: 'plan', originalLength: 0, compressedLength: 0,
+        },
+        executeResult,
+      };
     }
 
     // Phase: Explore
@@ -244,29 +281,43 @@ export class WorkflowCapability implements AgentCapability {
 
     const exploreResult = await this.runExplorePhase(subAgentCap, task, emitPhaseChange);
 
-    // Auto-compress after explore phase
+    // Compress explore output into structured summary
+    const explorePhaseResult = await this.compactor.compressPhase(exploreResult, 'explore');
+
+    // Auto-compress session after explore phase
     await this.autoCompress();
 
     // Phase: Plan
     await emitPhaseChange('plan', '制定执行方案...');
     await this.emitProgress(sessionId, workflowId, '制定执行方案中', 40, '规划', 4);
 
-    const executionPlan = await this.runPlanPhase(subAgentCap, task, exploreResult.text, emitPhaseChange);
+    const planPhaseResult = await this.runPlanPhase(subAgentCap, task, explorePhaseResult, emitPhaseChange);
 
-    // Auto-compress after plan phase
+    // Auto-compress session after plan phase
     await this.autoCompress();
 
-    // Phase: Execute
+    // Phase: Execute — use DynamicPromptBuilder with structured prior results
     await emitPhaseChange('execute', '执行任务...');
     await this.emitProgress(sessionId, workflowId, '执行任务中', 60, '执行', 4);
 
-    const executePrompt = this.buildExecutePrompt(task, exploreResult.text, executionPlan);
+    const executionPlan = planPhaseResult.summary;
+    const executePrompt = this.buildExecutePrompt(
+      task,
+      [explorePhaseResult, planPhaseResult],
+    );
+
     const executeResult = await this.context.runner.execute('general', executePrompt, {
       onText: options?.onText,
       onTool: options?.onTool ? (name, input) => options.onTool!(name, input) : undefined,
     });
 
-    return { exploreResult, executionPlan, executeResult };
+    return {
+      exploreResult,
+      explorePhaseResult,
+      executionPlan,
+      planPhaseResult,
+      executeResult,
+    };
   }
 
   /**
@@ -289,19 +340,42 @@ export class WorkflowCapability implements AgentCapability {
 
   /**
    * Plan 阶段
+   *
+   * 接收结构化的 explore 阶段结果，而非原始文本。
    */
   private async runPlanPhase(
     subAgentCap: SubAgentCapability,
     task: string,
-    exploreText: string,
+    explorePhaseResult: AgentPhaseResult,
     emitPhaseChange: (phase: string, message: string) => Promise<void>,
-  ): Promise<string> {
+  ): Promise<AgentPhaseResult> {
     try {
-      return await subAgentCap.plan(`任务: ${task}\n\n探索发现:\n${exploreText}`);
+      // Build plan prompt from structured explore results
+      const planContext = this.promptBuilder.formatPriorResults([explorePhaseResult]);
+      const planPrompt = `## Task\n${task}\n\n${planContext}\n\nBased on the exploration findings above, create a detailed execution plan.`;
+
+      const text = await subAgentCap.plan(planPrompt);
+
+      // Compress plan output into structured summary
+      return await this.compactor.compressPhase(
+        { text, success: true, tools: [] },
+        'plan',
+      );
     } catch (error) {
-      const planText = `规划失败: ${error instanceof Error ? error.message : String(error)}`;
-      await emitPhaseChange('plan', `规划阶段失败: ${planText.slice(0, 100)}`);
-      return planText;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await emitPhaseChange('plan', `规划阶段失败: ${errorMsg.slice(0, 100)}`);
+
+      // Return a minimal phase result on failure
+      return {
+        summary: `规划失败: ${errorMsg}`,
+        keyFiles: explorePhaseResult.keyFiles,
+        findings: [],
+        suggestions: [],
+        rawText: '',
+        phase: 'plan',
+        originalLength: 0,
+        compressedLength: errorMsg.length,
+      };
     }
   }
 
@@ -335,7 +409,7 @@ export class WorkflowCapability implements AgentCapability {
     intelligentPrompt: string;
   }> {
     const analysis = this.analyzeTask(task);
-    const intelligentPrompt = this.buildIntelligentPrompt(task);
+    const intelligentPrompt = this.buildExecutePrompt(task);
     return { analysis, intelligentPrompt };
   }
 
@@ -345,44 +419,32 @@ export class WorkflowCapability implements AgentCapability {
 
   /**
    * 构建 execute 阶段的 prompt
+   *
+   * @param task - 任务描述
+   * @param priorResults - 前置阶段的结构化结果（默认空数组）
    */
-  private buildExecutePrompt(task: string, exploreText?: string, planText?: string): string {
+  private buildExecutePrompt(task: string, priorResults: AgentPhaseResult[] = []): string {
     const isChineseTask = /[\u4e00-\u9fa5]/.test(task);
     const languageInstruction = isChineseTask
       ? '【重要】你必须用中文回复，与用户的语言保持一致。'
       : "CRITICAL: You must respond in English, matching the user's language.";
 
     const skillMatch = this.context.matchSkill(task);
-    let skillSection = '';
+    let skillSection: string | undefined;
 
     if (skillMatch) {
-      skillSection = `\n\n${this.context.skillRegistry.generateSkillInstruction(skillMatch.skill)}`;
+      skillSection = this.context.skillRegistry.generateSkillInstruction(skillMatch.skill);
     } else if (this.context.skillRegistry.size > 0) {
-      skillSection = `\n\n${this.context.skillRegistry.generateSkillListDescription()}`;
+      skillSection = this.context.skillRegistry.generateSkillListDescription();
     }
 
-    let contextSection = '';
-    if (exploreText) {
-      contextSection += `\n\n## 探索发现\n${exploreText}`;
-    }
-    if (planText) {
-      contextSection += `\n\n## 执行计划\n${planText}`;
-    }
-
-    const template = getPromptTemplate();
-    return template.render('intelligent', {
+    return this.promptBuilder.buildPrompt({
+      task,
+      priorResults,
+      agentType: 'general',
       languageInstruction,
       skillSection,
-      task,
-      contextSection,
     });
-  }
-
-  /**
-   * 构建智能 Prompt（用于 preview 和 simple 模式）
-   */
-  private buildIntelligentPrompt(task: string): string {
-    return this.buildExecutePrompt(task);
   }
 
   /**

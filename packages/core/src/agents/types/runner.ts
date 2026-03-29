@@ -5,6 +5,7 @@
  */
 
 import type { AgentResult } from './core.js';
+import type { AgentPhaseResult } from './pipeline.js';
 
 // ============================================
 // 工作流类型
@@ -34,10 +35,14 @@ export interface WorkflowOptions {
 export interface WorkflowResult {
   /** 任务分析结果 */
   analysis: TaskAnalysis;
-  /** 探索结果（如果执行了探索） */
+  /** 探索阶段的结构化结果（如果执行了探索） */
   exploreResult?: AgentResult;
+  /** 探索阶段压缩摘要 */
+  explorePhaseResult?: AgentPhaseResult;
   /** 生成的执行计划 */
   executionPlan?: string;
+  /** 执行计划的结构化结果 */
+  planPhaseResult?: AgentPhaseResult;
   /** 执行结果 */
   executeResult?: AgentResult;
   /** 是否成功 */

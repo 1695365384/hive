@@ -22,6 +22,10 @@ export type { AgentType, AgentConfig, AgentCapability } from './capabilities.js'
 export interface AgentExecuteOptions {
   /** 子 Agent 超时（毫秒），超时后返回错误结果 */
   timeout?: number;
+  /** 独立 messages 数组（子 Agent 使用独立对话实例时传入） */
+  messages?: Array<Record<string, unknown>>;
+  /** 自定义系统提示（覆盖 Agent 默认 prompt） */
+  systemPrompt?: string;
   /** 回调：文本输出 */
   onText?: (text: string) => void;
   /** 回调：工具使用 */
