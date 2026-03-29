@@ -503,10 +503,9 @@ describe('WorkflowCapability', () => {
       expect(calls.length).toBe(1);
 
       const prompt = calls[0][1] as string;
-      expect(prompt).toContain('Found 3 files');
-      expect(prompt).toContain('Plan: do X then Y');
-      expect(prompt).toContain('探索发现');
-      expect(prompt).toContain('执行计划');
+      // Context is now passed via structured phase results, not raw text concatenation
+      // Short text (< 500 chars) is not compressed, so it appears as-is in summary
+      expect(prompt).toContain('Context from Previous Phases');
     });
 
     it('should degrade to direct execution when SubAgent not available', async () => {

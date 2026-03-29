@@ -119,7 +119,8 @@ export class AgentRunner {
     const preset = AGENT_PRESETS[config.type];
     const runtimeConfig: RuntimeConfig = {
       prompt,
-      system: config.prompt || preset?.system,
+      system: options?.systemPrompt || config.prompt || preset?.system,
+      messages: options?.messages,
       model: config.model || preset?.model,
       maxSteps: config.maxTurns || preset?.maxSteps || 10,
       streaming: false,
