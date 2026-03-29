@@ -26,6 +26,17 @@ import { ContextCompactor } from '../pipeline/ContextCompactor.js';
 import { DynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
 
 /**
+ * 复杂任务执行结果（runComplexTask 返回）
+ */
+interface ComplexTaskResult {
+  exploreResult: import('../core/types.js').AgentResult;
+  explorePhaseResult: AgentPhaseResult;
+  executionPlan: string;
+  planPhaseResult: AgentPhaseResult;
+  executeResult: import('../core/types.js').AgentResult;
+}
+
+/**
  * 工作流能力实现
  */
 export class WorkflowCapability implements AgentCapability {
@@ -241,7 +252,7 @@ export class WorkflowCapability implements AgentCapability {
     emitPhaseChange: (phase: string, message: string) => Promise<void>,
     sessionId: string,
     workflowId: string,
-  ): Promise<Pick<WorkflowResult, 'exploreResult' | 'explorePhaseResult' | 'executionPlan' | 'planPhaseResult' | 'executeResult'>> {
+  ): Promise<ComplexTaskResult> {
     const subAgentCap = this.getSubAgentCap();
 
     if (!subAgentCap) {
@@ -274,7 +285,7 @@ export class WorkflowCapability implements AgentCapability {
     await this.emitProgress(sessionId, workflowId, '执行任务中', 60, '执行', 4);
 
     const executionPlan = planPhaseResult.summary;
-    const executePrompt = this.buildExecutePromptWithPhaseResults(
+    const executePrompt = this.buildExecutePrompt(
       task,
       [explorePhaseResult, planPhaseResult],
     );
@@ -391,41 +402,12 @@ export class WorkflowCapability implements AgentCapability {
   // ============================================
 
   /**
-   * 构建 execute 阶段的 prompt（简单模式 / 无前置阶段结果）
-   */
-  private buildExecutePrompt(task: string): string {
-    const isChineseTask = /[\u4e00-\u9fa5]/.test(task);
-    const languageInstruction = isChineseTask
-      ? '【重要】你必须用中文回复，与用户的语言保持一致。'
-      : "CRITICAL: You must respond in English, matching the user's language.";
-
-    const skillMatch = this.context.matchSkill(task);
-    let skillSection: string | undefined;
-
-    if (skillMatch) {
-      skillSection = this.context.skillRegistry.generateSkillInstruction(skillMatch.skill);
-    } else if (this.context.skillRegistry.size > 0) {
-      skillSection = this.context.skillRegistry.generateSkillListDescription();
-    }
-
-    return this.promptBuilder.buildPrompt({
-      task,
-      priorResults: [],
-      agentType: 'general',
-      languageInstruction,
-      skillSection,
-    });
-  }
-
-  /**
-   * 构建 execute 阶段的 prompt（复杂模式 / 带前置阶段结构化结果）
+   * 构建 execute 阶段的 prompt
    *
-   * 使用 DynamicPromptBuilder 动态构建，替代旧的文本拼接。
+   * @param task - 任务描述
+   * @param priorResults - 前置阶段的结构化结果（默认空数组）
    */
-  private buildExecutePromptWithPhaseResults(
-    task: string,
-    priorResults: AgentPhaseResult[],
-  ): string {
+  private buildExecutePrompt(task: string, priorResults: AgentPhaseResult[] = []): string {
     const isChineseTask = /[\u4e00-\u9fa5]/.test(task);
     const languageInstruction = isChineseTask
       ? '【重要】你必须用中文回复，与用户的语言保持一致。'

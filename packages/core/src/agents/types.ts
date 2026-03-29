@@ -46,7 +46,3 @@ export type {
   CompactorConfig,
   PromptBuildContext,
 } from './types/pipeline.js';
-
-export {
-  PROMPT_SECTION_PRIORITY,
-} from './types/pipeline.js';

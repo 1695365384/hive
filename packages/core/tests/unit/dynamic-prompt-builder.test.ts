@@ -116,7 +116,7 @@ describe('DynamicPromptBuilder', () => {
   describe('token budget control', () => {
     it('should truncate context section when over budget', () => {
       // Create builder with very small budget
-      const smallBuilder = new DynamicPromptBuilder({ tokenBudget: 100 }); // ~400 chars
+      const smallBuilder = new DynamicPromptBuilder({ maxChars: 400 });
 
       const largeResult: AgentPhaseResult = {
         summary: 'A'.repeat(500),
@@ -143,7 +143,7 @@ describe('DynamicPromptBuilder', () => {
     });
 
     it('should remove skill section when over budget', () => {
-      const smallBuilder = new DynamicPromptBuilder({ tokenBudget: 100 });
+      const smallBuilder = new DynamicPromptBuilder({ maxChars: 100 });
 
       const context: PromptBuildContext = {
         task: 'Test task',
@@ -159,7 +159,7 @@ describe('DynamicPromptBuilder', () => {
     });
 
     it('should always keep task, base template, and language', () => {
-      const tinyBuilder = new DynamicPromptBuilder({ tokenBudget: 10 }); // ~40 chars
+      const tinyBuilder = new DynamicPromptBuilder({ maxChars: 10 }); // ~40 chars
 
       const context: PromptBuildContext = {
         task: 'Fix bug',

@@ -19,14 +19,16 @@ import type { AgentPhaseResult, CompactorConfig } from '../types/pipeline.js';
 import type { AgentType } from '../types/capabilities.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
 
+/** Default compression timeout (ms) */
+const COMPRESSION_TIMEOUT_MS = 30_000;
+
 /** Default compression config */
-const DEFAULT_CONFIG: Required<CompactorConfig> = {
-  model: undefined as unknown as string, // use provider default
+const DEFAULT_CONFIG = {
   preserveRaw: false,
   maxSummaryLength: 2000,
   maxFindings: 20,
   maxSuggestions: 10,
-};
+} satisfies Required<Omit<CompactorConfig, 'model'>>;
 
 /**
  * Context Compactor
@@ -77,8 +79,10 @@ export class ContextCompactor {
         originalLength,
         compressedLength: this.computeLength(compressed),
       };
-    } catch {
-      // Fallback: basic truncation
+    } catch (error) {
+      // Log compression failure for observability, then fallback to truncation
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`[ContextCompactor] Compression failed for ${phase} phase, using fallback: ${errorMsg}`);
       return this.fallback(result.text, phase, originalLength, resolvedConfig);
     }
   }
@@ -106,14 +110,22 @@ export class ContextCompactor {
       throw new Error('No model available for compression');
     }
 
-    const result = await generateText({
-      model,
-      system: systemPrompt,
-      prompt: userPrompt,
-      maxSteps: 1,
-    });
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), COMPRESSION_TIMEOUT_MS);
 
-    return this.parseCompressedOutput(result.text);
+    try {
+      const result = await generateText({
+        model,
+        system: systemPrompt,
+        prompt: userPrompt,
+        maxSteps: 1,
+        abortSignal: abortController.signal,
+      });
+
+      return this.parseCompressedOutput(result.text);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   /**
@@ -164,21 +176,16 @@ export class ContextCompactor {
    * Extract file paths from text using regex
    */
   private extractFilePaths(text: string): string[] {
-    // Match common file path patterns
-    const pathPatterns = [
-      /(?:^|[\s"'`(\[])([\w./\-]+\.\w{1,10})(?:[\s"'`)\]:;,])/gm,
-      /(?:src|lib|pkg|app|packages)[/\\][\w./\\\-]+/g,
-    ];
+    // Match file paths with at least one path separator and a file extension
+    // Prefix is 1-4 chars (e.g., src, lib, pkg, app, test) followed by / or \
+    const pathPattern = /(?:^|[\s"'`(\[/])([a-zA-Z0-9_./\-]{1,4}[/\\][\w./\\-]+\.\w{1,10})(?:[\s"'`)\]:;,])/gm;
 
     const paths = new Set<string>();
-    for (const pattern of pathPatterns) {
-      const matches = text.matchAll(pattern);
-      for (const match of matches) {
-        const p = match[1] || match[0];
-        // Filter out obvious non-paths
-        if (p.length > 5 && p.length < 200 && !p.includes('http')) {
-          paths.add(p.trim());
-        }
+    const matches = text.matchAll(pathPattern);
+    for (const match of matches) {
+      const p = match[1]?.trim();
+      if (p && p.length > 5 && p.length < 200 && !p.includes('http')) {
+        paths.add(p);
       }
     }
 

@@ -13,11 +13,10 @@
 
 import type { AgentPhaseResult, PromptBuildContext } from '../types/pipeline.js';
 import type { AgentType } from '../types/capabilities.js';
-import { PROMPT_SECTION_PRIORITY } from '../types/pipeline.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
 
-/** Default token budget in characters (~4 chars per token) */
-const DEFAULT_TOKEN_BUDGET = 16000; // ~4K tokens
+/** Default max characters for the full prompt (~4K tokens) */
+const DEFAULT_MAX_CHARS = 16000;
 
 /** Estimated chars per token for budget calculation */
 const CHARS_PER_TOKEN = 4;
@@ -30,11 +29,14 @@ const CHARS_PER_TOKEN = 4;
  */
 export class DynamicPromptBuilder {
   private promptTemplate: PromptTemplate;
-  private tokenBudget: number;
+  private maxChars: number;
 
-  constructor(options?: { tokenBudget?: number }) {
+  /**
+   * @param options.maxChars - Maximum characters for the full prompt (default: ~4K tokens)
+   */
+  constructor(options?: { maxChars?: number }) {
     this.promptTemplate = new PromptTemplate();
-    this.tokenBudget = (options?.tokenBudget ?? DEFAULT_TOKEN_BUDGET) * CHARS_PER_TOKEN;
+    this.maxChars = options?.maxChars ?? DEFAULT_MAX_CHARS;
   }
 
   /**
@@ -148,7 +150,7 @@ export class DynamicPromptBuilder {
     }
 
     // If within budget, return as-is
-    if (totalSize <= this.tokenBudget) {
+    if (totalSize <= this.maxChars) {
       return this.joinSections(sections);
     }
 
@@ -160,12 +162,12 @@ export class DynamicPromptBuilder {
     let currentSize = totalSize;
 
     for (const [name, content] of sortedSections) {
-      if (currentSize <= this.tokenBudget) break;
+      if (currentSize <= this.maxChars) break;
 
       // Never remove base, language, or task
       if (sectionPriority[name] === 0) continue;
 
-      const available = this.tokenBudget - (currentSize - content.length);
+      const available = this.maxChars - (currentSize - content.length);
 
       if (available < 200) {
         // Budget too tight, remove this section entirely
@@ -258,6 +260,6 @@ export class DynamicPromptBuilder {
 /**
  * Create a DynamicPromptBuilder instance
  */
-export function createDynamicPromptBuilder(options?: { tokenBudget?: number }): DynamicPromptBuilder {
+export function createDynamicPromptBuilder(options?: { maxChars?: number }): DynamicPromptBuilder {
   return new DynamicPromptBuilder(options);
 }

@@ -75,16 +75,3 @@ export interface PromptBuildContext {
   /** 语言指令（可选） */
   languageInstruction?: string;
 }
-
-/**
- * Prompt section 优先级（用于 token budget 截断）
- *
- * 数值越低优先级越高，budget 不足时优先保留高优先级 section。
- */
-export const PROMPT_SECTION_PRIORITY: Record<string, number> = {
-  summary: 1,
-  keyFiles: 2,
-  findings: 3,
-  suggestions: 4,
-  rawText: 5,
-} as const;
