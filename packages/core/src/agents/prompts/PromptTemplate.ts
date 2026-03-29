@@ -8,7 +8,6 @@
  * - templates/explore.md        - Explore Agent 主模板
  * - templates/plan.md           - Plan Agent 主模板
  * - templates/intelligent.md    - Intelligent Agent 主模板
- * - templates/tool-guides.md    - 工具使用指南
  * - templates/agents/*.md       - 扩展 Agent 模板
  */
 
