@@ -38,7 +38,6 @@ export {
 export type {
   WorkflowOptions,
   WorkflowResult,
-  TaskAnalysis,
 } from './types/runner.js';
 
 export type {

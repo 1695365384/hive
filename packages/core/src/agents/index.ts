@@ -38,7 +38,6 @@ export {
   type AgentExecuteOptions,
   type WorkflowOptions,
   type WorkflowResult,
-  type TaskAnalysis,
   type AgentConfig,
   type AgentResult,
   type ThoroughnessLevel,

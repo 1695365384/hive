@@ -24,7 +24,6 @@ export type {
   AgentExecuteOptions,
   WorkflowOptions,
   WorkflowResult,
-  TaskAnalysis,
   TimeoutConfig,
   HeartbeatConfig,
   HeartbeatTaskConfig,

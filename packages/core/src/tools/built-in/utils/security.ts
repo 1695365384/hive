@@ -2,13 +2,11 @@
  * 安全检查工具函数
  *
  * 从 SecurityHooks 提取的独立安全逻辑，供内置工具复用。
- * 包含：危险命令检查、敏感文件检查、路径约束、SSRF 防护、命令 allowlist。
+ * 包含：危险命令检查、敏感文件检查、路径约束、SSRF 防护、命令策略校验。
  */
 
 import { resolve, isAbsolute, relative } from 'node:path';
-import { promises as dns } from 'node:dns';
 import { resolve4, resolve6 } from 'node:dns/promises';
-import { networkInterfaces } from 'node:os';
 
 // ============================================
 // 常量
@@ -64,6 +62,15 @@ const DANGEROUS_COMMANDS: DangerousPattern[] = [
   { pattern: /chown\s+-R/, description: '递归修改所有者' },
   { pattern: /curl.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: '管道执行远程脚本' },
   { pattern: /wget.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: '管道执行远程脚本' },
+  { pattern: /\b(bash|sh|zsh)\b\s+-c\s+["']\s*(\.|\/|~)/, description: 'Shell -c 执行路径脚本' },
+  { pattern: /\b(python|python2|python3)\b\s+-c\b/, description: 'Python 内联代码执行' },
+  { pattern: /\b(node|nodejs)\b\s+-e\b/, description: 'Node.js 内联代码执行' },
+  { pattern: /\bperl\b\s+-e\b/, description: 'Perl 内联代码执行' },
+  { pattern: /\bruby\b\s+-e\b/, description: 'Ruby 内联代码执行' },
+  { pattern: /\bphp\b\s+-r\b/, description: 'PHP 内联代码执行' },
+  { pattern: /\b(nc|ncat|netcat|socat)\b/, description: '潜在反弹 shell/隧道工具' },
+  { pattern: /\b(systemctl|service|launchctl)\b/, description: '系统服务管理命令' },
+  { pattern: /\b(insmod|rmmod|modprobe)\b/, description: '内核模块操作' },
   { pattern: /\$\([^)]+\)/, description: '命令替换' },
   { pattern: /`[^`]+`/, description: '反引号命令替换' },
 ];
@@ -203,8 +210,24 @@ export function isAllowedUrl(url: string): { allowed: boolean; reason?: string }
 }
 
 // ============================================
-// 命令 Allowlist
+// 命令策略
 // ============================================
+
+type BashCommandPolicyMode = 'deny-dangerous' | 'allowlist';
+
+function getBashCommandPolicyMode(): BashCommandPolicyMode {
+  const rawMode = process.env.HIVE_BASH_COMMAND_POLICY?.trim().toLowerCase();
+  if (rawMode === 'allowlist') return 'allowlist';
+  if (rawMode === 'deny-dangerous') return 'deny-dangerous';
+
+  // 兼容旧配置：若设置了 HIVE_BASH_ALLOWLIST，默认启用 allowlist 策略。
+  if (process.env.HIVE_BASH_ALLOWLIST?.trim()) {
+    return 'allowlist';
+  }
+
+  // 默认更少误杀：仅依赖高危命令检测进行拦截。
+  return 'deny-dangerous';
+}
 
 function getBashAllowlist(): string[] {
   const envAllowlist = process.env.HIVE_BASH_ALLOWLIST;
@@ -215,10 +238,11 @@ function getBashAllowlist(): string[] {
 }
 
 /**
- * 检查命令是否在 allowlist 中
+ * 检查命令是否允许执行
  *
- * 提取命令的第一个词（如 `git status` → `git`），检查是否在允许列表中。
- * 以 `/` 或 `.` 开头的命令（绝对路径或相对路径脚本）不在默认 allowlist 中。
+ * 默认策略为 deny-dangerous（降低误杀，允许绝大多数非高危命令）。
+ * 当启用 allowlist 策略时，提取命令的第一个词（如 `git status` → `git`）进行白名单校验。
+ * 以 `/`、`.` 或 `~` 开头的命令（绝对路径、相对路径或用户目录脚本）始终拒绝。
  */
 export function isCommandAllowed(command: string): boolean {
   const trimmed = command.trim();
@@ -227,9 +251,14 @@ export function isCommandAllowed(command: string): boolean {
   const firstWord = trimmed.split(/\s+/)[0]!;
   const allowlist = getBashAllowlist();
 
-  // 路径形式的命令（./script.sh, /usr/bin/xxx）不在默认 allowlist 中
-  if (firstWord.startsWith('/') || firstWord.startsWith('./') || firstWord.startsWith('../')) {
+  // 路径形式的命令（./script.sh, /usr/bin/xxx, ~/script.sh）始终拒绝
+  if (firstWord.startsWith('/') || firstWord.startsWith('./') || firstWord.startsWith('../') || firstWord.startsWith('~')) {
     return false;
+  }
+
+  const policyMode = getBashCommandPolicyMode();
+  if (policyMode === 'deny-dangerous') {
+    return true;
   }
 
   return allowlist.includes(firstWord);

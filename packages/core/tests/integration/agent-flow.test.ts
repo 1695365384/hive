@@ -34,7 +34,6 @@ describe('Agent Module Exports', () => {
     it('should have required methods', () => {
       const agent = new Agent();
 
-      expect(typeof agent.analyzeTask).toBe('function');
       expect(typeof agent.listProviders).toBe('function');
       expect(typeof agent.useProvider).toBe('function');
       expect(typeof agent.explore).toBe('function');

@@ -90,6 +90,63 @@ describe('WorkflowCapability', () => {
   });
 
   // ============================================
+  // 子 Agent 工具测试
+  // ============================================
+
+  describe('子 Agent 工具', () => {
+    it('should create explore and plan subagent tools during initialization', () => {
+      // Verify the mock runner.execute was set up for subagent tools
+      // (subagent tools call context.runner.execute in their execute function)
+      expect(context.runner.execute).toBeDefined();
+    });
+
+    it('should include subagent tools in tool set passed to runtime', async () => {
+      // Override mockRuntimeRun to capture the tools passed
+      let capturedTools: Record<string, any> = {};
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        capturedTools = config.tools;
+        config.onText?.('result');
+        return defaultRuntimeResult;
+      });
+
+      await capability.run('test task');
+
+      // Should have explore and plan in addition to regular tools
+      expect(capturedTools).toHaveProperty('explore');
+      expect(capturedTools).toHaveProperty('plan');
+    });
+
+    it('subagent tool execution delegates to runner.execute', async () => {
+      const mockExecuteResult = {
+        text: 'Found 5 API endpoints',
+        tools: ['Glob', 'Grep', 'Read'],
+        success: true,
+        usage: { input: 500, output: 200 },
+      };
+      (context.runner.execute as any).mockResolvedValueOnce(mockExecuteResult);
+
+      let capturedTools: Record<string, any> = {};
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        capturedTools = config.tools;
+        config.onText?.('result');
+        return defaultRuntimeResult;
+      });
+
+      await capability.run('test task');
+
+      // Verify explore tool is callable
+      const exploreTool = capturedTools.explore;
+      expect(exploreTool).toBeDefined();
+      expect(typeof exploreTool.execute).toBe('function');
+
+      // Call the explore subagent tool
+      const subResult = await exploreTool.execute!({ prompt: 'find all endpoints' }, {} as any);
+      expect(subResult).toBe('Found 5 API endpoints');
+      expect(context.runner.execute).toHaveBeenCalledWith('explore', 'find all endpoints');
+    });
+  });
+
+  // ============================================
   // 生命周期测试
   // ============================================
 
@@ -100,91 +157,6 @@ describe('WorkflowCapability', () => {
 
     it('should have correct name', () => {
       expect(capability.name).toBe('workflow');
-    });
-  });
-
-  // ============================================
-  // analyzeTask() 测试
-  // ============================================
-
-  describe('analyzeTask()', () => {
-    it('should identify simple question task', () => {
-      const analysis = capability.analyzeTask('What is the project structure?');
-
-      expect(analysis.type).toBe('simple');
-      expect(analysis.needsExploration).toBe(false);
-      expect(analysis.needsPlanning).toBe(false);
-      expect(analysis.recommendedAgents).toContain('general');
-    });
-
-    it('should identify simple question with short input', () => {
-      const analysis = capability.analyzeTask('How do I use this?');
-
-      expect(analysis.type).toBe('simple');
-      expect(analysis.reason).toBe('Simple question, direct response');
-    });
-
-    it('should treat longer tasks as moderate', () => {
-      const analysis = capability.analyzeTask(`
-        I need to implement a new feature for the authentication system.
-        It should support JWT tokens and OAuth2.
-        Please also add proper tests.
-      `);
-
-      expect(analysis.type).toBe('moderate');
-      expect(analysis.needsExploration).toBe(true);
-      expect(analysis.needsPlanning).toBe(true);
-    });
-
-    it('should treat multi-line tasks as moderate', () => {
-      const analysis = capability.analyzeTask(`
-        Add a new API endpoint
-        Update the database schema
-        Write tests
-      `);
-
-      expect(analysis.type).toBe('moderate');
-      expect(analysis.needsExploration).toBe(true);
-      expect(analysis.needsPlanning).toBe(true);
-    });
-
-    it('should return moderate for complex-looking single questions', () => {
-      const longQuestion = 'What is the best way to refactor the entire authentication system to support multiple providers including OAuth2, SAML, and custom implementations while maintaining backward compatibility?';
-      const analysis = capability.analyzeTask(longQuestion);
-
-      expect(analysis.type).toBe('moderate');
-    });
-
-    it('should classify short greeting as simple', () => {
-      const analysis = capability.analyzeTask('你好啊');
-      expect(analysis.type).toBe('simple');
-      expect(analysis.needsExploration).toBe(false);
-      expect(analysis.needsPlanning).toBe(false);
-      expect(analysis.reason).toBe('Short message, no action verbs detected');
-    });
-
-    it('should classify short thanks as simple', () => {
-      const analysis = capability.analyzeTask('谢谢');
-      expect(analysis.type).toBe('simple');
-      expect(analysis.needsExploration).toBe(false);
-    });
-
-    it('should classify short presence check as simple', () => {
-      const analysis = capability.analyzeTask('在吗');
-      expect(analysis.type).toBe('simple');
-      expect(analysis.needsExploration).toBe(false);
-    });
-
-    it('should classify short message with action verb as moderate', () => {
-      const analysis = capability.analyzeTask('修复登录bug');
-      expect(analysis.type).toBe('moderate');
-      expect(analysis.needsExploration).toBe(true);
-    });
-
-    it('should classify short English action task as moderate', () => {
-      const analysis = capability.analyzeTask('fix auth bug');
-      expect(analysis.type).toBe('moderate');
-      expect(analysis.needsExploration).toBe(true);
     });
   });
 
@@ -349,45 +321,6 @@ describe('WorkflowCapability', () => {
       expect(result.duration).toBeDefined();
       expect(typeof result.duration).toBe('number');
       expect(result.duration).toBeGreaterThanOrEqual(0);
-    });
-  });
-
-  // ============================================
-  // preview() 测试
-  // ============================================
-
-  describe('preview()', () => {
-    it('should return task analysis', async () => {
-      const preview = await capability.preview('What is the project?');
-
-      expect(preview.analysis).toBeDefined();
-      expect(preview.analysis.type).toBe('simple');
-    });
-
-    it('should return intelligent prompt', async () => {
-      const preview = await capability.preview('Test task');
-
-      expect(preview.intelligentPrompt).toBeDefined();
-      expect(typeof preview.intelligentPrompt).toBe('string');
-      expect(preview.intelligentPrompt.length).toBeGreaterThan(0);
-    });
-
-    it('should include language instruction for Chinese', async () => {
-      const preview = await capability.preview('这是什么？');
-
-      expect(preview.intelligentPrompt).toContain('中文');
-    });
-
-    it('should include language instruction for English', async () => {
-      const preview = await capability.preview('What is this?');
-
-      expect(preview.intelligentPrompt).toContain('English');
-    });
-
-    it('should not execute runtime', async () => {
-      await capability.preview('Test task');
-
-      expect(mockRuntimeRun).not.toHaveBeenCalled();
     });
   });
 

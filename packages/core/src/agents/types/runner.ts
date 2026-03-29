@@ -22,6 +22,8 @@ export interface WorkflowOptions {
   onPhase?: (phase: string, message: string) => void;
   /** 回调：工具使用 */
   onTool?: (tool: string, input?: unknown) => void;
+  /** 回调：工具结果 */
+  onToolResult?: (tool: string, result: unknown) => void;
   /** 回调：文本输出 */
   onText?: (text: string) => void;
 }
@@ -44,18 +46,3 @@ export interface WorkflowResult {
   duration: number;
 }
 
-/**
- * 任务分析结果
- */
-export interface TaskAnalysis {
-  /** 任务类型 */
-  type: 'simple' | 'moderate' | 'complex';
-  /** 需要探索 */
-  needsExploration: boolean;
-  /** 需要计划 */
-  needsPlanning: boolean;
-  /** 推荐的 Agent */
-  recommendedAgents: string[];
-  /** 理由 */
-  reason: string;
-}

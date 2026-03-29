@@ -37,9 +37,9 @@ export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, s
         return '[Security] 当前 Agent 无权限执行 shell 命令';
       }
 
-      // Allowlist 检查
+      // 命令策略检查（默认 deny-dangerous；可切换为 allowlist）
       if (!isCommandAllowed(command)) {
-        return `[Security] 命令不在允许列表中: ${command.split(/\s+/)[0]}\n可通过 HIVE_BASH_ALLOWLIST 环境变量配置允许的命令`;
+        return `[Security] 命令被策略阻止: ${command.split(/\s+/)[0]}\n可通过 HIVE_BASH_COMMAND_POLICY 与 HIVE_BASH_ALLOWLIST 环境变量调整命令策略`;
       }
 
       // 危险命令检查

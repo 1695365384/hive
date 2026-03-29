@@ -10,7 +10,6 @@ import type {
   AgentInitOptions,
   WorkflowOptions,
   WorkflowResult,
-  TaskAnalysis,
   ThoroughnessLevel,
   AgentType,
   AgentResult,
@@ -241,10 +240,6 @@ export class Agent {
   // 工作流（委托给 WorkflowCapability）
   // ============================================
 
-  analyzeTask(task: string): TaskAnalysis {
-    return this.workflowCap.analyzeTask(task);
-  }
-
   async runWorkflow(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
     return this.workflowCap.run(task, options);
   }
@@ -256,13 +251,6 @@ export class Agent {
    */
   async dispatch(task: string, options?: DispatchOptions): Promise<DispatchResult> {
     return this.dispatcher.dispatch(task, options);
-  }
-
-  async preview(task: string, options?: WorkflowOptions): Promise<{
-    analysis: TaskAnalysis;
-    intelligentPrompt: string;
-  }> {
-    return this.workflowCap.preview(task, options);
   }
 
   // ============================================

@@ -72,7 +72,6 @@ export type {
   AgentExecuteOptions,
   WorkflowOptions,
   WorkflowResult,
-  TaskAnalysis,
   AgentConfig,
   AgentResult,
   ThoroughnessLevel,

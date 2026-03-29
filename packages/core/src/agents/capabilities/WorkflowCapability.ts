@@ -12,7 +12,6 @@ import type {
   AgentContext,
   WorkflowOptions,
   WorkflowResult,
-  TaskAnalysis,
 } from '../core/types.js';
 import type {
   ToolBeforeHookContext,
@@ -23,8 +22,10 @@ import type {
   NotificationType,
 } from '../../hooks/types.js';
 import type { SessionCapability } from './SessionCapability.js';
+import type { Tool } from 'ai';
 import { LLMRuntime } from '../runtime/LLMRuntime.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
+import { createAllSubagentTools } from '../../tools/built-in/subagent-tools.js';
 
 /**
  * 工作流能力实现
@@ -34,6 +35,7 @@ export class WorkflowCapability implements AgentCapability {
   private context!: AgentContext;
   private runtime!: LLMRuntime;
   private promptTemplate!: PromptTemplate;
+  private subagentTools: Record<string, Tool> = {};
   private workflowCounter: number = 0;
 
   private static readonly DEFAULT_MAX_TURNS = 30;
@@ -42,6 +44,7 @@ export class WorkflowCapability implements AgentCapability {
     this.context = context;
     this.runtime = new LLMRuntime(context.providerManager);
     this.promptTemplate = new PromptTemplate();
+    this.subagentTools = createAllSubagentTools(context);
   }
 
   /**
@@ -131,45 +134,6 @@ export class WorkflowCapability implements AgentCapability {
   }
 
   /**
-   * 分析任务复杂度
-   */
-  analyzeTask(task: string): TaskAnalysis {
-    const isPureQuestion =
-      task.length < 100 && task.trim().endsWith('?') && !task.includes('\n');
-
-    if (isPureQuestion) {
-      return {
-        type: 'simple',
-        needsExploration: false,
-        needsPlanning: false,
-        recommendedAgents: ['general'],
-        reason: 'Simple question, direct response',
-      };
-    }
-
-    const ACTION_VERB_RE = /修复|实现|重构|添加|创建|删除|优化|排查|调试|fix|implement|refactor|create|delete|debug/i;
-    const isShortMessage = task.length < 30 && !task.includes('\n');
-
-    if (isShortMessage && !ACTION_VERB_RE.test(task)) {
-      return {
-        type: 'simple',
-        needsExploration: false,
-        needsPlanning: false,
-        recommendedAgents: ['general'],
-        reason: 'Short message, no action verbs detected',
-      };
-    }
-
-    return {
-      type: 'moderate',
-      needsExploration: true,
-      needsPlanning: true,
-      recommendedAgents: ['general'],
-      reason: 'Task requires exploration and execution',
-    };
-  }
-
-  /**
    * 执行任务
    *
    * 单 Agent 自主循环：Agent 自主决定收集上下文、执行操作、验证结果。
@@ -201,13 +165,18 @@ export class WorkflowCapability implements AgentCapability {
         // 构建 system prompt
         const systemPrompt = this.buildSystemPrompt(task);
 
-        // 获取全部工具
-        const tools = this.context.runner.getToolRegistry().getToolsForAgent('general');
+        // 获取全部工具 + 子 Agent 工具
+        const tools = {
+          ...this.context.runner.getToolRegistry().getToolsForAgent('general'),
+          ...this.subagentTools,
+        };
 
         // 从 session 加载历史消息
         const sessionCap = this.getSessionCap();
         const historyMessages = sessionCap?.getMessages() ?? [];
 
+        // NOTE: Intentional mutable accumulator for streaming — onText fires
+        // multiple times during a single run; immutable patterns don't apply here.
         let result = '';
 
         const runtimeResult = await this.runtime.run({
@@ -230,7 +199,7 @@ export class WorkflowCapability implements AgentCapability {
           },
           onToolResult: (toolName: string, output: unknown) => {
             this.emitToolAfter(sessionId, toolName, output).catch(() => {});
-            // 工具结果更新活动状态（心跳）
+            options?.onToolResult?.(toolName, output);
             this.context.timeoutCap.updateActivity();
           },
         });
@@ -275,18 +244,6 @@ export class WorkflowCapability implements AgentCapability {
         duration: Date.now() - startTime,
       };
     }
-  }
-
-  /**
-   * 预览工作流
-   */
-  async preview(task: string, _options?: WorkflowOptions): Promise<{
-    analysis: TaskAnalysis;
-    intelligentPrompt: string;
-  }> {
-    const analysis = this.analyzeTask(task);
-    const intelligentPrompt = this.buildSystemPrompt(task);
-    return { analysis, intelligentPrompt };
   }
 
   // ============================================
