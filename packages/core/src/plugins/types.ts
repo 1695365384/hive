@@ -160,7 +160,7 @@ export interface IChannel {
 // ============================================
 
 /**
- * 消息总线接口（由 @hive/orchestrator 提供）
+ * 消息总线接口
  */
 export interface IMessageBus {
   subscribe(topic: string, handler: (message: unknown) => void | Promise<void>): string

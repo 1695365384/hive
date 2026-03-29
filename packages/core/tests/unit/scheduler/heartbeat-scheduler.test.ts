@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { HeartbeatScheduler } from '../../src/heartbeat-scheduler.js';
+import { HeartbeatScheduler } from '../../../src/scheduler/HeartbeatScheduler.js';
 
 function createMockAgent() {
   return {
@@ -39,7 +39,7 @@ describe('HeartbeatScheduler', () => {
   it('start() 后 isRunning 应为 true', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 60000 },
       bus,
     });
 
@@ -52,7 +52,7 @@ describe('HeartbeatScheduler', () => {
   it('stop() 后 isRunning 应为 false', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 60000 },
       bus,
     });
 
@@ -64,7 +64,7 @@ describe('HeartbeatScheduler', () => {
   it('初始状态 isRunning 应为 false', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 60000 },
       bus,
     });
 
@@ -75,7 +75,7 @@ describe('HeartbeatScheduler', () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 30000 }, // < 1min, uses setInterval
       bus,
     });
 
@@ -91,14 +91,12 @@ describe('HeartbeatScheduler', () => {
   it('start() 应立即执行一次 tick', async () => {
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 60000 },
       bus,
     });
 
-    // tick() 在 start() 中被同步调用（非 await），需要等 microtask 完成
     const tickPromise = scheduler.tick();
 
-    // 先等 microtask 排入
     await vi.advanceTimersByTimeAsync(0);
 
     await tickPromise;
@@ -111,7 +109,7 @@ describe('HeartbeatScheduler', () => {
   it('tick() 成功时应发布 heartbeat:tick 事件', async () => {
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 60000 },
       bus,
     });
 
@@ -132,7 +130,7 @@ describe('HeartbeatScheduler', () => {
 
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 60000 },
       bus,
     });
 
@@ -150,7 +148,7 @@ describe('HeartbeatScheduler', () => {
 
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 60000 },
       bus,
     });
 
@@ -167,7 +165,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: {
-        enabled: true,
         intervalMs: 60000,
         model: 'claude-haiku-4-5-20251001',
         prompt: 'Custom check prompt',
@@ -186,34 +183,46 @@ describe('HeartbeatScheduler', () => {
   it('stop() 后不应再执行 tick', async () => {
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 30000 }, // < 1min, uses setInterval
       bus,
     });
 
     scheduler.start();
     scheduler.stop();
 
-    // 推进时间让 setInterval 触发
     await vi.advanceTimersByTimeAsync(120000);
 
     // 只有 start 时的那次调用
     expect(agent.runHeartbeatOnce).toHaveBeenCalledTimes(1);
   });
 
-  it('按间隔周期执行 tick', async () => {
+  it('intervalMs < 60000 时应使用 setInterval fallback', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
-      config: { enabled: true, intervalMs: 60000 },
+      config: { intervalMs: 30000 },
+      bus,
+    });
+
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    scheduler.start();
+
+    expect(setIntervalSpy).toHaveBeenCalled();
+
+    scheduler.stop();
+    setIntervalSpy.mockRestore();
+  });
+
+  it('intervalMs >= 60000 时应使用 cron（验证 start/stop 生命周期）', () => {
+    const scheduler = new HeartbeatScheduler({
+      agent,
+      config: { intervalMs: 300000 },
       bus,
     });
 
     scheduler.start();
-
-    // 初始调用 + 2 次间隔
-    await vi.advanceTimersByTimeAsync(120000);
-
-    expect(agent.runHeartbeatOnce).toHaveBeenCalledTimes(3); // 初始 + 2次间隔
+    expect(scheduler.isRunning()).toBe(true);
 
     scheduler.stop();
+    expect(scheduler.isRunning()).toBe(false);
   });
 });

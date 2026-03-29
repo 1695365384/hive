@@ -23,7 +23,6 @@
   },
   "dependencies": {
     "@hive/core": "workspace:*",
-    "@hive/orchestrator": "workspace:*",
     "@hive/plugin-feishu": "workspace:*",
     "dotenv": "^16.4.0",
     "hono": "^4.12.0",

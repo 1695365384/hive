@@ -427,6 +427,7 @@ export {
   createScheduleEngine,
   isValidCron,
   getNextRunTime,
+  HeartbeatScheduler,
 } from './scheduler/index.js';
 
 export type {
@@ -442,6 +443,7 @@ export type {
   TriggerContext,
   TriggerCallback,
   IScheduleEngine,
+  HeartbeatSchedulerOptions,
 } from './scheduler/index.js';
 
 // ============================================
@@ -518,6 +520,38 @@ export {
   noopLogger,
 } from './types/logger.js';
 
+// ============================================
+// 消息总线
+// ============================================
+
+export {
+  MessageBus,
+} from './bus/index.js';
+
+export type {
+  BusMessage,
+  Subscription,
+  RequestContext,
+  Middleware,
+  MessageBusOptions,
+  MessageBusEvents,
+  BusEventType,
+} from './bus/index.js';
+
+// ============================================
+// Server 工厂
+// ============================================
+
+export {
+  createServer,
+} from './server/index.js';
+
+export type {
+  Server,
+  ServerOptions,
+} from './server/index.js';
+
+// ============================================
 // ============================================
 // 工具函数
 // ============================================
