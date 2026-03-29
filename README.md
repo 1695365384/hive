@@ -19,7 +19,7 @@
   <p>
     <img src="https://img.shields.io/badge/Node.js-18+-green" alt="Node.js">
     <img src="https://img.shields.io/badge/TypeScript-5.0+-blue" alt="TypeScript">
-    <img src="https://img.shields.io/badge/668%20tests-passing-brightgreen" alt="Tests">
+    <img src="https://img.shields.io/badge/905%20tests-passing-brightgreen" alt="Tests">
     <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
   </p>
 </div>
@@ -101,9 +101,9 @@ OpenClaw 用户花两周优化才把 $347 降到 $68。Hive **开箱即用就是
 
 | 阶段 | 模型选择 | 为什么 |
 |:-----|:---------|:-------|
-| **探索** | 轻量模型（Haiku） | 扫描代码只需理解，不需要推理能力 |
-| **规划** | 主模型 | 需要深度分析，但不应直接改代码 |
-| **执行** | 主模型 | 按计划行动，需要全部工具权限 |
+| **探索** | Provider 默认模型 | 扫描代码只需理解，不需要推理能力 |
+| **规划** | Provider 默认模型 | 需要深度分析，但不应直接改代码 |
+| **执行** | Provider 默认模型 | 按计划行动，需要全部工具权限 |
 
 一个"帮我重构登录模块"的任务，80% 的 token 消耗发生在探索阶段 —— 用 Haiku 处理，成本直接降 **80%**。这不是优化技巧，是默认行为。
 
@@ -260,9 +260,9 @@ pnpm run cli
 
 | 阶段 | 模型选择 | 工具权限 | 设计理由 |
 |:-----|:---------|:---------|:---------|
-| **探索** | 轻量模型（Haiku） | 只读 | 快速扫描，低成本，防止误改 |
-| **规划** | 主模型 | 只读 | 深度分析，强制只读输出计划 |
-| **执行** | 主模型 | 全部工具 | 按计划精准行动 |
+| **探索** | Provider 默认模型 | 只读 | 快速扫描，低成本，防止误改 |
+| **规划** | Provider 默认模型 | 只读 | 深度分析，强制只读输出计划 |
+| **执行** | Provider 默认模型 | 全部工具 | 按计划精准行动 |
 
 每个阶段独立 trace，出错可定位。80% 的复杂任务都适合这个模式。可通过 Hook 在 `workflow:phase` 阶段插入自定义逻辑。
 
@@ -276,6 +276,7 @@ pnpm run cli
 | SubAgent | 需要子 Agent 协作时 |
 | Skill | 需要技能匹配时 |
 | Session | 需要会话持久化时 |
+| Schedule | 需要定时任务或推送通知时 |
 | Timeout | 需要超时监控时 |
 
 只加载你需要的，不用的零开销。
@@ -350,8 +351,8 @@ Markdown 文件定义技能，YAML frontmatter 声明元数据，系统自动加
            ┌──────┴──┐      ┌──────┴──────────────────┐
            │  chat   │      │       workflow            │
            │ 直接对话 │      │  explore → plan → execute │
-           └──────┬──┘      │  Haiku    主模型  主模型   │
-                  │         │  只读     只读    全权限    │
+           └──────┬──┘      │  Provider  Provider Provider│
+                  │         │  默认模型 默认模型  全权限   │
                   │         └──────┬──────────────────┘
                   │                │
                ┌──┴────────────────┴───────────────────┐
@@ -377,11 +378,11 @@ hive/
 │   ├── agents/core/           入口、上下文、运行器
 │   ├── agents/capabilities/   7 个能力模块
 │   ├── agents/dispatch/       智能路由
-│   ├── agents/prompts/        Prompt 模板
+│   ├── agents/runtime/        LLM 运行时（AI SDK）
 │   ├── providers/             LLM 提供商管理
+│   ├── tools/built-in/        内置工具（bash/file/grep/glob/web）
 │   ├── skills/                技能系统
-│   ├── hooks/                 生命周期钩子
-│   └── session/               会话持久化
+│   └── hooks/                 生命周期钩子
 ├── packages/orchestrator/     多 Agent 编排（调度器 + 事件总线）
 ├── packages/plugins/feishu/   飞书渠道插件
 ├── apps/server/               HTTP/WS 服务
@@ -395,14 +396,14 @@ hive/
 <details>
 <summary><b>Hive 就是 OpenClaw 的替代品吗？</b></summary>
 
-是的。Hive 使用相同的底层 SDK（@anthropic-ai/claude-agent-sdk），但架构设计理念完全不同：Hive 从多 Agent 编排出发，OpenClaw 从单 Agent 对话循环出发。如果你被 OpenClaw 的成本、可靠性、部署复杂度劝退过，Hive 就是为你设计的。
+是的。Hive 基于 AI SDK（@ai-sdk/openai）自研轻量运行时，架构设计理念完全不同：Hive 从多 Agent 编排出发，OpenClaw 从单 Agent 对话循环出发。如果你被 OpenClaw 的成本、可靠性、部署复杂度劝退过，Hive 就是为你设计的。
 
 </details>
 
 <details>
 <summary><b>可以从 OpenClaw 迁移吗？</b></summary>
 
-可以。Hive 使用相同的底层 SDK，模型配置格式兼容。主要迁移工作：将 OpenClaw 的 Channel 配置改为 Hive 的 Plugin，Skill 文件直接复用。
+可以。Hive 使用 OpenAI 兼容的 Chat Completions API，模型配置格式兼容。主要迁移工作：将 OpenClaw 的 Channel 配置改为 Hive 的 Plugin，Skill 文件直接复用。
 
 </details>
 
@@ -455,7 +456,7 @@ hive/
 | `pnpm install` | 安装依赖 |
 | `pnpm run build` | 构建 |
 | `pnpm run dev` | 监视模式 |
-| `pnpm test` | 运行测试（668 个用例） |
+| `pnpm test` | 运行测试（905 个用例） |
 | `pnpm run test:e2e` | E2E 测试（需 API Key） |
 | `pnpm run server` | 启动 HTTP 服务 |
 | `pnpm run cli` | 启动 CLI |
@@ -467,7 +468,7 @@ hive/
 | 项目 | 说明 |
 |:-----|:-----|
 | [OpenClaw](https://github.com/openclaw/openclaw) | 个人 AI 助手框架，Hive 的设计参照 |
-| [Claude Agent SDK](https://github.com/anthropic/claude-agent-sdk) | Anthropic 官方 Agent SDK，Hive 的底层执行引擎 |
+| [AI SDK](https://sdk.vercel.ai) | Vercel AI SDK，Hive 的 LLM 运行时基础 |
 
 ---
 
