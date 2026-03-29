@@ -1,7 +1,7 @@
 /**
  * Server 实现
  *
- * 将 Agent、数据库、定时任务引擎、插件加载、Channel 注册表、消息总线订阅、心跳调度
+ * 将 Agent、数据库、定时任务引擎、插件、Channel 注册表、消息总线订阅、心跳调度
  * 收拢到一个统一的 Server 实例中。
  */
 
@@ -65,61 +65,6 @@ function truncate(str: string, max: number): string {
 }
 
 // ============================================
-// 插件加载
-// ============================================
-
-function isValidPluginPath(name: string): boolean {
-  if (name.startsWith('/') || name.startsWith('.')) return false;
-  if (name.includes('..')) return false;
-  return /^[a-z0-9@/._-]+$/i.test(name);
-}
-
-async function loadPlugin(
-  pluginName: string,
-  pluginConfig: Record<string, unknown>,
-  bus: MessageBus,
-  logger: ILogger,
-  channelContext: ChannelContext,
-): Promise<IPlugin | null> {
-  try {
-    logger.info(`[server] Loading plugin: ${pluginName}`);
-
-    if (!isValidPluginPath(pluginName)) {
-      logger.warn(`[server] Plugin path rejected (invalid format): ${pluginName}`);
-      return null;
-    }
-
-    const module = await import(pluginName);
-    const factory = module.default || module.createPlugin || module[Object.keys(module)[0]];
-
-    if (typeof factory !== 'function') {
-      logger.warn(`[server] Plugin ${pluginName} does not export a factory function`);
-      return null;
-    }
-
-    const plugin = factory();
-
-    await plugin.initialize({
-      messageBus: bus,
-      logger,
-      config: pluginConfig,
-      registerChannel: (channel: unknown) => {
-        const ch = channel as IChannel;
-        logger.info(`[server] Channel registered: ${ch.id}`);
-        channelContext.register(ch);
-        bus.emit(`channel:registered`, channel);
-      },
-    });
-
-    logger.info(`[server] Plugin loaded: ${pluginName}`);
-    return plugin;
-  } catch (error) {
-    logger.error(`[server] Failed to load plugin ${pluginName}:`, error);
-    return null;
-  }
-}
-
-// ============================================
 // Server 实现
 // ============================================
 
@@ -172,12 +117,21 @@ class ServerImpl implements Server {
     this.logger.info('[server] Initializing agent...');
     await this.agent.initialize();
 
-    // 加载插件（initialize 阶段）
-    const pluginsConfig = this._pluginsConfig;
-    if (pluginsConfig) {
-      for (const { name, config } of pluginsConfig) {
-        const plugin = await loadPlugin(name, config, this.bus, this.logger, this.channelContext);
-        if (plugin) this.plugins.push(plugin);
+    // 初始化插件
+    for (const plugin of this.plugins) {
+      try {
+        await plugin.initialize(
+          this.bus,
+          this.logger,
+          (channel: IChannel) => {
+            this.logger.info(`[server] Channel registered: ${channel.id}`);
+            this.channelContext.register(channel);
+            this.bus.emit(`channel:registered`, channel);
+          },
+        );
+        this.logger.info(`[server] Plugin initialized: ${plugin.metadata.name}`);
+      } catch (error) {
+        this.logger.error(`[server] Failed to initialize plugin ${plugin.metadata.name}:`, error);
       }
     }
 
@@ -268,13 +222,12 @@ class ServerImpl implements Server {
   // 内部方法
   // ============================================
 
-  private _pluginsConfig: Array<{ name: string; config: Record<string, unknown> }> | undefined;
   private _dbPath: string | undefined;
   private _heartbeatConfig: ServerHeartbeatConfig | undefined;
   private _scheduleEngineConfig: ServerOptions['config']['scheduleEngine'];
 
   setOptions(options: ServerOptions): void {
-    this._pluginsConfig = options.config.plugins;
+    this.plugins = options.plugins ?? [];
     this._dbPath = options.dbPath;
     this._heartbeatConfig = options.config.heartbeat;
     this._scheduleEngineConfig = options.config.scheduleEngine;

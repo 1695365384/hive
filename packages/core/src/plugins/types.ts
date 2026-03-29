@@ -165,29 +165,13 @@ export interface IChannel {
 export interface IMessageBus {
   subscribe(topic: string, handler: (message: unknown) => void | Promise<void>): string
   unsubscribe(id: string): void
-  publish(topic: string, message: unknown): Promise<void>
+  publish(topic: string, message: unknown): Promise<string>
   emit(event: string, data: unknown): void
 }
 
-// Import ILogger for local use and re-export for backward compatibility
+// Import ILogger for local use and re-export
 import { type ILogger, noopLogger } from '../types/logger.js'
 export { type ILogger, noopLogger }
-
-/**
- * 插件上下文
- *
- * 插件初始化时接收的上下文对象。
- */
-export interface PluginContext {
-  /** 消息总线 */
-  messageBus: IMessageBus
-  /** 日志器 */
-  logger: ILogger
-  /** 插件配置 */
-  config: Record<string, unknown>
-  /** 注册通道 */
-  registerChannel: (channel: IChannel) => void
-}
 
 // ============================================
 // 插件接口
@@ -210,6 +194,15 @@ export interface PluginMetadata {
 }
 
 /**
+ * 插件构造函数签名
+ *
+ * 所有插件必须在构造函数中接收配置。
+ */
+export interface IPluginConstructor {
+  new (config: Record<string, unknown>): IPlugin
+}
+
+/**
  * 插件接口
  *
  * 所有 Hive 插件必须实现此接口。
@@ -223,7 +216,7 @@ export interface IPlugin {
    *
    * 在此阶段进行配置验证和资源准备。
    */
-  initialize(context: PluginContext): Promise<void>
+  initialize(messageBus: IMessageBus, logger: ILogger, registerChannel: (channel: IChannel) => void): Promise<void>
 
   /**
    * 激活插件

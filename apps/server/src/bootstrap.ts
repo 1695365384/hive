@@ -16,6 +16,7 @@ import {
 } from '@hive/core'
 import { resolve } from 'path'
 import type { ServerConfig } from './config.js'
+import { plugins } from './plugins.js'
 
 export interface HiveContext {
   /** Message bus for event-driven communication */
@@ -70,12 +71,9 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
         ],
         activeProvider: config.provider.id,
       },
-      plugins: config.plugins.map(name => ({
-        name,
-        config: config.pluginConfigs[name] ?? {},
-      })),
       heartbeat: config.heartbeat.enabled ? config.heartbeat : undefined,
     },
+    plugins,
     dbPath: resolve(process.cwd(), '.hive/hive.db'),
     logger,
   })
@@ -86,7 +84,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     bus: server.bus,
     agent: server.agent,
     config,
-    plugins: [],
+    plugins,
     logger,
     heartbeatScheduler: null,
     scheduleEngine: null,

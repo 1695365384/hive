@@ -6,7 +6,7 @@ import type { Agent } from '../agents/index.js';
 import type { MessageBus } from '../bus/index.js';
 import type { ILogger } from '../types/logger.js';
 import type { ExternalConfig } from '../providers/index.js';
-import type { IChannel } from '../plugins/index.js';
+import type { IChannel, IPlugin } from '../plugins/index.js';
 import type { ScheduleCircuitBreakEvent } from '../scheduler/types.js';
 
 /**
@@ -28,8 +28,6 @@ export interface ServerOptions {
   config: {
     /** 外部配置（Provider 等） */
     externalConfig?: ExternalConfig;
-    /** 插件列表 */
-    plugins?: Array<{ name: string; config: Record<string, unknown> }>;
     /** 心跳配置（启用时启动 HeartbeatScheduler） */
     heartbeat?: ServerHeartbeatConfig;
     /** 定时任务引擎配置 */
@@ -37,6 +35,8 @@ export interface ServerOptions {
       onCircuitBreak?: (event: ScheduleCircuitBreakEvent) => void;
     };
   };
+  /** 已实例化的插件列表 */
+  plugins?: IPlugin[];
   /** 数据库路径（启用 ScheduleEngine + Session） */
   dbPath?: string;
   /** 可选，传入已有 MessageBus 实例 */

@@ -2,9 +2,13 @@
  * @hive/plugin-feishu
  *
  * 飞书消息通道插件。
+ *
+ * 用法：
+ *   import { FeishuPlugin } from '@hive/plugin-feishu'
+ *   const plugin = new FeishuPlugin({ apps: [{ appId: '...', appSecret: '...' }] })
  */
 
-export { FeishuPlugin, createFeishuPlugin } from './plugin.js'
+export { FeishuPlugin } from './plugin.js'
 export { FeishuChannel } from './channel.js'
 export type {
   FeishuAppConfig,
@@ -14,6 +18,3 @@ export type {
   FeishuChallengeResponse,
   IFeishuChannel,
 } from './types.js'
-
-// Default export for dynamic import
-export { createFeishuPlugin as default } from './plugin.js'
