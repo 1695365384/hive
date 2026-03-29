@@ -26,29 +26,29 @@ export interface FileToolOptions {
 
 const viewSchema = z.object({
   command: z.literal('view'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  offset: z.number().optional().describe('从第几行开始读取（从 1 开始）'),
-  limit: z.number().optional().describe('最多读取的行数'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  offset: z.number().optional().describe('Line number to start reading from (1-based)'),
+  limit: z.number().optional().describe('Max number of lines to read'),
 });
 
 const createSchema = z.object({
   command: z.literal('create'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  content: z.string().describe('文件内容'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  content: z.string().describe('File content'),
 });
 
 const strReplaceSchema = z.object({
   command: z.literal('str_replace'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  old_str: z.string().describe('要替换的原始文本'),
-  new_str: z.string().describe('替换后的新文本'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  old_str: z.string().describe('Original text to replace'),
+  new_str: z.string().describe('Replacement text'),
 });
 
 const insertSchema = z.object({
   command: z.literal('insert'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  insert_text: z.string().describe('要插入的文本'),
-  insert_line: z.number().describe('插入的行号（在该行之后插入）'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  insert_text: z.string().describe('Text to insert'),
+  insert_line: z.number().describe('Line number to insert after'),
 });
 
 const fileInputSchema = z.discriminatedUnion('command', [
@@ -77,7 +77,7 @@ export function createFileTool(options?: FileToolOptions): Tool<FileToolInput, s
     : '';
 
   return tool({
-    description: `文件操作工具。支持查看、创建、编辑文件内容。${descSuffix}`,
+    description: `File operations tool. Supports viewing, creating, and editing file content.${descSuffix}`,
     inputSchema: zodSchema(fileInputSchema),
     execute: async (args): Promise<string> => {
       const { command, file_path: rawPath } = args;

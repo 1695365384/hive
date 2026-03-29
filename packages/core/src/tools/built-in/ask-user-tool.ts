@@ -23,13 +23,13 @@ export function setAskUserCallback(cb: AskUserCallback): void {
 
 /** Ask User 工具输入 schema */
 const askUserInputSchema = z.object({
-  question: z.string().describe('要向用户提出的问题'),
+  question: z.string().describe('Question to ask the user'),
   options: z.array(
     z.object({
-      label: z.string().describe('选项标签'),
-      description: z.string().optional().describe('选项的详细描述'),
+      label: z.string().describe('Option label'),
+      description: z.string().optional().describe('Option description'),
     }),
-  ).optional().describe('可选的多选选项列表'),
+  ).optional().describe('Optional list of choices for the user'),
 });
 
 export type AskUserToolInput = z.infer<typeof askUserInputSchema>;
@@ -39,7 +39,7 @@ export type AskUserToolInput = z.infer<typeof askUserInputSchema>;
  */
 export function createAskUserTool(): Tool<AskUserToolInput, string> {
   return tool({
-    description: '向用户提出问题以获取澄清信息或让用户做选择。适用于需要用户输入才能继续的场景。',
+    description: 'Ask the user a question to get clarification or let them make a choice. Use when user input is needed to proceed.',
     inputSchema: zodSchema(askUserInputSchema),
     execute: async ({ question, options }): Promise<string> => {
       if (!askUserCallback) {

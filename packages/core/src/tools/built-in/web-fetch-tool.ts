@@ -28,8 +28,8 @@ const NOISE_SELECTORS = [
 
 /** Web Fetch 工具输入 schema */
 const webFetchInputSchema = z.object({
-  url: z.string().describe('要抓取的网页 URL（仅允许 https://）'),
-  maxChars: z.number().max(100000).optional().describe('返回内容的最大字符数，默认 30000'),
+  url: z.string().describe('URL to fetch (HTTPS only)'),
+  maxChars: z.number().max(100000).optional().describe('Max characters to return, default 30000'),
 });
 
 export type WebFetchToolInput = z.infer<typeof webFetchInputSchema>;
@@ -39,7 +39,7 @@ export type WebFetchToolInput = z.infer<typeof webFetchInputSchema>;
  */
 export function createWebFetchTool(): Tool<WebFetchToolInput, string> {
   return tool({
-    description: '获取指定 URL 的网页内容并转换为 Markdown 格式。自动去除导航、广告等噪音元素。适用于抓取文档页面、博客文章等。仅允许 HTTPS URL。',
+    description: 'Fetch web page content from a URL and convert to Markdown. Automatically strips navigation, ads, and noise elements. For fetching docs, blog posts, etc. HTTPS URLs only.',
     inputSchema: zodSchema(webFetchInputSchema),
     execute: async ({ url, maxChars }): Promise<string> => {
       try {

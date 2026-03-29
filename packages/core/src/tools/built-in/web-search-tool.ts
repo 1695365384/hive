@@ -41,8 +41,8 @@ async function parseDuckDuckGoLite(html: string): Promise<SearchResult[]> {
 const MAX_SEARCH_RESULTS = 10;
 
 const webSearchInputSchema = z.object({
-  query: z.string().describe('搜索查询关键词'),
-  maxResults: z.number().max(20).optional().describe('最大返回结果数，默认 10'),
+  query: z.string().describe('Search query keywords'),
+  maxResults: z.number().max(20).optional().describe('Max results to return, default 10'),
 });
 
 export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
@@ -52,7 +52,7 @@ export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
  */
 export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
   return tool({
-    description: '搜索网页获取最新信息。使用 DuckDuckGo 搜索引擎，返回标题、URL 和摘要。搜索结果可能不包含最新内容，建议结合 web-fetch 工具获取完整页面内容。',
+    description: 'Search the web for latest information. Uses DuckDuckGo search engine, returns titles, URLs, and snippets. Results may not be the latest — combine with web-fetch for full page content.',
     inputSchema: zodSchema(webSearchInputSchema),
     execute: async ({ query, maxResults }): Promise<string> => {
       try {

@@ -19,11 +19,11 @@ const MAX_FILES = 10000;
 
 /** Grep 工具输入 schema */
 const grepInputSchema = z.object({
-  pattern: z.string().describe('正则表达式搜索模式'),
-  path: z.string().optional().describe('搜索的目录，默认为当前工作目录'),
-  glob: z.string().optional().describe('文件类型过滤，如 "*.ts"、"*.tsx"，默认搜索所有文件'),
-  maxResults: z.number().max(1000).optional().describe('最大返回结果数，默认 50'),
-  caseInsensitive: z.boolean().optional().describe('是否忽略大小写，默认 false'),
+  pattern: z.string().describe('Regex search pattern'),
+  path: z.string().optional().describe('Directory to search, defaults to cwd'),
+  glob: z.string().optional().describe('File type filter, e.g. "*.ts", "*.tsx", default all files'),
+  maxResults: z.number().max(1000).optional().describe('Max results to return, default 50'),
+  caseInsensitive: z.boolean().optional().describe('Case insensitive search, default false'),
 });
 
 export type GrepToolInput = z.infer<typeof grepInputSchema>;
@@ -84,7 +84,7 @@ async function collectFiles(dir: string, depth: number): Promise<string[]> {
  */
 export function createGrepTool(): Tool<GrepToolInput, string> {
   return tool({
-    description: '使用正则表达式搜索文件内容。返回匹配的文件路径、行号和匹配行。',
+    description: 'Search file contents using regex. Returns matching file paths, line numbers, and matched lines.',
     inputSchema: zodSchema(grepInputSchema),
     execute: async ({ pattern, path: searchPath, glob: globFilter, maxResults, caseInsensitive }): Promise<string> => {
       const max = maxResults ?? 50;

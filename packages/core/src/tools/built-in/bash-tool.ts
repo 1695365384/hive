@@ -18,8 +18,8 @@ export interface BashToolOptions {
 
 /** Bash 工具输入 schema */
 const bashInputSchema = z.object({
-  command: z.string().describe('要执行的 shell 命令'),
-  timeout: z.number().min(1000).max(600000).optional().describe('超时时间（毫秒），默认 120000（2 分钟），范围 1000-600000'),
+  command: z.string().describe('Shell command to execute'),
+  timeout: z.number().min(1000).max(600000).optional().describe('Timeout in ms, default 120000 (2 min), range 1000-600000'),
 });
 
 export type BashToolInput = z.infer<typeof bashInputSchema>;
@@ -29,7 +29,7 @@ export type BashToolInput = z.infer<typeof bashInputSchema>;
  */
 export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, string> {
   return tool({
-    description: '在 shell 中执行命令。用于运行脚本、git 操作、构建项目等。返回 stdout 和 stderr 的合并输出。',
+    description: 'Execute a shell command. For running scripts, git operations, building projects, etc. Returns merged stdout and stderr.',
     inputSchema: zodSchema(bashInputSchema),
     execute: async ({ command, timeout }): Promise<string> => {
       // 权限检查

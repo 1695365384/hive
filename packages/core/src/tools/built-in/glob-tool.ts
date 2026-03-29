@@ -80,9 +80,9 @@ function matchGlobPart(name: string, pattern: string): boolean {
 
 /** Glob 工具输入 schema */
 const globInputSchema = z.object({
-  pattern: z.string().describe('Glob 模式，如 "**/*.ts"、"src/**/*.py"'),
-  path: z.string().optional().describe('搜索的根目录，默认为当前工作目录'),
-  maxResults: z.number().max(1000).optional().describe('最大返回结果数，默认 100'),
+  pattern: z.string().describe('Glob pattern, e.g. "**/*.ts", "src/**/*.py"'),
+  path: z.string().optional().describe('Root directory to search, defaults to cwd'),
+  maxResults: z.number().max(1000).optional().describe('Max results to return, default 100'),
 });
 
 export type GlobToolInput = z.infer<typeof globInputSchema>;
@@ -92,7 +92,7 @@ export type GlobToolInput = z.infer<typeof globInputSchema>;
  */
 export function createGlobTool(): Tool<GlobToolInput, string> {
   return tool({
-    description: '按文件名模式搜索文件路径。支持 *（匹配任意字符）和 **（匹配目录层级）。返回匹配的文件路径列表。',
+    description: 'Search file paths by glob pattern. Supports * (match any chars) and ** (match directory levels). Returns matched file paths.',
     inputSchema: zodSchema(globInputSchema),
     execute: async ({ pattern, path: searchPath, maxResults }): Promise<string> => {
       const max = maxResults ?? 100;
