@@ -154,47 +154,11 @@ export class Dispatcher {
   // 分类
   // ============================================
 
-  /**
-   * Quick pre-LLM heuristic for obvious chat messages.
-   * Returns null if the message needs LLM classification.
-   */
-  private quickClassify(task: string): DispatchClassification | null {
-    const trimmed = task.trim();
-
-    // Short message (< 30 chars) without action verbs → chat
-    const ACTION_VERB_RE = /修复|实现|重构|添加|创建|删除|优化|排查|调试|部署|配置|升级|迁移|fix|implement|refactor|create|delete|debug|deploy|migrate/i;
-    if (trimmed.length < 30 && !trimmed.includes('\n') && !ACTION_VERB_RE.test(trimmed)) {
-      return {
-        layer: 'chat',
-        taskType: 'general',
-        complexity: 'simple',
-        confidence: 1.0,
-        reason: 'Short message, no action verbs',
-      };
-    }
-
-    return null;
-  }
-
   private async classify(
     task: string,
     options: DispatchOptions | undefined,
     trace: DispatchTraceEvent[]
   ): Promise<DispatchClassification> {
-    // Fast pre-check: skip LLM for obvious chat messages (greetings, short casual)
-    const quickResult = this.quickClassify(task);
-    if (quickResult) {
-      trace.push({
-        timestamp: Date.now(),
-        type: 'dispatch.classify',
-        layer: 'chat',
-        confidence: 1.0,
-        latency: 0,
-        reason: 'Quick classify heuristic',
-      });
-      return quickResult;
-    }
-
     const threshold = Math.max(0, Math.min(1, options?.confidenceThreshold ?? 0.5));
 
     try {

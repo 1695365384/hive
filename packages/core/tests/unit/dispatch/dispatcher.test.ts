@@ -293,13 +293,13 @@ describe('Dispatcher', () => {
         ],
       });
 
-      const result = await classifyDispatcher.dispatch('Hello, how are you? I was wondering about the project architecture');
+      const result = await classifyDispatcher.dispatch('Hello, how are you?');
 
       expect(result.layer).toBe('chat');
       expect(result.success).toBe(true);
       expect(result.classification.confidence).toBe(0.9);
       expect(result.classification.layer).toBe('chat');
-      expect(classifyCaps.chat.send).toHaveBeenCalledWith('Hello, how are you? I was wondering about the project architecture', expect.any(Object));
+      expect(classifyCaps.chat.send).toHaveBeenCalledWith('Hello, how are you?', expect.any(Object));
       expect(classifyCaps.workflow.run).not.toHaveBeenCalled();
     });
 
@@ -434,7 +434,7 @@ describe('Dispatcher', () => {
         ],
       });
 
-      const result = await classifyDispatcher.dispatch('What is TypeScript and why should I use it for my next project?');
+      const result = await classifyDispatcher.dispatch('What is TypeScript?');
 
       // Trace must be present
       expect(result.trace).toBeDefined();

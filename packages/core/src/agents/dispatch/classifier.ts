@@ -20,36 +20,44 @@ import { callClassifierLLM, extractJSON } from './llm-utils.js';
 const DISPATCH_SYSTEM_PROMPT = `You are a task router. Classify the given task into an execution layer.
 
 ## Execution Layers
-- chat: Greetings, casual conversation, questions, explanations, opinions. No code changes or multi-step work needed. 1 LLM call, fast response.
-- workflow: Tasks requiring code changes, file exploration, debugging, refactoring, or multi-step execution. 3-10 LLM calls via explore → plan → execute pipeline.
+- chat: Greetings, casual conversation, questions, explanations. No code changes needed. 1 LLM call.
+- workflow: Code changes, file exploration, debugging, refactoring, multi-step execution. 3-10 LLM calls.
 
 ## Decision Rules
-1. Greetings, casual chat, thanks, short pleasantries → chat (always)
-2. Questions about knowledge, concepts, or how things work → chat
-3. Tasks that require writing/modifying code, reading files, or multi-step operations → workflow
-4. If uncertain → chat (chat is cheap: 1 LLM call. workflow is expensive: 3-10 calls. Prefer chat when unsure.)
+1. Greetings, casual chat, thanks → ALWAYS chat
+2. Knowledge questions, concept explanations → chat
+3. Code changes, file operations, debugging → workflow
+4. Uncertain → chat (chat costs 1 call, workflow costs 3-10 calls)
 
 ## Examples
-"你好啊" → chat (greeting)
-"hello" → chat (greeting)
-"谢谢" → chat (thanks)
-"今天天气怎么样" → chat (casual conversation)
-"什么是 REST API" → chat (knowledge question)
-"这个项目是做什么的" → chat (question about project)
-"帮我重构登录模块" → workflow (code refactoring)
-"Fix the auth bug in login.ts" → workflow (code fix)
-"请实现用户注册功能" → workflow (code implementation)
+
+Input: "你好啊"
+{"layer":"chat","taskType":"general","complexity":"simple","confidence":0.95,"reason":"Greeting"}
+
+Input: "hello"
+{"layer":"chat","taskType":"general","complexity":"simple","confidence":0.95,"reason":"Greeting"}
+
+Input: "谢谢"
+{"layer":"chat","taskType":"general","complexity":"simple","confidence":0.95,"reason":"Thanks"}
+
+Input: "在吗"
+{"layer":"chat","taskType":"general","complexity":"simple","confidence":0.95,"reason":"Casual greeting"}
+
+Input: "今天天气怎么样"
+{"layer":"chat","taskType":"general","complexity":"simple","confidence":0.9,"reason":"Casual conversation"}
+
+Input: "什么是 REST API"
+{"layer":"chat","taskType":"general","complexity":"simple","confidence":0.9,"reason":"Knowledge question"}
+
+Input: "帮我重构登录模块"
+{"layer":"workflow","taskType":"code-task","complexity":"moderate","confidence":0.9,"reason":"Code refactoring"}
+
+Input: "Fix the auth bug in login.ts"
+{"layer":"workflow","taskType":"code-task","complexity":"moderate","confidence":0.9,"reason":"Code fix"}
 
 ## Output Format
 Respond with ONLY a JSON object, no other text:
-{"layer":"<chat|workflow>","taskType":"<general|code-task>","complexity":"<simple|moderate|complex>","confidence":<0.0-1.0>,"reason":"<brief explanation>"}
-
-## Rules
-- confidence >= 0.8 for greetings and casual conversation
-- confidence >= 0.7 for clear-cut code tasks or clear questions
-- confidence 0.5-0.7 for ambiguous cases
-- Default taskType to "general" if unsure
-- Default complexity to "simple" for chat layer`;
+{"layer":"<chat|workflow>","taskType":"<general|code-task>","complexity":"<simple|moderate|complex>","confidence":<0.0-1.0>,"reason":"<brief explanation>"}`;
 
 // ============================================
 // 默认分类
