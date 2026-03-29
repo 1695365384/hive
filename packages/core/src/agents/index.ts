@@ -73,7 +73,6 @@ export {
 } from './dispatch/index.js';
 
 export type {
-  ExecutionLayer,
   DispatchClassification,
   DispatchResult,
   DispatchOptions,

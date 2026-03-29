@@ -46,9 +46,6 @@ export interface WorkflowResult {
 
 /**
  * 任务分析结果
- *
- * @deprecated WorkflowCapability 不再使用任务分析做路由分流。
- * 保留此类型供外部直接调用 analyzeTask() 使用。
  */
 export interface TaskAnalysis {
   /** 任务类型 */

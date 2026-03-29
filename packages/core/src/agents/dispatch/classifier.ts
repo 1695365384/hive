@@ -5,13 +5,26 @@
  * 成本极低（~100-200 tokens），用于智能路由。
  */
 
-import type {
-  DispatchClassification,
-} from './types.js';
-import { VALID_EXECUTION_LAYERS } from './types.js';
+import type { ClassifierProvider } from './llm-utils.js';
+import { callClassifierLLM, extractJSON } from './llm-utils.js';
 
-/** @deprecated Legacy trace type for classifier module */
-interface LegacyTraceEvent {
+// ============================================
+// 分类器类型
+// ============================================
+
+type ExecutionLayer = 'chat' | 'workflow';
+
+const VALID_EXECUTION_LAYERS = ['chat', 'workflow'] as const;
+
+export interface DispatchClassification {
+  layer: ExecutionLayer;
+  taskType: 'general' | 'code-task';
+  complexity: 'simple' | 'moderate' | 'complex';
+  confidence: number;
+  reason: string;
+}
+
+interface ClassifierTraceEvent {
   timestamp: number;
   type: string;
   layer?: string;
@@ -19,8 +32,6 @@ interface LegacyTraceEvent {
   latency?: number;
   reason?: string;
 }
-import type { ClassifierProvider } from './llm-utils.js';
-import { callClassifierLLM, extractJSON } from './llm-utils.js';
 
 // ============================================
 // 分发分类 Prompt
@@ -108,8 +119,8 @@ export async function classifyForDispatch(
   task: string,
   provider: ClassifierProvider,
   modelOverride?: string
-): Promise<{ classification: DispatchClassification; trace: LegacyTraceEvent[] }> {
-  const trace: LegacyTraceEvent[] = [];
+): Promise<{ classification: DispatchClassification; trace: ClassifierTraceEvent[] }> {
+  const trace: ClassifierTraceEvent[] = [];
   const startTime = Date.now();
   const activeProvider = provider.getActiveProvider();
   const model = modelOverride ?? activeProvider?.model;
