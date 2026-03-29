@@ -38,7 +38,7 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
   explore: {
     system: EXPLORE_AGENT_PROMPT,
     maxSteps: 5,
-    model: 'claude-haiku-4-5',
+    // 不指定 model，使用 Provider 默认模型
   },
   plan: {
     system: PLAN_AGENT_PROMPT,

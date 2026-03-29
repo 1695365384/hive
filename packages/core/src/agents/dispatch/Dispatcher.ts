@@ -167,7 +167,7 @@ export class Dispatcher {
         {
           getActiveProvider: () => {
             const provider = this.context.getActiveProvider();
-            return provider ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey } : null;
+            return provider ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: provider.model } : null;
           },
           getModel: (modelId?: string) => this.context.providerManager.getModel(modelId),
         },

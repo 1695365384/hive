@@ -91,7 +91,7 @@ export async function classifyForDispatch(
   const trace: DispatchTraceEvent[] = [];
   const startTime = Date.now();
   const activeProvider = provider.getActiveProvider();
-  const model = modelOverride ?? 'claude-haiku-4-5-20251001';
+  const model = modelOverride ?? activeProvider?.model;
 
   try {
     const responseText = await callClassifierLLM(task, DISPATCH_SYSTEM_PROMPT, provider, model);

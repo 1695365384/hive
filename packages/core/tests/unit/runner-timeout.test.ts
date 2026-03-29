@@ -43,16 +43,25 @@ vi.mock('../../src/providers/ProviderManager.js', () => ({
   })),
 }));
 
+// Mock LLMRuntime — runner 通过 LLMRuntime.run() 调用 generateText
+const mockRuntimeRun = vi.fn();
+vi.mock('../../src/agents/runtime/LLMRuntime.js', () => ({
+  LLMRuntime: class MockLLMRuntime {
+    run = mockRuntimeRun;
+  },
+  AGENT_PRESETS: {
+    explore: { system: 'explore prompt', maxSteps: 5 },
+    plan: { system: 'plan prompt', maxSteps: 10 },
+    general: { system: 'general prompt', maxSteps: 20 },
+  },
+}));
+
 describe('AgentRunner sub-agent timeout', () => {
   let runner: AgentRunner;
-  let mockGenerateText: ReturnType<typeof vi.fn>;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    vi.restoreAllMocks();
-
-    const { generateText } = await import('ai');
-    mockGenerateText = vi.mocked(generateText);
+    mockRuntimeRun.mockReset();
     runner = new AgentRunner();
   });
 
@@ -60,23 +69,26 @@ describe('AgentRunner sub-agent timeout', () => {
     vi.useRealTimers();
   });
 
-  it('timeout 有值时应设置 abortSignal 到 generateText', async () => {
-    mockGenerateText.mockResolvedValue({
+  it('timeout 有值时应设置 abortSignal 到 runtime.run', async () => {
+    mockRuntimeRun.mockResolvedValue({
       text: 'done',
+      tools: [],
       steps: [],
-      totalUsage: { inputTokens: 10, outputTokens: 20 },
-      finishReason: 'stop',
+      success: true,
+      duration: 100,
     });
 
     const result = await runner.execute('general', 'Test', { timeout: 5000 });
 
-    expect(mockGenerateText).toHaveBeenCalled();
+    expect(mockRuntimeRun).toHaveBeenCalled();
+    const configArg = mockRuntimeRun.mock.calls[0][0];
+    expect(configArg.abortSignal).toBeInstanceOf(AbortSignal);
     expect(result.success).toBe(true);
     expect(result.text).toBe('done');
   });
 
   it('超时后应返回 success: false 并包含错误信息', async () => {
-    mockGenerateText.mockReturnValue(new Promise(() => {})); // never resolves
+    mockRuntimeRun.mockReturnValue(new Promise(() => {})); // never resolves
 
     vi.useFakeTimers();
 
@@ -90,7 +102,7 @@ describe('AgentRunner sub-agent timeout', () => {
   });
 
   it('超时错误信息应包含超时时间', async () => {
-    mockGenerateText.mockReturnValue(new Promise(() => {}));
+    mockRuntimeRun.mockReturnValue(new Promise(() => {}));
 
     vi.useFakeTimers();
 
@@ -103,21 +115,23 @@ describe('AgentRunner sub-agent timeout', () => {
   });
 
   it('未设置 timeout 时正常执行', async () => {
-    mockGenerateText.mockResolvedValue({
+    mockRuntimeRun.mockResolvedValue({
       text: 'done',
+      tools: [],
       steps: [],
-      totalUsage: { inputTokens: 10, outputTokens: 20 },
-      finishReason: 'stop',
+      success: true,
+      duration: 100,
     });
 
     const result = await runner.execute('general', 'Test');
 
+    expect(mockRuntimeRun).toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.text).toBe('done');
   });
 
   it('超时应触发 onError 回调', async () => {
-    mockGenerateText.mockReturnValue(new Promise(() => {}));
+    mockRuntimeRun.mockReturnValue(new Promise(() => {}));
 
     vi.useFakeTimers();
 
@@ -132,11 +146,12 @@ describe('AgentRunner sub-agent timeout', () => {
   });
 
   it('正常完成时不应触发超时', async () => {
-    mockGenerateText.mockResolvedValue({
+    mockRuntimeRun.mockResolvedValue({
       text: 'completed quickly',
+      tools: [],
       steps: [],
-      totalUsage: { inputTokens: 10, outputTokens: 20 },
-      finishReason: 'stop',
+      success: true,
+      duration: 50,
     });
 
     const result = await runner.execute('general', 'Test', { timeout: 5000 });

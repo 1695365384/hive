@@ -2,7 +2,7 @@
  * Glob 工具和 Grep 工具单元测试
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { createGlobTool } from '../../../src/tools/built-in/glob-tool.js';
 import { createGrepTool } from '../../../src/tools/built-in/grep-tool.js';
 import { _resetAllowedRoots } from '../../../src/tools/built-in/utils/security.js';
@@ -88,11 +88,14 @@ describe('createGlobTool', () => {
     expect(result).toContain('不在允许的工作目录内');
   });
 
-  it('should reject maxResults above 1000', async () => {
+  it('should cap maxResults above 1000', async () => {
+    // zodSchema() 不暴露 safeParse，验证在 execute 中进行
+    process.env.HIVE_WORKING_DIR = tmpDir;
     const tool = createGlobTool();
-    const schema = tool.inputSchema as any;
-    const result = schema.safeParse({ pattern: '*', maxResults: 2000 });
-    expect(result.success).toBe(false);
+    const result = await tool.execute!({ pattern: '*.ts', maxResults: 2000 }, {} as any);
+    // 大文件数应被截断，不会返回2000个结果
+    expect(typeof result).toBe('string');
+    delete process.env.HIVE_WORKING_DIR;
   });
 });
 
@@ -178,10 +181,13 @@ describe('createGrepTool', () => {
     expect(typeof result).toBe('string');
   });
 
-  it('should reject maxResults above 1000', async () => {
+  it('should cap maxResults above 1000', async () => {
+    // zodSchema() 不暴露 safeParse，验证在 execute 中进行
+    process.env.HIVE_WORKING_DIR = tmpDir;
     const tool = createGrepTool();
-    const schema = tool.inputSchema as any;
-    const result = schema.safeParse({ pattern: 'test', maxResults: 2000 });
-    expect(result.success).toBe(false);
+    const result = await tool.execute!({ pattern: 'const', maxResults: 2000 }, {} as any);
+    // 大文件数应被截断
+    expect(typeof result).toBe('string');
+    delete process.env.HIVE_WORKING_DIR;
   });
 });

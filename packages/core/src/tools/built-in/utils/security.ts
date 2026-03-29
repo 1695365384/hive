@@ -7,7 +7,7 @@
 
 import { resolve, isAbsolute, relative } from 'node:path';
 import { promises as dns } from 'node:dns';
-import { lookup } from 'node:dns/promises';
+import { resolve4, resolve6 } from 'node:dns/promises';
 import { networkInterfaces } from 'node:os';
 
 // ============================================
@@ -154,15 +154,27 @@ function isPrivateIPv4(ip: string): boolean {
 /**
  * 检查 hostname 是否解析到私有 IP
  */
-export async function isPrivateIP(hostname: string): Promise<boolean> {
-  try {
-    const addresses = await lookup(hostname);
+export async function isPrivateIP(
+  hostname: string,
+  resolvers?: { resolve4?: typeof resolve4; resolve6?: typeof resolve6 },
+): Promise<boolean> {
+  const r4 = resolvers?.resolve4 ?? resolve4;
+  const r6 = resolvers?.resolve6 ?? resolve6;
 
-    for (const addr of addresses) {
-      if (addr.family === 4 && isPrivateIPv4(addr.address)) {
+  try {
+    const [v4Addresses, v6Addresses] = await Promise.all([
+      r4(hostname).catch(() => [] as string[]),
+      r6(hostname).catch(() => [] as string[]),
+    ]);
+
+    for (const addr of v4Addresses) {
+      if (isPrivateIPv4(addr)) {
         return true;
       }
-      if (addr.family === 6 && addr.address === '::1') {
+    }
+
+    for (const addr of v6Addresses) {
+      if (addr === '::1') {
         return true;
       }
       // fc00::/7 — 仅检查 ::1，完整 fc00 范围需要更复杂处理

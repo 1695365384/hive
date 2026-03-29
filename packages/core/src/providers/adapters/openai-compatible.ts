@@ -68,7 +68,9 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       apiKey: config.apiKey,
     });
 
-    return openai(model);
+    // 国产模型（GLM、DeepSeek、Qwen、Kimi 等）只支持 Chat Completions API，
+    // 不支持 OpenAI Responses API。使用 .chat() 而非直接调用（后者走 Responses API）。
+    return openai.chat(model as any);
   }
 
   getDefaultModel(): string {

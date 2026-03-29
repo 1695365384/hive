@@ -35,7 +35,7 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = 
     description: 'Fast agent optimized for searching and analyzing codebases.',
     prompt: EXPLORE_AGENT_PROMPT,
     tools: ['Read', 'Glob', 'Grep'],
-    model: 'claude-haiku-4-5',
+    // 不指定 model，使用 Provider 默认模型
     maxTurns: 5,
   },
 
