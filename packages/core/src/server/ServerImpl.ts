@@ -23,6 +23,7 @@ import {
 import { MessageBus } from '../bus/MessageBus.js';
 import { noopLogger } from '../types/logger.js';
 import { ChannelContext } from './ChannelContext.js';
+import { setSendFileCallback } from '../tools/built-in/send-file-tool.js';
 import type { Server, ServerOptions, ServerHeartbeatConfig } from './types.js';
 
 // ============================================
@@ -128,6 +129,9 @@ class ServerImpl implements Server {
             this.channelContext.register(channel);
             this.bus.emit(`channel:registered`, channel);
           },
+          this._workspaceManager
+            ? { workspaceDir: this._workspaceManager.getRootPath() }
+            : undefined,
         );
         this.logger.info(`[server] Plugin initialized: ${plugin.metadata.name}`);
       } catch (error) {
@@ -151,11 +155,12 @@ class ServerImpl implements Server {
 
     // 订阅 message:response 推送到 channel
     this.bus.subscribe('message:response', async (event: { payload: unknown }) => {
-      const { channelId, chatId, content, type } = event.payload as {
+      const { channelId, chatId, content, type, filePath } = event.payload as {
         channelId?: string;
         chatId?: string;
         content: string;
         type?: string;
+        filePath?: string;
       };
 
       if (!channelId || !chatId) return;
@@ -167,7 +172,7 @@ class ServerImpl implements Server {
       }
 
       try {
-        await channel.send({ to: chatId, content, type: (type || 'markdown') as 'text' | 'markdown' });
+        await channel.send({ to: chatId, content, type: (type || 'markdown') as 'text' | 'markdown', filePath });
         this.logger.info(`[message:response] Pushed to channel ${channelId} chat ${chatId}`);
       } catch (error) {
         this.logger.error(`[message:response] Failed to push to channel ${channelId}:`, error);
@@ -316,6 +321,27 @@ class ServerImpl implements Server {
       }
 
       const replyType = channelMessage.type === 'card' ? 'card' : 'markdown';
+
+      // 注入 send_file 回调，让 Agent 能通过工具发送文件到当前会话
+      if (channelId && channelMessage.to?.id) {
+        const sendChannelId = channelId;
+        const sendChatId = channelMessage.to.id;
+        setSendFileCallback(async (filePath: string) => {
+          const channel = this.channelContext.get(sendChannelId);
+          if (!channel) {
+            return { success: false, error: `Channel not found: ${sendChannelId}` };
+          }
+          if (!channel.capabilities.sendFile) {
+            return { success: false, error: `Channel ${sendChannelId} does not support file sending` };
+          }
+          try {
+            const result = await channel.send({ to: sendChatId, content: '', filePath });
+            return { success: result.success, error: result.error };
+          } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
+          }
+        });
+      }
 
       try {
         const result = await this.agent.dispatch(channelMessage.content, {

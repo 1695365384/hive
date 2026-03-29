@@ -27,6 +27,7 @@ export {
 
   // 插件接口
   type PluginMetadata,
+  type PluginContext,
   type IPlugin,
   type IPluginConstructor,
 

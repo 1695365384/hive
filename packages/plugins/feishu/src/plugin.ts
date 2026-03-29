@@ -8,6 +8,7 @@ import type {
   IPlugin,
   IChannel,
   PluginMetadata,
+  PluginContext,
   IMessageBus,
   ILogger,
   ChannelMessageType,
@@ -31,6 +32,7 @@ export class FeishuPlugin implements IPlugin {
   private logger: ILogger | null = null
   private channels: Map<string, IFeishuChannel> = new Map()
   private config: FeishuPluginConfig | any = null
+  private workspaceDir: string | null = null
 
   constructor(config: Record<string, unknown>) {
     this.config = this.validateConfig(config)
@@ -39,15 +41,16 @@ export class FeishuPlugin implements IPlugin {
   /**
    * 初始化插件
    */
-  async initialize(messageBus: IMessageBus, logger: ILogger, registerChannel: (channel: IChannel) => void): Promise<void> {
+  async initialize(messageBus: IMessageBus, logger: ILogger, registerChannel: (channel: IChannel) => void, context?: PluginContext): Promise<void> {
     this.messageBus = messageBus
     this.logger = logger
+    this.workspaceDir = context?.workspaceDir ?? null
 
     logger.info(`[FeishuPlugin] Initializing with ${this.config.apps.length} app(s)`)
 
     // 创建通道实例
     for (const appConfig of this.config.apps) {
-      const channel = new FeishuChannel(appConfig, messageBus, logger)
+      const channel = new FeishuChannel(appConfig, messageBus, logger, this.workspaceDir)
       this.channels.set(channel.id, channel)
       registerChannel(channel)
     }
@@ -77,12 +80,6 @@ export class FeishuPlugin implements IPlugin {
         this.handleMessage.bind(this)
       )
     }
-
-    // 订阅 Agent 响应，回复到飞书
-    this.messageBus.subscribe(
-      'message:response',
-      this.handleResponse.bind(this)
-    )
 
     this.logger.info(`[FeishuPlugin] Activated successfully`)
   }
@@ -141,40 +138,6 @@ export class FeishuPlugin implements IPlugin {
 
     // 发布到通用消息通道，供 Agent 处理
     this.messageBus.publish('message:received', data)
-  }
-
-  /**
-   * 处理 Agent 响应，回复到飞书
-   */
-  private async handleResponse(message: unknown): Promise<void> {
-    if (!this.logger) return
-
-    const { channelId, chatId, content, type } = (message as { payload: unknown }).payload as {
-      channelId?: string
-      chatId?: string
-      replyTo?: string
-      content: string
-      type?: string
-    }
-
-    // 根据 channelId 找到对应通道
-    const channel = channelId ? this.channels.get(channelId) : undefined
-    if (!channel) {
-      this.logger.warn(`[FeishuPlugin] No channel found for response, channelId=${channelId}`)
-      return
-    }
-
-    if (!chatId) {
-      this.logger.warn(`[FeishuPlugin] No chatId in response, skipping`)
-      return
-    }
-
-    try {
-      this.logger.info(`[FeishuPlugin] Sending reply to chat ${chatId}`)
-      await channel.send({ to: chatId, content, type: (type || 'markdown') as ChannelMessageType })
-    } catch (error) {
-      this.logger.error(`[FeishuPlugin] Failed to send reply:`, error)
-    }
   }
 
   /**

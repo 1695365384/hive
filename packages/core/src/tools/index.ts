@@ -28,9 +28,13 @@ export {
   createAskUserTool,
   askUserTool,
   setAskUserCallback,
+  createSendFileTool,
+  sendFileTool,
+  setSendFileCallback,
   type BashToolOptions,
   type FileToolOptions,
   type AskUserCallback,
+  type SendFileCallback,
 } from './built-in/index.js';
 
 // 工具基础设施
