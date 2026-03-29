@@ -269,7 +269,7 @@ describe('Agent + Provider Integration', () => {
         const currentId = agent.currentProvider.id;
 
         // ProviderManager 和 Agent 应该返回相同的活跃 provider
-        expect(agent.context.providerManager.getActiveProvider()?.id).toBe(currentId);
+        expect(agent.context.providerManager.active?.id).toBe(currentId);
       }
     });
   });
@@ -682,21 +682,19 @@ describe('Agent + Provider Integration', () => {
 
     it('should access providerManager through context', () => {
       expect(agent.context.providerManager).toBeDefined();
-      expect(typeof agent.context.providerManager.getAllProviders).toBe('function');
-      expect(typeof agent.context.providerManager.getActiveProvider).toBe('function');
-      expect(typeof agent.context.providerManager.switchProvider).toBe('function');
+      expect(typeof agent.context.providerManager.switch).toBe('function');
     });
 
     it('should have consistent provider list between agent and context', () => {
       const agentProviders = agent.listProviders();
-      const contextProviders = agent.context.providerManager.getAllProviders();
+      const contextProviders = agent.context.providerManager.all;
 
       expect(agentProviders.length).toBe(contextProviders.length);
     });
 
     it('should have consistent active provider between agent and context', () => {
       const agentProvider = agent.currentProvider;
-      const contextProvider = agent.context.providerManager.getActiveProvider();
+      const contextProvider = agent.context.providerManager.active;
 
       expect(agentProvider?.id).toBe(contextProvider?.id);
     });
@@ -708,7 +706,7 @@ describe('Agent + Provider Integration', () => {
         agent.useProvider(providers[0].id);
 
         // 验证 context 中的 provider 也已更新
-        expect(agent.context.providerManager.getActiveProvider()?.id).toBe(providers[0].id);
+        expect(agent.context.providerManager.active?.id).toBe(providers[0].id);
       }
     });
   });

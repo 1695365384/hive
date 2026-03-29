@@ -48,10 +48,10 @@ describe('Provider Real Connection Tests', () => {
     it('should initialize ProviderManager', () => {
       const manager = createProviderManager();
 
-      const allProviders = manager.getAllProviders();
+      const allProviders = manager.all;
       console.log(`📦 ProviderManager 加载了 ${allProviders.length} 个提供商`);
 
-      const activeProvider = manager.getActiveProvider();
+      const activeProvider = manager.active;
       if (activeProvider) {
         console.log(`🟢 当前活跃提供商: ${activeProvider.name || activeProvider.id}`);
       }

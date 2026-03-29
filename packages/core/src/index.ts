@@ -126,9 +126,6 @@ export {
   adapterRegistry,
 
   // 模型元数据
-  getModelsDevClient,
-  createModelsDevClient,
-  getStaticModels,
   fetchModelSpec,
   fetchProviderModels,
 
@@ -142,9 +139,6 @@ export {
   type ProviderType,
   type ProviderAdapter,
 } from './providers/index.js';
-
-// 向后兼容的类型别名
-export type { ProviderConfig as CCProvider, McpServerConfig as CCMcpServer } from './providers/index.js';
 
 // ============================================
 // 统一工具系统
@@ -450,33 +444,10 @@ export type {
 // 配置系统（外部配置支持）
 // ============================================
 
-export {
-  // 验证
-  validateAgentConfig,
-  validateProviderConfig,
-  validateOrThrow,
-  type ValidationResult,
-
-  // 类型
-  type ExternalConfig,
-  type ProviderConfig as ProviderConfigType,
-  type McpServerConfig as McpServerConfigType,
-  type AgentDefaults,
+export type {
+  ExternalConfig,
+  AgentDefaults,
 } from './config/index.js';
-
-// ============================================
-// JSON Schema
-// ============================================
-
-export {
-  // Schema 获取
-  getAgentConfigSchema,
-  getProviderConfigSchema,
-
-  // Schema URI
-  SCHEMA_URIS,
-  SCHEMA_PATHS,
-} from './schemas/index.js';
 
 // ============================================
 // 插件系统

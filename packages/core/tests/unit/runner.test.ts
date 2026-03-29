@@ -50,22 +50,22 @@ vi.mock('../../src/providers/ProviderManager.js', () => ({
   createProviderManager: vi.fn(() => ({
     getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
     getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
-    getActiveProvider: vi.fn().mockReturnValue({
+    active: {
       id: 'mock',
       baseUrl: 'https://api.test.com',
       apiKey: 'test-key',
       model: 'mock-model',
-    }),
+    },
   })),
   ProviderManager: vi.fn().mockImplementation(() => ({
     getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
     getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
-    getActiveProvider: vi.fn().mockReturnValue({
+    active: {
       id: 'mock',
       baseUrl: 'https://api.test.com',
       apiKey: 'test-key',
       model: 'mock-model',
-    }),
+    },
   })),
 }));
 
@@ -92,12 +92,12 @@ describe('AgentRunner', () => {
       const providerManager = {
         getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
         getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
-        getActiveProvider: vi.fn().mockReturnValue({
+        active: {
           id: 'mock',
           baseUrl: 'https://api.test.com',
           apiKey: 'test-key',
           model: 'mock-model',
-        }),
+        },
       } as any;
 
       const r = new AgentRunner(providerManager);
@@ -165,7 +165,7 @@ describe('createAgentRunner', () => {
   it('should accept provider manager', () => {
     const providerManager = {
       getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
-      getActiveProvider: vi.fn().mockReturnValue(null),
+      active: null,
     } as any;
     const runner = createAgentRunner(providerManager);
     expect(runner).toBeInstanceOf(AgentRunner);

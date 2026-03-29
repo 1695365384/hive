@@ -72,14 +72,14 @@ export class ProviderCapability implements AgentCapability {
    * 获取当前提供商
    */
   get current(): ProviderConfig | null {
-    return this.context.providerManager.getActiveProvider();
+    return this.context.providerManager.active;
   }
 
   /**
    * 列出所有提供商
    */
   listAll(): ProviderConfig[] {
-    return this.context.providerManager.getAllProviders();
+    return this.context.providerManager.all;
   }
 
   /**
@@ -138,7 +138,7 @@ export class ProviderCapability implements AgentCapability {
     }
 
     // 执行切换
-    const success = this.context.providerManager.switchProvider(name, apiKey);
+    const success = this.context.providerManager.switch(name, apiKey);
 
     // 触发 provider:afterChange hook
     await this.context.hookRegistry.emit('provider:afterChange', {
@@ -153,10 +153,10 @@ export class ProviderCapability implements AgentCapability {
   }
 
   /**
-   * 同步切换提供商（向后兼容）
+   * 同步切换提供商
    */
   useSync(name: string, apiKey?: string): boolean {
-    return this.context.providerManager.switchProvider(name, apiKey);
+    return this.context.providerManager.switch(name, apiKey);
   }
 
 }

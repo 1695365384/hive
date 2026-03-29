@@ -55,15 +55,6 @@ export interface McpServerConfig {
   enabled?: boolean;
 }
 
-/**
- * Agent 默认配置
- */
-export interface AgentDefaults {
-  model?: string;
-  maxTurns?: number;
-  thoroughness?: 'quick' | 'medium' | 'very-thorough';
-}
-
 // ============================================
 // 模型规格
 // ============================================

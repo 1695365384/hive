@@ -149,7 +149,7 @@ export class AgentContextImpl implements AgentContext {
   // ============================================
 
   getActiveProvider(): ProviderConfig | null {
-    return this.providerManager.getActiveProvider();
+    return this.providerManager.active;
   }
 
   getSkill(name: string): Skill | undefined {

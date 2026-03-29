@@ -153,7 +153,7 @@ describe('ProviderCapability', () => {
       const result = await capability.use('glm');
 
       expect(result).toBe(true);
-      expect(context.providerManager.switchProvider).toHaveBeenCalledWith('glm', undefined);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', undefined);
     });
 
     it('should switch provider with API key', async () => {
@@ -161,7 +161,7 @@ describe('ProviderCapability', () => {
       const result = await capability.use('glm', newApiKey);
 
       expect(result).toBe(true);
-      expect(context.providerManager.switchProvider).toHaveBeenCalledWith('glm', newApiKey);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', newApiKey);
     });
 
     it('should trigger provider:beforeChange hook', async () => {
@@ -218,7 +218,7 @@ describe('ProviderCapability', () => {
       const result = capability.useSync('glm');
 
       expect(result).toBe(true);
-      expect(context.providerManager.switchProvider).toHaveBeenCalledWith('glm', undefined);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', undefined);
     });
 
     it('should switch provider with API key', () => {
@@ -226,7 +226,7 @@ describe('ProviderCapability', () => {
       const result = capability.useSync('glm', newApiKey);
 
       expect(result).toBe(true);
-      expect(context.providerManager.switchProvider).toHaveBeenCalledWith('glm', newApiKey);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', newApiKey);
     });
 
     it('should not trigger hooks', () => {
@@ -243,7 +243,7 @@ describe('ProviderCapability', () => {
 
   describe('错误处理', () => {
     it('should handle invalid provider name', async () => {
-      vi.mocked(context.providerManager.switchProvider).mockReturnValue(false);
+      vi.mocked(context.providerManager.switch).mockReturnValue(false);
 
       const result = await capability.use('invalid-provider');
 

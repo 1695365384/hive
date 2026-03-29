@@ -11,7 +11,7 @@ function createMockContext() {
     getCapability: () => null,
     getSkill: () => undefined,
     matchSkill: () => null,
-    getActiveProvider: () => null,
+    active: null,
     getAgentConfig: () => undefined,
     providerManager: {},
     runner: {},

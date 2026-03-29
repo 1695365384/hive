@@ -23,7 +23,7 @@ export type { ProviderAdapter, ProviderType, AdapterConfig } from './base.js';
 export { OpenAIAdapter } from './openai.js';
 export { AnthropicAdapter } from './anthropic.js';
 export { GoogleAdapter } from './google.js';
-export { OpenAICompatibleAdapter, getKnownProviders, getKnownProvidersSync, isKnownProvider, preprocessParams } from './openai-compatible.js';
+export { OpenAICompatibleAdapter, getKnownProviders, getKnownProvidersSync, isKnownProvider } from './openai-compatible.js';
 
 // 导出工厂函数
 export { createOpenAIAdapter } from './openai.js';
