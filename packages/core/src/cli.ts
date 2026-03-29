@@ -50,7 +50,6 @@ type CliMode = 'chat' | 'explore' | 'plan' | 'general' | 'workflow';
 interface CliState {
   mode: CliMode;
   cwd: string;
-  stream: boolean;
   thoroughness: ThoroughnessLevel;
   verbose: boolean;
 }
@@ -60,7 +59,6 @@ const agent = getAgent();
 const state: CliState = {
   mode: 'workflow',
   cwd: process.cwd(),
-  stream: true,
   thoroughness: 'medium',
   verbose: true,
 };
@@ -150,24 +148,10 @@ async function executePrompt(prompt: string): Promise<void> {
   try {
     switch (state.mode) {
       case 'chat': {
-        if (state.stream) {
-          await runWithCwd(state.cwd, async () => {
-            process.stdout.write('\n\x1b[33mAssistant>\x1b[0m ');
-            await agent.chatStream(trimmed, {
-              cwd: state.cwd,
-              onText: (text) => process.stdout.write(text),
-              onTool: (tool) => {
-                if (state.verbose) logPhase('TOOL', tool);
-              },
-            });
-            process.stdout.write('\n\n');
-          });
-        } else {
-          const result = await runWithCwd(state.cwd, async () => {
-            return agent.chat(trimmed, { cwd: state.cwd });
-          });
-          console.log(`\n\x1b[33mAssistant>\x1b[0m ${result}\n`);
-        }
+        const result = await runWithCwd(state.cwd, async () => {
+          return agent.chat(trimmed, { cwd: state.cwd });
+        });
+        console.log(`\n\x1b[33mAssistant>\x1b[0m ${result}\n`);
         break;
       }
 
@@ -363,16 +347,6 @@ async function handleCommand(line: string): Promise<boolean> {
       return true;
     }
 
-    case '/stream': {
-      const value = args[0]?.toLowerCase();
-      if (!value || !['on', 'off'].includes(value)) {
-        console.log('❌ stream 无效，可选: on | off');
-        return true;
-      }
-      state.stream = value === 'on';
-      printState();
-      return true;
-    }
 
     case '/thoroughness': {
       const value = args[0] as ThoroughnessLevel | undefined;

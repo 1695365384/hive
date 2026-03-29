@@ -275,63 +275,24 @@ export type {
 export { TimeoutError } from './agents/core/types.js';
 
 // ============================================
-// 蜂群协作（Swarm）
+// 智能分发（Dispatch）
 // ============================================
 
 export {
-  SwarmCapability,
-} from './agents/capabilities/SwarmCapability.js';
-
-export {
-  Blackboard,
-  SwarmTracer,
-  matchTemplate,
-  topologicalSort,
-  detectCycle,
-  buildGraph,
-  aggregate,
-  formatMerge,
-  BUILTIN_TEMPLATES,
-} from './agents/swarm/index.js';
+  Dispatcher,
+  classifyForDispatch,
+  regexClassify,
+} from './agents/dispatch/index.js';
 
 export type {
-  SwarmTemplate,
-  SwarmNode,
-  SwarmAggregateConfig,
-  SwarmOptions,
-  SwarmResult,
-  SwarmPreview,
-  NodeResult,
-  TraceEvent,
-  ExecutableGraph,
-  BlackboardConfig,
-} from './agents/swarm/types.js';
-
-export { CyclicDependencyError } from './agents/swarm/types.js';
-
-// ============================================
-// Pipeline 编排
-// ============================================
-
-export {
-  PipelineExecutor,
-  evaluateTrigger,
-  generatePipelineReport,
-} from './agents/pipeline/index.js';
-
-export type {
-  TriggerCondition,
-  FieldOperator,
-  FieldMatchRule,
-  PipelineStage,
-  StageResult,
-  PipelineResult,
-  PipelineTraceEventType,
-  PipelineTraceEvent,
-  PipelineOptions,
-} from './agents/pipeline/index.js';
-
-export type { TriggerContext } from './agents/pipeline/trigger.js';
+  ExecutionLayer,
+  DispatchClassification,
+  DispatchResult,
+  DispatchOptions,
+  DispatchTraceEventType,
+  DispatchTraceEvent,
+  ClassifierProvider,
+} from './agents/dispatch/index.js';
 
 // ============================================
 // 压缩系统

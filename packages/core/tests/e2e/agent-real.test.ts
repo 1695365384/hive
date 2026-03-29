@@ -74,49 +74,6 @@ describeIfApiKey('Agent Real API Tests', () => {
   });
 
   // ============================================
-  // 流式响应测试
-  // ============================================
-
-  describe('Streaming Chat', () => {
-    it('should stream response chunks', async () => {
-      if (!ctx) return;
-
-      const chunks: string[] = [];
-
-      await ctx.agent.chatStream('请用三句话介绍自己', {
-        onText: (text) => {
-          chunks.push(text);
-        },
-      });
-
-      // 应该收到多个文本块
-      expect(chunks.length).toBeGreaterThan(0);
-
-      // 合并所有块
-      const fullResponse = chunks.join('');
-      assertValidResponse(fullResponse);
-    }, E2E_TIMEOUT.MEDIUM);
-
-    it('should call onTool callback when tools are used', async () => {
-      if (!ctx) return;
-
-      const toolCalls: Array<{ name: string; input: unknown }> = [];
-
-      // 这个测试取决于 Agent 是否决定使用工具
-      // 使用一个可能触发工具使用的问题
-      await ctx.agent.chatStream('列出当前目录的文件', {
-        onTool: (name, input) => {
-          toolCalls.push({ name, input });
-        },
-      });
-
-      // 注意：这个测试可能不总是触发工具调用
-      // 取决于 LLM 的决策
-      console.log('Tool calls:', toolCalls);
-    }, E2E_TIMEOUT.MEDIUM);
-  });
-
-  // ============================================
   // 会话管理测试
   // ============================================
 

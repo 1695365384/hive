@@ -1,7 +1,7 @@
 /**
  * 7.4 withHeartbeat() 重构测试
  *
- * 验证 chat/chatStream 心跳行为一致
+ * 验证 chat 心跳行为
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -82,116 +82,6 @@ describe('Agent.withHeartbeat()', () => {
     });
   });
 
-  describe('chatStream() 心跳行为', () => {
-    it('成功时应触发 session:start 和 session:end hooks', async () => {
-      const emitSpy = vi.spyOn(agent.context.hookRegistry, 'emit').mockResolvedValue(true);
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'sendStream').mockResolvedValue(undefined);
-
-      await agent.chatStream('Test prompt');
-
-      const calls = emitSpy.mock.calls.map(c => c[0]);
-      expect(calls).toContain('session:start');
-      expect(calls).toContain('session:end');
-
-      const sessionEndCall = emitSpy.mock.calls.find(c => c[0] === 'session:end');
-      expect(sessionEndCall?.[1].success).toBe(true);
-    });
-
-    it('失败时应触发 session:error 和 session:end hooks', async () => {
-      const emitSpy = vi.spyOn(agent.context.hookRegistry, 'emit').mockResolvedValue(true);
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'sendStream').mockRejectedValue(new Error('Stream error'));
-
-      await expect(agent.chatStream('Test')).rejects.toThrow('Stream error');
-
-      const calls = emitSpy.mock.calls.map(c => c[0]);
-      expect(calls).toContain('session:error');
-      expect(calls).toContain('session:end');
-
-      const endCall = emitSpy.mock.calls.find(c => c[0] === 'session:end');
-      expect(endCall?.[1].success).toBe(false);
-    });
-
-    it('完成后应停止心跳', async () => {
-      const timeoutCap = (agent as any)._context.timeoutCap;
-      const stopSpy = vi.spyOn(timeoutCap, 'stopHeartbeat');
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'sendStream').mockResolvedValue(undefined);
-
-      await agent.chatStream('Test');
-
-      expect(stopSpy).toHaveBeenCalled();
-    });
-  });
-
-  describe('chat/chatStream 一致性', () => {
-    it('两者都应在成功时触发相同的 hooks 顺序', async () => {
-      // 测试 chat
-      const chatEmitSpy = vi.spyOn(agent.context.hookRegistry, 'emit').mockResolvedValue(true);
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'send').mockResolvedValue('Hello!');
-      await agent.chat('Test');
-
-      const chatHookTypes = chatEmitSpy.mock.calls.map(c => c[0]);
-      chatEmitSpy.mockClear();
-
-      // 测试 chatStream
-      vi.spyOn(chatCap, 'sendStream').mockResolvedValue(undefined);
-      await agent.chatStream('Test');
-
-      const streamHookTypes = chatEmitSpy.mock.calls.map(c => c[0]);
-
-      // 成功路径都应该是: session:start -> session:end
-      expect(chatHookTypes).toEqual(streamHookTypes);
-      expect(chatHookTypes).toEqual(['session:start', 'session:end']);
-    });
-
-    it('两者都应在失败时触发相同的 hooks 顺序', async () => {
-      // 测试 chat 失败
-      const emitSpy = vi.spyOn(agent.context.hookRegistry, 'emit').mockResolvedValue(true);
-      const chatCap = (agent as any).chatCap;
-
-      vi.spyOn(chatCap, 'send').mockRejectedValue(new Error('fail'));
-      await expect(agent.chat('Test')).rejects.toThrow();
-
-      const chatHookTypes = emitSpy.mock.calls.map(c => c[0]);
-      emitSpy.mockClear();
-
-      // 测试 chatStream 失败
-      vi.spyOn(chatCap, 'sendStream').mockRejectedValue(new Error('fail'));
-      await expect(agent.chatStream('Test')).rejects.toThrow();
-
-      const streamHookTypes = emitSpy.mock.calls.map(c => c[0]);
-
-      // 失败路径都应该是: session:start -> session:error -> session:end
-      expect(chatHookTypes).toEqual(streamHookTypes);
-      expect(chatHookTypes).toEqual(['session:start', 'session:error', 'session:end']);
-    });
-
-    it('两者都应启动和停止心跳', async () => {
-      const timeoutCap = (agent as any)._context.timeoutCap;
-      const startSpy = vi.spyOn(timeoutCap, 'startHeartbeat');
-      const stopSpy = vi.spyOn(timeoutCap, 'stopHeartbeat');
-      const chatCap = (agent as any).chatCap;
-
-      // chat
-      vi.spyOn(chatCap, 'send').mockResolvedValue('Hello!');
-      await agent.chat('Test');
-      expect(startSpy).toHaveBeenCalledTimes(1);
-      // startHeartbeat 内部先调 stopHeartbeat，finally 再调一次 = 2次
-      expect(stopSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
-
-      startSpy.mockClear();
-      stopSpy.mockClear();
-
-      // chatStream
-      vi.spyOn(chatCap, 'sendStream').mockResolvedValue(undefined);
-      await agent.chatStream('Test');
-      expect(startSpy).toHaveBeenCalledTimes(1);
-      expect(stopSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
-    });
-  });
 
   describe('超时控制', () => {
     it('应使用 executionTimeout 包装 Promise', async () => {

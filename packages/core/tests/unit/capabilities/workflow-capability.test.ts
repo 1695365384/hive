@@ -97,8 +97,8 @@ describe('WorkflowCapability', () => {
       `);
 
       expect(analysis.type).toBe('moderate');
-      expect(analysis.needsExploration).toBe(false);
-      expect(analysis.needsPlanning).toBe(false);
+      expect(analysis.needsExploration).toBe(true);
+      expect(analysis.needsPlanning).toBe(true);
     });
 
     it('should treat multi-line tasks as moderate', () => {
@@ -404,6 +404,185 @@ describe('WorkflowCapability', () => {
       const result = await capability.run('Test task');
 
       expect(result.error).toBe('Task failed');
+    });
+  });
+
+  // ============================================
+  // 三阶段执行测试 (explore → plan → execute)
+  // ============================================
+
+  describe('三阶段执行 (explore → plan → execute)', () => {
+    it('should run explore → plan → execute for moderate tasks when SubAgent available', async () => {
+      const mockExplore = vi.fn(async () => 'Found relevant files in src/');
+      const mockPlan = vi.fn(async () => 'Step 1: Modify X, Step 2: Add Y');
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: mockExplore,
+        plan: mockPlan,
+        initialize: vi.fn(),
+      };
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      const moderateTask = 'I need to implement a new feature for the authentication system. It should support JWT tokens and OAuth2.';
+
+      const result = await capability.run(moderateTask);
+
+      expect(result.analysis.type).toBe('moderate');
+      expect(mockExplore).toHaveBeenCalledWith(moderateTask);
+      expect(mockPlan).toHaveBeenCalledWith(expect.stringContaining(moderateTask));
+      expect(result.exploreResult).toBeDefined();
+      expect(result.exploreResult!.text).toBe('Found relevant files in src/');
+      expect(result.exploreResult!.success).toBe(true);
+      expect(result.executionPlan).toBe('Step 1: Modify X, Step 2: Add Y');
+      expect(result.executeResult).toBeDefined();
+      expect(result.success).toBe(true);
+    });
+
+    it('should include explore and plan context in execute prompt', async () => {
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Found 3 files'),
+        plan: vi.fn(async () => 'Plan: do X then Y'),
+        initialize: vi.fn(),
+      };
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      vi.mocked(context.runner.execute).mockClear();
+      vi.mocked(context.runner.execute).mockResolvedValue(mockAgentResult);
+
+      await capability.run('Implement a feature');
+
+      const calls = vi.mocked(context.runner.execute).mock.calls;
+      expect(calls.length).toBe(1);
+
+      const prompt = calls[0][1] as string;
+      expect(prompt).toContain('Found 3 files');
+      expect(prompt).toContain('Plan: do X then Y');
+      expect(prompt).toContain('探索发现');
+      expect(prompt).toContain('执行计划');
+    });
+
+    it('should degrade to direct execution when SubAgent not available', async () => {
+      // getCapability returns undefined for 'subAgent'
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      const result = await capability.run('Implement a feature');
+
+      expect(result.success).toBe(true);
+      expect(result.executeResult).toBeDefined();
+      expect(result.exploreResult).toBeUndefined();
+      expect(result.executionPlan).toBeUndefined();
+    });
+
+    it('should handle explore phase failure gracefully', async () => {
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => { throw new Error('Explore failed'); }),
+        plan: vi.fn(async () => 'Fallback plan'),
+        initialize: vi.fn(),
+      };
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      const result = await capability.run('Implement a feature');
+
+      // Should continue with plan and execute even if explore fails
+      expect(result.exploreResult).toBeDefined();
+      expect(result.exploreResult!.success).toBe(false);
+      expect(result.exploreResult!.text).toContain('探索失败');
+      expect(mockSubAgentCap.plan).toHaveBeenCalled();
+      expect(result.success).toBe(true);
+    });
+
+    it('should handle plan phase failure gracefully', async () => {
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Found files'),
+        plan: vi.fn(async () => { throw new Error('Plan failed'); }),
+        initialize: vi.fn(),
+      };
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      const result = await capability.run('Implement a feature');
+
+      // Should continue to execute even if plan fails
+      expect(result.exploreResult!.success).toBe(true);
+      expect(result.executionPlan).toBeUndefined();
+      expect(result.executeResult).toBeDefined();
+      expect(result.success).toBe(true);
+    });
+
+    it('should emit explore and plan phases', async () => {
+      const phases: string[] = [];
+      vi.mocked(context.hookRegistry.emit).mockImplementation(async (type, ctx: any) => {
+        if (type === 'workflow:phase') {
+          phases.push(ctx.phase);
+        }
+        return true;
+      });
+
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Explored'),
+        plan: vi.fn(async () => 'Planned'),
+        initialize: vi.fn(),
+      };
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      await capability.run('Implement a feature');
+
+      expect(phases).toContain('analyze');
+      expect(phases).toContain('explore');
+      expect(phases).toContain('plan');
+      expect(phases).toContain('execute');
+      expect(phases).toContain('complete');
+    });
+
+    it('should skip explore and plan for simple tasks', async () => {
+      const mockSubAgentCap = {
+        name: 'subAgent',
+        explore: vi.fn(async () => 'Should not be called'),
+        plan: vi.fn(async () => 'Should not be called'),
+        initialize: vi.fn(),
+      };
+
+      vi.mocked(context.getCapability).mockImplementation((name: string) => {
+        if (name === 'subAgent') return mockSubAgentCap;
+        if (name === 'timeout') return context.timeoutCap;
+        return undefined;
+      });
+
+      await capability.run('What is TypeScript?');
+
+      expect(mockSubAgentCap.explore).not.toHaveBeenCalled();
+      expect(mockSubAgentCap.plan).not.toHaveBeenCalled();
     });
   });
 });

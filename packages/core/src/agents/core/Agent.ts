@@ -32,9 +32,9 @@ import { ChatCapability } from '../capabilities/ChatCapability.js';
 import { SubAgentCapability } from '../capabilities/SubAgentCapability.js';
 import { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
-import { SwarmCapability } from '../capabilities/SwarmCapability.js';
 import { SessionDelegation } from './session-delegation.js';
-import { PipelineExecutor } from '../pipeline/executor.js';
+import { Dispatcher } from '../dispatch/Dispatcher.js';
+import type { DispatchOptions, DispatchResult } from '../dispatch/types.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Session, Message } from '../../session/index.js';
@@ -54,7 +54,6 @@ export class Agent {
   private subAgentCap: SubAgentCapability;
   private workflowCap: WorkflowCapability;
   private sessionCap: SessionCapability;
-  private swarmCap: SwarmCapability;
   private sessionDelegation: SessionDelegation;
   private timeoutDelegation: TimeoutDelegation;
   private notificationDelegation: NotificationDelegation;
@@ -82,7 +81,6 @@ export class Agent {
     this.chatCap = new ChatCapability();
     this.subAgentCap = new SubAgentCapability();
     this.workflowCap = new WorkflowCapability();
-    this.swarmCap = new SwarmCapability();
     this.sessionCap = new SessionCapability(sessionConfig);
     this.sessionDelegation = new SessionDelegation(this.sessionCap);
     this.timeoutDelegation = new TimeoutDelegation(this._context);
@@ -97,7 +95,6 @@ export class Agent {
     this._context.registerCapability(this.chatCap);
     this._context.registerCapability(this.subAgentCap);
     this._context.registerCapability(this.workflowCap);
-    this._context.registerCapability(this.swarmCap);
   }
 
   /**
@@ -201,11 +198,12 @@ export class Agent {
   // ============================================
 
   async chat(prompt: string, options?: AgentOptions): Promise<string> {
-    return withHeartbeat(this._context, this.chatCap.send(prompt, options), prompt, options);
-  }
-
-  async chatStream(prompt: string, options?: AgentOptions): Promise<void> {
-    return withHeartbeat(this._context, this.chatCap.sendStream(prompt, options), prompt, options);
+    return withHeartbeat(
+      this._context,
+      this.dispatch(prompt, { forceLayer: 'chat', cwd: options?.cwd }).then(r => r.text),
+      prompt,
+      options
+    );
   }
 
   // ============================================
@@ -241,40 +239,13 @@ export class Agent {
   }
 
   /**
-   * 蜂群协作（多 Agent DAG 并行执行）
+   * 智能任务分发（LLM 分类 + 自动路由）
+   *
+   * 自动将任务路由到 chat / workflow。
    */
-  async swarm(task: string, options?: import('../swarm/types.js').SwarmOptions): Promise<import('../swarm/types.js').SwarmResult> {
-    return this.swarmCap.run(task, options);
-  }
-
-  /**
-   * 预览蜂群匹配结果
-   */
-  previewSwarm(task: string, templateName?: string): import('../swarm/types.js').SwarmPreview | null {
-    return this.swarmCap.preview(task, templateName);
-  }
-
-  /**
-   * 注册自定义蜂群模板
-   */
-  registerSwarmTemplate(template: import('../swarm/types.js').SwarmTemplate): void {
-    this.swarmCap.registerTemplate(template);
-  }
-
-  get swarmCapability(): SwarmCapability {
-    return this.swarmCap;
-  }
-
-  /**
-   * Pipeline 编排（多阶段 Swarm 串行执行）
-   */
-  async pipeline(
-    stages: import('../pipeline/types.js').PipelineStage[],
-    task: string,
-    options?: import('../pipeline/types.js').PipelineOptions
-  ): Promise<import('../pipeline/types.js').PipelineResult> {
-    const executor = new PipelineExecutor(this.swarmCap);
-    return executor.execute(stages, task, options);
+  async dispatch(task: string, options?: DispatchOptions): Promise<DispatchResult> {
+    const dispatcher = new Dispatcher(this._context);
+    return dispatcher.dispatch(task, options);
   }
 
   async preview(task: string, options?: WorkflowOptions): Promise<{

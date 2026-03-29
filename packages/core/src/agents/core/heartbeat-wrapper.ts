@@ -1,7 +1,7 @@
 /**
  * 心跳和超时包装器
  *
- * 统一 chat/chatStream 的心跳启动、超时控制和心跳停止逻辑
+ * 统一 chat 的心跳启动、超时控制和心跳停止逻辑
  */
 
 import type { AgentOptions } from './types.js';
