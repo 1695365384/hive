@@ -69,6 +69,7 @@ export class Dispatcher {
         onPhase: options?.onPhase,
         onText: options?.onText,
         onTool: options?.onTool,
+        onToolResult: options?.onToolResult,
       });
 
       // 持久化对话到 session
@@ -112,8 +113,9 @@ export class Dispatcher {
           if (sessionCap) {
             await sessionCap.saveTrace(trace);
           }
-        } catch {
-          // trace persistence is best-effort
+        } catch (traceError) {
+          // trace persistence is best-effort; failures must not break the dispatch flow
+          console.debug('[dispatch] Failed to persist trace:', traceError);
         }
       }
     }

@@ -12,7 +12,10 @@ import { resolve } from 'node:path';
 import { getAgent } from './agents/index.js';
 import type { ThoroughnessLevel } from './agents/types.js';
 
-// 调试模式
+// ============================================
+// CLI utilities
+// ============================================
+
 const DEBUG = process.env.DEBUG === '1' || process.argv.includes('--debug');
 
 function debug(...args: unknown[]): void {
@@ -45,6 +48,10 @@ function logInfo(message: string): void {
   console.log(`\x1b[34mℹ️  ${message}\x1b[0m`);
 }
 
+// ============================================
+// CLI state (mutable — CLI is a local, short-lived process)
+// ============================================
+
 type CliMode = 'chat' | 'explore' | 'plan' | 'general' | 'workflow';
 
 interface CliState {
@@ -63,10 +70,16 @@ const state: CliState = {
   verbose: true,
 };
 
+const VALID_MODES: readonly CliMode[] = ['chat', 'explore', 'plan', 'general', 'workflow'] as const;
+const VALID_THOROUGHNESS: readonly ThoroughnessLevel[] = ['quick', 'medium', 'very-thorough'] as const;
+
+// ============================================
+// Display helpers
+// ============================================
+
 function printBanner(): void {
   console.log('\n🤖 Claude Agent CLI 已启动\n');
 
-  // 显示提供商信息
   const provider = agent.currentProvider;
   if (provider) {
     logSuccess(`当前提供商: ${provider.name}`);
@@ -106,13 +119,9 @@ function printHelp(): void {
 `);
 }
 
-function parseCommand(input: string): { cmd: string; args: string[] } {
-  const parts = input.trim().split(/\s+/).filter(Boolean);
-  return {
-    cmd: parts[0].toLowerCase(),
-    args: parts.slice(1),
-  };
-}
+// ============================================
+// Cwd helper
+// ============================================
 
 async function runWithCwd<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
   const originalCwd = process.cwd();
@@ -131,11 +140,109 @@ async function runWithCwd<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
+// ============================================
+// Mode executors (one per CliMode)
+// ============================================
+
+async function executeChatMode(prompt: string): Promise<void> {
+  const result = await runWithCwd(state.cwd, () => agent.chat(prompt, { cwd: state.cwd }));
+  console.log(`\n\x1b[33mAssistant>\x1b[0m ${result}\n`);
+}
+
+async function executeExploreMode(prompt: string): Promise<void> {
+  logPhase('EXPLORE', `thoroughness: ${state.thoroughness}`);
+  const result = await runWithCwd(state.cwd, () => agent.explore(prompt, state.thoroughness));
+  console.log(`\n\x1b[33mAssistant (explore)>\x1b[0m ${result}\n`);
+}
+
+async function executePlanMode(prompt: string): Promise<void> {
+  logPhase('PLAN', '研究代码库...');
+  const result = await runWithCwd(state.cwd, () => agent.plan(prompt));
+  console.log(`\n\x1b[33mAssistant (plan)>\x1b[0m ${result}\n`);
+}
+
+async function executeGeneralMode(prompt: string): Promise<void> {
+  logPhase('GENERAL', '执行任务...');
+  const result = await runWithCwd(state.cwd, () => agent.general(prompt));
+  console.log(`\n\x1b[33mAssistant (general)>\x1b[0m ${result}\n`);
+}
+
+async function executeWorkflowMode(prompt: string, startTime: number): Promise<void> {
+  console.log('');
+  const toolCalls: string[] = [];
+  let currentPhase = '';
+
+  const result = await runWithCwd(state.cwd, () =>
+    agent.runWorkflow(prompt, {
+      cwd: state.cwd,
+      onPhase: (phase, message) => {
+        currentPhase = phase;
+        logPhase(phase.toUpperCase(), message);
+      },
+      onTool: (tool) => {
+        toolCalls.push(tool);
+        if (state.verbose) {
+          const timestamp = new Date().toISOString().substring(11, 19);
+          console.log(`  \x1b[35m[${timestamp}][TOOL]\x1b[0m ${tool}`);
+        }
+      },
+      onText: (text) => {
+        if (currentPhase === 'execute') {
+          process.stdout.write(text);
+        }
+      },
+    }),
+  );
+
+  const duration = Date.now() - startTime;
+
+  console.log('\n');
+  console.log('\x1b[2m──────────────────────────────────────\x1b[0m');
+
+  if (!result.success) {
+    logError(`执行失败: ${result.error || '未知错误'}`);
+  } else {
+    logSuccess('执行成功');
+  }
+
+  console.log('\n\x1b[1m📊 执行摘要\x1b[0m');
+  console.log(`  工具调用: ${toolCalls.length} 次`);
+  console.log(`  耗时: ${(duration / 1000).toFixed(2)}s`);
+
+  if (toolCalls.length > 0 && state.verbose) {
+    console.log(`\n\x1b[1m🔧 工具调用详情\x1b[0m`);
+    const toolCounts: Record<string, number> = {};
+    for (const tool of toolCalls) {
+      toolCounts[tool] = (toolCounts[tool] || 0) + 1;
+    }
+    for (const [tool, count] of Object.entries(toolCounts)) {
+      console.log(`  ${tool}: ${count} 次`);
+    }
+  }
+
+  console.log('\x1b[2m──────────────────────────────────────\x1b[0m\n');
+
+  if (result.text) {
+    console.log(`\x1b[33m📝 结果:\x1b[0m ${result.text.substring(0, 200)}${result.text.length > 200 ? '...' : ''}\n`);
+  }
+}
+
+// ============================================
+// executePrompt dispatcher
+// ============================================
+
+const MODE_EXECUTORS: Record<CliMode, (prompt: string, startTime: number) => Promise<void>> = {
+  chat: (prompt) => executeChatMode(prompt),
+  explore: (prompt) => executeExploreMode(prompt),
+  plan: (prompt) => executePlanMode(prompt),
+  general: (prompt) => executeGeneralMode(prompt),
+  workflow: (prompt, startTime) => executeWorkflowMode(prompt, startTime),
+};
+
 async function executePrompt(prompt: string): Promise<void> {
   const trimmed = prompt.trim();
   if (!trimmed) return;
 
-  // 显示执行前的信息
   const provider = agent.currentProvider;
   logPhase('START', `任务: ${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}`);
 
@@ -146,104 +253,7 @@ async function executePrompt(prompt: string): Promise<void> {
   const startTime = Date.now();
 
   try {
-    switch (state.mode) {
-      case 'chat': {
-        const result = await runWithCwd(state.cwd, async () => {
-          return agent.chat(trimmed, { cwd: state.cwd });
-        });
-        console.log(`\n\x1b[33mAssistant>\x1b[0m ${result}\n`);
-        break;
-      }
-
-      case 'explore': {
-        logPhase('EXPLORE', `thoroughness: ${state.thoroughness}`);
-        const result = await runWithCwd(state.cwd, async () => {
-          return agent.explore(trimmed, state.thoroughness);
-        });
-        console.log(`\n\x1b[33mAssistant (explore)>\x1b[0m ${result}\n`);
-        break;
-      }
-
-      case 'plan': {
-        logPhase('PLAN', '研究代码库...');
-        const result = await runWithCwd(state.cwd, async () => {
-          return agent.plan(trimmed);
-        });
-        console.log(`\n\x1b[33mAssistant (plan)>\x1b[0m ${result}\n`);
-        break;
-      }
-
-      case 'general': {
-        logPhase('GENERAL', '执行任务...');
-        const result = await runWithCwd(state.cwd, async () => {
-          return agent.general(trimmed);
-        });
-        console.log(`\n\x1b[33mAssistant (general)>\x1b[0m ${result}\n`);
-        break;
-      }
-
-      case 'workflow': {
-        console.log('');
-        const toolCalls: string[] = [];
-        let currentPhase = '';
-
-        const result = await runWithCwd(state.cwd, async () => {
-          return agent.runWorkflow(trimmed, {
-            cwd: state.cwd,
-            onPhase: (phase, message) => {
-              currentPhase = phase;
-              logPhase(phase.toUpperCase(), message);
-            },
-            onTool: (tool) => {
-              toolCalls.push(tool);
-              if (state.verbose) {
-                const timestamp = new Date().toISOString().substring(11, 19);
-                console.log(`  \x1b[35m[${timestamp}][TOOL]\x1b[0m ${tool}`);
-              }
-            },
-            onText: (text) => {
-              if (currentPhase === 'execute') {
-                process.stdout.write(text);
-              }
-            },
-          });
-        });
-
-        const duration = Date.now() - startTime;
-
-        console.log('\n');
-        console.log('\x1b[2m──────────────────────────────────────\x1b[0m');
-
-        if (!result.success) {
-          logError(`执行失败: ${result.error || '未知错误'}`);
-        } else {
-          logSuccess('执行成功');
-        }
-
-        // 显示执行摘要
-        console.log('\n\x1b[1m📊 执行摘要\x1b[0m');
-        console.log(`  工具调用: ${toolCalls.length} 次`);
-        console.log(`  耗时: ${(duration / 1000).toFixed(2)}s`);
-
-        if (toolCalls.length > 0 && state.verbose) {
-          console.log(`\n\x1b[1m🔧 工具调用详情\x1b[0m`);
-          const toolCounts: Record<string, number> = {};
-          for (const tool of toolCalls) {
-            toolCounts[tool] = (toolCounts[tool] || 0) + 1;
-          }
-          for (const [tool, count] of Object.entries(toolCounts)) {
-            console.log(`  ${tool}: ${count} 次`);
-          }
-        }
-
-        console.log('\x1b[2m──────────────────────────────────────\x1b[0m\n');
-
-        if (result.text) {
-          console.log(`\x1b[33m📝 结果:\x1b[0m ${result.text.substring(0, 200)}${result.text.length > 200 ? '...' : ''}\n`);
-        }
-        break;
-      }
-    }
+    await MODE_EXECUTORS[state.mode](trimmed, startTime);
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     logError(`执行失败: ${err.message}`, err);
@@ -251,167 +261,190 @@ async function executePrompt(prompt: string): Promise<void> {
   }
 }
 
-async function handleCommand(line: string): Promise<boolean> {
-  const { cmd, args } = parseCommand(line);
+// ============================================
+// Command handlers
+// ============================================
 
-  switch (cmd) {
-    case '/help':
-      printHelp();
-      return true;
+type CommandHandler = (args: string[]) => Promise<boolean>;
 
-    case '/exit':
-    case '/quit':
-      return false;
-
-    case '/debug': {
-      console.log('\n\x1b[1m🔍 调试信息\x1b[0m');
-      const provider = agent.currentProvider;
-      if (provider) {
-        console.log('当前提供商:');
-        console.log(`  ID: ${provider.id}`);
-        console.log(`  名称: ${provider.name}`);
-        console.log(`  Base URL: ${provider.baseUrl}`);
-        console.log(`  API Key: ${provider.apiKey ? '(已配置)' : '(未设置)'}`);
-        console.log(`  Model: ${provider.model || '(默认)'}`);
-      } else {
-        console.log('  未配置提供商');
-      }
-      console.log(`工作目录: ${state.cwd}`);
-      console.log('');
-      return true;
-    }
-
-    case '/status': {
-      console.log('\n\x1b[1m📊 系统状态\x1b[0m');
-      console.log(`模式: ${state.mode}`);
-      console.log(`详细日志: ${state.verbose ? '开启' : '关闭'}`);
-      console.log(`调试模式: ${DEBUG ? '开启' : '关闭'}`);
-      console.log(`工作目录: ${state.cwd}`);
-
-      const provider = agent.currentProvider;
-      if (provider) {
-        console.log(`\n当前提供商: ${provider.name}`);
-        console.log(`  Base URL: ${provider.baseUrl}`);
-        console.log(`  Model: ${provider.model || '(默认)'}`);
-      }
-      console.log('');
-      return true;
-    }
-
-    case '/loop': {
-      const task = args.join(' ').trim();
-      if (!task) {
-        console.log('❌ 请提供任务，例如: /loop 分析这个项目');
-        return true;
-      }
-      const originalMode = state.mode;
-      state.mode = 'workflow';
-      await executePrompt(task);
-      state.mode = originalMode;
-      return true;
-    }
-
-    case '/mode': {
-      const mode = args[0] as CliMode | undefined;
-      if (!mode || !['chat', 'explore', 'plan', 'general', 'workflow'].includes(mode)) {
-        console.log('❌ mode 无效，可选: chat | explore | plan | general | workflow');
-        return true;
-      }
-      state.mode = mode;
-      logInfo(`模式已切换: ${mode}`);
-      return true;
-    }
-
-    case '/verbose': {
-      const value = args[0]?.toLowerCase();
-      if (!value || !['on', 'off'].includes(value)) {
-        console.log(`当前: verbose=${state.verbose ? 'on' : 'off'}`);
-        return true;
-      }
-      state.verbose = value === 'on';
-      logInfo(`详细日志: ${state.verbose ? '开启' : '关闭'}`);
-      return true;
-    }
-
-
-    case '/thoroughness': {
-      const value = args[0] as ThoroughnessLevel | undefined;
-      if (!value || !['quick', 'medium', 'very-thorough'].includes(value)) {
-        console.log('❌ thoroughness 无效，可选: quick | medium | very-thorough');
-        return true;
-      }
-      state.thoroughness = value;
-      printState();
-      return true;
-    }
-
-    case '/cwd': {
-      const nextCwd = args.join(' ').trim();
-      if (!nextCwd) {
-        console.log('❌ 请提供路径，例如: /cwd ./src');
-        return true;
-      }
-      const resolved = resolve(nextCwd);
-      if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
-        console.log(`❌ 目录不存在: ${resolved}`);
-        return true;
-      }
-      state.cwd = resolved;
-      printState();
-      return true;
-    }
-
-    case '/provider': {
-      const name = args[0];
-      const apiKey = args[1];
-      if (!name) {
-        console.log('❌ 请提供 provider 名称，例如: /provider glm');
-        return true;
-      }
-      const ok = agent.useProvider(name, apiKey);
-      if (ok) {
-        logSuccess(`已切换 provider: ${name}`);
-        const newProvider = agent.currentProvider;
-        if (newProvider) {
-          debug(`Base URL: ${newProvider.baseUrl}`);
-        }
-      } else {
-        logError(`切换 provider 失败: ${name}`);
-      }
-      return true;
-    }
-
-    case '/providers': {
-      const providers = agent.listProviders();
-      if (providers.length === 0) {
-        console.log('暂无可用 provider');
-        return true;
-      }
-
-      console.log('\n\x1b[1m📋 可用提供商\x1b[0m\n');
-      for (const p of providers) {
-        const active = agent.currentProvider?.id === p.id;
-        const hasKey = !!p.apiKey;
-        const keyStatus = hasKey ? '🔑' : '⚠️ 无Key';
-        const activeMarker = active ? '\x1b[32m (active)\x1b[0m' : '';
-        console.log(`  ${active ? '●' : '○'} ${p.name}${activeMarker} ${keyStatus}`);
-        if (DEBUG || state.verbose) {
-          console.log(`    └─ ${p.baseUrl}`);
-        }
-      }
-      console.log('');
-      return true;
-    }
-
-    case '/state':
-      printState();
-      return true;
-
-    default:
-      console.log('❌ 未知命令，输入 /help 查看可用命令。');
-      return true;
+async function cmdDebug(): Promise<boolean> {
+  console.log('\n\x1b[1m🔍 调试信息\x1b[0m');
+  const provider = agent.currentProvider;
+  if (provider) {
+    console.log('当前提供商:');
+    console.log(`  ID: ${provider.id}`);
+    console.log(`  名称: ${provider.name}`);
+    console.log(`  Base URL: ${provider.baseUrl}`);
+    console.log(`  API Key: ${provider.apiKey ? '(已配置)' : '(未设置)'}`);
+    console.log(`  Model: ${provider.model || '(默认)'}`);
+  } else {
+    console.log('  未配置提供商');
   }
+  console.log(`工作目录: ${state.cwd}`);
+  console.log('');
+  return true;
 }
+
+async function cmdStatus(): Promise<boolean> {
+  console.log('\n\x1b[1m📊 系统状态\x1b[0m');
+  console.log(`模式: ${state.mode}`);
+  console.log(`详细日志: ${state.verbose ? '开启' : '关闭'}`);
+  console.log(`调试模式: ${DEBUG ? '开启' : '关闭'}`);
+  console.log(`工作目录: ${state.cwd}`);
+
+  const provider = agent.currentProvider;
+  if (provider) {
+    console.log(`\n当前提供商: ${provider.name}`);
+    console.log(`  Base URL: ${provider.baseUrl}`);
+    console.log(`  Model: ${provider.model || '(默认)'}`);
+  }
+  console.log('');
+  return true
+}
+
+async function cmdLoop(args: string[]): Promise<boolean> {
+  const task = args.join(' ').trim();
+  if (!task) {
+    console.log('❌ 请提供任务，例如: /loop 分析这个项目');
+    return true;
+  }
+  const originalMode = state.mode;
+  state.mode = 'workflow';
+  await executePrompt(task);
+  state.mode = originalMode;
+  return true;
+}
+
+async function cmdMode(args: string[]): Promise<boolean> {
+  const mode = args[0] as CliMode | undefined;
+  if (!mode || !VALID_MODES.includes(mode)) {
+    console.log(`❌ mode 无效，可选: ${VALID_MODES.join(' | ')}`);
+    return true;
+  }
+  state.mode = mode;
+  logInfo(`模式已切换: ${mode}`);
+  return true;
+}
+
+async function cmdVerbose(args: string[]): Promise<boolean> {
+  const value = args[0]?.toLowerCase();
+  if (!value || !['on', 'off'].includes(value)) {
+    console.log(`当前: verbose=${state.verbose ? 'on' : 'off'}`);
+    return true;
+  }
+  state.verbose = value === 'on';
+  logInfo(`详细日志: ${state.verbose ? '开启' : '关闭'}`);
+  return true;
+}
+
+async function cmdThoroughness(args: string[]): Promise<boolean> {
+  const value = args[0] as ThoroughnessLevel | undefined;
+  if (!value || !VALID_THOROUGHNESS.includes(value)) {
+    console.log(`❌ thoroughness 无效，可选: ${VALID_THOROUGHNESS.join(' | ')}`);
+    return true;
+  }
+  state.thoroughness = value;
+  printState();
+  return true;
+}
+
+async function cmdCwd(args: string[]): Promise<boolean> {
+  const nextCwd = args.join(' ').trim();
+  if (!nextCwd) {
+    console.log('❌ 请提供路径，例如: /cwd ./src');
+    return true;
+  }
+  const resolved = resolve(nextCwd);
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
+    console.log(`❌ 目录不存在: ${resolved}`);
+    return true;
+  }
+  state.cwd = resolved;
+  printState();
+  return true;
+}
+
+async function cmdProvider(args: string[]): Promise<boolean> {
+  const name = args[0];
+  const apiKey = args[1];
+  if (!name) {
+    console.log('❌ 请提供 provider 名称，例如: /provider glm');
+    return true;
+  }
+  const ok = agent.useProvider(name, apiKey);
+  if (ok) {
+    logSuccess(`已切换 provider: ${name}`);
+    const newProvider = agent.currentProvider;
+    if (newProvider) {
+      debug(`Base URL: ${newProvider.baseUrl}`);
+    }
+  } else {
+    logError(`切换 provider 失败: ${name}`);
+  }
+  return true;
+}
+
+async function cmdProviders(): Promise<boolean> {
+  const providers = agent.listProviders();
+  if (providers.length === 0) {
+    console.log('暂无可用 provider');
+    return true;
+  }
+
+  console.log('\n\x1b[1m📋 可用提供商\x1b[0m\n');
+  for (const p of providers) {
+    const active = agent.currentProvider?.id === p.id;
+    const hasKey = !!p.apiKey;
+    const keyStatus = hasKey ? '🔑' : '⚠️ 无Key';
+    const activeMarker = active ? '\x1b[32m (active)\x1b[0m' : '';
+    console.log(`  ${active ? '●' : '○'} ${p.name}${activeMarker} ${keyStatus}`);
+    if (DEBUG || state.verbose) {
+      console.log(`    └─ ${p.baseUrl}`);
+    }
+  }
+  console.log('');
+  return true;
+}
+
+// ============================================
+// Command router
+// ============================================
+
+const COMMANDS: Record<string, CommandHandler> = {
+  '/help': async () => { printHelp(); return true },
+  '/debug': cmdDebug,
+  '/status': cmdStatus,
+  '/loop': cmdLoop,
+  '/mode': cmdMode,
+  '/verbose': cmdVerbose,
+  '/thoroughness': cmdThoroughness,
+  '/cwd': cmdCwd,
+  '/provider': cmdProvider,
+  '/providers': cmdProviders,
+  '/state': async () => { printState(); return true },
+};
+
+async function handleCommand(line: string): Promise<boolean> {
+  const parts = line.trim().split(/\s+/).filter(Boolean);
+  const cmd = parts[0].toLowerCase();
+  const args = parts.slice(1);
+
+  if (cmd === '/exit' || cmd === '/quit') {
+    return false;
+  }
+
+  const handler = COMMANDS[cmd];
+  if (handler) {
+    return handler(args);
+  }
+
+  console.log('❌ 未知命令，输入 /help 查看可用命令。');
+  return true;
+}
+
+// ============================================
+// Main
+// ============================================
 
 async function main(): Promise<void> {
   printBanner();

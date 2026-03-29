@@ -48,6 +48,8 @@ export interface DispatchOptions {
   onText?: (text: string) => void;
   /** 工具调用回调 */
   onTool?: (tool: string, input?: unknown) => void;
+  /** 工具结果回调 */
+  onToolResult?: (tool: string, result: unknown) => void;
 }
 
 // ============================================

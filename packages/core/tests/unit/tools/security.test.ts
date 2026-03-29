@@ -138,17 +138,24 @@ describe('isAllowedUrl', () => {
 });
 
 describe('isCommandAllowed', () => {
-  it('should allow commands in default allowlist', () => {
+  afterEach(() => {
+    delete process.env.HIVE_BASH_ALLOWLIST;
+    delete process.env.HIVE_BASH_COMMAND_POLICY;
+  });
+
+  it('should allow common safe commands by default', () => {
     expect(isCommandAllowed('git status')).toBe(true);
     expect(isCommandAllowed('npm install')).toBe(true);
     expect(isCommandAllowed('cat file.txt')).toBe(true);
     expect(isCommandAllowed('ls -la')).toBe(true);
     expect(isCommandAllowed('grep pattern file')).toBe(true);
+    expect(isCommandAllowed('vm_stat')).toBe(true);
+    expect(isCommandAllowed('ps aux')).toBe(true);
   });
 
-  it('should block commands not in allowlist', () => {
-    expect(isCommandAllowed('malicious_cmd')).toBe(false);
-    expect(isCommandAllowed('unknown_tool')).toBe(false);
+  it('should allow non-path commands by default to reduce false positives', () => {
+    expect(isCommandAllowed('unknown_tool')).toBe(true);
+    expect(isCommandAllowed('custom_observe_memory')).toBe(true);
   });
 
   it('should block absolute path commands', () => {
@@ -160,11 +167,27 @@ describe('isCommandAllowed', () => {
     expect(isCommandAllowed('../script.sh')).toBe(false);
   });
 
-  it('should respect HIVE_BASH_ALLOWLIST env var', () => {
+  it('should block home-relative path commands', () => {
+    expect(isCommandAllowed('~/script.sh')).toBe(false);
+    expect(isCommandAllowed('~otheruser/script.sh')).toBe(false);
+  });
+
+  it('should auto-enable allowlist mode when HIVE_BASH_ALLOWLIST is set', () => {
     process.env.HIVE_BASH_ALLOWLIST = 'custom_cmd,another_cmd';
     expect(isCommandAllowed('custom_cmd arg1')).toBe(true);
     expect(isCommandAllowed('git status')).toBe(false);
-    delete process.env.HIVE_BASH_ALLOWLIST;
+  });
+
+  it('should respect explicit allowlist mode', () => {
+    process.env.HIVE_BASH_COMMAND_POLICY = 'allowlist';
+    expect(isCommandAllowed('git status')).toBe(true);
+    expect(isCommandAllowed('unknown_tool')).toBe(false);
+  });
+
+  it('should respect explicit deny-dangerous mode', () => {
+    process.env.HIVE_BASH_COMMAND_POLICY = 'deny-dangerous';
+    process.env.HIVE_BASH_ALLOWLIST = 'git';
+    expect(isCommandAllowed('unknown_tool')).toBe(true);
   });
 });
 
@@ -188,6 +211,22 @@ describe('isDangerousCommand', () => {
   it('should detect command substitution', () => {
     expect(isDangerousCommand('echo $(whoami)').dangerous).toBe(true);
     expect(isDangerousCommand('echo `id`').dangerous).toBe(true);
+  });
+
+  it('should detect inline interpreter execution', () => {
+    expect(isDangerousCommand('python -c "print(1)"').dangerous).toBe(true);
+    expect(isDangerousCommand('node -e "console.log(1)"').dangerous).toBe(true);
+    expect(isDangerousCommand('perl -e "print 1"').dangerous).toBe(true);
+  });
+
+  it('should detect suspicious network backdoor tools', () => {
+    expect(isDangerousCommand('nc -l -p 4444').dangerous).toBe(true);
+    expect(isDangerousCommand('socat TCP-LISTEN:1234,reuseaddr,fork STDOUT').dangerous).toBe(true);
+  });
+
+  it('should detect shell -c path script execution', () => {
+    expect(isDangerousCommand('bash -c "./malicious.sh"').dangerous).toBe(true);
+    expect(isDangerousCommand('sh -c "~/run.sh"').dangerous).toBe(true);
   });
 
   it('should allow safe commands', () => {

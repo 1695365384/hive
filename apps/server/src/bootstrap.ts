@@ -19,6 +19,8 @@ export interface HiveContext {
   config: ServerConfig
   /** Loaded plugins */
   plugins: IPlugin[]
+  /** Logger instance */
+  logger: ILogger
   /** Heartbeat scheduler */
   heartbeatScheduler: HeartbeatScheduler | null
   /** Schedule engine for cron tasks */
@@ -36,9 +38,6 @@ export interface BootstrapOptions {
 const SESSION_CHANNEL_MAP_MAX_SIZE = 10000
 const sessionChannelMap = new Map<string, { channelId: string; chatId: string }>()
 
-/**
- * 添加 session→channel 映射，超过上限时淘汰最早的条目
- */
 function setSessionChannelMapping(sessionId: string, channelId: string, chatId: string): void {
   if (sessionChannelMap.size >= SESSION_CHANNEL_MAP_MAX_SIZE) {
     const firstKey = sessionChannelMap.keys().next().value
@@ -47,17 +46,14 @@ function setSessionChannelMapping(sessionId: string, channelId: string, chatId: 
   sessionChannelMap.set(sessionId, { channelId, chatId })
 }
 
-/**
- * 添加 schedule→channel 映射（定时任务创建时记录）
- */
 function setScheduleChannelMapping(scheduleId: string, channelId: string, chatId: string): void {
-  // 复用 sessionChannelMap，以 scheduleId 为 key
   sessionChannelMap.set(`schedule:${scheduleId}`, { channelId, chatId })
 }
 
-/**
- * Create a simple logger
- */
+// ============================================
+// Logger
+// ============================================
+
 function createLogger(level: string): ILogger {
   const levels = { debug: 0, info: 1, warn: 2, error: 3 }
   const currentLevel = levels[level as keyof typeof levels] ?? 1
@@ -70,9 +66,10 @@ function createLogger(level: string): ILogger {
   }
 }
 
-/**
- * Load a plugin by name
- */
+// ============================================
+// Plugin loading
+// ============================================
+
 function isValidPluginPath(name: string): boolean {
   if (name.startsWith('/') || name.startsWith('.')) return false;
   if (name.includes('..')) return false;
@@ -83,7 +80,7 @@ async function loadPlugin(
   pluginName: string,
   pluginConfig: Record<string, unknown>,
   bus: MessageBus,
-  logger: ILogger
+  logger: ILogger,
 ): Promise<IPlugin | null> {
   try {
     logger.info(`[bootstrap] Loading plugin: ${pluginName}`)
@@ -121,14 +118,102 @@ async function loadPlugin(
   }
 }
 
+async function loadPlugins(
+  config: ServerConfig,
+  bus: MessageBus,
+  logger: ILogger,
+): Promise<IPlugin[]> {
+  const plugins: IPlugin[] = []
+
+  for (const pluginName of config.plugins) {
+    const pluginConfig = config.pluginConfigs[pluginName] || {}
+    const plugin = await loadPlugin(pluginName, pluginConfig, bus, logger)
+    if (plugin) {
+      plugins.push(plugin)
+    }
+  }
+
+  for (const plugin of plugins) {
+    try {
+      await plugin.activate()
+      logger.info(`[bootstrap] Plugin activated: ${plugin.metadata.name}`)
+    } catch (error) {
+      logger.error(`[bootstrap] Failed to activate plugin:`, error)
+    }
+  }
+
+  logger.info(`[bootstrap] ${plugins.length} plugins loaded.`)
+  return plugins
+}
+
 // ============================================
-// 推送通知辅助函数
+// Schedule engine
 // ============================================
 
-/**
- * 解析推送目标
- * 支持 channel='last' 策略（先查 session 映射，再查 schedule 映射）
- */
+async function initScheduleEngine(
+  config: ServerConfig,
+  agent: Agent,
+  bus: MessageBus,
+  logger: ILogger,
+): Promise<ScheduleEngine | null> {
+  try {
+    const { createDatabase: createDb } = await import('@hive/core')
+    const dbManager = createDb({ dbPath: resolve(process.cwd(), '.hive/hive.db') })
+    await dbManager.initialize()
+    const scheduleRepo = createScheduleRepository(dbManager.getDb())
+
+    const engine = createScheduleEngine(scheduleRepo, async ({ schedule: task }) => {
+      logger.info(`[scheduler] Executing schedule: ${task.name}`)
+      try {
+        const result = await agent.chat(task.prompt, { sessionId: undefined })
+        const sessionId = agent.context.hookRegistry.getSessionId()
+        logger.info(`[scheduler] Schedule "${task.name}" completed, session: ${sessionId}`)
+
+        bus.emit('schedule:completed', {
+          scheduleId: task.id,
+          result,
+          status: 'success',
+          consecutiveErrors: 0,
+          notifyConfig: task.notifyConfig,
+          scheduleName: task.name,
+        })
+
+        return { sessionId, success: true }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        logger.error(`[scheduler] Schedule "${task.name}" failed: ${msg}`)
+
+        bus.emit('schedule:completed', {
+          scheduleId: task.id,
+          result: undefined,
+          status: 'failed',
+          consecutiveErrors: (task.consecutiveErrors ?? 0) + 1,
+          notifyConfig: task.notifyConfig,
+          scheduleName: task.name,
+        })
+
+        return { sessionId: '', success: false, error: msg }
+      }
+    }, {
+      onCircuitBreak: (event) => {
+        logger.warn(`[schedule:circuit-break] Task "${event.name}" paused after ${event.consecutiveErrors} consecutive failures`)
+        bus.emit('schedule:circuit-break', event)
+      },
+    })
+
+    const taskCount = await engine.start()
+    logger.info(`[bootstrap] Schedule engine started (${taskCount} tasks loaded)`)
+    return engine
+  } catch (error) {
+    logger.warn(`[bootstrap] Schedule engine not available: ${error instanceof Error ? error.message : error}`)
+    return null
+  }
+}
+
+// ============================================
+// Push notification helpers
+// ============================================
+
 function resolveNotifyTarget(notifyConfig: { channel?: string; to?: string }, contextId?: string): { channelId: string; chatId: string } | null {
   if (!notifyConfig.channel && !notifyConfig.to) return null
 
@@ -150,143 +235,61 @@ function resolveNotifyTarget(notifyConfig: { channel?: string; to?: string }, co
 }
 
 // ============================================
-// Bootstrap
+// ============================================
+// Tool log formatting
 // ============================================
 
-/**
- * Bootstrap the Hive server
- */
-export async function bootstrap(options: BootstrapOptions): Promise<HiveContext> {
-  const { config } = options
-  const logger = createLogger(config.logLevel)
+const TOOL_INPUT_SUMMARIES: Record<string, (input: any) => string> = {
+  Bash: (i) => truncate(String(i.command ?? ''), 120),
+  Read: (i) => truncate(String(i.file_path ?? ''), 100),
+  Write: (i) => truncate(String(i.file_path ?? ''), 100),
+  Edit: (i) => truncate(String(i.file_path ?? ''), 100),
+  Glob: (i) => truncate(String(i.pattern ?? ''), 80),
+  Grep: (i) => truncate(`${i.pattern ?? ''} in ${i.path ?? '.'}`, 80),
+  'WebSearch': (i) => truncate(String(i.query ?? ''), 100),
+  'WebFetch': (i) => truncate(String(i.url ?? ''), 100),
+  'AskUser': () => '',
+  explore: (i) => truncate(String(i.prompt ?? ''), 100),
+  plan: (i) => truncate(String(i.prompt ?? ''), 100),
+}
 
-  logger.info('[bootstrap] Initializing MessageBus...')
-  const bus = new MessageBus()
+function formatToolInput(tool: string, input: unknown): string {
+  const inputObj = typeof input === 'object' && input !== null ? input as Record<string, unknown> : {}
+  const formatter = TOOL_INPUT_SUMMARIES[tool]
+  if (formatter) return formatter(inputObj)
+  const keys = Object.keys(inputObj)
+  return keys.length > 0 ? truncate(JSON.stringify(inputObj), 120) : ''
+}
 
-  logger.info('[bootstrap] Creating main agent...')
-  const agent = createAgent({
-    externalConfig: {
-      providers: [
-        {
-          id: config.provider.id,
-          name: config.provider.id.toUpperCase(),
-          apiKey: config.provider.apiKey,
-          model: config.provider.model,
-          baseUrl: config.provider.baseUrl || `https://api.${config.provider.id}.com`,
-        },
-      ],
-      activeProvider: config.provider.id,
-    },
-  })
-
-  logger.info('[bootstrap] Initializing agent...')
-  await agent.initialize()
-
-  // Load plugins
-  const plugins: IPlugin[] = []
-  for (const pluginName of config.plugins) {
-    const pluginConfig = config.pluginConfigs[pluginName] || {}
-    const plugin = await loadPlugin(pluginName, pluginConfig, bus, logger)
-    if (plugin) {
-      plugins.push(plugin)
-    }
+function formatToolResult(tool: string, result: unknown): string {
+  const text = typeof result === 'string' ? result : JSON.stringify(result ?? '')
+  if (tool === 'explore' || tool === 'plan') {
+    return truncate(text, 200)
   }
+  return truncate(text, 150)
+}
 
-  // Activate plugins
-  for (const plugin of plugins) {
-    try {
-      await plugin.activate()
-      logger.info(`[bootstrap] Plugin activated: ${plugin.metadata.name}`)
-    } catch (error) {
-      logger.error(`[bootstrap] Failed to activate plugin:`, error)
-    }
-  }
+function truncate(str: string, max: number): string {
+  if (str.length <= max) return str
+  return str.slice(0, max - 3) + '...'
+}
 
-  logger.info(`[bootstrap] Bootstrap complete. ${plugins.length} plugins loaded.`)
+// Event subscribers
+// ============================================
 
-  // Start heartbeat scheduler
-  let heartbeatScheduler: HeartbeatScheduler | null = null
-  if (config.heartbeat.enabled) {
-    heartbeatScheduler = new HeartbeatScheduler({ agent, config: config.heartbeat, bus })
-    heartbeatScheduler.start()
-    logger.info(`[bootstrap] Heartbeat scheduler started (interval: ${config.heartbeat.intervalMs}ms)`)
-  }
-
-  // Initialize schedule engine
-  let scheduleEngine: ScheduleEngine | null = null
-  try {
-    const { createDatabase: createDb } = await import('@hive/core')
-    const dbManager = createDb({ dbPath: resolve(process.cwd(), '.hive/hive.db') })
-    await dbManager.initialize()
-    const scheduleRepo = createScheduleRepository(dbManager.getDb())
-
-    scheduleEngine = createScheduleEngine(scheduleRepo, async ({ schedule: task }) => {
-      logger.info(`[scheduler] Executing schedule: ${task.name}`)
-      try {
-        const result = await agent.chat(task.prompt, {
-          sessionId: undefined,
-        })
-        const sessionId = agent.context.hookRegistry.getSessionId()
-        logger.info(`[scheduler] Schedule "${task.name}" completed, session: ${sessionId}`)
-
-        // 发送 schedule:completed 事件
-        bus.emit('schedule:completed', {
-          scheduleId: task.id,
-          result: result,
-          status: 'success',
-          consecutiveErrors: 0,
-          notifyConfig: task.notifyConfig,
-          scheduleName: task.name,
-        })
-
-        return { sessionId, success: true }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        logger.error(`[scheduler] Schedule "${task.name}" failed: ${msg}`)
-
-        // 发送 schedule:completed 事件（失败）
-        // 注意：circuit-break 由 ScheduleEngine 内部处理，bootstrap 不重复
-        bus.emit('schedule:completed', {
-          scheduleId: task.id,
-          result: undefined,
-          status: 'failed',
-          consecutiveErrors: (task.consecutiveErrors ?? 0) + 1,
-          notifyConfig: task.notifyConfig,
-          scheduleName: task.name,
-        })
-
-        return { sessionId: '', success: false, error: msg }
-      }
-    }, {
-      onCircuitBreak: (event) => {
-        logger.warn(`[schedule:circuit-break] Task "${event.name}" paused after ${event.consecutiveErrors} consecutive failures`)
-        bus.emit('schedule:circuit-break', event)
-      },
-    })
-
-    const taskCount = await scheduleEngine.start()
-    logger.info(`[bootstrap] Schedule engine started (${taskCount} tasks loaded)`)
-  } catch (error) {
-    logger.warn(`[bootstrap] Schedule engine not available: ${error instanceof Error ? error.message : error}`)
-  }
-
-  // ============================================
-  // Subscriber: message:received
-  // 记录 session → channel 映射 + Agent 处理
-  // ============================================
+function subscribeMessageHandler(
+  agent: Agent,
+  bus: MessageBus,
+  logger: ILogger,
+): void {
   bus.subscribe('message:received', async (message: { payload: unknown }) => {
     const channelMessage = message.payload as ChannelMessage
     logger.info(`[bootstrap] Message received, dispatching to agent: ${channelMessage.content.slice(0, 50)}`)
 
-    // 记录 session → channel 映射（用于 last 推送策略）
     const sessionId = channelMessage.metadata?.sessionId as string | undefined
     const channelId = channelMessage.metadata?.channelId as string | undefined
     if (sessionId && channelId && channelMessage.to?.id) {
-      setSessionChannelMapping(
-        sessionId,
-        channelId,
-        channelMessage.to.id,
-      )
+      setSessionChannelMapping(sessionId, channelId, channelMessage.to.id)
     }
 
     const replyType = channelMessage.type === 'card' ? 'card' : 'markdown'
@@ -297,8 +300,13 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
         onPhase: (phase, message) => {
           logger.info(`[agent] [${phase}] ${message}`)
         },
-        onTool: (tool) => {
-          logger.info(`[agent] [tool] ${tool}`)
+        onTool: (tool, input) => {
+          const summary = formatToolInput(tool, input)
+          logger.info(`[agent] [tool] ${tool} ${summary}`)
+        },
+        onToolResult: (tool, output) => {
+          const summary = formatToolResult(tool, output)
+          logger.info(`[agent] [tool-result] ${tool} → ${summary}`)
         },
       })
 
@@ -328,11 +336,12 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
       })
     }
   })
+}
 
-  // ============================================
-  // Subscriber: schedule:completed
-  // 将执行结果推送到目标 Channel
-  // ============================================
+function subscribeScheduleHandlers(
+  bus: MessageBus,
+  logger: ILogger,
+): void {
   bus.subscribe('schedule:completed', async (event: { payload: unknown }) => {
     const payload = event.payload as {
       scheduleId: string;
@@ -343,20 +352,15 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
       scheduleName: string;
     }
 
-    if (!payload.notifyConfig || payload.notifyConfig.mode === 'none') {
-      return // 不推送
-    }
-
-    if (payload.notifyConfig.mode !== 'announce') {
-      return
-    }
+    if (!payload.notifyConfig || payload.notifyConfig.mode === 'none') return
+    if (payload.notifyConfig.mode !== 'announce') return
 
     const target = resolveNotifyTarget(payload.notifyConfig, payload.scheduleId)
 
     if (!target) {
       if (payload.notifyConfig.bestEffort) {
         logger.info(`[schedule:notify] Target not found, bestEffort skip: ${payload.scheduleName}`)
-        return // 静默跳过
+        return
       }
       logger.warn(`[schedule:notify] Target not found for: ${payload.scheduleName}`)
       return
@@ -375,10 +379,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     logger.info(`[schedule:notify] Pushed result to ${target.channelId}/${target.chatId}: ${payload.scheduleName}`)
   })
 
-  // ============================================
-  // Subscriber: schedule:circuit-break
-  // 连续失败熔断通知
-  // ============================================
   bus.subscribe('schedule:circuit-break', async (event: { payload: unknown }) => {
     const payload = event.payload as {
       scheduleId: string;
@@ -387,27 +387,66 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     }
 
     logger.warn(`[schedule:circuit-break] Task "${payload.name}" paused after ${payload.consecutiveErrors} consecutive failures`)
-
-    // 尝试推送到 last channel
-    // 目前 circuit-break 通知没有 notifyConfig，暂用日志记录
-    // 未来可扩展：读取任务的 notifyConfig 进行推送
   })
-
-  return {
-    bus,
-    agent,
-    config,
-    plugins,
-    heartbeatScheduler,
-    scheduleEngine,
-  }
 }
 
-/**
- * Graceful shutdown
- */
+// ============================================
+// Bootstrap
+// ============================================
+
+export async function bootstrap(options: BootstrapOptions): Promise<HiveContext> {
+  const { config } = options
+  const logger = createLogger(config.logLevel)
+
+  logger.info('[bootstrap] Initializing MessageBus...')
+  const bus = new MessageBus()
+
+  logger.info('[bootstrap] Creating main agent...')
+  const agent = createAgent({
+    externalConfig: {
+      providers: [
+        {
+          id: config.provider.id,
+          name: config.provider.id.toUpperCase(),
+          apiKey: config.provider.apiKey,
+          model: config.provider.model,
+          baseUrl: config.provider.baseUrl || `https://api.${config.provider.id}.com`,
+        },
+      ],
+      activeProvider: config.provider.id,
+    },
+  })
+
+  logger.info('[bootstrap] Initializing agent...')
+  await agent.initialize()
+
+  const plugins = await loadPlugins(config, bus, logger)
+
+  let heartbeatScheduler: HeartbeatScheduler | null = null
+  if (config.heartbeat.enabled) {
+    heartbeatScheduler = new HeartbeatScheduler({ agent, config: config.heartbeat, bus })
+    heartbeatScheduler.start()
+    logger.info(`[bootstrap] Heartbeat scheduler started (interval: ${config.heartbeat.intervalMs}ms)`)
+  }
+
+  const scheduleEngine = await initScheduleEngine(config, agent, bus, logger)
+
+  subscribeMessageHandler(agent, bus, logger)
+  subscribeScheduleHandlers(bus, logger)
+
+  logger.info('[bootstrap] Bootstrap complete.')
+
+  return { bus, agent, config, plugins, logger, heartbeatScheduler, scheduleEngine }
+}
+
+// ============================================
+// Shutdown
+// ============================================
+
 export async function shutdown(ctx: HiveContext): Promise<void> {
-  console.log('[shutdown] Starting graceful shutdown...')
+  const { logger } = ctx
+
+  logger.info('[shutdown] Starting graceful shutdown...')
 
   if (ctx.heartbeatScheduler) {
     ctx.heartbeatScheduler.stop()
@@ -415,17 +454,17 @@ export async function shutdown(ctx: HiveContext): Promise<void> {
 
   if (ctx.scheduleEngine) {
     await ctx.scheduleEngine.stop()
-    console.log('[shutdown] Schedule engine stopped')
+    logger.info('[shutdown] Schedule engine stopped')
   }
 
   for (const plugin of ctx.plugins) {
     try {
       await plugin.deactivate()
-      console.log(`[shutdown] Plugin deactivated: ${plugin.metadata.name}`)
+      logger.info(`[shutdown] Plugin deactivated: ${plugin.metadata.name}`)
     } catch (error) {
-      console.error(`[shutdown] Failed to deactivate plugin:`, error)
+      logger.error(`[shutdown] Failed to deactivate plugin:`, error)
     }
   }
 
-  console.log('[shutdown] Shutdown complete')
+  logger.info('[shutdown] Shutdown complete')
 }

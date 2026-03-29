@@ -19,6 +19,9 @@ export { createWebFetchTool, webFetchTool } from './web-fetch-tool.js';
 export { createAskUserTool, askUserTool, setAskUserCallback } from './ask-user-tool.js';
 export type { AskUserCallback } from './ask-user-tool.js';
 
+// 子 Agent 工具
+export { createSubagentTool, createAllSubagentTools } from './subagent-tools.js';
+
 // 工具基础设施
 export { truncateOutput } from './utils/output-safety.js';
 export { isDangerousCommand, isSensitiveFile } from './utils/security.js';
