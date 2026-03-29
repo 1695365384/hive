@@ -69,6 +69,26 @@ describe('regexClassify', () => {
     expect(result.layer).toBe('chat');
   });
 
+  it('should classify Chinese greeting as chat', () => {
+    const result = regexClassify('你好啊');
+    expect(result.layer).toBe('chat');
+  });
+
+  it('should classify Chinese thanks as chat', () => {
+    const result = regexClassify('谢谢');
+    expect(result.layer).toBe('chat');
+  });
+
+  it('should classify Chinese casual presence check as chat', () => {
+    const result = regexClassify('在吗');
+    expect(result.layer).toBe('chat');
+  });
+
+  it('should classify English greeting as chat', () => {
+    const result = regexClassify('hello');
+    expect(result.layer).toBe('chat');
+  });
+
   it('should classify multi-step tasks as workflow', () => {
     const result = regexClassify('先实现功能然后运行测试接着部署');
     expect(result.layer).toBe('workflow');
