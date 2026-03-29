@@ -36,6 +36,8 @@ export class WorkflowCapability implements AgentCapability {
   private promptTemplate!: PromptTemplate;
   private workflowCounter: number = 0;
 
+  private static readonly DEFAULT_MAX_TURNS = 30;
+
   initialize(context: AgentContext): void {
     this.context = context;
     this.runtime = new LLMRuntime(context.providerManager);
@@ -215,7 +217,7 @@ export class WorkflowCapability implements AgentCapability {
             : undefined,
           prompt: historyMessages.length === 0 ? task : undefined,
           tools,
-          maxSteps: options?.maxTurns ?? 30,
+          maxSteps: options?.maxTurns ?? WorkflowCapability.DEFAULT_MAX_TURNS,
           streaming: true,
           abortSignal: abortController.signal,
           onText: (text: string) => {
@@ -223,11 +225,11 @@ export class WorkflowCapability implements AgentCapability {
             options?.onText?.(text);
           },
           onToolCall: (toolName: string, input: unknown) => {
-            this.emitToolBefore(sessionId, toolName, input);
+            this.emitToolBefore(sessionId, toolName, input).catch(() => {});
             options?.onTool?.(toolName, input);
           },
           onToolResult: (toolName: string, output: unknown) => {
-            this.emitToolAfter(sessionId, toolName, output);
+            this.emitToolAfter(sessionId, toolName, output).catch(() => {});
             // 工具结果更新活动状态（心跳）
             this.context.timeoutCap.updateActivity();
           },
