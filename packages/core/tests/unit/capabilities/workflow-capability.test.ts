@@ -120,6 +120,38 @@ describe('WorkflowCapability', () => {
       // 长问题（超过100字符）被识别为 moderate
       expect(analysis.type).toBe('moderate');
     });
+
+    it('should classify short greeting as simple', () => {
+      const analysis = capability.analyzeTask('你好啊');
+      expect(analysis.type).toBe('simple');
+      expect(analysis.needsExploration).toBe(false);
+      expect(analysis.needsPlanning).toBe(false);
+      expect(analysis.reason).toBe('Short message, no action verbs detected');
+    });
+
+    it('should classify short thanks as simple', () => {
+      const analysis = capability.analyzeTask('谢谢');
+      expect(analysis.type).toBe('simple');
+      expect(analysis.needsExploration).toBe(false);
+    });
+
+    it('should classify short presence check as simple', () => {
+      const analysis = capability.analyzeTask('在吗');
+      expect(analysis.type).toBe('simple');
+      expect(analysis.needsExploration).toBe(false);
+    });
+
+    it('should classify short message with action verb as moderate', () => {
+      const analysis = capability.analyzeTask('修复登录bug');
+      expect(analysis.type).toBe('moderate');
+      expect(analysis.needsExploration).toBe(true);
+    });
+
+    it('should classify short English action task as moderate', () => {
+      const analysis = capability.analyzeTask('fix auth bug');
+      expect(analysis.type).toBe('moderate');
+      expect(analysis.needsExploration).toBe(true);
+    });
   });
 
   // ============================================
