@@ -184,7 +184,6 @@ async function executePrompt(prompt: string): Promise<void> {
 
       case 'workflow': {
         console.log('');
-        const phases: string[] = [];
         const toolCalls: string[] = [];
         let currentPhase = '';
 
@@ -192,7 +191,6 @@ async function executePrompt(prompt: string): Promise<void> {
           return agent.runWorkflow(trimmed, {
             cwd: state.cwd,
             onPhase: (phase, message) => {
-              phases.push(phase);
               currentPhase = phase;
               logPhase(phase.toUpperCase(), message);
             },
@@ -217,24 +215,13 @@ async function executePrompt(prompt: string): Promise<void> {
         console.log('\x1b[2m──────────────────────────────────────\x1b[0m');
 
         if (!result.success) {
-          logError(`Workflow 执行失败: ${result.error || '未知错误'}`);
-          if (result.exploreResult?.error) {
-            logError(`探索错误: ${result.exploreResult.error}`);
-          }
-          if (result.executeResult?.error) {
-            logError(`执行错误: ${result.executeResult.error}`);
-          }
+          logError(`执行失败: ${result.error || '未知错误'}`);
         } else {
-          logSuccess('Workflow 执行成功');
+          logSuccess('执行成功');
         }
 
         // 显示执行摘要
         console.log('\n\x1b[1m📊 执行摘要\x1b[0m');
-        console.log(`  任务类型: ${result.analysis.type}`);
-        console.log(`  需要探索: ${result.analysis.needsExploration ? '是' : '否'}`);
-        console.log(`  需要计划: ${result.analysis.needsPlanning ? '是' : '否'}`);
-        console.log(`  推荐Agent: ${result.analysis.recommendedAgents.join(', ') || '(无)'}`);
-        console.log(`  执行阶段: ${phases.join(' → ')}`);
         console.log(`  工具调用: ${toolCalls.length} 次`);
         console.log(`  耗时: ${(duration / 1000).toFixed(2)}s`);
 
@@ -251,9 +238,8 @@ async function executePrompt(prompt: string): Promise<void> {
 
         console.log('\x1b[2m──────────────────────────────────────\x1b[0m\n');
 
-        const finalText = result.executeResult?.text || result.exploreResult?.text || '';
-        if (finalText) {
-          console.log(`\x1b[33m📝 结果:\x1b[0m ${finalText.substring(0, 200)}${finalText.length > 200 ? '...' : ''}\n`);
+        if (result.text) {
+          console.log(`\x1b[33m📝 结果:\x1b[0m ${result.text.substring(0, 200)}${result.text.length > 200 ? '...' : ''}\n`);
         }
         break;
       }

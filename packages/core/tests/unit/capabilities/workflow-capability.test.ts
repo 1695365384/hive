@@ -1,17 +1,30 @@
 /**
  * WorkflowCapability 单元测试
  *
- * 测试工作流能力
+ * 测试单 Agent 自主循环执行能力。
+ * Mock LLMRuntime 和所有外部依赖。
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { WorkflowCapability } from '../../../src/agents/capabilities/WorkflowCapability.js';
 import {
   createMockAgentContext,
   createTestProviderConfig,
   createTestSkill,
 } from '../../mocks/agent-context.mock.js';
-import type { AgentContext, AgentResult, TaskAnalysis } from '../../../src/agents/core/types.js';
+import type { AgentContext } from '../../../src/agents/core/types.js';
+
+// Mock LLMRuntime
+const mockRuntimeRun = vi.fn();
+vi.mock('../../../src/agents/runtime/LLMRuntime.js', () => {
+  return {
+    LLMRuntime: class MockLLMRuntime {
+      run = mockRuntimeRun;
+    },
+  };
+});
+
+// Import after mock setup
+import { WorkflowCapability } from '../../../src/agents/capabilities/WorkflowCapability.js';
 
 describe('WorkflowCapability', () => {
   let capability: WorkflowCapability;
@@ -25,13 +38,6 @@ describe('WorkflowCapability', () => {
     model: 'deepseek-chat',
   });
 
-  const mockAgentResult: AgentResult = {
-    text: 'Task completed successfully',
-    success: true,
-    tools: ['Read', 'Write', 'Edit'],
-    usage: { input: 200, output: 100 },
-  };
-
   const testSkill = createTestSkill({
     metadata: {
       name: 'Code Review',
@@ -42,7 +48,30 @@ describe('WorkflowCapability', () => {
     body: '# Code Review\n\nReview code for quality.',
   });
 
+  const defaultRuntimeResult = {
+    text: 'Task completed successfully',
+    tools: ['Read', 'Write', 'Edit'],
+    success: true,
+    usage: { promptTokens: 200, completionTokens: 100 },
+    steps: [],
+    duration: 100,
+  };
+
+  /**
+   * Helper: mock runtime.run to call onText callback
+   * WorkflowCapability accumulates text via onText, not from runtimeResult.text
+   */
+  function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defaultRuntimeResult>) {
+    return async (config: any) => {
+      config.onText?.(text);
+      return { ...defaultRuntimeResult, ...resultOverride };
+    };
+  }
+
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockRuntimeRun.mockImplementation(mockRuntimeWithText('Task completed successfully'));
+
     capability = new WorkflowCapability();
     context = createMockAgentContext({
       activeProvider: testProvider,
@@ -50,7 +79,13 @@ describe('WorkflowCapability', () => {
       skills: [testSkill],
       skillMatchResult: null,
     });
-    vi.mocked(context.runner.execute).mockResolvedValue(mockAgentResult);
+    // Mock ToolRegistry for WorkflowCapability
+    (context as any).runner = {
+      ...context.runner,
+      getToolRegistry: vi.fn(() => ({
+        getToolsForAgent: vi.fn(() => []),
+      })),
+    };
     capability.initialize(context);
   });
 
@@ -117,7 +152,6 @@ describe('WorkflowCapability', () => {
       const longQuestion = 'What is the best way to refactor the entire authentication system to support multiple providers including OAuth2, SAML, and custom implementations while maintaining backward compatibility?';
       const analysis = capability.analyzeTask(longQuestion);
 
-      // 长问题（超过100字符）被识别为 moderate
       expect(analysis.type).toBe('moderate');
     });
 
@@ -163,8 +197,36 @@ describe('WorkflowCapability', () => {
       const result = await capability.run('Implement a feature');
 
       expect(result.success).toBe(true);
-      expect(result.analysis).toBeDefined();
-      expect(result.executeResult).toBeDefined();
+      expect(result.text).toBe('Task completed successfully');
+      expect(result.tools).toEqual(['Read', 'Write', 'Edit']);
+    });
+
+    it('should call LLMRuntime.run with correct config', async () => {
+      await capability.run('Implement a feature');
+
+      expect(mockRuntimeRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'Implement a feature',
+          streaming: true,
+          maxSteps: 30,
+        }),
+      );
+    });
+
+    it('should pass system prompt to runtime', async () => {
+      await capability.run('Implement a feature');
+
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      expect(callArgs.system).toBeDefined();
+      expect(typeof callArgs.system).toBe('string');
+      expect(callArgs.system.length).toBeGreaterThan(0);
+    });
+
+    it('should pass tools from ToolRegistry', async () => {
+      await capability.run('Test task');
+
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      expect(callArgs.tools).toBeDefined();
     });
 
     it('should trigger workflow:phase hooks', async () => {
@@ -178,7 +240,6 @@ describe('WorkflowCapability', () => {
 
       await capability.run('Test task');
 
-      expect(phases).toContain('analyze');
       expect(phases).toContain('execute');
       expect(phases).toContain('complete');
     });
@@ -191,34 +252,31 @@ describe('WorkflowCapability', () => {
       });
 
       expect(phases.length).toBeGreaterThan(0);
-      expect(phases.some(p => p.phase === 'analyze')).toBe(true);
       expect(phases.some(p => p.phase === 'execute')).toBe(true);
+      expect(phases.some(p => p.phase === 'complete')).toBe(true);
     });
 
-    it('should call onText callback', async () => {
+    it('should call onText callback with streaming text', async () => {
       const texts: string[] = [];
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Hello ');
+        config.onText?.('World');
+        return defaultRuntimeResult;
+      });
 
       await capability.run('Test task', {
         onText: (text) => texts.push(text),
       });
 
-      // 验证 runner 被调用时传递了 onText
-      expect(context.runner.execute).toHaveBeenCalledWith(
-        'general',
-        expect.any(String),
-        expect.objectContaining({
-          onText: expect.any(Function),
-        })
-      );
+      expect(texts).toEqual(['Hello ', 'World']);
     });
 
     it('should invoke onTool callback during execution', async () => {
-      vi.mocked(context.runner.execute).mockImplementation(
-        async (_agent: string, _prompt: string, opts?: any) => {
-          opts?.onTool?.('Read', { file_path: '/test.ts' });
-          return mockAgentResult;
-        }
-      );
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onToolCall?.('Read', { file_path: '/test.ts' });
+        return defaultRuntimeResult;
+      });
+
       const tools: Array<{ name: string; input: unknown }> = [];
       await capability.run('Test task', {
         onTool: (name, input) => tools.push({ name, input }),
@@ -227,36 +285,25 @@ describe('WorkflowCapability', () => {
       expect(tools[0].name).toBe('Read');
     });
 
-    it('should delegate to runner with onText/onTool callbacks', async () => {
-      const onText = vi.fn();
-      const onTool = vi.fn();
-      await capability.run('Test task', { onText, onTool });
-
-      expect(context.runner.execute).toHaveBeenCalledWith(
-        'general',
-        expect.any(String),
-        expect.objectContaining({
-          onText,
-          onTool: expect.any(Function),
-        })
-      );
-    });
-
-    it('should call runner for execution phase', async () => {
+    it('should start and stop heartbeat', async () => {
       await capability.run('Test task');
 
-      expect(context.runner.execute).toHaveBeenCalledWith(
-        'general',
-        expect.any(String),
-        expect.objectContaining({
-          onText: undefined,
-          onTool: undefined,
-        })
-      );
+      expect(context.timeoutCap.startHeartbeat).toHaveBeenCalled();
+      expect(context.timeoutCap.stopHeartbeat).toHaveBeenCalled();
+    });
+
+    it('should update activity on tool result', async () => {
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onToolResult?.('Read', 'file contents');
+        return defaultRuntimeResult;
+      });
+
+      await capability.run('Test task');
+      expect(context.timeoutCap.updateActivity).toHaveBeenCalled();
     });
 
     it('should handle errors and return success: false', async () => {
-      vi.mocked(context.runner.execute).mockRejectedValue(new Error('Execution failed'));
+      mockRuntimeRun.mockRejectedValue(new Error('Execution failed'));
 
       const result = await capability.run('Test task');
 
@@ -264,43 +311,44 @@ describe('WorkflowCapability', () => {
       expect(result.error).toBe('Execution failed');
     });
 
+    it('should handle non-Error exceptions', async () => {
+      mockRuntimeRun.mockRejectedValue('String error');
+
+      const result = await capability.run('Test task');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('String error');
+    });
+
     it('should trigger error phase on failure', async () => {
       const phases: string[] = [];
-      vi.mocked(context.runner.execute).mockRejectedValue(new Error('Failed'));
       vi.mocked(context.hookRegistry.emit).mockImplementation(async (type, ctx: any) => {
         if (type === 'workflow:phase') {
           phases.push(ctx.phase);
         }
         return true;
       });
+      mockRuntimeRun.mockRejectedValue(new Error('Failed'));
 
       await capability.run('Test task');
 
       expect(phases).toContain('error');
     });
 
-    it('should match skill and include in prompt', async () => {
-      const skillMatchContext = createMockAgentContext({
-        activeProvider: testProvider,
-        providers: [testProvider],
-        skills: [testSkill],
-        skillMatchResult: {
-          skill: testSkill,
-          matchedPhrase: 'review',
-          matchIndex: 0,
-        },
-      });
-      vi.mocked(skillMatchContext.runner.execute).mockResolvedValue(mockAgentResult);
+    it('should include usage in result', async () => {
+      const result = await capability.run('Test task');
 
-      const skillCapability = new WorkflowCapability();
-      skillCapability.initialize(skillMatchContext);
+      expect(result.usage).toBeDefined();
+      expect(result.usage!.input).toBe(200);
+      expect(result.usage!.output).toBe(100);
+    });
 
-      await skillCapability.run('Review this code');
+    it('should include duration in result', async () => {
+      const result = await capability.run('Test task');
 
-      const callArgs = vi.mocked(skillMatchContext.runner.execute).mock.calls[0];
-      const prompt = callArgs[1] as string;
-
-      expect(prompt).toContain('Code Review');
+      expect(result.duration).toBeDefined();
+      expect(typeof result.duration).toBe('number');
+      expect(result.duration).toBeGreaterThanOrEqual(0);
     });
   });
 
@@ -336,11 +384,10 @@ describe('WorkflowCapability', () => {
       expect(preview.intelligentPrompt).toContain('English');
     });
 
-    it('should not execute task', async () => {
+    it('should not execute runtime', async () => {
       await capability.preview('Test task');
 
-      // preview 不应该执行 runner
-      expect(context.runner.execute).not.toHaveBeenCalled();
+      expect(mockRuntimeRun).not.toHaveBeenCalled();
     });
   });
 
@@ -352,19 +399,15 @@ describe('WorkflowCapability', () => {
     it('should detect Chinese and add language instruction', async () => {
       await capability.run('帮我实现一个功能');
 
-      const callArgs = vi.mocked(context.runner.execute).mock.calls[0];
-      const prompt = callArgs[1] as string;
-
-      expect(prompt).toContain('中文');
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      expect(callArgs.system).toContain('中文');
     });
 
     it('should detect English and add language instruction', async () => {
       await capability.run('Implement a feature');
 
-      const callArgs = vi.mocked(context.runner.execute).mock.calls[0];
-      const prompt = callArgs[1] as string;
-
-      expect(prompt).toContain('English');
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      expect(callArgs.system).toContain('English');
     });
   });
 
@@ -384,17 +427,20 @@ describe('WorkflowCapability', () => {
           matchIndex: 0,
         },
       });
-      vi.mocked(skillMatchContext.runner.execute).mockResolvedValue(mockAgentResult);
+      (skillMatchContext as any).runner = {
+        ...skillMatchContext.runner,
+        getToolRegistry: vi.fn(() => ({
+          getToolsForAgent: vi.fn(() => []),
+        })),
+      };
 
       const skillCapability = new WorkflowCapability();
       skillCapability.initialize(skillMatchContext);
 
       await skillCapability.run('Review code');
 
-      const callArgs = vi.mocked(skillMatchContext.runner.execute).mock.calls[0];
-      const prompt = callArgs[1] as string;
-
-      expect(prompt).toContain('Active Skill');
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      expect(callArgs.system).toContain('Active Skill');
     });
 
     it('should include skill list when no match but skills exist', async () => {
@@ -402,338 +448,73 @@ describe('WorkflowCapability', () => {
         activeProvider: testProvider,
         providers: [testProvider],
         skills: [testSkill],
-        skillMatchResult: null, // 无匹配
+        skillMatchResult: null,
       });
-      vi.mocked(skillsContext.runner.execute).mockResolvedValue(mockAgentResult);
-      // createMockAgentContext 中的 generateSkillListDescription 会根据 skills 自动生成描述
+      (skillsContext as any).runner = {
+        ...skillsContext.runner,
+        getToolRegistry: vi.fn(() => ({
+          getToolsForAgent: vi.fn(() => []),
+        })),
+      };
 
       const skillsCapability = new WorkflowCapability();
       skillsCapability.initialize(skillsContext);
 
       await skillsCapability.run('Do something');
 
-      const callArgs = vi.mocked(skillsContext.runner.execute).mock.calls[0];
-      const prompt = callArgs[1] as string;
-
-      // 验证 prompt 包含技能列表（由 mock 自动生成）
-      expect(prompt).toContain('Available Skills');
-      expect(prompt).toContain('Code Review');
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      expect(callArgs.system).toContain('Available Skills');
+      expect(callArgs.system).toContain('Code Review');
     });
   });
 
   // ============================================
-  // 错误处理测试
+  // Session 集成测试
   // ============================================
 
-  describe('错误处理', () => {
-    it('should handle non-Error exceptions', async () => {
-      vi.mocked(context.runner.execute).mockRejectedValue('String error');
-
-      const result = await capability.run('Test task');
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('String error');
-    });
-
-    it('should include error in workflow result', async () => {
-      vi.mocked(context.runner.execute).mockRejectedValue(new Error('Task failed'));
-
-      const result = await capability.run('Test task');
-
-      expect(result.error).toBe('Task failed');
-    });
-  });
-
-  // ============================================
-  // 三阶段执行测试 (explore → plan → execute)
-  // ============================================
-
-  describe('三阶段执行 (explore → plan → execute)', () => {
-    it('should run explore → plan → execute for moderate tasks when SubAgent available', async () => {
-      const mockExplore = vi.fn(async () => 'Found relevant files in src/');
-      const mockPlan = vi.fn(async () => 'Step 1: Modify X, Step 2: Add Y');
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: mockExplore,
-        plan: mockPlan,
-        initialize: vi.fn(),
+  describe('Session 集成', () => {
+    it('should load session messages when available', async () => {
+      const sessionContext = createMockAgentContext({
+        activeProvider: testProvider,
+        providers: [testProvider],
+      });
+      (sessionContext as any).runner = {
+        ...sessionContext.runner,
+        getToolRegistry: vi.fn(() => ({
+          getToolsForAgent: vi.fn(() => []),
+        })),
       };
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      const moderateTask = 'I need to implement a new feature for the authentication system. It should support JWT tokens and OAuth2.';
-
-      const result = await capability.run(moderateTask);
-
-      expect(result.analysis.type).toBe('moderate');
-      expect(mockExplore).toHaveBeenCalledWith(moderateTask);
-      expect(mockPlan).toHaveBeenCalledWith(expect.stringContaining(moderateTask));
-      expect(result.exploreResult).toBeDefined();
-      expect(result.exploreResult!.text).toBe('Found relevant files in src/');
-      expect(result.exploreResult!.success).toBe(true);
-      expect(result.executionPlan).toBe('Step 1: Modify X, Step 2: Add Y');
-      expect(result.executeResult).toBeDefined();
-      expect(result.success).toBe(true);
-    });
-
-    it('should include explore and plan context in execute prompt', async () => {
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Found 3 files'),
-        plan: vi.fn(async () => 'Plan: do X then Y'),
-        initialize: vi.fn(),
-      };
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      vi.mocked(context.runner.execute).mockClear();
-      vi.mocked(context.runner.execute).mockResolvedValue(mockAgentResult);
-
-      await capability.run('Implement a feature');
-
-      const calls = vi.mocked(context.runner.execute).mock.calls;
-      expect(calls.length).toBe(1);
-
-      const prompt = calls[0][1] as string;
-      // Context is now passed via structured phase results, not raw text concatenation
-      // Short text (< 500 chars) is not compressed, so it appears as-is in summary
-      expect(prompt).toContain('Context from Previous Phases');
-    });
-
-    it('should degrade to direct execution when SubAgent not available', async () => {
-      // getCapability returns undefined for 'subAgent'
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      const result = await capability.run('Implement a feature');
-
-      expect(result.success).toBe(true);
-      expect(result.executeResult).toBeDefined();
-      // When SubAgent is unavailable, degrade returns default phase results
-      expect(result.exploreResult).toBeDefined();
-      expect(result.exploreResult?.success).toBe(false);
-      expect(result.executionPlan).toBe('');
-    });
-
-    it('should handle explore phase failure gracefully', async () => {
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => { throw new Error('Explore failed'); }),
-        plan: vi.fn(async () => 'Fallback plan'),
-        initialize: vi.fn(),
-      };
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      const result = await capability.run('Implement a feature');
-
-      // Should continue with plan and execute even if explore fails
-      expect(result.exploreResult).toBeDefined();
-      expect(result.exploreResult!.success).toBe(false);
-      expect(result.exploreResult!.text).toContain('探索失败');
-      expect(mockSubAgentCap.plan).toHaveBeenCalled();
-      expect(result.success).toBe(true);
-    });
-
-    it('should handle plan phase failure gracefully', async () => {
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Found files'),
-        plan: vi.fn(async () => { throw new Error('Plan failed'); }),
-        initialize: vi.fn(),
-      };
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      const result = await capability.run('Implement a feature');
-
-      // Should continue to execute even if plan fails
-      expect(result.exploreResult!.success).toBe(true);
-      expect(result.executionPlan).toContain('规划失败');
-      expect(result.executeResult).toBeDefined();
-      expect(result.success).toBe(true);
-    });
-
-    it('should emit explore and plan phases', async () => {
-      const phases: string[] = [];
-      vi.mocked(context.hookRegistry.emit).mockImplementation(async (type, ctx: any) => {
-        if (type === 'workflow:phase') {
-          phases.push(ctx.phase);
-        }
-        return true;
-      });
-
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Explored'),
-        plan: vi.fn(async () => 'Planned'),
-        initialize: vi.fn(),
-      };
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      await capability.run('Implement a feature');
-
-      expect(phases).toContain('analyze');
-      expect(phases).toContain('explore');
-      expect(phases).toContain('plan');
-      expect(phases).toContain('execute');
-      expect(phases).toContain('complete');
-    });
-
-    it('should skip explore and plan for simple tasks', async () => {
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Should not be called'),
-        plan: vi.fn(async () => 'Should not be called'),
-        initialize: vi.fn(),
-      };
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      await capability.run('What is TypeScript?');
-
-      expect(mockSubAgentCap.explore).not.toHaveBeenCalled();
-      expect(mockSubAgentCap.plan).not.toHaveBeenCalled();
-    });
-  });
-
-  // ============================================
-  // 自动压缩测试
-  // ============================================
-
-  describe('自动压缩', () => {
-    it('should call compressIfNeeded after explore and plan phases', async () => {
-      const mockCompressIfNeeded = vi.fn();
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Found files'),
-        plan: vi.fn(async () => 'Plan details'),
-        initialize: vi.fn(),
-      };
-
-      // Set up context with SessionCapability
-      (context as any).getSessionCap = vi.fn(() => ({
-        compressIfNeeded: mockCompressIfNeeded,
+      (sessionContext as any).getSessionCap = vi.fn(() => ({
+        getMessages: vi.fn(() => [
+          { role: 'user', content: 'previous message' },
+          { role: 'assistant', content: 'previous response' },
+        ]),
       }));
 
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
+      const sessionCapability = new WorkflowCapability();
+      sessionCapability.initialize(sessionContext);
 
-      await capability.run('Implement a feature');
+      await sessionCapability.run('new task');
 
-      // compressIfNeeded should be called twice: after explore and after plan
-      expect(mockCompressIfNeeded).toHaveBeenCalledTimes(2);
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      // When history exists, messages should be passed instead of prompt
+      expect(callArgs.messages).toBeDefined();
+      expect(callArgs.messages.length).toBe(3); // 2 history + 1 new user message
+      expect(callArgs.prompt).toBeUndefined();
     });
 
-    it('should not throw when SessionCapability is not available', async () => {
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Found files'),
-        plan: vi.fn(async () => 'Plan details'),
-        initialize: vi.fn(),
-      };
+    it('should use prompt when no session history', async () => {
+      await capability.run('test task');
 
-      // getSessionCap returns null
-      (context as any).getSessionCap = vi.fn(() => null);
+      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      expect(callArgs.prompt).toBe('test task');
+      expect(callArgs.messages).toBeUndefined();
+    });
 
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      // Should not throw
-      const result = await capability.run('Implement a feature');
+    it('should handle missing SessionCapability gracefully', async () => {
+      // Default mock context has no getSessionCap — should not throw
+      const result = await capability.run('test task');
       expect(result.success).toBe(true);
-    });
-
-    it('should not throw when getSessionCap is undefined', async () => {
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Found files'),
-        plan: vi.fn(async () => 'Plan details'),
-        initialize: vi.fn(),
-      };
-
-      // getSessionCap is not defined at all
-      delete (context as any).getSessionCap;
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      const result = await capability.run('Implement a feature');
-      expect(result.success).toBe(true);
-    });
-
-    it('should not block workflow when compression throws', async () => {
-      const mockSubAgentCap = {
-        name: 'subAgent',
-        explore: vi.fn(async () => 'Found files'),
-        plan: vi.fn(async () => 'Plan details'),
-        initialize: vi.fn(),
-      };
-
-      (context as any).getSessionCap = vi.fn(() => ({
-        compressIfNeeded: vi.fn().mockRejectedValue(new Error('Compression failed')),
-        getMessages: vi.fn(() => []),
-      }));
-
-      vi.mocked(context.getCapability).mockImplementation((name: string) => {
-        if (name === 'subAgent') return mockSubAgentCap;
-        if (name === 'timeout') return context.timeoutCap;
-        return undefined;
-      });
-
-      // Should not throw even if compression fails
-      const result = await capability.run('Implement a feature');
-      expect(result.success).toBe(true);
-    });
-
-    it('should not compress for simple tasks', async () => {
-      const mockCompressIfNeeded = vi.fn();
-
-      (context as any).getSessionCap = vi.fn(() => ({
-        compressIfNeeded: mockCompressIfNeeded,
-      }));
-
-      // Simple task - no subAgent needed
-      await capability.run('What is TypeScript?');
-
-      // compressIfNeeded should NOT be called for simple tasks
-      expect(mockCompressIfNeeded).not.toHaveBeenCalled();
     });
   });
 });
