@@ -1,16 +1,39 @@
 /**
- * 插件入口
+ * 插件动态加载
  *
- * 导入并实例化所有插件，配置从 hive.config.json 读取。
+ * 从 hive.config.json 的 plugins 配置读取插件列表，
+ * 通过 dynamic import() 加载插件包，取 default export 实例化。
  *
- * 新增插件：import 类，在 plugins 数组里 new 一个即可。
+ * 新增插件：npm install @hive/plugin-xxx，然后在 hive.config.json 添加配置即可。
  */
 
-import { FeishuPlugin } from '@hive/plugin-feishu'
+import type { IPlugin } from '@hive/core'
 import { getConfig } from './config.js'
 
-const { pluginConfigs } = getConfig()
+/**
+ * 动态加载所有配置的插件
+ */
+export async function loadPlugins(): Promise<IPlugin[]> {
+  const { pluginConfigs } = getConfig()
+  const plugins: IPlugin[] = []
 
-export const plugins = [
-  new FeishuPlugin(pluginConfigs['@hive/plugin-feishu'] ?? {}),
-]
+  for (const [packageName, config] of Object.entries(pluginConfigs)) {
+    try {
+      const mod = await import(packageName)
+      const PluginClass = mod.default
+
+      if (typeof PluginClass !== 'function') {
+        console.error(`[plugins] ${packageName}: default export is not a constructor`)
+        continue
+      }
+
+      const plugin = new PluginClass(config)
+      plugins.push(plugin)
+      console.log(`[plugins] Loaded: ${packageName}`)
+    } catch (error) {
+      console.error(`[plugins] Failed to load ${packageName}:`, error instanceof Error ? error.message : error)
+    }
+  }
+
+  return plugins
+}

@@ -16,7 +16,7 @@ import {
 } from '@hive/core'
 import { resolve } from 'path'
 import type { ServerConfig } from './config.js'
-import { plugins } from './plugins.js'
+import { loadPlugins } from './plugins.js'
 
 export interface HiveContext {
   /** Message bus for event-driven communication */
@@ -56,6 +56,7 @@ function createLogger(level: string): ILogger {
 export async function bootstrap(options: BootstrapOptions): Promise<HiveContext> {
   const { config } = options
   const logger = createLogger(config.logLevel)
+  const plugins = await loadPlugins()
 
   const server = createServer({
     config: {
