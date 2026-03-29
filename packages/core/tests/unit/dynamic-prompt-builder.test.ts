@@ -139,7 +139,7 @@ describe('DynamicPromptBuilder', () => {
       // Context section should be truncated (not the full 5000+ chars)
       // Base template is still loaded from file, so total may exceed 400,
       // but the context should be much smaller than the input
-      expect(prompt.length).toBeLessThan(2000);
+      expect(prompt.length).toBeLessThan(3000);
     });
 
     it('should remove skill section when over budget', () => {

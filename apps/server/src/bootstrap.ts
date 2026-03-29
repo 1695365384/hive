@@ -1,12 +1,19 @@
 /**
  * Hive Server Bootstrap
  *
- * Initializes all core modules and returns a ready-to-use application context.
+ * Thin wrapper around createServer() that reads ServerConfig and
+ * returns a HiveContext compatible with the existing API surface.
  */
 
-import { createAgent, type Agent, type IPlugin, type ILogger, type ChannelMessage, createScheduleEngine, createScheduleRepository, type ScheduleEngine, type IChannel } from '@hive/core'
-import { MessageBus } from '@hive/orchestrator'
-import { HeartbeatScheduler } from './heartbeat-scheduler.js'
+import {
+  createServer,
+  type Agent,
+  type IPlugin,
+  type ILogger,
+  type Server,
+  type MessageBus,
+  noopLogger,
+} from '@hive/core'
 import { resolve } from 'path'
 import type { ServerConfig } from './config.js'
 
@@ -21,45 +28,17 @@ export interface HiveContext {
   plugins: IPlugin[]
   /** Logger instance */
   logger: ILogger
-  /** Heartbeat scheduler */
-  heartbeatScheduler: HeartbeatScheduler | null
-  /** Schedule engine for cron tasks */
-  scheduleEngine: ScheduleEngine | null
+  /** Heartbeat scheduler (null — managed by server internally) */
+  heartbeatScheduler: null
+  /** Schedule engine (null — managed by server internally) */
+  scheduleEngine: null
+  /** Server instance (for stop/shutdown) */
+  server: Server
 }
 
 export interface BootstrapOptions {
   config: ServerConfig
 }
-
-// ============================================
-// Session → Channel 映射（用于 last 推送策略）
-// ============================================
-
-const SESSION_CHANNEL_MAP_MAX_SIZE = 10000
-const sessionChannelMap = new Map<string, { channelId: string; chatId: string }>()
-
-// ============================================
-// Channel 注册表（用于 message:response 推送）
-// ============================================
-
-/** channelId → IChannel 实例注册表 */
-const channelRegistry = new Map<string, IChannel>()
-
-function setSessionChannelMapping(sessionId: string, channelId: string, chatId: string): void {
-  if (sessionChannelMap.size >= SESSION_CHANNEL_MAP_MAX_SIZE) {
-    const firstKey = sessionChannelMap.keys().next().value
-    if (firstKey !== undefined) sessionChannelMap.delete(firstKey)
-  }
-  sessionChannelMap.set(sessionId, { channelId, chatId })
-}
-
-function setScheduleChannelMapping(scheduleId: string, channelId: string, chatId: string): void {
-  sessionChannelMap.set(`schedule:${scheduleId}`, { channelId, chatId })
-}
-
-// ============================================
-// Logger
-// ============================================
 
 function createLogger(level: string): ILogger {
   const levels = { debug: 0, info: 1, warn: 2, error: 3 }
@@ -73,408 +52,46 @@ function createLogger(level: string): ILogger {
   }
 }
 
-// ============================================
-// Plugin loading
-// ============================================
-
-function isValidPluginPath(name: string): boolean {
-  if (name.startsWith('/') || name.startsWith('.')) return false;
-  if (name.includes('..')) return false;
-  return /^[a-z0-9@/._-]+$/i.test(name);
-}
-
-async function loadPlugin(
-  pluginName: string,
-  pluginConfig: Record<string, unknown>,
-  bus: MessageBus,
-  logger: ILogger,
-): Promise<IPlugin | null> {
-  try {
-    logger.info(`[bootstrap] Loading plugin: ${pluginName}`)
-
-    if (!isValidPluginPath(pluginName)) {
-      logger.warn(`[bootstrap] Plugin path rejected (invalid format): ${pluginName}`)
-      return null
-    }
-
-    const module = await import(pluginName)
-    const factory = module.default || module.createPlugin || module[Object.keys(module)[0]]
-
-    if (typeof factory !== 'function') {
-      logger.warn(`[bootstrap] Plugin ${pluginName} does not export a factory function`)
-      return null
-    }
-
-    const plugin = factory()
-
-    await plugin.initialize({
-      messageBus: bus,
-      logger,
-      config: pluginConfig,
-      registerChannel: (channel: unknown) => {
-        const ch = channel as IChannel
-        logger.info(`[bootstrap] Channel registered: ${ch.id}`)
-        channelRegistry.set(ch.id, ch)
-        bus.emit(`channel:registered`, channel)
-      },
-    })
-
-    logger.info(`[bootstrap] Plugin loaded: ${pluginName}`)
-    return plugin
-  } catch (error) {
-    logger.error(`[bootstrap] Failed to load plugin ${pluginName}:`, error)
-    return null
-  }
-}
-
-async function loadPlugins(
-  config: ServerConfig,
-  bus: MessageBus,
-  logger: ILogger,
-): Promise<IPlugin[]> {
-  const plugins: IPlugin[] = []
-
-  for (const pluginName of config.plugins) {
-    const pluginConfig = config.pluginConfigs[pluginName] || {}
-    const plugin = await loadPlugin(pluginName, pluginConfig, bus, logger)
-    if (plugin) {
-      plugins.push(plugin)
-    }
-  }
-
-  for (const plugin of plugins) {
-    try {
-      await plugin.activate()
-      logger.info(`[bootstrap] Plugin activated: ${plugin.metadata.name}`)
-    } catch (error) {
-      logger.error(`[bootstrap] Failed to activate plugin:`, error)
-    }
-  }
-
-  logger.info(`[bootstrap] ${plugins.length} plugins loaded.`)
-  return plugins
-}
-
-// ============================================
-// Schedule engine
-// ============================================
-
-async function initScheduleEngine(
-  config: ServerConfig,
-  agent: Agent,
-  bus: MessageBus,
-  logger: ILogger,
-): Promise<ScheduleEngine | null> {
-  try {
-    const { createDatabase: createDb } = await import('@hive/core')
-    const dbManager = createDb({ dbPath: resolve(process.cwd(), '.hive/hive.db') })
-    await dbManager.initialize()
-    const scheduleRepo = createScheduleRepository(dbManager.getDb())
-
-    const engine = createScheduleEngine(scheduleRepo, async ({ schedule: task }) => {
-      logger.info(`[scheduler] Executing schedule: ${task.name}`)
-      try {
-        const result = await agent.chat(task.prompt, { sessionId: undefined })
-        const sessionId = agent.context.hookRegistry.getSessionId()
-        logger.info(`[scheduler] Schedule "${task.name}" completed, session: ${sessionId}`)
-
-        bus.emit('schedule:completed', {
-          scheduleId: task.id,
-          result,
-          status: 'success',
-          consecutiveErrors: 0,
-          notifyConfig: task.notifyConfig,
-          scheduleName: task.name,
-        })
-
-        return { sessionId, success: true }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        logger.error(`[scheduler] Schedule "${task.name}" failed: ${msg}`)
-
-        bus.emit('schedule:completed', {
-          scheduleId: task.id,
-          result: undefined,
-          status: 'failed',
-          consecutiveErrors: (task.consecutiveErrors ?? 0) + 1,
-          notifyConfig: task.notifyConfig,
-          scheduleName: task.name,
-        })
-
-        return { sessionId: '', success: false, error: msg }
-      }
-    }, {
-      onCircuitBreak: (event) => {
-        logger.warn(`[schedule:circuit-break] Task "${event.name}" paused after ${event.consecutiveErrors} consecutive failures`)
-        bus.emit('schedule:circuit-break', event)
-      },
-    })
-
-    // 将 repository 和 engine 注入到 Agent.schedule
-    // 这样 agent.schedule.list() / pause() / resume() / remove() 才能正常工作
-    agent.schedule.setDependencies(scheduleRepo, engine)
-
-    const taskCount = await engine.start()
-    logger.info(`[bootstrap] Schedule engine started (${taskCount} tasks loaded)`)
-    return engine
-  } catch (error) {
-    logger.warn(`[bootstrap] Schedule engine not available: ${error instanceof Error ? error.message : error}`)
-    return null
-  }
-}
-
-// ============================================
-// Push notification helpers
-// ============================================
-
-function resolveNotifyTarget(notifyConfig: { channel?: string; to?: string }, contextId?: string): { channelId: string; chatId: string } | null {
-  if (!notifyConfig.channel && !notifyConfig.to) return null
-
-  if (notifyConfig.channel === 'last') {
-    if (contextId) {
-      const mapping = sessionChannelMap.get(contextId)
-      if (mapping) return mapping
-      const scheduleMapping = sessionChannelMap.get(`schedule:${contextId}`)
-      if (scheduleMapping) return scheduleMapping
-    }
-    return null
-  }
-
-  if (notifyConfig.channel && notifyConfig.to) {
-    return { channelId: notifyConfig.channel, chatId: notifyConfig.to }
-  }
-
-  return null
-}
-
-// ============================================
-// ============================================
-// Tool log formatting
-// ============================================
-
-const TOOL_INPUT_SUMMARIES: Record<string, (input: any) => string> = {
-  Bash: (i) => truncate(String(i.command ?? ''), 120),
-  Read: (i) => truncate(String(i.file_path ?? ''), 100),
-  Write: (i) => truncate(String(i.file_path ?? ''), 100),
-  Edit: (i) => truncate(String(i.file_path ?? ''), 100),
-  Glob: (i) => truncate(String(i.pattern ?? ''), 80),
-  Grep: (i) => truncate(`${i.pattern ?? ''} in ${i.path ?? '.'}`, 80),
-  'WebSearch': (i) => truncate(String(i.query ?? ''), 100),
-  'WebFetch': (i) => truncate(String(i.url ?? ''), 100),
-  'AskUser': () => '',
-  explore: (i) => truncate(String(i.prompt ?? ''), 100),
-  plan: (i) => truncate(String(i.prompt ?? ''), 100),
-}
-
-function formatToolInput(tool: string, input: unknown): string {
-  const inputObj = typeof input === 'object' && input !== null ? input as Record<string, unknown> : {}
-  const formatter = TOOL_INPUT_SUMMARIES[tool]
-  if (formatter) return formatter(inputObj)
-  const keys = Object.keys(inputObj)
-  return keys.length > 0 ? truncate(JSON.stringify(inputObj), 120) : ''
-}
-
-function formatToolResult(tool: string, result: unknown): string {
-  const text = typeof result === 'string' ? result : JSON.stringify(result ?? '')
-  if (tool === 'explore' || tool === 'plan') {
-    return truncate(text, 200)
-  }
-  return truncate(text, 150)
-}
-
-function truncate(str: string, max: number): string {
-  if (str.length <= max) return str
-  return str.slice(0, max - 3) + '...'
-}
-
-// Event subscribers
-// ============================================
-
-function subscribeMessageHandler(
-  agent: Agent,
-  bus: MessageBus,
-  logger: ILogger,
-): void {
-  bus.subscribe('message:received', async (message: { payload: unknown }) => {
-    const channelMessage = message.payload as ChannelMessage
-    logger.info(`[bootstrap] Message received, dispatching to agent: ${channelMessage.content.slice(0, 50)}`)
-
-    const sessionId = channelMessage.metadata?.sessionId as string | undefined
-    const channelId = channelMessage.metadata?.channelId as string | undefined
-    if (sessionId && channelId && channelMessage.to?.id) {
-      setSessionChannelMapping(sessionId, channelId, channelMessage.to.id)
-    }
-
-    const replyType = channelMessage.type === 'card' ? 'card' : 'markdown'
-
-    try {
-      const result = await agent.dispatch(channelMessage.content, {
-        chatId: channelMessage.to?.id,
-        onPhase: (phase, message) => {
-          logger.info(`[agent] [${phase}] ${message}`)
-        },
-        onTool: (tool, input) => {
-          const summary = formatToolInput(tool, input)
-          logger.info(`[agent] [tool] ${tool} ${summary}`)
-        },
-        onToolResult: (tool, output) => {
-          const summary = formatToolResult(tool, output)
-          logger.info(`[agent] [tool-result] ${tool} → ${summary}`)
-        },
-      })
-
-      const replyText = result.text
-        || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`)
-
-      logger.info(`[agent] completed (${result.duration}ms)`)
-      logger.info(`[agent] [response] ${replyText}`)
-
-      bus.publish('message:response', {
-        channelId: channelMessage.metadata?.channelId,
-        chatId: channelMessage.to?.id,
-        replyTo: channelMessage.id,
-        content: replyText,
-        type: replyType,
-      })
-
-      logger.info(`[bootstrap] Agent response sent to channel (format: ${replyType})`)
-    } catch (error) {
-      logger.error(`[bootstrap] Agent workflow failed:`, error)
-      bus.publish('message:response', {
-        channelId: channelMessage.metadata?.channelId,
-        chatId: channelMessage.to?.id,
-        replyTo: channelMessage.id,
-        content: `处理失败：${error instanceof Error ? error.message : '未知错误'}`,
-        type: replyType,
-      })
-    }
-  })
-}
-
-function subscribeScheduleHandlers(
-  bus: MessageBus,
-  logger: ILogger,
-): void {
-  bus.subscribe('schedule:completed', async (event: { payload: unknown }) => {
-    const payload = event.payload as {
-      scheduleId: string;
-      result?: string;
-      status: 'success' | 'failed';
-      consecutiveErrors: number;
-      notifyConfig?: { mode: string; channel?: string; to?: string; bestEffort?: boolean };
-      scheduleName: string;
-    }
-
-    if (!payload.notifyConfig || payload.notifyConfig.mode === 'none') return
-    if (payload.notifyConfig.mode !== 'announce') return
-
-    const target = resolveNotifyTarget(payload.notifyConfig, payload.scheduleId)
-
-    if (!target) {
-      if (payload.notifyConfig.bestEffort) {
-        logger.info(`[schedule:notify] Target not found, bestEffort skip: ${payload.scheduleName}`)
-        return
-      }
-      logger.warn(`[schedule:notify] Target not found for: ${payload.scheduleName}`)
-      return
-    }
-
-    const statusEmoji = payload.status === 'success' ? '✅' : '❌'
-    const content = `${statusEmoji} 定时任务「${payload.scheduleName}」执行${payload.status === 'success' ? '成功' : '失败'}\n${payload.result ? `\n${payload.result}` : ''}`
-
-    bus.publish('message:response', {
-      channelId: target.channelId,
-      chatId: target.chatId,
-      content,
-      type: 'markdown',
-    })
-
-    logger.info(`[schedule:notify] Pushed result to ${target.channelId}/${target.chatId}: ${payload.scheduleName}`)
-  })
-
-  bus.subscribe('schedule:circuit-break', async (event: { payload: unknown }) => {
-    const payload = event.payload as {
-      scheduleId: string;
-      name: string;
-      consecutiveErrors: number;
-    }
-
-    logger.warn(`[schedule:circuit-break] Task "${payload.name}" paused after ${payload.consecutiveErrors} consecutive failures`)
-  })
-}
-
-// ============================================
-// Bootstrap
-// ============================================
-
 export async function bootstrap(options: BootstrapOptions): Promise<HiveContext> {
   const { config } = options
   const logger = createLogger(config.logLevel)
 
-  logger.info('[bootstrap] Initializing MessageBus...')
-  const bus = new MessageBus()
-
-  logger.info('[bootstrap] Creating main agent...')
-  const agent = createAgent({
-    externalConfig: {
-      providers: [
-        {
-          id: config.provider.id,
-          name: config.provider.id.toUpperCase(),
-          apiKey: config.provider.apiKey,
-          model: config.provider.model,
-          baseUrl: config.provider.baseUrl || `https://api.${config.provider.id}.com`,
-        },
-      ],
-      activeProvider: config.provider.id,
+  const server = createServer({
+    config: {
+      externalConfig: {
+        providers: [
+          {
+            id: config.provider.id,
+            name: config.provider.id.toUpperCase(),
+            apiKey: config.provider.apiKey,
+            model: config.provider.model,
+            baseUrl: config.provider.baseUrl || `https://api.${config.provider.id}.com`,
+          },
+        ],
+        activeProvider: config.provider.id,
+      },
+      plugins: config.plugins.map(name => ({
+        name,
+        config: config.pluginConfigs[name] ?? {},
+      })),
+      heartbeat: config.heartbeat.enabled ? config.heartbeat : undefined,
     },
+    dbPath: resolve(process.cwd(), '.hive/hive.db'),
+    logger,
   })
 
-  logger.info('[bootstrap] Initializing agent...')
-  await agent.initialize()
+  await server.start()
 
-  const plugins = await loadPlugins(config, bus, logger)
-
-  let heartbeatScheduler: HeartbeatScheduler | null = null
-  if (config.heartbeat.enabled) {
-    heartbeatScheduler = new HeartbeatScheduler({ agent, config: config.heartbeat, bus })
-    heartbeatScheduler.start()
-    logger.info(`[bootstrap] Heartbeat scheduler started (interval: ${config.heartbeat.intervalMs}ms)`)
+  return {
+    bus: server.bus,
+    agent: server.agent,
+    config,
+    plugins: [],
+    logger,
+    heartbeatScheduler: null,
+    scheduleEngine: null,
+    server,
   }
-
-  const scheduleEngine = await initScheduleEngine(config, agent, bus, logger)
-
-  subscribeMessageHandler(agent, bus, logger)
-  subscribeScheduleHandlers(bus, logger)
-
-  // 订阅 message:response，将 Agent 响应通过 channel 推送给用户
-  bus.subscribe('message:response', async (event: { payload: unknown }) => {
-    const { channelId, chatId, content, type } = event.payload as {
-      channelId?: string
-      chatId?: string
-      content: string
-      type?: string
-    }
-
-    if (!channelId || !chatId) return
-
-    const channel = channelRegistry.get(channelId)
-    if (!channel) {
-      logger.debug(`[message:response] No channel found for ${channelId}, skipping`)
-      return
-    }
-
-    try {
-      await channel.send({ to: chatId, content, type: (type || 'markdown') as 'text' | 'markdown' })
-      logger.info(`[message:response] Pushed to channel ${channelId} chat ${chatId}`)
-    } catch (error) {
-      logger.error(`[message:response] Failed to push to channel ${channelId}:`, error)
-    }
-  })
-
-  logger.info('[bootstrap] Bootstrap complete.')
-
-  return { bus, agent, config, plugins, logger, heartbeatScheduler, scheduleEngine }
 }
 
 // ============================================
@@ -482,27 +99,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
 // ============================================
 
 export async function shutdown(ctx: HiveContext): Promise<void> {
-  const { logger } = ctx
-
-  logger.info('[shutdown] Starting graceful shutdown...')
-
-  if (ctx.heartbeatScheduler) {
-    ctx.heartbeatScheduler.stop()
-  }
-
-  if (ctx.scheduleEngine) {
-    await ctx.scheduleEngine.stop()
-    logger.info('[shutdown] Schedule engine stopped')
-  }
-
-  for (const plugin of ctx.plugins) {
-    try {
-      await plugin.deactivate()
-      logger.info(`[shutdown] Plugin deactivated: ${plugin.metadata.name}`)
-    } catch (error) {
-      logger.error(`[shutdown] Failed to deactivate plugin:`, error)
-    }
-  }
-
-  logger.info('[shutdown] Shutdown complete')
+  ctx.logger.info('[shutdown] Starting graceful shutdown...')
+  await ctx.server.stop()
+  ctx.logger.info('[shutdown] Shutdown complete')
 }

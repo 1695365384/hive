@@ -9,6 +9,7 @@ import type { SkillRegistry, Skill, SkillMatchResult, SkillSystemConfig } from '
 import type { HookRegistry } from '../../hooks/index.js';
 import type { SessionCapabilityConfig } from '../capabilities/SessionCapability.js';
 import type { AgentConfig, AgentCapability } from './capabilities.js';
+import type { ScheduleCircuitBreakEvent } from '../../scheduler/types.js';
 
 // 重导出 SkillSystemConfig
 export type { SkillSystemConfig } from '../../skills/index.js';
@@ -76,6 +77,12 @@ export interface AgentInitOptions {
   sessionConfig?: SessionCapabilityConfig;
   /** 超时配置 */
   timeout?: TimeoutConfig;
+  /** 数据库路径（启用 ScheduleEngine 时需要） */
+  dbPath?: string;
+  /** 定时任务引擎配置 */
+  scheduleEngineConfig?: {
+    onCircuitBreak?: (event: ScheduleCircuitBreakEvent) => void;
+  };
 }
 
 // ============================================
