@@ -66,38 +66,46 @@ TEST_API_KEY=xxx TEST_PROVIDER_ID=glm npm run test:e2e
 
 ```
 Agent (主入口)
-├── ProviderCapability  - 提供商管理 (CC-Switch + 内置预设)
+├── ProviderCapability  - 提供商管理 (OpenAI 兼容适配器)
 ├── SkillCapability     - 技能管理 (模块化扩展)
 ├── ChatCapability      - 对话功能
 ├── SubAgentCapability  - 子 Agent (Explore/Plan/General)
-└── WorkflowCapability  - 工作流引擎
+├── WorkflowCapability  - 工作流引擎 (explore → plan → execute)
+├── SessionCapability  - 会话持久化 (SQLite)
+├── ScheduleCapability  - 定时任务与推送通知
+└── TimeoutCapability  - 心跳与超时监控
 ```
 
 ### 子 Agent 系统 (Claude Code 风格)
 
 | Agent | 模型 | 工具 | 用途 |
 |-------|------|------|------|
-| Explore | Haiku (快速) | 只读 | 文件发现、代码搜索 |
-| Plan | 继承 | 只读 | 计划研究、收集上下文 |
-| General | 继承 | 全部 | 复杂任务、代码修改 |
+| Explore | Provider 默认 | 只读 (file+glob+grep+web) | 文件发现、代码搜索 |
+| Plan | Provider 默认 | 只读 (file+glob+grep+web) | 计划研究、收集上下文 |
+| General | Provider 默认 | 全部 (7 个内置工具) | 复杂任务、代码修改 |
 
 ### 目录结构要点
 
 ```
 src/
 ├── agents/
-│   ├── core/           # Agent 核心实现 (Agent.ts, AgentContext.ts)
+│   ├── core/           # Agent 核心实现 (Agent.ts, AgentContext.ts, runner.ts)
 │   ├── capabilities/   # 能力模块 (委托模式)
-│   ├── prompts/        # Prompt 模板系统
+│   ├── dispatch/       # 智能调度 (Dispatcher, Classifier)
+│   ├── runtime/        # LLM 运行时 (LLMRuntime, 不依赖 claude-agent-sdk)
+│   ├── types/          # 类型定义
 │   └── registry/       # Agent 注册表
 ├── providers/          # LLM 提供商管理
-│   ├── sources/        # 配置来源 (CC-Switch, 环境变量, 本地配置)
-│   ├── presets/        # 内置预设 (Anthropic, OpenAI, 国产 LLM 等)
-│   └── models/         # 模型规格和成本估算
-├── skills/             # 技能系统 (加载器, 匹配器, 注册表)
+│   ├── adapters/       # 适配器 (OpenAI 兼容, Anthropic)
+│   ├── metadata/       # Provider 元数据 (models.dev 动态加载)
+│   └── sources/        # 配置来源 (hive.config.json, 环境变量)
+├── tools/
+│   ├── built-in/       # 内置工具 (bash, file, glob, grep, web-search, web-fetch, ask-user)
+│   │   └── utils/       # 安全层 (security.ts, output-safety.ts)
+│   └── tool-registry.ts # 工具注册表
 ├── hooks/              # Hooks 系统 (生命周期事件)
-├── services/           # 服务层 (ServiceRegistry, BaseService)
-└── tools/              # MCP 工具 (偏好, 记忆)
+├── skills/             # 技能系统 (加载器, 匹配器, 注册表)
+└── index.ts            # 顶层导出
 
 skills/                 # 技能定义文件 (*.md with YAML frontmatter)
 tests/
@@ -115,17 +123,28 @@ tests/
 
 ### 提供商配置
 
-复制 `providers.example.json` 为 `providers.json` 并填入 API Key：
+复制 `hive.config.example.json` 为 `hive.config.json` 并填入 API Key：
 
 ```bash
-cp providers.example.json providers.json
+cp apps/server/hive.config.example.json apps/server/hive.config.json
 ```
 
-或使用环境变量：
+配置示例：
+```json
+{
+  "provider": {
+    "id": "glm",
+    "apiKey": "your-api-key",
+    "model": "glm-4-flash",
+    "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4"
+  }
+}
+```
+
+也支持环境变量：
 ```bash
 GLM_API_KEY=xxx
 DEEPSEEK_API_KEY=xxx
-ANTHROPIC_API_KEY=xxx
 ```
 
 ### 技能定义
@@ -203,5 +222,7 @@ await registry.startAll();
 - TypeScript ESM 模块，Node.js 18+
 - 使用 `tsx` 运行 TypeScript (开发时)
 - 测试框架: Vitest
-- 依赖 `@anthropic-ai/claude-agent-sdk` 作为底层 SDK
-- 配置由外部应用传入，SDK 是配置消费者
+- LLM 调用基于 AI SDK (`@ai-sdk/openai`)，不依赖 `claude-agent-sdk`
+- 国产 LLM 通过 OpenAI 兼容适配器 + Chat Completions API 接入
+- 配置使用 `hive.config.json`（已加入 .gitignore）
+- 内置工具系统使用 AI SDK 标准 `tool()` + Zod schema
