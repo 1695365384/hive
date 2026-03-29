@@ -9,6 +9,7 @@
  */
 
 export { FeishuPlugin } from './plugin.js'
+export { FeishuPlugin as default } from './plugin.js'
 export { FeishuChannel } from './channel.js'
 export type {
   FeishuAppConfig,
