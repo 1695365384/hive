@@ -1,0 +1,24 @@
+{
+  "$schema": "./hive.config.schema.json",
+  "server": {
+    "port": 3000,
+    "host": "127.0.0.1",
+    "logLevel": "info"
+  },
+  "provider": {
+    "id": "glm",
+    "apiKey": "your-api-key-here",
+    "model": "glm-4-flash",
+    "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4"
+  },
+  "plugins": {
+    "@hive/plugin-feishu": {
+      "apps": [
+        {
+          "appId": "your-app-id",
+          "appSecret": "your-app-secret"
+        }
+      ]
+    }
+  }
+}

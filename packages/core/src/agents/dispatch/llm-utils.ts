@@ -17,7 +17,7 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
  */
 export interface ClassifierProvider {
   /** 获取当前活跃的提供商 */
-  getActiveProvider(): { baseUrl: string; apiKey?: string } | null;
+  getActiveProvider(): { baseUrl: string; apiKey?: string; model?: string } | null;
   /** 获取 AI SDK 模型实例 */
   getModel(modelId?: string): LanguageModelV3 | null;
 }
@@ -44,13 +44,13 @@ export async function callClassifierLLM(
   prompt: string,
   systemPrompt: string,
   provider: ClassifierProvider,
-  model: string,
+  model?: string,
   timeoutMs = DEFAULT_CLASSIFIER_TIMEOUT,
 ): Promise<string> {
   const modelInstance = provider.getModel(model);
 
   if (!modelInstance) {
-    throw new Error(`No model available for classifier (model: ${model})`);
+    throw new Error(`No model available for classifier (model: ${model ?? 'default'})`);
   }
 
   const controller = new AbortController();

@@ -13,14 +13,6 @@ import {
   _resetAllowedRoots,
 } from '../../../src/tools/built-in/utils/security.js';
 
-// Mock DNS
-vi.mock('node:dns/promises', () => ({
-  lookup: vi.fn(),
-}));
-
-import { lookup } from 'node:dns/promises';
-const mockLookup = vi.mocked(lookup);
-
 describe('isPathAllowed', () => {
   beforeEach(() => {
     _resetAllowedRoots();
@@ -64,7 +56,6 @@ describe('isPathAllowed', () => {
 
   it('should resolve symlinks before checking', () => {
     process.env.HIVE_WORKING_DIR = '/tmp/test-workspace';
-    // Even if the path looks like it traverses, resolve() normalizes it
     const normalPath = '/tmp/test-workspace/normal-file.txt';
     expect(isPathAllowed(normalPath)).toBe(true);
     delete process.env.HIVE_WORKING_DIR;
@@ -72,48 +63,54 @@ describe('isPathAllowed', () => {
 });
 
 describe('isPrivateIP', () => {
+  const mockResolve4 = vi.fn<[string], Promise<string[]>>();
+  const mockResolve6 = vi.fn<[string], Promise<string[]>>();
+  const resolvers = { resolve4: mockResolve4, resolve6: mockResolve6 };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockResolve4.mockResolvedValue([]);
+    mockResolve6.mockResolvedValue([]);
   });
 
   it('should detect 127.0.0.0/8 as private', async () => {
-    mockLookup.mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
-    expect(await isPrivateIP('localhost')).toBe(true);
+    mockResolve4.mockResolvedValue(['127.0.0.1']);
+    expect(await isPrivateIP('localhost', resolvers)).toBe(true);
   });
 
   it('should detect 10.0.0.0/8 as private', async () => {
-    mockLookup.mockResolvedValue([{ address: '10.0.1.1', family: 4 }]);
-    expect(await isPrivateIP('internal.corp')).toBe(true);
+    mockResolve4.mockResolvedValue(['10.0.1.1']);
+    expect(await isPrivateIP('internal.corp', resolvers)).toBe(true);
   });
 
   it('should detect 172.16.0.0/12 as private', async () => {
-    mockLookup.mockResolvedValue([{ address: '172.20.0.1', family: 4 }]);
-    expect(await isPrivateIP('private.host')).toBe(true);
+    mockResolve4.mockResolvedValue(['172.20.0.1']);
+    expect(await isPrivateIP('private.host', resolvers)).toBe(true);
   });
 
   it('should detect 192.168.0.0/16 as private', async () => {
-    mockLookup.mockResolvedValue([{ address: '192.168.1.1', family: 4 }]);
-    expect(await isPrivateIP('home.local')).toBe(true);
+    mockResolve4.mockResolvedValue(['192.168.1.1']);
+    expect(await isPrivateIP('home.local', resolvers)).toBe(true);
   });
 
   it('should detect 169.254.0.0/16 as private', async () => {
-    mockLookup.mockResolvedValue([{ address: '169.254.1.1', family: 4 }]);
-    expect(await isPrivateIP('link.local')).toBe(true);
+    mockResolve4.mockResolvedValue(['169.254.1.1']);
+    expect(await isPrivateIP('link.local', resolvers)).toBe(true);
   });
 
   it('should detect ::1 as private', async () => {
-    mockLookup.mockResolvedValue([{ address: '::1', family: 6 }]);
-    expect(await isPrivateIP('localhost6')).toBe(true);
+    mockResolve6.mockResolvedValue(['::1']);
+    expect(await isPrivateIP('localhost6', resolvers)).toBe(true);
   });
 
   it('should allow public IPs', async () => {
-    mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
-    expect(await isPrivateIP('example.com')).toBe(false);
+    mockResolve4.mockResolvedValue(['93.184.216.34']);
+    expect(await isPrivateIP('example.com', resolvers)).toBe(false);
   });
 
   it('should return false on DNS failure (conservative)', async () => {
-    mockLookup.mockRejectedValue(new Error('ENOTFOUND'));
-    expect(await isPrivateIP('nonexistent.xyz')).toBe(false);
+    mockResolve4.mockRejectedValue(new Error('ENOTFOUND'));
+    expect(await isPrivateIP('nonexistent.xyz', resolvers)).toBe(false);
   });
 });
 

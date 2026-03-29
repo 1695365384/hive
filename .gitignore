@@ -30,6 +30,7 @@ config.json
 preferences.json
 memories.json
 providers.json
+**/hive.config.json
 
 # 测试用例
 packages/core/coverage/
