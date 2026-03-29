@@ -1,15 +1,8 @@
 /**
  * 配置模块
  *
- * 提供配置验证和类型
+ * 提供外部配置类型
  */
-
-export {
-  validateAgentConfig,
-  validateProviderConfig,
-  validateOrThrow,
-  type ValidationResult,
-} from './validator.js';
 
 export type {
   ExternalConfig,

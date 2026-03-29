@@ -6,11 +6,10 @@
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ProviderConfig } from '../types.js';
+import type { ProviderType } from '../types.js';
 
-/**
- * Provider 类型
- */
-export type ProviderType = 'openai' | 'anthropic' | 'google' | 'openai-compatible';
+// Re-export ProviderType from canonical source
+export type { ProviderType } from '../types.js';
 
 /**
  * 适配器配置

@@ -11,22 +11,22 @@ vi.mock('../../src/providers/ProviderManager.js', () => ({
   createProviderManager: vi.fn(() => ({
     getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
     getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
-    getActiveProvider: vi.fn().mockReturnValue({
+    active: {
       id: 'mock',
       baseUrl: 'https://api.test.com',
       apiKey: 'test-key',
       model: 'mock-model',
-    }),
+    },
   })),
   ProviderManager: vi.fn().mockImplementation(() => ({
     getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
     getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
-    getActiveProvider: vi.fn().mockReturnValue({
+    active: {
       id: 'mock',
       baseUrl: 'https://api.test.com',
       apiKey: 'test-key',
       model: 'mock-model',
-    }),
+    },
   })),
 }));
 
@@ -45,7 +45,6 @@ import {
   isKnownProvider,
   getProviderType,
   createAdapter,
-  getStaticModels,
 } from '../src/index.js';
 
 describe('Agent 模块', () => {
@@ -141,18 +140,6 @@ describe('Provider 模块', () => {
     });
   });
 
-  describe('静态模型', () => {
-    it('should return static models for known providers', () => {
-      const anthropicModels = getStaticModels('anthropic');
-      expect(anthropicModels.length).toBeGreaterThan(0);
-      expect(anthropicModels.some(m => m.id.includes('claude'))).toBe(true);
-
-      const openaiModels = getStaticModels('openai');
-      expect(openaiModels.length).toBeGreaterThan(0);
-      expect(openaiModels.some(m => m.id.includes('gpt'))).toBe(true);
-    });
-  });
-
   describe('适配器工厂', () => {
     it('should create adapter by type', () => {
       const adapter = createAdapter({
@@ -170,8 +157,6 @@ describe('Provider 模块', () => {
     it('should create manager', () => {
       const manager = new ProviderManager();
       expect(manager).toBeDefined();
-      expect(typeof manager.getActiveProvider).toBe('function');
-      expect(typeof manager.getAllProviders).toBe('function');
       expect(typeof manager.switch).toBe('function');
     });
   });

@@ -5,22 +5,13 @@
  */
 
 import type { ModelSpec } from '../types.js';
-import {
-  ModelsDevClient,
-  getModelsDevClient,
-  createModelsDevClient,
-} from './models-dev.js';
-import type { ModelsDevPersistence } from './models-dev.js';
+import { getModelsDevClient } from './models-dev.js';
 import {
   getProviderRegistry,
   getProviderInfo,
   getProviderInfoSync,
 } from './provider-registry.js';
 import type { ProviderInfo } from './provider-registry.js';
-
-// 导出 ModelsDevClient
-export { ModelsDevClient, getModelsDevClient, createModelsDevClient } from './models-dev.js';
-export type { ModelsDevPersistence } from './models-dev.js';
 
 // 导出工作空间持久化
 export { WorkspacePersistence, createWorkspacePersistence } from './workspace-persistence.js';
@@ -120,9 +111,9 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
 };
 
 /**
- * 获取静态模型列表（fallback）
+ * 获取静态模型列表（内部使用）
  */
-export function getStaticModels(providerId: string): ModelSpec[] {
+function getStaticModels(providerId: string): ModelSpec[] {
   return STATIC_MODELS[providerId.toLowerCase()] || [];
 }
 

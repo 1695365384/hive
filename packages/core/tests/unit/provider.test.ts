@@ -16,7 +16,6 @@ import {
   createAnthropicAdapter,
   createGoogleAdapter,
   createOpenAICompatibleAdapter,
-  getStaticModels,
 } from '../../src/providers/index.js';
 import type { ProviderConfig } from '../../src/providers/types.js';
 
@@ -28,13 +27,13 @@ describe('Provider Manager', () => {
 
   it('should list all providers', () => {
     const manager = createProviderManager();
-    const providers = manager.getAllProviders();
+    const providers = manager.all;
     expect(Array.isArray(providers)).toBe(true);
   });
 
   it('should get active provider', () => {
     const manager = createProviderManager();
-    const active = manager.getActiveProvider();
+    const active = manager.active;
     // May be null if no providers configured
     expect(active === null || typeof active === 'object').toBe(true);
   });
@@ -143,21 +142,3 @@ describe('Provider Adapters', () => {
   });
 });
 
-describe('Model Metadata', () => {
-  describe('Static Models', () => {
-    it('should return static models for known providers', () => {
-      const anthropicModels = getStaticModels('anthropic');
-      expect(anthropicModels.length).toBeGreaterThan(0);
-      expect(anthropicModels.some(m => m.id.includes('claude'))).toBe(true);
-
-      const openaiModels = getStaticModels('openai');
-      expect(openaiModels.length).toBeGreaterThan(0);
-      expect(openaiModels.some(m => m.id.includes('gpt'))).toBe(true);
-    });
-
-    it('should return empty array for unknown providers', () => {
-      const models = getStaticModels('unknown-provider');
-      expect(models).toEqual([]);
-    });
-  });
-});

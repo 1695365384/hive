@@ -22,7 +22,6 @@ function createMockContext(): AgentContext {
     skillRegistry: {} as AgentContext['skillRegistry'],
     agentRegistry: {} as AgentContext['agentRegistry'],
     getCapability: vi.fn(),
-    getActiveProvider: vi.fn(),
     getSkill: vi.fn(),
     matchSkill: vi.fn(),
     getAgentConfig: vi.fn(),

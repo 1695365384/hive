@@ -40,7 +40,6 @@ export {
   createModelsDevSource,
   getModelsDevSource,
   createConfigChain,
-  mergeSources,
 } from './sources/index.js';
 
 // ============================================
@@ -66,7 +65,6 @@ export {
   getKnownProviders,
   getKnownProvidersSync,
   isKnownProvider,
-  preprocessParams,
   adapterRegistry,
 } from './adapters/index.js';
 
@@ -75,10 +73,6 @@ export {
 // ============================================
 
 export {
-  ModelsDevClient,
-  getModelsDevClient,
-  createModelsDevClient,
-  getStaticModels,
   fetchModelSpec,
   fetchProviderModels,
 } from './metadata/index.js';

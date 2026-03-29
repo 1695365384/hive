@@ -1,35 +1,35 @@
 ## MODIFIED Requirements
 
 ### Requirement: Sub-agent tool restriction by phase
-explore and plan sub-agents SHALL be restricted to read-only tools via SDK `tools` parameter (not prompt-level suggestion).
+explore and plan sub-agents SHALL be restricted to read-only tools via ToolRegistry.getToolsForAgent(), not prompt-level suggestion. LLMRuntime SHALL accept AI SDK standard Tool format directly via `tools` parameter in RuntimeConfig.
 
 #### Scenario: Explore agent cannot call Write
 - **WHEN** SubAgentCapability.explore() calls runner.execute('explore', prompt)
-- **THEN** runner.execute() SHALL pass `tools: ['Read', 'Glob', 'Grep']` to the SDK, excluding Write, Edit, Bash
+- **THEN** runner.execute() SHALL use ToolRegistry.getToolsForAgent('explore') 获取工具集，传递给 LLMRuntime，不包含 bash、ask-user
 
 #### Scenario: Plan agent cannot call Write
 - **WHEN** SubAgentCapability.plan() calls runner.execute('plan', prompt)
-- **THEN** runner.execute() SHALL pass `tools: ['Read', 'Glob', 'Grep']` to the SDK
+- **THEN** runner.execute() SHALL use ToolRegistry.getToolsForAgent('plan') 获取工具集
 
 #### Scenario: General agent has full tools
 - **WHEN** SubAgentCapability.general() calls runner.execute('general', prompt)
-- **THEN** runner.execute() SHALL pass the full tool list including Write, Edit, Bash
+- **THEN** runner.execute() SHALL use ToolRegistry.getToolsForAgent('general') 获取全量工具集
 
 #### Scenario: Custom tools override
 - **WHEN** caller provides `options.tools` array
 - **THEN** the provided tools SHALL take precedence over the default agent tools
 
-### Requirement: Workflow auto-compression between phases
-WorkflowCapability SHALL automatically trigger context compression between workflow phases when message count exceeds threshold.
+### Requirement: LLMRuntime accepts AI SDK Tool format
+LLMRuntime.run() SHALL accept `tools` parameter as `Record<string, Tool>` (AI SDK standard format) directly, without requiring conversion via convertTools(). The legacy `AITool` interface and `convertTools()` method SHALL be deprecated and removed.
 
-#### Scenario: Compression triggered after explore phase
-- **WHEN** explore phase completes and session message count exceeds CompressionService threshold
-- **THEN** WorkflowCapability SHALL call sessionManager.compressIfNeeded() before building plan prompt
+#### Scenario: Pass tools to LLMRuntime
+- **WHEN** RuntimeConfig 包含 tools: { bash: bashTool, file: fileTool }
+- **THEN** LLMRuntime SHALL 直接传递给 generateText/streamText 的 tools 参数
 
-#### Scenario: Compression triggered after plan phase
-- **WHEN** plan phase completes and session message count exceeds threshold
-- **THEN** WorkflowCapability SHALL call sessionManager.compressIfNeeded() before building execute prompt
+#### Scenario: No tools provided
+- **WHEN** RuntimeConfig 不包含 tools 参数
+- **THEN** LLMRuntime SHALL 正常执行，不传递 tools 给 AI SDK
 
-#### Scenario: No compression when under threshold
-- **WHEN** message count is below CompressionService.needsCompression() threshold
-- **THEN** WorkflowCapability SHALL NOT trigger compression
+#### Scenario: Legacy AITool format not supported
+- **WHEN** 调用方传入旧格式 AITool 对象
+- **THEN** LLMRuntime SHALL 抛出 TypeError，提示使用 AI SDK tool() 格式

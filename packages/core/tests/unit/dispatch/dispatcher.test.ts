@@ -47,7 +47,7 @@ function createMockContext(caps: MockCapabilities) {
       })),
     },
     providerManager: {
-      getActiveProvider: vi.fn(() => ({ baseUrl: 'https://api.example.com', apiKey: 'test-key' })),
+      active: { baseUrl: 'https://api.example.com', apiKey: 'test-key' },
     },
     hookRegistry: {
       getSessionId: vi.fn(() => 'test-session'),
