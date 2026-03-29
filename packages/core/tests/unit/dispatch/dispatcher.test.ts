@@ -517,7 +517,12 @@ describe('Dispatcher', () => {
       const mockSaveTrace = vi.fn();
       const traceCaps = createMockCapabilities();
       const traceCtx = createMockContext(traceCaps);
-      (traceCtx as any).getSessionCap = vi.fn(() => ({ saveTrace: mockSaveTrace }));
+      (traceCtx as any).getSessionCap = vi.fn(() => ({
+        saveTrace: mockSaveTrace,
+        getMessages: vi.fn(() => []),
+        addUserMessage: vi.fn(),
+        addAssistantMessage: vi.fn(),
+      }));
       const traceDispatcher = new Dispatcher(traceCtx);
 
       await traceDispatcher.dispatch('test task', { forceLayer: 'chat' });
@@ -556,7 +561,12 @@ describe('Dispatcher', () => {
       const failingSaveTrace = vi.fn().mockRejectedValue(new Error('DB error'));
       const failCaps = createMockCapabilities();
       const failCtx = createMockContext(failCaps);
-      (failCtx as any).getSessionCap = vi.fn(() => ({ saveTrace: failingSaveTrace }));
+      (failCtx as any).getSessionCap = vi.fn(() => ({
+        saveTrace: failingSaveTrace,
+        getMessages: vi.fn(() => []),
+        addUserMessage: vi.fn(),
+        addAssistantMessage: vi.fn(),
+      }));
       const failDispatcher = new Dispatcher(failCtx);
 
       // Should not throw even though saveTrace fails

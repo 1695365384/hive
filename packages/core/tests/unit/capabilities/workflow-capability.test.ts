@@ -708,6 +708,7 @@ describe('WorkflowCapability', () => {
 
       (context as any).getSessionCap = vi.fn(() => ({
         compressIfNeeded: vi.fn().mockRejectedValue(new Error('Compression failed')),
+        getMessages: vi.fn(() => []),
       }));
 
       vi.mocked(context.getCapability).mockImplementation((name: string) => {

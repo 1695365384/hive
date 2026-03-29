@@ -186,10 +186,6 @@ export class WorkflowCapability implements AgentCapability {
           success: executionResult.executeResult?.success ?? true,
         };
 
-        if (options?.chatId && result.executeResult) {
-          await this.persistSession(options.chatId, task, result.executeResult.text);
-        }
-
         await emitPhaseChange('complete', result.success ? '任务完成' : '任务失败');
         await this.emitProgress(sessionId, workflowId, '工作流完成', 100, '完成', 4);
 
@@ -438,26 +434,21 @@ export class WorkflowCapability implements AgentCapability {
       skillSection = this.context.skillRegistry.generateSkillListDescription();
     }
 
+    // 从 session 加载历史对话（保持 chat/workflow 上下文连续）
+    const sessionCap = this.getSessionCap();
+    const sessionHistory = sessionCap?.getMessages().map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
+
     return this.promptBuilder.buildPrompt({
       task,
       priorResults,
       agentType: 'general',
       languageInstruction,
       skillSection,
+      sessionHistory: sessionHistory && sessionHistory.length > 0 ? sessionHistory : undefined,
     });
-  }
-
-  /**
-   * 持久化对话到 SessionCapability
-   */
-  private async persistSession(chatId: string, task: string, responseText?: string): Promise<void> {
-    const sessionCap = this.getSessionCap();
-    if (!sessionCap) return;
-
-    await sessionCap.addUserMessage(task);
-    if (responseText) {
-      await sessionCap.addAssistantMessage(responseText);
-    }
   }
 
   /**

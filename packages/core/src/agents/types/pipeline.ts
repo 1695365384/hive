@@ -74,4 +74,6 @@ export interface PromptBuildContext {
   skillSection?: string;
   /** 语言指令（可选） */
   languageInstruction?: string;
+  /** 会话历史（可选，用于保持 chat/workflow 上下文连续） */
+  sessionHistory?: Array<{ role: string; content: string }>;
 }

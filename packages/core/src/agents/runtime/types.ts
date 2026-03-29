@@ -52,8 +52,8 @@ export interface RuntimeConfig {
   languageModel?: LanguageModelV3;
 
   // ── 内容 ──
-  /** 用户提示 */
-  prompt: string;
+  /** 用户提示（当 messages 有值时可为空） */
+  prompt?: string;
   /** 系统提示 */
   system?: string;
   /** 多轮对话历史（chat 场景使用） */

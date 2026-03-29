@@ -16,6 +16,7 @@ import type { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
 import type { SessionCapability } from '../capabilities/SessionCapability.js';
 import { classifyForDispatch, regexClassify } from './classifier.js';
 import { getModelPricing } from '../../providers/metadata/pricing.js';
+import { PromptTemplate } from '../prompts/PromptTemplate.js';
 
 const VALID_LAYERS: ReadonlySet<string> = new Set(['chat', 'workflow']);
 
@@ -28,9 +29,11 @@ const VALID_LAYERS: ReadonlySet<string> = new Set(['chat', 'workflow']);
  */
 export class Dispatcher {
   private context: AgentContext;
+  private promptTemplate: PromptTemplate;
 
   constructor(context: AgentContext) {
     this.context = context;
+    this.promptTemplate = new PromptTemplate();
   }
 
   /**
@@ -57,6 +60,9 @@ export class Dispatcher {
         trace,
       };
     }
+
+    // 确保 session 已切换到正确的 chatId（chat 和 workflow 共享同一 session）
+    await this.ensureSession(options?.chatId);
 
     // Step 1: 分类
     let classification: DispatchClassification;
@@ -96,6 +102,11 @@ export class Dispatcher {
         default:
           result = await this.executeChat(task, classification, startTime, options);
           break;
+      }
+
+      // 统一持久化对话到 session（不依赖各执行层自己处理）
+      if (result.success && result.text) {
+        await this.persistSession(task, result.text);
       }
 
       trace.push({
@@ -189,6 +200,46 @@ export class Dispatcher {
   }
 
   // ============================================
+  // Session 管理
+  // ============================================
+
+  /**
+   * 确保正确的 session 已加载（chat/workflow 共享）
+   *
+   * 如果当前 session 不是目标 session，则切换。
+   * 如果目标 session 不存在，则创建。
+   */
+  private async ensureSession(chatId: string | undefined): Promise<void> {
+    if (!chatId) return;
+
+    const sessionCap = this.context.getSessionCap?.();
+    if (!sessionCap) return;
+
+    // 已在正确 session 中，无需切换
+    if (sessionCap.getCurrentSessionId() === chatId) return;
+
+    // 尝试加载目标 session
+    const loaded = await sessionCap.loadSession(chatId);
+    if (!loaded) {
+      // 不存在则创建
+      await sessionCap.createSession({ id: chatId });
+    }
+  }
+
+  /**
+   * 持久化对话到当前 session
+   */
+  private async persistSession(task: string, responseText: string): Promise<void> {
+    const sessionCap = this.context.getSessionCap?.();
+    if (!sessionCap) return;
+
+    await sessionCap.addUserMessage(task);
+    if (responseText) {
+      await sessionCap.addAssistantMessage(responseText);
+    }
+  }
+
+  // ============================================
   // 执行层
   // ============================================
 
@@ -211,7 +262,21 @@ export class Dispatcher {
         error: 'Chat capability not available',
       };
     }
+    const systemPrompt = this.promptTemplate.render('intelligent', {
+      languageInstruction: '',
+      skillSection: '',
+      task,
+    });
+
+    // 从 session 加载历史消息
+    const sessionCap = this.context.getSessionCap?.();
+    const historyMessages = sessionCap?.getMessages() ?? [];
+
     const text = await chatCap.send(task, {
+      systemPrompt,
+      messages: historyMessages.length > 0
+        ? historyMessages.map(m => ({ role: m.role, content: m.content }))
+        : undefined,
       cwd: options?.cwd,
       onText: options?.onText,
       onTool: options?.onTool,
@@ -274,6 +339,7 @@ export class Dispatcher {
     }
 
     const result = await workflowCap.run(task, {
+      chatId: options?.chatId,
       cwd: options?.cwd,
       onPhase: options?.onPhase,
       onText: options?.onText,
