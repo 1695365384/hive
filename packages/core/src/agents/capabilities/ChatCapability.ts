@@ -230,16 +230,7 @@ export class ChatCapability implements AgentCapability {
     if (activeSignals.length === 0) return undefined;
     if (activeSignals.length === 1) return activeSignals[0];
 
-    const controller = new AbortController();
-    const abort = () => {
-      if (!controller.signal.aborted) controller.abort();
-    };
-
-    for (const signal of activeSignals) {
-      if (signal.aborted) { abort(); break; }
-      signal.addEventListener('abort', abort, { once: true });
-    }
-
-    return controller.signal;
+    // AbortSignal.any() (Node 20+) — 自动清理监听器，无泄漏
+    return AbortSignal.any(activeSignals);
   }
 }

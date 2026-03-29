@@ -9,7 +9,7 @@ import { exec } from 'node:child_process';
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
-import { isDangerousCommand } from './utils/security.js';
+import { isDangerousCommand, isCommandAllowed } from './utils/security.js';
 
 export interface BashToolOptions {
   /** 是否允许执行命令（用于 Agent 权限控制） */
@@ -19,7 +19,7 @@ export interface BashToolOptions {
 /** Bash 工具输入 schema */
 const bashInputSchema = z.object({
   command: z.string().describe('要执行的 shell 命令'),
-  timeout: z.number().optional().describe('超时时间（毫秒），默认 120000（2 分钟）'),
+  timeout: z.number().min(1000).max(600000).optional().describe('超时时间（毫秒），默认 120000（2 分钟），范围 1000-600000'),
 });
 
 export type BashToolInput = z.infer<typeof bashInputSchema>;
@@ -35,6 +35,11 @@ export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, s
       // 权限检查
       if (options?.allowed === false) {
         return '[Security] 当前 Agent 无权限执行 shell 命令';
+      }
+
+      // Allowlist 检查
+      if (!isCommandAllowed(command)) {
+        return `[Security] 命令不在允许列表中: ${command.split(/\s+/)[0]}\n可通过 HIVE_BASH_ALLOWLIST 环境变量配置允许的命令`;
       }
 
       // 危险命令检查

@@ -7,6 +7,7 @@
 
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
+import { truncateOutput } from './utils/output-safety.js';
 
 interface SearchResult {
   title: string;
@@ -36,8 +37,12 @@ async function parseDuckDuckGoLite(html: string): Promise<SearchResult[]> {
 }
 
 /** Web Search 工具输入 schema */
+/** 最大返回结果数 */
+const MAX_SEARCH_RESULTS = 10;
+
 const webSearchInputSchema = z.object({
   query: z.string().describe('搜索查询关键词'),
+  maxResults: z.number().max(20).optional().describe('最大返回结果数，默认 10'),
 });
 
 export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
@@ -49,7 +54,7 @@ export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
   return tool({
     description: '搜索网页获取最新信息。使用 DuckDuckGo 搜索引擎，返回标题、URL 和摘要。搜索结果可能不包含最新内容，建议结合 web-fetch 工具获取完整页面内容。',
     inputSchema: zodSchema(webSearchInputSchema),
-    execute: async ({ query }): Promise<string> => {
+    execute: async ({ query, maxResults }): Promise<string> => {
       try {
         const encoded = encodeURIComponent(query);
         const url = `https://lite.duckduckgo.com/lite/?q=${encoded}`;
@@ -73,9 +78,17 @@ export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
           return `未找到 "${query}" 的搜索结果`;
         }
 
-        return results
+        const max = Math.min(maxResults ?? MAX_SEARCH_RESULTS, MAX_SEARCH_RESULTS);
+        const display = results.slice(0, max);
+        const output = display
           .map((r, i) => `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet}`)
           .join('\n\n');
+
+        const suffix = results.length > max
+          ? `\n\n[共 ${results.length} 个结果，已截断显示前 ${max} 个]`
+          : '';
+
+        return truncateOutput(output + suffix);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         return `[Error] 搜索失败: ${msg}`;

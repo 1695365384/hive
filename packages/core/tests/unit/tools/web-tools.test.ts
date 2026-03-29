@@ -10,6 +10,14 @@ import { createWebFetchTool } from '../../../src/tools/built-in/web-fetch-tool.j
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
+// Mock DNS lookup for SSRF tests
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn(),
+}));
+
+import { lookup } from 'node:dns/promises';
+const mockLookup = vi.mocked(lookup);
+
 describe('createWebSearchTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,11 +80,39 @@ describe('createWebSearchTool', () => {
     expect(result).toContain('[Error]');
     expect(result).toContain('Network error');
   });
+
+  it('should limit results to maxResults', async () => {
+    const manyResults = Array.from({ length: 20 }, (_, i) => `
+      <tr class="result-link"><td><a href="https://example.com/${i}">Result ${i}</a></td>
+        <td class="result-snippet">Snippet ${i}</td></tr>
+    `).join('');
+    const html = `<table>${manyResults}</table>`;
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(html),
+    });
+
+    const tool = createWebSearchTool();
+    const result = await tool.execute!({ query: 'test', maxResults: 5 }, {} as any);
+
+    expect(result).toContain('Result 0');
+    expect(result).toContain('Result 4');
+    expect(result).toContain('已截断');
+  });
+
+  it('should reject maxResults above 20', async () => {
+    const tool = createWebSearchTool();
+    const schema = tool.inputSchema as any;
+    const result = schema.safeParse({ query: 'test', maxResults: 50 });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('createWebFetchTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: public IP (not private)
+    mockLookup.mockResolvedValue([{ address: '1.2.3.4', family: 4 }]);
   });
 
   it('should fetch and convert HTML to markdown', async () => {
@@ -98,6 +134,53 @@ describe('createWebFetchTool', () => {
     expect(result).not.toContain('console.log');
   });
 
+  it('should reject non-https URLs', async () => {
+    const tool = createWebFetchTool();
+    const httpResult = await tool.execute!({ url: 'http://example.com' }, {} as any);
+    expect(httpResult).toContain('不允许的 URL scheme');
+
+    const fileResult = await tool.execute!({ url: 'file:///etc/passwd' }, {} as any);
+    expect(fileResult).toContain('不允许的 URL scheme');
+
+    const ftpResult = await tool.execute!({ url: 'ftp://example.com' }, {} as any);
+    expect(ftpResult).toContain('不允许的 URL scheme');
+  });
+
+  it('should block private IP addresses (SSRF protection)', async () => {
+    mockLookup.mockResolvedValue([{ address: '192.168.1.1', family: 4 }]);
+
+    const tool = createWebFetchTool();
+    const result = await tool.execute!({ url: 'https://internal.corp' }, {} as any);
+
+    expect(result).toContain('[Security]');
+    expect(result).toContain('内网地址');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('should block localhost', async () => {
+    mockLookup.mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
+
+    const tool = createWebFetchTool();
+    const result = await tool.execute!({ url: 'https://localhost' }, {} as any);
+
+    expect(result).toContain('[Security]');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('should allow public IP addresses', async () => {
+    mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve('<body><p>public content</p></body>'),
+    });
+
+    const tool = createWebFetchTool();
+    const result = await tool.execute!({ url: 'https://example.com' }, {} as any);
+
+    expect(result).toContain('public content');
+    expect(mockFetch).toHaveBeenCalled();
+  });
+
   it('should truncate long content', async () => {
     const longHtml = `<body><p>${'x'.repeat(50000)}</p></body>`;
     mockFetch.mockResolvedValue({
@@ -113,6 +196,13 @@ describe('createWebFetchTool', () => {
 
     expect(result.length).toBeLessThan(50000);
     expect(result).toContain('[输出已截断');
+  });
+
+  it('should reject maxChars above 100000', async () => {
+    const tool = createWebFetchTool();
+    const schema = tool.inputSchema as any;
+    const result = schema.safeParse({ url: 'https://example.com', maxChars: 200000 });
+    expect(result.success).toBe(false);
   });
 
   it('should handle HTTP errors', async () => {

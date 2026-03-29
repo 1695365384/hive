@@ -5,10 +5,11 @@
  * 不依赖 LLM API，聚焦工具系统本身的集成。
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
+import { _resetAllowedRoots } from '../../src/tools/built-in/utils/security.js';
 
 // Mock child_process.exec（grep 测试用）
 vi.mock('node:child_process', () => ({
@@ -33,6 +34,7 @@ describe('Tool System Integration', () => {
   let tmpDir: string;
 
   beforeAll(async () => {
+    _resetAllowedRoots();
     tmpDir = join(os.tmpdir(), `hive-integration-tools-${Date.now()}`);
     await mkdir(tmpDir, { recursive: true });
     await writeFile(join(tmpDir, 'a.ts'), 'const a = 1;');
@@ -42,9 +44,12 @@ describe('Tool System Integration', () => {
     await mkdir(join(tmpDir, 'src', 'utils'), { recursive: true });
     await writeFile(join(tmpDir, 'src', 'index.ts'), 'export { a } from "./a";');
     await writeFile(join(tmpDir, 'src', 'utils', 'helper.ts'), 'export const helper = () => 1;');
+    process.env.HIVE_WORKING_DIR = tmpDir;
   });
 
   afterAll(async () => {
+    delete process.env.HIVE_WORKING_DIR;
+    _resetAllowedRoots();
     try { await rm(tmpDir, { recursive: true, force: true }); } catch {}
   });
 
@@ -206,7 +211,7 @@ describe('Tool System Integration', () => {
       const tool = createFileTool({ allowedCommands: ['view', 'create', 'str_replace', 'insert'] });
       const result = await tool.execute!({
         command: 'view',
-        file_path: '/etc/passwd',
+        file_path: join(tmpDir, '.env'),
       }, {} as any);
       expect(result).toContain('敏感文件');
     });
