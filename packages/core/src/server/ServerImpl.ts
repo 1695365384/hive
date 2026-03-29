@@ -10,6 +10,7 @@ import {
   createDatabase,
   createScheduleRepository,
   createScheduleEngine,
+  createWorkspaceManager,
   HeartbeatScheduler,
   type Agent,
   type IPlugin,
@@ -17,6 +18,7 @@ import {
   type ChannelMessage,
   type ILogger,
   type ScheduleEngine,
+  type WorkspaceManager,
 } from '../index.js';
 import { MessageBus } from '../bus/MessageBus.js';
 import { noopLogger } from '../types/logger.js';
@@ -132,6 +134,9 @@ class ServerImpl implements Server {
   private heartbeatScheduler: HeartbeatScheduler | null = null;
   private started = false;
 
+  /** WorkspaceManager — 由 createServer() 创建，在 start() 中初始化 */
+  _workspaceManager: WorkspaceManager | undefined;
+
   constructor(
     agent: Agent,
     bus: MessageBus,
@@ -157,6 +162,11 @@ class ServerImpl implements Server {
     this.started = true;
 
     this.logger.info('[server] Starting...');
+
+    // 初始化工作空间（创建 .hive/cache 等目录结构）
+    if (this._workspaceManager) {
+      await this._workspaceManager.initialize();
+    }
 
     // 初始化 Agent
     this.logger.info('[server] Initializing agent...');
@@ -463,11 +473,20 @@ export function createServer(options: ServerOptions): Server {
   const bus = options.bus ?? new MessageBus();
   const channelContext = new ChannelContext();
 
+  // 创建 WorkspaceManager 并在 start() 时初始化
+  const dbPath = options.dbPath;
+  const workspaceManager = createWorkspaceManager(
+    dbPath ? { path: dbPath.replace(/\/hive\.db$/, '') } : undefined,
+  );
+
   const agent = createAgent({
     externalConfig: options.config.externalConfig,
+    sessionConfig: { workspaceManager },
+    dbPath,
   });
 
   const server = new ServerImpl(agent, bus, logger, channelContext);
   server.setOptions(options);
+  server._workspaceManager = workspaceManager;
   return server;
 }
