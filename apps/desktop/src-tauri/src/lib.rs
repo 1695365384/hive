@@ -1,13 +1,35 @@
 use std::sync::Arc;
 
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::TrayIconBuilder,
+    AppHandle, Emitter, Manager,
+};
+
+// ============================================
+// Server State
+// ============================================
+
 struct ServerState {
     child: tokio::sync::Mutex<Option<tokio::process::Child>>,
     entry: String,
     project_root: String,
+    status: tokio::sync::watch::Sender<ServerStatus>,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct ServerStatus {
+    state: String,
+    pid: Option<u32>,
+    restart_count: u32,
+}
+
+// ============================================
+// Server Lifecycle
+// ============================================
+
 async fn do_spawn(entry: &str, cwd: &str) -> Result<tokio::process::Child, String> {
-    eprintln!("[hive-desktop] Starting server: node {} (cwd: {})", entry, cwd);
+    eprintln!("[hive] Starting server: node {} (cwd: {})", entry, cwd);
 
     let child = tokio::process::Command::new("node")
         .arg(entry)
@@ -18,67 +40,247 @@ async fn do_spawn(entry: &str, cwd: &str) -> Result<tokio::process::Child, Strin
         .map_err(|e| format!("Failed to spawn server: {}", e))?;
 
     if let Some(pid) = child.id() {
-        eprintln!("[hive-desktop] Server started with pid {}", pid);
+        eprintln!("[hive] Server started with pid {}", pid);
     }
 
     Ok(child)
 }
 
 async fn spawn_server(state: &ServerState) -> Result<(), String> {
+    let _ = state.status.send(ServerStatus {
+        state: "starting".to_string(),
+        pid: None,
+        restart_count: 0,
+    });
+
     match do_spawn(&state.entry, &state.project_root).await {
         Ok(child) => {
+            let pid = child.id();
             *state.child.lock().await = Some(child);
-            eprintln!("[hive-desktop] Server is running");
+            eprintln!("[hive] Server is running");
+
+            let _ = state.status.send(ServerStatus {
+                state: "running".to_string(),
+                pid,
+                restart_count: 0,
+            });
             Ok(())
         }
-        Err(e) => Err(e),
+        Err(e) => {
+            let _ = state.status.send(ServerStatus {
+                state: "failed".to_string(),
+                pid: None,
+                restart_count: 0,
+            });
+            Err(e)
+        }
     }
 }
 
+async fn health_check(port: u16) -> bool {
+    reqwest::get(&format!("http://localhost:{}/health", port))
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
+}
+
+// ============================================
+// Auto Restart Watcher (Task 5.3)
+// ============================================
+
+async fn watch_server(app: AppHandle, state: Arc<ServerState>) {
+    let max_restarts: u32 = 5;
+    let restart_delay = std::time::Duration::from_millis(500);
+    let mut consecutive_restarts: u32 = 0;
+    let mut last_restart = std::time::Instant::now();
+
+    loop {
+        // Wait for the server process to exit
+        {
+            let mut guard = state.child.lock().await;
+            if let Some(ref mut child) = *guard {
+                match child.wait().await {
+                    Ok(status) => eprintln!("[hive] Server exited with status: {}", status),
+                    Err(e) => eprintln!("[hive] Server error: {}", e),
+                }
+                *guard = None;
+            }
+        }
+
+        // Reset counter if last restart was > 60s ago
+        if last_restart.elapsed() > std::time::Duration::from_secs(60) {
+            consecutive_restarts = 0;
+        }
+
+        if consecutive_restarts >= max_restarts {
+            eprintln!("[hive] Max restart attempts ({}) reached", max_restarts);
+            let _ = state.status.send(ServerStatus {
+                state: "failed".to_string(),
+                pid: None,
+                restart_count: consecutive_restarts,
+            });
+            let _ = app.emit("sidecar-status", ServerStatus {
+                state: "failed".to_string(),
+                pid: None,
+                restart_count: consecutive_restarts,
+            });
+            break;
+        }
+
+        tokio::time::sleep(restart_delay).await;
+        consecutive_restarts += 1;
+        last_restart = std::time::Instant::now();
+
+        eprintln!("[hive] Auto-restarting server ({}/{})", consecutive_restarts, max_restarts);
+
+        let _ = app.emit("sidecar-status", ServerStatus {
+            state: "starting".to_string(),
+            pid: None,
+            restart_count: consecutive_restarts,
+        });
+
+        match spawn_server(&state).await {
+            Ok(()) => {
+                // Health check polling (Task 5.2)
+                let mut health_ok = false;
+                for _ in 0..30 {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    if health_check(4450).await {
+                        health_ok = true;
+                        break;
+                    }
+                }
+
+                if health_ok {
+                    let _ = app.emit("sidecar-status", ServerStatus {
+                        state: "running".to_string(),
+                        pid: None,
+                        restart_count: consecutive_restarts,
+                    });
+                } else {
+                    eprintln!("[hive] Server health check failed after restart");
+                }
+            }
+            Err(e) => eprintln!("[hive] Restart failed: {}", e),
+        }
+    }
+}
+
+// ============================================
+// Tauri Commands
+// ============================================
+
 #[tauri::command]
-async fn get_server_status(state: tauri::State<'_, Arc<ServerState>>) -> Result<bool, String> {
-    let mut guard = state.child.lock().await;
-    if let Some(ref mut c) = *guard {
-        let status = c.try_wait().map_err(|e| e.to_string())?;
-        Ok(status.is_none())
+async fn get_server_status(state: tauri::State<'_, Arc<ServerState>>) -> Result<ServerStatus, String> {
+    let is_running = {
+        let mut guard = state.child.lock().await;
+        if let Some(ref mut c) = *guard {
+            c.try_wait().map_err(|e| e.to_string())?.is_none()
+        } else {
+            false
+        }
+    };
+
+    let current = state.status.borrow().clone();
+    if !is_running && current.state == "running" {
+        Ok(ServerStatus {
+            state: "stopped".to_string(),
+            pid: None,
+            restart_count: current.restart_count,
+        })
     } else {
-        Ok(false)
+        Ok(current)
     }
 }
 
 #[tauri::command]
 async fn restart_server(state: tauri::State<'_, Arc<ServerState>>) -> Result<(), String> {
-    // Kill existing child
     {
         let mut guard = state.child.lock().await;
         if let Some(ref mut c) = *guard {
-            eprintln!("[hive-desktop] Killing server for restart...");
+            eprintln!("[hive] Killing server for restart...");
             let _ = c.start_kill();
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                c.wait(),
-            )
-            .await;
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), c.wait()).await;
             *guard = None;
         }
     }
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     spawn_server(&state).await
 }
+
+// ============================================
+// System Tray (Task 8.1)
+// ============================================
+
+fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let show = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
+    let restart = MenuItem::with_id(app, "restart", "重启服务", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+
+    let menu = Menu::with_items(
+        app,
+        &[&show, &PredefinedMenuItem::separator(app)?, &restart, &PredefinedMenuItem::separator(app)?, &quit],
+    )?;
+
+    let _tray = TrayIconBuilder::with_id("main-tray")
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .tooltip("Hive Desktop")
+        .on_menu_event(|app, event| {
+            match event.id.as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "restart" => {
+                    let app_clone = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let state = app_clone.state::<Arc<ServerState>>();
+                        let s = (*state).clone();
+                        // Re-spawn: kill and restart
+                        {
+                            let mut guard = s.child.lock().await;
+                            if let Some(ref mut c) = *guard {
+                                let _ = c.start_kill();
+                                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), c.wait()).await;
+                                *guard = None;
+                            }
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        let _ = spawn_server(&s).await;
+                    });
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
+
+// ============================================
+// Project Root Resolution
+// ============================================
 
 fn resolve_project_root() -> std::path::PathBuf {
     std::env::current_dir()
         .unwrap_or_default()
-        .parent()
-        .map(|p| p.parent())
-        .flatten()
-        .map(|p| p.parent())
-        .flatten()
+        .ancestors()
+        .nth(3)
         .unwrap_or(&std::env::current_dir().unwrap_or_default())
         .to_path_buf()
 }
+
+// ============================================
+// App Entry
+// ============================================
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -93,21 +295,34 @@ pub fn run() {
         child: tokio::sync::Mutex::new(None),
         entry: server_entry,
         project_root: project_root_str,
+        status: tokio::sync::watch::Sender::new(ServerStatus {
+            state: "starting".to_string(),
+            pid: None,
+            restart_count: 0,
+        }),
     });
 
     let cleanup_state = server_state.clone();
     let spawn_state = server_state.clone();
+    let watch_state = server_state.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(server_state)
         .invoke_handler(tauri::generate_handler![get_server_status, restart_server])
-        .setup(move |_app| {
+        .setup(move |app| {
+            if let Err(e) = build_tray(app.handle()) {
+                eprintln!("[hive] Failed to build tray: {}", e);
+            }
+
+            let app_handle = app.handle().clone();
+
             std::thread::spawn(move || {
                 let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
                 rt.block_on(async {
                     // Kill leftover process on port 4450
-                    eprintln!("[hive-desktop] Checking port 4450...");
+                    eprintln!("[hive] Checking port 4450...");
                     if let Ok(output) = tokio::process::Command::new("lsof")
                         .args(["-ti", ":4450"])
                         .output()
@@ -116,7 +331,7 @@ pub fn run() {
                         let pids_str = String::from_utf8_lossy(&output.stdout).to_string();
                         let pids: Vec<&str> = pids_str.lines().filter(|l| !l.is_empty()).collect();
                         for pid in &pids {
-                            eprintln!("[hive-desktop] Killing leftover pid {}", pid);
+                            eprintln!("[hive] Killing leftover pid {}", pid);
                             let _ = tokio::process::Command::new("kill")
                                 .args(["-9", pid])
                                 .output()
@@ -128,7 +343,7 @@ pub fn run() {
                     }
 
                     // Build server
-                    eprintln!("[hive-desktop] Building server...");
+                    eprintln!("[hive] Building server...");
                     let root = resolve_project_root();
                     match tokio::process::Command::new("pnpm")
                         .args(["--filter", "@hive/server", "build"])
@@ -137,18 +352,38 @@ pub fn run() {
                         .await
                     {
                         Ok(output) if output.status.success() => {
-                            eprintln!("[hive-desktop] Server build complete");
+                            eprintln!("[hive] Server build complete");
                         }
                         Ok(output) => {
-                            eprintln!("[hive-desktop] Server build failed: {}", String::from_utf8_lossy(&output.stderr));
+                            eprintln!("[hive] Server build failed: {}", String::from_utf8_lossy(&output.stderr));
                         }
-                        Err(e) => eprintln!("[hive-desktop] Server build skipped: {}", e),
+                        Err(e) => eprintln!("[hive] Server build skipped: {}", e),
                     }
 
                     // Spawn initial server
                     match spawn_server(&spawn_state).await {
-                        Ok(()) => {}
-                        Err(e) => eprintln!("[hive-desktop] {}", e),
+                        Ok(()) => {
+                            // Health check polling (Task 5.2)
+                            for _ in 0..30 {
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                if health_check(4450).await {
+                                    eprintln!("[hive] Server health check passed");
+                                    let _ = app_handle.emit("sidecar-status", ServerStatus {
+                                        state: "running".to_string(),
+                                        pid: None,
+                                        restart_count: 0,
+                                    });
+                                    break;
+                                }
+                            }
+
+                            // Start auto-restart watcher (Task 5.3)
+                            let watch_handle = app_handle.clone();
+                            tauri::async_runtime::spawn(async move {
+                                watch_server(watch_handle, watch_state).await;
+                            });
+                        }
+                        Err(e) => eprintln!("[hive] {}", e),
                     }
                 });
             });
@@ -163,7 +398,7 @@ pub fn run() {
                 rt.block_on(async {
                     let mut guard = cleanup_state.child.lock().await;
                     if let Some(ref mut c) = *guard {
-                        eprintln!("[hive-desktop] Killing server on app exit...");
+                        eprintln!("[hive] Killing server on app exit...");
                         let _ = c.start_kill();
                     }
                 });
