@@ -105,18 +105,38 @@ jobs:
         run: |
           npx @tauri-apps/cli build --bundles msi --ci --config '{"build":{"beforeBuildCommand":""}}'
 
+      - name: Debug MSI location
+        shell: pwsh
+        run: |
+          Write-Host "=== Debug: bundle directory ==="
+          Get-ChildItem "apps/desktop/src-tauri/target/release/bundle" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+          Write-Host "=== Debug: msi directory ==="
+          Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/msi" -Recurse -File | Format-Table -AutoSize
+
       - name: Find MSI
         id: msi
         shell: pwsh
         run: |
-          $f = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/msi" -Filter "*.msi" | Select-Object -First 1
-          echo "path=$($f.FullName)" | Out-String -Width 4096
+          $f = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle" -Filter "*.msi" -Recurse | Select-Object -First 1
+          if ($f) {
+            echo "path=$($f.FullName)"
+          } else {
+            Write-Host "No MSI found, checking for exe..."
+            $e = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle" -Filter "*.exe" -Recurse | Select-Object -First 1
+            if ($e) {
+              echo "path=$($e.FullName)"
+            } else {
+              Write-Host "No MSI or EXE found"
+              exit 1
+            }
+          }
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4
         with:
           name: hive-desktop-windows-x64
           path: ${{ steps.msi.outputs.path }}
+          if-no-files-found: error
           retention-days: 1
 
   # ============================================
