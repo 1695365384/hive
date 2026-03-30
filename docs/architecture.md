@@ -8,12 +8,12 @@
 │                                                                     │
 │  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────┐  │
 │  │ apps/server  │  │ packages/core    │  │ packages/orchestrator │  │
-│  │ @hive/server │  │ @hive/core       │  │ @hive/orchestrator   │  │
+│  │ @bundy-lmw/hive-server │  │ @bundy-lmw/hive-core       │  │ @bundy-lmw/hive-orchestrator   │  │
 │  └──────┬───────┘  └───────┬──────────┘  └───────────┬───────────┘  │
 │         │                  │                         │              │
 │  ┌──────┴──────────────────┴─────────────────────────┴───────────┐  │
 │  │                packages/plugins/feishu                        │  │
-│  │                @hive/plugin-feishu                            │  │
+│  │                @bundy-lmw/hive-plugin-feishu                            │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -286,7 +286,7 @@ OpenAI 兼容适配器支持国产 LLM（Chat Completions API）：
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                   @hive/server                      │
+│                   @bundy-lmw/hive-server                      │
 │                                                     │
 │  ┌─────────────┐  ┌──────────────┐                  │
 │  │  HTTP GW    │  │  WebSocket   │                  │
@@ -319,7 +319,7 @@ OpenAI 兼容适配器支持国产 LLM（Chat Completions API）：
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              @hive/orchestrator                      │
+│              @bundy-lmw/hive-orchestrator                      │
 │                                                     │
 │  ┌──────────────┐  ┌──────────────────┐             │
 │  │  Scheduler   │  │   MessageBus     │             │

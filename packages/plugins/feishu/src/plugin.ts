@@ -1,5 +1,5 @@
 /**
- * @hive/plugin-feishu - FeishuPlugin
+ * @bundy-lmw/hive-plugin-feishu - FeishuPlugin
  *
  * 飞书插件主类，实现 IPlugin 接口。
  */
@@ -12,7 +12,7 @@ import type {
   IMessageBus,
   ILogger,
   ChannelMessageType,
-} from '@hive/core'
+} from '@bundy-lmw/hive-core'
 import { FeishuChannel } from './channel.js'
 import type { FeishuPluginConfig, FeishuAppConfig, IFeishuChannel } from './types.js'
 

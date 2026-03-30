@@ -1,5 +1,5 @@
 /**
- * @hive/plugin-feishu - Types
+ * @bundy-lmw/hive-plugin-feishu - Types
  *
  * 飞书插件特定类型定义。
  */
@@ -10,7 +10,7 @@ import type {
   ChannelMessage,
   ChannelSendOptions,
   ChannelSendResult,
-} from '@hive/core'
+} from '@bundy-lmw/hive-core'
 
 // ============================================
 // 飞书配置

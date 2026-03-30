@@ -1,4 +1,4 @@
-# @hive/plugin-feishu
+# @bundy-lmw/hive-plugin-feishu
 
 飞书消息通道插件，基于 `@larksuiteoapi/node-sdk` 实现。
 
@@ -16,7 +16,7 @@
 ## 安装
 
 ```bash
-pnpm add @hive/plugin-feishu
+pnpm add @bundy-lmw/hive-plugin-feishu
 ```
 
 ## 配置
@@ -26,7 +26,7 @@ pnpm add @hive/plugin-feishu
 ```json
 {
   "plugins": {
-    "@hive/plugin-feishu": {
+    "@bundy-lmw/hive-plugin-feishu": {
       "apps": [
         {
           "appId": "${FEISHU_APP_ID}",
@@ -55,7 +55,7 @@ FEISHU_APP_SECRET=xxxxxx
 ```json
 {
   "plugins": {
-    "@hive/plugin-feishu": {
+    "@bundy-lmw/hive-plugin-feishu": {
       "apps": [
         {
           "appId": "${FEISHU_APP_ID_1}",
@@ -178,6 +178,10 @@ pnpm dev
 # 测试
 pnpm test
 ```
+
+## GitHub
+
+[https://github.com/1695365384/hive](https://github.com/1695365384/hive)
 
 ## 许可证
 

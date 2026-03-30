@@ -3,7 +3,7 @@
 Hive 是一个多 Agent 协作框架，当前通过 `apps/server` 提供 HTTP + WebSocket 服务。现有架构：
 
 - `apps/server` — Node.js 服务，使用 Hono 框架，挂载 HTTP API 和 WS 网关
-- `@hive/core` — Agent 核心，包含 Provider 管理、Session、Skill、插件系统等
+- `@bundy-lmw/hive-core` — Agent 核心，包含 Provider 管理、Session、Skill、插件系统等
 - 插件通过 `.hive/plugins/` 目录扫描或 npm 包动态加载
 - 配置通过 `hive.config.json` 管理
 
@@ -19,7 +19,7 @@ Hive 是一个多 Agent 协作框架，当前通过 `apps/server` 提供 HTTP + 
 - 首次启动引导用户完成 Provider 配置
 
 **Non-Goals:**
-- 不重写 `@hive/core` 任何逻辑
+- 不重写 `@bundy-lmw/hive-core` 任何逻辑
 - 不替换现有 HTTP API（`/api/chat`、`/webhook/*` 保持不变）
 - 不实现热重载（配置变更通过进程重启生效）
 - 不做移动端适配（Tauri 2.0 mobile 暂不考虑）
@@ -47,7 +47,7 @@ Hive 是一个多 Agent 协作框架，当前通过 `apps/server` 提供 HTTP + 
 **替代方案**: Node 侧实现热重载（修改 ProviderManager 后不重启进程）。
 
 **理由**:
-- 实现简单，不需要修改 `@hive/core` 的初始化逻辑
+- 实现简单，不需要修改 `@bundy-lmw/hive-core` 的初始化逻辑
 - 状态彻底重置，不会有残留问题
 - 端口、插件等配置变更本身就需要重启才能完全生效
 - 重启耗时 < 2 秒，用户感知可接受
