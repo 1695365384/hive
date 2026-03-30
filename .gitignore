@@ -78,3 +78,6 @@ coverage/
 
 # Node.js compile cache
 node-compile-cache/
+
+# esbuild server bundle output
+apps/server/bundle/
