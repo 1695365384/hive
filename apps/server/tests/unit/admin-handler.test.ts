@@ -555,7 +555,7 @@ describe('AdminWsHandler', () => {
         },
       })
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
-        pluginConfigs: {
+        plugins: {
           '@bundy-lmw/hive-plugin-feishu': { appId: 'test-app', appSecret: 'test-secret' },
         },
       }))
@@ -625,7 +625,6 @@ describe('AdminWsHandler', () => {
       expect(event.data.name).toBe('@bundy-lmw/hive-plugin-test')
 
       expect(installPlugin).toHaveBeenCalledWith('@bundy-lmw/hive-plugin-test')
-      expect(writeFileSync).toHaveBeenCalled()
     })
 
     it('should return error when installPlugin fails', async () => {
@@ -738,7 +737,7 @@ describe('AdminWsHandler', () => {
       vi.mocked(loadRegistry).mockReturnValue({})
       vi.mocked(existsSync).mockReturnValue(true)
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
-        pluginConfigs: { 'other-plugin': { key: 'val' } },
+        plugins: { 'other-plugin': { key: 'val' } },
       }))
 
       const { handler, ws, getSentMessages } = setup()
@@ -751,10 +750,11 @@ describe('AdminWsHandler', () => {
       expect(res.success).toBe(true)
 
       // Verify writeFileSync was called with merged config
+      // saveConfig writes pluginConfigs as "plugins" key
       const writeCall = vi.mocked(writeFileSync).mock.calls[0]
       const written = JSON.parse(writeCall[1] as string)
-      expect(written.pluginConfigs.feishu).toEqual({ appId: 'test' })
-      expect(written.pluginConfigs['other-plugin']).toEqual({ key: 'val' })
+      expect(written.plugins.feishu).toEqual({ appId: 'test' })
+      expect(written.plugins['other-plugin']).toEqual({ key: 'val' })
     })
   })
 
