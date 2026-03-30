@@ -48,7 +48,7 @@ mkdir -p "$OUT_DIR"
 # =============================================
 echo "[sea] Step 1: esbuild bundle..."
 
-npx esbuild "$SERVER_ROOT/src/main.ts" \
+pnpm exec esbuild "$SERVER_ROOT/src/main.ts" \
   --bundle \
   --platform=node \
   --target=node22 \
