@@ -22,7 +22,7 @@
 
 ## Impact
 
-- `@hive/core` — `IPlugin` 接口签名变更（`initialize` 增加参数），所有插件需适配
-- `@hive/plugin-feishu` — 新增文件上传/下载逻辑，修改消息收发流程
+- `@bundy-lmw/hive-core` — `IPlugin` 接口签名变更（`initialize` 增加参数），所有插件需适配
+- `@bundy-lmw/hive-plugin-feishu` — 新增文件上传/下载逻辑，修改消息收发流程
 - `apps/server` — `ServerImpl` 传递 workspace 目录给插件
 - 无新增外部依赖（`@larksuiteoapi/node-sdk` 已包含文件 API）

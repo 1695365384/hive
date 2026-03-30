@@ -24,6 +24,6 @@
 ## Impact
 
 - **受影响文件**：~15 个文件（ILogger 导入迁移）+ 3-4 个文件（workspace-persistence 移动）+ 2-3 个文件（Agent.ts 拆分）
-- **API 兼容性**：ILogger 重新导出保证 `from '@hive/core'` 和 `from '../plugins/types.js'` 仍可工作
+- **API 兼容性**：ILogger 重新导出保证 `from '@bundy-lmw/hive-core'` 和 `from '../plugins/types.js'` 仍可工作
 - **依赖方向**：providers 不再 import workspace，通过接口注入解耦
 - **测试**：现有 640 个测试应全部通过，不需要新增测试（纯重构）

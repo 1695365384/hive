@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm --filter @hive/core test",
-    "test:e2e": "pnpm --filter @hive/core test:e2e"
+    "test": "pnpm --filter @bundy-lmw/hive-core test",
+    "test:e2e": "pnpm --filter @bundy-lmw/hive-core test:e2e",
+    "publish:core": "pnpm --filter @bundy-lmw/hive-core build && cd packages/core && npm version patch --no-git-tag-version && npm publish --access public",
+    "publish:feishu": "pnpm --filter @bundy-lmw/hive-plugin-feishu build && cd packages/plugins/feishu && npm version patch --no-git-tag-version && npm publish --access public",
+    "publish:server": "pnpm --filter @bundy-lmw/hive-server build && cd apps/server && npm version patch --no-git-tag-version && npm publish --access public",
+    "publish:all": "pnpm publish:core && pnpm publish:server && pnpm publish:feishu"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.0",

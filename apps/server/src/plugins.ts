@@ -10,10 +10,11 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs'
-import { resolve, join } from 'path'
+import { resolve } from 'path'
 import { pathToFileURL } from 'url'
-import type { IPlugin } from '@hive/core'
-import { getConfig, HIVE_HOME } from './config.js'
+import type { IPlugin } from '@bundy-lmw/hive-core'
+import { getConfig } from './config.js'
+import { PLUGINS_DIR } from './plugin-manager/constants.js'
 
 // ============================================
 // 类型
@@ -39,12 +40,14 @@ interface PluginPackageJson {
 // 目录扫描
 // ============================================
 
-const PLUGINS_DIR = resolve(HIVE_HOME, 'plugins')
-
 /**
  * 扫描 .hive/plugins/ 目录，发现合法插件
+ *
+ * 支持两种目录结构：
+ * 1. 直接目录：plugin/package.json（含 hive.plugin）
+ * 2. npm --prefix 安装：plugin/node_modules/@bundy-lmw/hive-plugin-xxx/package.json
  */
-function scanPluginDir(): PluginManifest[] {
+export function scanPluginDir(): PluginManifest[] {
   if (!existsSync(PLUGINS_DIR)) {
     return []
   }
@@ -53,32 +56,100 @@ function scanPluginDir(): PluginManifest[] {
   const entries = readdirSync(PLUGINS_DIR, { withFileTypes: true })
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
 
     const pluginDir = resolve(PLUGINS_DIR, entry.name)
-    const pkgJsonPath = resolve(pluginDir, 'package.json')
-
-    if (!existsSync(pkgJsonPath)) continue
-
-    try {
-      const pkgJson: PluginPackageJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'))
-
-      if (!pkgJson.hive?.plugin) continue
-
-      const entryFile = pkgJson.hive.entry ?? 'dist/index.js'
-      const entryPath = resolve(pluginDir, entryFile)
-
-      manifests.push({
-        dir: pluginDir,
-        name: pkgJson.name ?? entry.name,
-        entry: entryPath,
-      })
-    } catch {
-      console.error(`[plugins] Failed to parse ${entry.name}/package.json, skipping`)
+    const manifest = resolveManifest(pluginDir, entry.name)
+    if (manifest) {
+      manifests.push(manifest)
     }
   }
 
   return manifests
+}
+
+/**
+ * 从插件目录解析 manifest
+ *
+ * 优先检查直接 package.json，其次检查 npm --prefix 安装的 node_modules。
+ */
+function resolveManifest(pluginDir: string, dirName: string): PluginManifest | null {
+  // 1. 直接目录下的 package.json
+  const directPkgPath = resolve(pluginDir, 'package.json')
+  if (existsSync(directPkgPath)) {
+    try {
+      const pkgJson: PluginPackageJson = JSON.parse(readFileSync(directPkgPath, 'utf-8'))
+      if (pkgJson.hive?.plugin) {
+        const entryFile = pkgJson.hive.entry ?? 'dist/index.js'
+        return {
+          dir: pluginDir,
+          name: pkgJson.name ?? dirName,
+          entry: resolve(pluginDir, entryFile),
+        }
+      }
+    } catch (error) {
+      console.error(`[plugins] Failed to parse ${dirName}/package.json:`, error instanceof Error ? error.message : 'unknown error')
+      return null
+    }
+  }
+
+  // 2. npm --prefix 安装：检查 node_modules/ 下的包
+  const nmDir = resolve(pluginDir, 'node_modules')
+  if (!existsSync(nmDir)) return null
+
+  const nmEntries = readdirSync(nmDir, { withFileTypes: true })
+  for (const nmEntry of nmEntries) {
+    if (!nmEntry.isDirectory()) continue
+
+    if (nmEntry.name.startsWith('@')) {
+      const manifest = resolveScopedPackage(nmDir, nmEntry.name, pluginDir, dirName)
+      if (manifest) return manifest
+    } else {
+      const pkgJsonPath = resolve(nmDir, nmEntry.name, 'package.json')
+      const manifest = tryParsePkgJson(pkgJsonPath, pluginDir, dirName)
+      if (manifest) return manifest
+    }
+  }
+
+  return null
+}
+
+/**
+ * 解析 scoped npm 包（@scope/pkg）的 manifest
+ */
+function resolveScopedPackage(
+  nmDir: string,
+  scopeName: string,
+  pluginDir: string,
+  dirName: string,
+): PluginManifest | null {
+  const scopeDir = resolve(nmDir, scopeName)
+  const scopeEntries = readdirSync(scopeDir, { withFileTypes: true })
+  for (const scopeEntry of scopeEntries) {
+    if (!scopeEntry.isDirectory()) continue
+    const pkgJsonPath = resolve(scopeDir, scopeEntry.name, 'package.json')
+    const manifest = tryParsePkgJson(pkgJsonPath, pluginDir, dirName)
+    if (manifest) return manifest
+  }
+  return null
+}
+
+function tryParsePkgJson(pkgJsonPath: string, pluginDir: string, dirName: string): PluginManifest | null {
+  try {
+    const pkgJson: PluginPackageJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'))
+    if (!pkgJson.hive?.plugin) return null
+
+    const entryFile = pkgJson.hive.entry ?? 'dist/index.js'
+    const pkgDir = resolve(pkgJsonPath, '..')
+    return {
+      dir: pluginDir,
+      name: pkgJson.name ?? dirName,
+      entry: resolve(pkgDir, entryFile),
+    }
+  } catch (error) {
+    console.warn(`[plugins] Failed to parse ${pkgJsonPath}:`, error instanceof Error ? error.message : 'unknown error')
+    return null
+  }
 }
 
 // ============================================
@@ -144,6 +215,35 @@ async function loadFromNpm(pluginConfigs: Record<string, Record<string, unknown>
   }
 
   return plugins
+}
+
+// ============================================
+// 配置归一化
+// ============================================
+
+/**
+ * Normalize feishu plugin config: ensure `groups` field exists and is a plain object.
+ */
+export function normalizeFeishuPluginConfig(pluginConfig: Record<string, unknown>): Record<string, unknown> {
+  const channels = pluginConfig.channels as Record<string, unknown> | undefined
+  if (!channels || typeof channels !== 'object') return pluginConfig
+
+  const feishu = channels.feishu
+  if (!feishu || typeof feishu !== 'object') return pluginConfig
+
+  const feishuConfig = feishu as Record<string, unknown>
+
+  if ('groups' in feishuConfig && feishuConfig.groups !== null && typeof feishuConfig.groups === 'object' && !Array.isArray(feishuConfig.groups)) {
+    return pluginConfig
+  }
+
+  return {
+    ...pluginConfig,
+    channels: {
+      ...channels,
+      feishu: { ...feishuConfig, groups: {} },
+    },
+  }
 }
 
 // ============================================

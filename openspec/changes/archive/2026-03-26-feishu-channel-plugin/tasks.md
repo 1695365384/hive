@@ -1,8 +1,8 @@
 ## 1. 插件接口定义
 
-- [x] 1.1 在 `@hive/core` 中定义 `IPlugin` 接口（生命周期方法）
-- [x] 1.2 在 `@hive/core` 中定义 `IChannel` 接口（send, id, type）
-- [x] 1.3 在 `@hive/core` 中定义 `PluginContext` 类型
+- [x] 1.1 在 `@bundy-lmw/hive-core` 中定义 `IPlugin` 接口（生命周期方法）
+- [x] 1.2 在 `@bundy-lmw/hive-core` 中定义 `IChannel` 接口（send, id, type）
+- [x] 1.3 在 `@bundy-lmw/hive-core` 中定义 `PluginContext` 类型
 - [x] 1.4 导出接口类型
 
 ## 2. 飞书插件包初始化

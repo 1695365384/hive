@@ -1,18 +1,27 @@
 /**
- * @hive/plugin-feishu - Signature Verification Tests
+ * @bundy-lmw/hive-plugin-feishu - Signature Verification Tests
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import crypto from 'crypto'
 import { FeishuChannel } from '../src/channel.js'
-import type { IMessageBus, ILogger } from '@hive/core'
+import type { IMessageBus, ILogger } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK - use vi.hoisted for proper hoisting
 vi.mock('@larksuiteoapi/node-sdk', () => {
   return {
     Client: class MockClient {},
+    WSClient: class MockWSClient {
+      start = vi.fn().mockResolvedValue(undefined)
+      stop = vi.fn().mockResolvedValue(undefined)
+      close = vi.fn()
+    },
+    EventDispatcher: class MockEventDispatcher {
+      register = vi.fn()
+    },
     AppType: { SelfBuild: 'SelfBuild' },
     Domain: { Feishu: 'https://open.feishu.cn' },
+    LoggerLevel: { warn: 'warn', info: 'info', error: 'error', debug: 'debug' },
   }
 })
 

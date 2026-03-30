@@ -1,10 +1,10 @@
 /**
- * @hive/plugin-feishu
+ * @bundy-lmw/hive-plugin-feishu
  *
  * 飞书消息通道插件。
  *
  * 用法：
- *   import { FeishuPlugin } from '@hive/plugin-feishu'
+ *   import { FeishuPlugin } from '@bundy-lmw/hive-plugin-feishu'
  *   const plugin = new FeishuPlugin({ apps: [{ appId: '...', appSecret: '...' }] })
  */
 

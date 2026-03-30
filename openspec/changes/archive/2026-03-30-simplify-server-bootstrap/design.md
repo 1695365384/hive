@@ -1,21 +1,21 @@
 ## Context
 
-当前 `apps/server/bootstrap.ts` 509 行，手动编排了太多 SDK 本该内置的逻辑。同时 `@hive/orchestrator` 包包含 `PluginHost`、`Scheduler`、`AgentPool` 等废弃代码，只剩 `MessageBus` 一个有用的类还在被使用。
+当前 `apps/server/bootstrap.ts` 509 行，手动编排了太多 SDK 本该内置的逻辑。同时 `@bundy-lmw/hive-orchestrator` 包包含 `PluginHost`、`Scheduler`、`AgentPool` 等废弃代码，只剩 `MessageBus` 一个有用的类还在被使用。
 
 **现状:**
 - `bootstrap.ts` 承担了：插件加载、数据库初始化、定时任务引擎 + setDependencies、心跳调度、Channel 注册表管理、消息总线订阅编排
-- `@hive/orchestrator` 被 `apps/server` 仅引用了 `MessageBus`，其余全部未使用
+- `@bundy-lmw/hive-orchestrator` 被 `apps/server` 仅引用了 `MessageBus`，其余全部未使用
 - `HeartbeatScheduler` 使用 `setInterval`，应用重启后心跳状态丢失
 
 **约束:**
 - 保持向后兼容：`createAgent()` 仍然可用，Server 特性是可选的
-- Feishu 等插件使用 `@hive/core` 的 `IPlugin` 接口，不依赖 `orchestrator.PluginHost`
+- Feishu 等插件使用 `@bundy-lmw/hive-core` 的 `IPlugin` 接口，不依赖 `orchestrator.PluginHost`
 - 定时任务的 every/at 模式刚改为 cron 实现，行为不变
 
 ## Goals / Non-Goals
 
 **Goals:**
-- 将 `MessageBus` 迁移到 `@hive/core`，删除 `@hive/orchestrator`
+- 将 `MessageBus` 迁移到 `@bundy-lmw/hive-core`，删除 `@bundy-lmw/hive-orchestrator`
 - 将 bootstrap 的编排逻辑收拢为 `createServer()` 工厂
 - `apps/server/bootstrap.ts` 瘦到 ~50 行
 - `HeartbeatScheduler` 改用 cron 持久化调度
@@ -28,7 +28,7 @@
 
 ## Decisions
 
-### Decision 1: `MessageBus` 迁移到 `@hive/core/src/bus/`
+### Decision 1: `MessageBus` 迁移到 `@bundy-lmw/hive-core/src/bus/`
 
 **选择:** 直接迁移文件，不做接口包装。
 
@@ -44,17 +44,17 @@ packages/orchestrator/src/scheduler/           →  删除
 packages/orchestrator/tests/                   →  只保留 bus 测试，其他删除
 ```
 
-**替代方案:** 保留 `@hive/orchestrator` 包但清空其他内容。**否决**——一个包只放一个类不合理，且增加了维护负担。
+**替代方案:** 保留 `@bundy-lmw/hive-orchestrator` 包但清空其他内容。**否决**——一个包只放一个类不合理，且增加了维护负担。
 
 ---
 
-### Decision 2: 删除 `@hive/orchestrator` 包
+### Decision 2: 删除 `@bundy-lmw/hive-orchestrator` 包
 
 **选择:** 直接删除整个包，从 `apps/server` 的 `package.json` 移除依赖。
 
 **理由:** `PluginHost` 和 `Scheduler` 是旧设计遗留，从未在当前代码路径中被使用。`MessageBus` 迁走后无留存理由。
 
-**注意:** `apps/server` 和 `apps/cli` 的 import 路径从 `from '@hive/orchestrator'` 改为 `from '@hive/core'`。
+**注意:** `apps/server` 和 `apps/cli` 的 import 路径从 `from '@bundy-lmw/hive-orchestrator'` 改为 `from '@bundy-lmw/hive-core'`。
 
 ---
 
@@ -193,7 +193,7 @@ export class HeartbeatScheduler {
 
 **最终 `apps/server/bootstrap.ts` (~50 行):**
 ```typescript
-import { createServer } from '@hive/core/server'
+import { createServer } from '@bundy-lmw/hive-core/server'
 import { resolve } from 'path'
 
 export async function bootstrap(config: ServerConfig): Promise<HiveContext> {
@@ -224,7 +224,7 @@ export async function bootstrap(config: ServerConfig): Promise<HiveContext> {
 ## Risks / Trade-offs
 
 **[Risk] `MessageBus` 迁移后的事件订阅兼容性**
-→ `FeishuPlugin.activate()` 订阅了 `message:response`，`bootstrap.subscribeScheduleHandlers` 也订阅了 `schedule:completed`。迁移后行为不变，但需要确认没有其他地方直接引用了 `@hive/orchestrator`。
+→ `FeishuPlugin.activate()` 订阅了 `message:response`，`bootstrap.subscribeScheduleHandlers` 也订阅了 `schedule:completed`。迁移后行为不变，但需要确认没有其他地方直接引用了 `@bundy-lmw/hive-orchestrator`。
 
 **[Risk] 删除了未来的多 Agent 可能性**
 → `Scheduler` 和 `AgentPool` 删除后，将来如果需要多 Agent 调度场景需要重新实现。但用户明确当前不考虑多 Agent，短中期优先简化。
@@ -239,12 +239,12 @@ export async function bootstrap(config: ServerConfig): Promise<HiveContext> {
 
 1. **新增 `packages/core/src/bus/`** — 迁移 MessageBus 和 types
 2. **新增 `packages/core/src/server/`** — 实现 Server 类和 ChannelContext
-3. **修改 `@hive/core/src/index.ts`** — 导出 MessageBus
+3. **修改 `@bundy-lmw/hive-core/src/index.ts`** — 导出 MessageBus
 4. **更新 `apps/server/src/bootstrap.ts`** — 使用 createServer
-5. **更新 `apps/server/package.json`** — 移除 `@hive/orchestrator` 依赖
+5. **更新 `apps/server/package.json`** — 移除 `@bundy-lmw/hive-orchestrator` 依赖
 6. **删除 `packages/orchestrator/` 整个目录**
 7. **修改 `HeartbeatScheduler`** — 改用 cron
-8. **更新所有 import 路径** — `@hive/orchestrator` → `@hive/core`
+8. **更新所有 import 路径** — `@bundy-lmw/hive-orchestrator` → `@bundy-lmw/hive-core`
 9. **运行测试验证** — 单元测试 + 集成测试
 10. **验证构建** — `npm run build`
 

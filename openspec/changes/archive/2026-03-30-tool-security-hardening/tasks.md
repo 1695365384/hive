@@ -56,4 +56,4 @@
 - [x] 9.6 为 file-tool 路径约束编写测试 — 路径穿越拒绝、工作目录内允许、TOCTOU 修复验证
 - [x] 9.7 为 bash-tool allowlist 编写测试 — 允许命令、拒绝命令、绕过尝试
 - [x] 9.8 更新现有工具测试适配 schema 变更（timeout/maxResults 范围约束）
-- [x] 9.9 运行 `pnpm --filter @hive/core test` 确保全部测试通过
+- [x] 9.9 运行 `pnpm --filter @bundy-lmw/hive-core test` 确保全部测试通过
