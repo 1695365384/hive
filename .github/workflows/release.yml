@@ -30,7 +30,10 @@ jobs:
           cache: 'pnpm'
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
+
+      - name: Build core
+        run: pnpm --filter @bundy-lmw/hive-core build
 
       - name: Build server
         run: pnpm --filter @bundy-lmw/hive-server build
@@ -74,6 +77,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install Rust
+        shell: bash
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           rustup default stable
@@ -92,6 +96,7 @@ jobs:
 
       - name: Build Tauri (MSI)
         working-directory: ./apps/desktop
+        shell: bash
         run: npx @tauri-apps/cli build --bundles msi
 
       - name: Find MSI
@@ -152,6 +157,7 @@ jobs:
 
       - name: Build Tauri (${{ matrix.arch }})
         working-directory: ./apps/desktop
+        shell: bash
         run: npx @tauri-apps/cli build --target ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }} --bundles dmg
 
       - name: Find DMG
