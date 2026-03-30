@@ -76,16 +76,41 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     }
   })
 
-  // Setup WebSocket
+  // Setup WebSocket (plugin channels)
   const { createWebSocketGateway } = await import('./gateway/websocket.js')
   const wsGateway = createWebSocketGateway(server, context)
+
+  // Setup Admin WebSocket
+  const { WebSocketServer } = await import('ws')
+  const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')
+  const adminWs = new WebSocketServer({ noServer: true })
+  const adminHandler = createAdminWsHandler()
+  adminHandler.setServer(context.server)
+  adminHandler.setHttpServer(server)
+
+  server.on('upgrade', (request, socket, head) => {
+    const url = new URL(request.url || '/', `http://${request.headers.host}`)
+    if (url.pathname === '/ws/admin') {
+      adminWs.handleUpgrade(request, socket, head, (ws) => {
+        adminWs.emit('connection', ws, request)
+      })
+    }
+    // 其他 WS 升级（如插件 channel）由 wsGateway 处理
+  })
+
+  adminWs.on('connection', (ws) => {
+    adminHandler.handleConnection(ws)
+  })
 
   return new Promise((resolve) => {
     server.listen(serverConfig.port, () => {
       console.log(`[hive] Server started on port ${serverConfig.port}`)
+      console.log(`[hive] Admin WS available at ws://localhost:${serverConfig.port}/ws/admin`)
       resolve({
         context,
         close: async () => {
+          adminHandler.closeAll()
+          adminWs.close()
           wsGateway.close()
           server.close()
           await shutdown(context)
