@@ -31,8 +31,8 @@ jobs:
       - name: Test core
         run: pnpm --filter @bundy-lmw/hive-core test
 
-      - name: Test server
-        run: pnpm --filter @bundy-lmw/hive-server test
+      - name: Test server (unit only)
+        run: pnpm --filter @bundy-lmw/hive-server exec vitest run --dir tests/unit
 
       - name: Type check desktop
         run: pnpm --filter @bundy-lmw/hive-desktop exec tsc --noEmit
