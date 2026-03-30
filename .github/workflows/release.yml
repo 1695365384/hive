@@ -96,26 +96,15 @@ jobs:
           name: frontend-dist
           path: apps/desktop/dist
 
-      - name: Build Tauri Rust
-        working-directory: ./apps/desktop/src-tauri
-        shell: bash
-        env:
-          TAURI_BUILD_NON_INCREMENTAL: 'true'
-        run: |
-          # Build Rust binary only, skip frontend build
-          cargo build --release
-
-      - name: Bundle MSI
+      - name: Build Tauri
         working-directory: ./apps/desktop/src-tauri
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: "dummy"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
-          $env:TAURI_SIGNING_PRIVATE_KEY="dummy"
-          $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-          # Run just the bundler without full build
-          $bundleDir = "target/release/bundle/msi"
-          New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
-          # Use tauri bundle directly
-          cargo tauri build --bundles msi --no-dev
+          # Override beforeBuildCommand to empty since web is pre-built
+          cargo tauri build --bundles msi --no-dev --ci --config "{\"build\":{\"beforeBuildCommand\":\"\"}}"
 
       - name: Find MSI
         id: msi
@@ -175,19 +164,15 @@ jobs:
           name: frontend-dist
           path: apps/desktop/dist
 
-      - name: Build Tauri Rust
+      - name: Build Tauri
         working-directory: ./apps/desktop/src-tauri
         shell: bash
         env:
-          TAURI_BUILD_NON_INCREMENTAL: 'true'
+          TAURI_SIGNING_PRIVATE_KEY: "dummy"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
-          cargo build --release --target ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
-
-      - name: Bundle DMG
-        working-directory: ./apps/desktop/src-tauri
-        shell: bash
-        run: |
-          cargo tauri build --bundles dmg --target ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }} --no-dev
+          # Override beforeBuildCommand to empty since web is pre-built
+          cargo tauri build --bundles dmg --target ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }} --no-dev --ci --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Find DMG
         id: dmg
