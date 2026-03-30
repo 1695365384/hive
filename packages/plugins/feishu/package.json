@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:zip": "node scripts/build-zip.mjs",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
