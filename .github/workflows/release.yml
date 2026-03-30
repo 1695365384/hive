@@ -82,6 +82,9 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           rustup default stable
 
+      - name: Install node_modules (for beforeBuildCommand)
+        run: pnpm install
+
       - name: Download server
         uses: actions/download-artifact@v4
         with:
@@ -142,6 +145,9 @@ jobs:
         run: |
           rustup default stable
           rustup target add ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
+
+      - name: Install node_modules (for beforeBuildCommand)
+        run: pnpm install
 
       - name: Download server
         uses: actions/download-artifact@v4
