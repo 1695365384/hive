@@ -21,17 +21,19 @@ export type ProviderType = 'openai' | 'anthropic' | 'google' | 'openai-compatibl
  * Provider 配置
  */
 export interface ProviderConfig {
-  /** 唯一标识 */
+  /** 唯一标识（对应 providers 表 id） */
   id: string;
   /** 显示名称 */
   name: string;
-  /** Provider 类型 */
+  /** Provider 类型（由 providers 表自动补全） */
   type?: ProviderType;
-  /** API 基础 URL */
-  baseUrl: string;
-  /** API Key */
+  /** AI SDK npm 包名（由 providers 表自动补全，用于适配器匹配） */
+  npmPackage?: string;
+  /** API 基础 URL（由 providers 表自动补全，用户配置中不需要设置） */
+  baseUrl?: string;
+  /** API Key（用户配置或环境变量） */
   apiKey?: string;
-  /** 默认模型 */
+  /** 默认模型（由 providers 表自动补全） */
   model?: string;
   /** 是否启用 */
   enabled?: boolean;
@@ -73,7 +75,9 @@ export interface ModelSpec {
   contextWindow: number;
   /** 最大输出 tokens */
   maxOutputTokens?: number;
-  /** 是否支持视觉 */
+  /** 最大输入 tokens */
+  maxInputTokens?: number;
+  /** 是否支持视觉/附件 */
   supportsVision?: boolean;
   /** 是否支持工具调用 */
   supportsTools?: boolean;
@@ -81,6 +85,22 @@ export interface ModelSpec {
   supportsStreaming?: boolean;
   /** 是否支持推理（如 DeepSeek Reasoner） */
   supportsReasoning?: boolean;
+  /** 是否支持结构化输出 */
+  supportsStructuredOutput?: boolean;
+  /** 是否支持 temperature 参数 */
+  supportsTemperature?: boolean;
+  /** 是否开源权重 */
+  openWeights?: boolean;
+  /** 知识截止日期 */
+  knowledge?: string;
+  /** 发布日期 */
+  releaseDate?: string;
+  /** 最后更新日期 */
+  lastUpdated?: string;
+  /** 交错思考输出配置（如 reasoning_content 字段） */
+  interleaved?: { field: string };
+  /** 模型状态 */
+  status?: 'alpha' | 'beta' | 'deprecated';
   /** 输入模态 */
   inputModalities?: string[];
   /** 输出模态 */
@@ -90,6 +110,11 @@ export interface ModelSpec {
     input: number;
     output: number;
     cacheRead?: number;
+    cacheWrite?: number;
+    reasoning?: number;
+    inputAudio?: number;
+    outputAudio?: number;
+    contextOver200k?: number;
     currency: 'USD' | 'CNY';
   };
   /** 模型别名 */
@@ -104,6 +129,8 @@ export interface ModelSpec {
 
 /**
  * Models.dev API 原始模型格式
+ *
+ * @see https://models.dev
  */
 export interface ModelsDevModelRaw {
   id: string;
@@ -112,6 +139,13 @@ export interface ModelsDevModelRaw {
   attachment?: boolean;
   reasoning?: boolean;
   tool_call?: boolean;
+  structured_output?: boolean;
+  temperature?: boolean;
+  knowledge?: string;
+  release_date?: string;
+  last_updated?: string;
+  open_weights?: boolean;
+  interleaved?: { field: string };
   modalities?: {
     input: string[];
     output: string[];
@@ -120,11 +154,18 @@ export interface ModelsDevModelRaw {
     input: number;
     output: number;
     cache_read?: number;
+    cache_write?: number;
+    reasoning?: number;
+    input_audio?: number;
+    output_audio?: number;
+    context_over_200k?: number;
   };
   limit?: {
     context: number;
+    input?: number;
     output: number;
   };
+  status?: 'alpha' | 'beta' | 'deprecated';
 }
 
 /**
@@ -137,6 +178,7 @@ export interface ModelsDevProviderRaw {
   npm?: string;
   api?: string;
   doc?: string;
+  logo?: string;
   models: Record<string, ModelsDevModelRaw>;
 }
 
@@ -157,8 +199,40 @@ export interface ModelsDevProvider {
   envKeys: string[];
   npmPackage: string;
   docUrl?: string;
+  logo?: string;
   type: ProviderType;
   models: ModelSpec[];
+}
+
+// ============================================
+// Provider Registry 注册信息
+// ============================================
+
+/**
+ * Provider 注册信息
+ *
+ * 内置 Registry 中存储的已知 Provider 默认配置。
+ * ProviderManager 根据 id 查询 Registry 自动补全缺失配置。
+ */
+export interface ProviderRegistration {
+  /** API 基础 URL */
+  baseUrl: string;
+  /** Provider 类型 */
+  type?: ProviderType;
+  /** 默认模型 */
+  defaultModel?: string;
+  /** 参数预处理规则 */
+  preprocessRules?: PreprocessRule[];
+  /** 环境变量 Key（用于 apiKey fallback） */
+  envKeys?: string[];
+}
+
+/**
+ * 参数预处理规则
+ */
+export interface PreprocessRule {
+  /** 要移除的参数字段 */
+  remove?: string[];
 }
 
 // ============================================

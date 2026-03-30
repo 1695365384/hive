@@ -14,6 +14,7 @@
 import { generateText, streamText, stepCountIs } from 'ai';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ProviderManager } from '../../providers/ProviderManager.js';
+import type { ModelSpec } from '../../providers/types.js';
 import type {
   RuntimeConfig,
   RuntimeResult,
@@ -69,7 +70,7 @@ export class LLMRuntime {
    */
   async run(config: RuntimeConfig): Promise<RuntimeResult> {
     const startTime = Date.now();
-    const model = this.resolveModel(config);
+    const { model, spec } = await this.resolveModelWithSpec(config);
     if (!model) {
       return {
         text: '',
@@ -81,11 +82,17 @@ export class LLMRuntime {
       };
     }
 
+    const modelSpec = spec ? {
+      contextWindow: spec.contextWindow,
+      maxOutputTokens: spec.maxOutputTokens ?? 0,
+      supportsTools: spec.supportsTools ?? false,
+    } : undefined;
+
     try {
       if (config.streaming) {
-        return await this.runStreaming(model, config, startTime);
+        return await this.runStreaming(model, config, startTime, modelSpec);
       }
-      return await this.runGenerate(model, config, startTime);
+      return await this.runGenerate(model, config, startTime, modelSpec);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
@@ -97,6 +104,7 @@ export class LLMRuntime {
           error: 'Request aborted',
           steps: [],
           duration: Date.now() - startTime,
+          modelSpec,
         };
       }
 
@@ -107,6 +115,7 @@ export class LLMRuntime {
         error: err.message,
         steps: [],
         duration: Date.now() - startTime,
+        modelSpec,
       };
     }
   }
@@ -119,6 +128,7 @@ export class LLMRuntime {
     model: LanguageModelV3,
     config: RuntimeConfig,
     startTime: number,
+    modelSpec?: RuntimeResult['modelSpec'],
   ): Promise<RuntimeResult> {
     const result = await generateText({
       model,
@@ -144,6 +154,7 @@ export class LLMRuntime {
       steps: result.steps.map(step => this.mapStepResult(step)),
       success: true,
       duration: Date.now() - startTime,
+      modelSpec,
     };
   }
 
@@ -155,6 +166,7 @@ export class LLMRuntime {
     model: LanguageModelV3,
     config: RuntimeConfig,
     startTime: number,
+    modelSpec?: RuntimeResult['modelSpec'],
   ): Promise<RuntimeResult> {
     const result = streamText({
       model,
@@ -219,6 +231,7 @@ export class LLMRuntime {
       success: finishReason !== 'error',
       error: finishReason === 'error' ? 'Generation finished with error' : undefined,
       duration: Date.now() - startTime,
+      modelSpec,
     };
   }
 
@@ -226,10 +239,21 @@ export class LLMRuntime {
   // 内部方法
   // ============================================
 
-  private resolveModel(config: RuntimeConfig): LanguageModelV3 | null {
-    if (config.languageModel) return config.languageModel;
-    if (config.providerId) return this.providerManager.getModelForProvider(config.providerId, config.model);
-    return this.providerManager.getModel(config.model);
+  private async resolveModelWithSpec(config: RuntimeConfig): Promise<{ model: LanguageModelV3 | null; spec: ModelSpec | null }> {
+    // 直接提供 LanguageModelV3 实例（最高优先级）
+    if (config.languageModel) return { model: config.languageModel, spec: null };
+
+    // 指定了 providerId
+    if (config.providerId) {
+      const model = this.providerManager.getModelForProvider(config.providerId, config.model);
+      return { model, spec: null };
+    }
+
+    // 使用活跃 Provider，附带 ModelSpec
+    const result = await this.providerManager.getModelWithSpec(config.model);
+    if (result) return { model: result.model, spec: result.spec };
+
+    return { model: null, spec: null };
   }
 
   private collectToolsFromSteps(

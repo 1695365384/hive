@@ -8,6 +8,7 @@ import type { ProviderType } from '../types.js';
 import type { ILogger } from '../../plugins/types.js';
 import { noopLogger } from '../../plugins/types.js';
 import { getModelsDevClient, type ModelsDevPersistence } from './models-dev.js';
+import type { SqlitePersistence } from './sqlite-persistence.js';
 
 /**
  * 提供商信息（用于适配器）
@@ -27,6 +28,8 @@ export interface ProviderInfo {
   envKeys: string[];
   /** npm 包名 */
   npmPackage: string;
+  /** Logo URL */
+  logo?: string;
 }
 
 /**
@@ -147,6 +150,7 @@ class ProviderRegistryImpl {
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private persistenceConfigured = false;
+  private sqlitePersistence: SqlitePersistence | null = null;
 
   constructor(logger?: ILogger) {
     this.logger = logger ?? noopLogger;
@@ -161,6 +165,26 @@ class ProviderRegistryImpl {
     const client = getModelsDevClient();
     client.setPersistence(persistence);
     this.persistenceConfigured = true;
+  }
+
+  /**
+   * 设置 SQLite 持久化层（优先于 JSON 文件持久化）
+   *
+   * 同时将 SqlitePersistence 传递给 ModelsDevClient，
+   * 并缓存引用供 getProviderInfoSync() 快速查询
+   */
+  setSqlitePersistence(sqlitePersistence: SqlitePersistence): void {
+    this.sqlitePersistence = sqlitePersistence;
+    // 同时作为 ModelsDevPersistence 传递给 ModelsDevClient
+    getModelsDevClient().setPersistence(sqlitePersistence);
+    this.persistenceConfigured = true;
+  }
+
+  /**
+   * 获取 SQLite 持久化实例（如果有）
+   */
+  getSqlitePersistence(): SqlitePersistence | null {
+    return this.sqlitePersistence;
   }
 
   /**
@@ -202,9 +226,15 @@ class ProviderRegistryImpl {
           type: provider.type,
           envKeys: provider.envKeys,
           npmPackage: provider.npmPackage,
+          logo: provider.logo,
         };
 
         this.cache.set(provider.id.toLowerCase(), info);
+      }
+
+      // 将完整数据写入 SQLite（含 family、cost、modalities、reasoning 等字段）
+      if (this.sqlitePersistence) {
+        this.sqlitePersistence.saveFullData(providers, new Date().toISOString());
       }
 
       this.loaded = true;
@@ -236,14 +266,23 @@ class ProviderRegistryImpl {
   }
 
   /**
-   * 获取提供商信息（同步，使用缓存或静态数据）
+   * 获取提供商信息（同步，使用缓存、SQLite 或静态数据）
    */
   getProviderInfoSync(providerId: string): ProviderInfo | null {
     const lower = providerId.toLowerCase();
 
-    // 检查缓存
+    // 检查内存缓存
     if (this.cache.has(lower)) {
       return this.cache.get(lower) || null;
+    }
+
+    // 尝试从 SQLite 查询
+    if (this.sqlitePersistence && this.sqlitePersistence.hasValidData()) {
+      const info = this.sqlitePersistence.getProviderInfo(lower);
+      if (info) {
+        this.cache.set(lower, info);
+        return info;
+      }
     }
 
     // 使用静态 fallback

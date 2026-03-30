@@ -9,6 +9,7 @@ import type { ProviderConfig, ProviderType } from '../../providers/types.js';
 import type { WorkspaceManager } from '../../workspace/index.js';
 import { getKnownProvidersSync, getProviderType } from '../../providers/adapters/index.js';
 import { getProviderRegistry } from '../../providers/metadata/provider-registry.js';
+import { createSqlitePersistence } from '../../providers/metadata/sqlite-persistence.js';
 import { createWorkspacePersistence } from '../../providers/metadata/workspace-persistence.js';
 import type { SessionCapability } from './SessionCapability.js';
 
@@ -36,6 +37,7 @@ export class ProviderCapability implements AgentCapability {
   /**
    * 配置持久化（如果工作空间可用）
    *
+   * 优先使用 SQLite 持久化，失败时降级到 JSON 文件。
    * 应在 SessionCapability.initializeAsync() 之后调用
    */
   private configurePersistenceIfNeeded(): void {
@@ -46,13 +48,28 @@ export class ProviderCapability implements AgentCapability {
       if (!sessionCap) return;
 
       const workspaceManager = sessionCap.getWorkspaceManager();
-      if (workspaceManager?.isInitialized()) {
-        const persistence = createWorkspacePersistence(workspaceManager.getPaths().modelsDevCacheFile);
-        getProviderRegistry().setPersistence(persistence);
+      if (!workspaceManager?.isInitialized()) return;
+
+      const paths = workspaceManager.getPaths();
+
+      // 优先尝试 SQLite 持久化
+      try {
+        const sqlitePersistence = createSqlitePersistence(paths.modelsDevDbFile);
+        getProviderRegistry().setSqlitePersistence(sqlitePersistence);
         this.persistenceConfigured = true;
+        return;
+      } catch (error) {
+        // SQLite 不可用，降级到 JSON 文件
+        console.warn('[ProviderCapability] SQLite 持久化初始化失败，降级到 JSON 文件:', error);
       }
-    } catch {
+
+      // 降级到 WorkspacePersistence
+      const persistence = createWorkspacePersistence(paths.modelsDevCacheFile);
+      getProviderRegistry().setPersistence(persistence);
+      this.persistenceConfigured = true;
+    } catch (error) {
       // SessionCapability 可能尚未初始化或不可用
+      console.warn('[ProviderCapability] 持久化配置失败:', error);
     }
   }
 
@@ -64,8 +81,10 @@ export class ProviderCapability implements AgentCapability {
    */
   async initializeAsync(_context: AgentContext): Promise<void> {
     this.configurePersistenceIfNeeded();
-    // 预加载提供商数据
+    // 预加载提供商数据（从 API 拉取 → 写入 SQLite）
     await getProviderRegistry().preload();
+    // SQLite 就绪后，重新补全所有 Provider 配置（baseUrl、npmPackage）
+    this.context.providerManager.reResolveAll();
   }
 
   /**

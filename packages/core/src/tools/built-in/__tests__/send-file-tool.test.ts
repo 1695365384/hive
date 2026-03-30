@@ -48,9 +48,10 @@ describe('send-file-tool', () => {
   it('should send file successfully when callback is registered', async () => {
     setSendFileCallback(mockSendFileCb)
 
-    const result = await tool.execute!({
-      filePath: '/tmp/report.pdf',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/report.pdf' },
+      {} as any,
+    )
 
     expect(mockSendFileCb).toHaveBeenCalledWith('/tmp/report.pdf')
     expect(result).toContain('已发送文件')
@@ -60,9 +61,10 @@ describe('send-file-tool', () => {
   it('should send image with correct type label', async () => {
     setSendFileCallback(mockSendFileCb)
 
-    const result = await tool.execute!({
-      filePath: '/tmp/photo.png',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/photo.png' },
+      {} as any,
+    )
 
     expect(result).toContain('已发送图片')
   })
@@ -70,10 +72,10 @@ describe('send-file-tool', () => {
   it('should include description in result', async () => {
     setSendFileCallback(mockSendFileCb)
 
-    const result = await tool.execute!({
-      filePath: '/tmp/report.pdf',
-      description: '本月销售报告',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/report.pdf', description: '本月销售报告' },
+      {} as any,
+    )
 
     expect(result).toContain('本月销售报告')
   })
@@ -81,9 +83,10 @@ describe('send-file-tool', () => {
   it('should return error when callback is not registered', async () => {
     setSendFileCallback(null as unknown as Parameters<typeof setSendFileCallback>[0])
 
-    const result = await tool.execute!({
-      filePath: '/tmp/report.pdf',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/report.pdf' },
+      {} as any,
+    )
 
     expect(result).toContain('当前环境不支持文件发送')
     expect(mockSendFileCb).not.toHaveBeenCalled()
@@ -94,9 +97,10 @@ describe('send-file-tool', () => {
     const fs = await import('fs')
     vi.spyOn(fs.default, 'existsSync').mockReturnValueOnce(false)
 
-    const result = await tool.execute!({
-      filePath: '/tmp/missing.pdf',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/missing.pdf' },
+      {} as any,
+    )
 
     expect(result).toContain('文件不存在')
     expect(mockSendFileCb).not.toHaveBeenCalled()
@@ -107,9 +111,10 @@ describe('send-file-tool', () => {
     const fs = await import('fs')
     vi.spyOn(fs.default, 'statSync').mockReturnValueOnce({ isDirectory: () => true } as ReturnType<typeof fs.default.statSync>)
 
-    const result = await tool.execute!({
-      filePath: '/tmp/some-dir',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/some-dir' },
+      {} as any,
+    )
 
     expect(result).toContain('不能发送目录')
     expect(mockSendFileCb).not.toHaveBeenCalled()
@@ -119,9 +124,10 @@ describe('send-file-tool', () => {
     setSendFileCallback(mockSendFileCb)
     mockSendFileCb.mockResolvedValueOnce({ success: false, error: 'API rate limit' })
 
-    const result = await tool.execute!({
-      filePath: '/tmp/report.pdf',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/report.pdf' },
+      {} as any,
+    )
 
     expect(result).toContain('文件发送失败')
     expect(result).toContain('API rate limit')
@@ -131,9 +137,10 @@ describe('send-file-tool', () => {
     setSendFileCallback(mockSendFileCb)
     mockSendFileCb.mockRejectedValueOnce(new Error('Network error'))
 
-    const result = await tool.execute!({
-      filePath: '/tmp/report.pdf',
-    })
+    const result = await tool.execute!(
+      { filePath: '/tmp/report.pdf' },
+      {} as any,
+    )
 
     expect(result).toContain('文件发送失败')
     expect(result).toContain('Network error')
@@ -144,7 +151,7 @@ describe('send-file-tool', () => {
 
     for (const ext of ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']) {
       mockSendFileCb.mockClear()
-      const result = await tool.execute!({ filePath: `/tmp/photo${ext}` })
+      const result = await tool.execute!({ filePath: `/tmp/photo${ext}` }, {} as any)
       expect(result).toContain('已发送图片')
     }
   })

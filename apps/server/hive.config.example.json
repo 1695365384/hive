@@ -8,8 +8,7 @@
   "provider": {
     "id": "glm",
     "apiKey": "your-api-key-here",
-    "model": "glm-4-flash",
-    "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4"
+    "model": "glm-4-flash"
   },
   "plugins": {
     "@hive/plugin-feishu": {

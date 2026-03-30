@@ -28,6 +28,8 @@ export type {
   ProviderType,
   ExternalConfig,
   AgentDefaults,
+  ProviderRegistration,
+  PreprocessRule,
 } from './types.js';
 
 // ============================================

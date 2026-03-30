@@ -11,7 +11,6 @@ import type {
   ModelsDevProviderRaw,
   ModelsDevModelRaw,
   ModelsDevProvider,
-  ModelsDevResponse,
 } from '../types.js';
 import type { ModelsDevCache, CachedProviderInfo, CachedModelInfo } from './types.js';
 import type { ILogger } from '../../plugins/types.js';
@@ -44,7 +43,7 @@ export class ModelsDevClient {
   private providersCache: Map<string, ModelsDevProvider> = new Map();
   private allProvidersCache: ModelsDevProvider[] | null = null;
   private cacheTime: number = 0;
-  private fetchPromise: Promise<ModelsDevResponse> | null = null;
+  private fetchPromise: Promise<Record<string, ModelsDevProviderRaw>> | null = null;
   private persistence: ModelsDevPersistence | null = null;
 
   constructor(logger?: ILogger) {
@@ -53,8 +52,11 @@ export class ModelsDevClient {
 
   /**
    * 从 API 获取数据
+   *
+   * models.dev/api.json 返回扁平对象 Record<string, ModelsDevProviderRaw>，
+   * 不是 { providers: {...} } 包裹格式。
    */
-  private async fetch(): Promise<ModelsDevResponse> {
+  private async fetch(): Promise<Record<string, ModelsDevProviderRaw>> {
     // 防止并发请求
     if (this.fetchPromise) {
       return this.fetchPromise;
@@ -65,7 +67,7 @@ export class ModelsDevClient {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
-        return res.json();
+        return res.json() as Promise<Record<string, ModelsDevProviderRaw>>;
       })
       .finally(() => {
         this.fetchPromise = null;
@@ -102,25 +104,53 @@ export class ModelsDevClient {
    * 转换 Models.dev 模型格式到内部格式
    */
   private convertModel(modelId: string, raw: ModelsDevModelRaw): ModelSpec {
-    return {
+    const spec: ModelSpec = {
       id: modelId,
       name: raw.name || modelId,
       family: raw.family,
       contextWindow: raw.limit?.context || 4096,
       maxOutputTokens: raw.limit?.output,
+      maxInputTokens: raw.limit?.input,
       supportsVision: raw.modalities?.input?.includes('image') || raw.attachment === true,
       supportsTools: raw.tool_call !== false,
-      supportsStreaming: true, // 大多数模型支持流式
+      supportsStreaming: true,
       supportsReasoning: raw.reasoning === true,
+      supportsStructuredOutput: raw.structured_output === true,
+      supportsTemperature: raw.temperature === true,
+      openWeights: raw.open_weights,
+      knowledge: raw.knowledge,
+      releaseDate: raw.release_date,
+      lastUpdated: raw.last_updated,
+      interleaved: raw.interleaved,
+      status: raw.status,
       inputModalities: raw.modalities?.input,
       outputModalities: raw.modalities?.output,
-      pricing: raw.cost ? {
-        input: raw.cost.input || 0,
-        output: raw.cost.output || 0,
-        cacheRead: raw.cost.cache_read,
-        currency: 'USD',
-      } : undefined,
     };
+
+    // 定价
+    if (raw.cost) {
+      const hasAnyCost = raw.cost.input > 0 || raw.cost.output > 0;
+      if (hasAnyCost) {
+        spec.pricing = {
+          input: raw.cost.input || 0,
+          output: raw.cost.output || 0,
+          currency: 'USD',
+          ...(raw.cost.cache_read != null ? { cacheRead: raw.cost.cache_read } : {}),
+          ...(raw.cost.cache_write != null ? { cacheWrite: raw.cost.cache_write } : {}),
+          ...(raw.cost.reasoning != null ? { reasoning: raw.cost.reasoning } : {}),
+          ...(raw.cost.input_audio != null ? { inputAudio: raw.cost.input_audio } : {}),
+          ...(raw.cost.output_audio != null ? { outputAudio: raw.cost.output_audio } : {}),
+          ...(raw.cost.context_over_200k != null ? { contextOver200k: raw.cost.context_over_200k } : {}),
+        };
+      }
+    }
+
+    // status 字段同步到 deprecated
+    if (raw.status === 'deprecated') {
+      spec.deprecated = true;
+    }
+
+    return spec;
   }
 
   /**
@@ -140,6 +170,7 @@ export class ModelsDevClient {
       envKeys: raw.env || [],
       npmPackage: raw.npm || '@ai-sdk/openai-compatible',
       docUrl: raw.doc,
+      logo: raw.logo || `https://models.dev/logos/${providerId}.svg`,
       type: this.inferProviderType(providerId, raw),
       models,
     };
@@ -202,6 +233,7 @@ export class ModelsDevClient {
           type: provider.type as ProviderType,
           envKeys: provider.envKeys,
           npmPackage: provider.npmPackage || '',
+          logo: provider.logo,
           models,
         };
 
@@ -236,6 +268,7 @@ export class ModelsDevClient {
         type: p.type,
         envKeys: p.envKeys,
         npmPackage: p.npmPackage,
+        logo: p.logo,
         models: p.models.map(m => ({
           id: m.id,
           name: m.name ?? m.id,
@@ -274,8 +307,8 @@ export class ModelsDevClient {
       // 清除旧缓存
       this.providersCache.clear();
 
-      // 解析提供商数据
-      for (const [providerId, providerRaw] of Object.entries(data.providers || {})) {
+      // 解析提供商数据（API 返回扁平对象，直接遍历）
+      for (const [providerId, providerRaw] of Object.entries(data)) {
         const provider = this.convertProvider(providerId, providerRaw);
         this.providersCache.set(providerId.toLowerCase(), provider);
         providers.push(provider);

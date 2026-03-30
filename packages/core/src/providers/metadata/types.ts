@@ -38,6 +38,8 @@ export interface CachedProviderInfo {
   envKeys: string[]
   /** npm 包名 */
   npmPackage: string
+  /** Logo URL */
+  logo?: string
   /** 模型列表 */
   models: CachedModelInfo[]
 }

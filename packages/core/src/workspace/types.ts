@@ -128,6 +128,8 @@ export interface WorkspacePaths {
   cacheDir: string;
   /** models.dev 缓存文件 */
   modelsDevCacheFile: string;
+  /** models.dev SQLite 数据库文件 */
+  modelsDevDbFile: string;
   /** SQLite 数据库文件 */
   dbFile: string;
 }
@@ -161,7 +163,7 @@ export interface WorkspaceInitConfig {
 /**
  * 默认工作空间目录名
  */
-export const DEFAULT_WORKSPACE_DIR = '.agent-workspace';
+export const DEFAULT_WORKSPACE_DIR = '.hive';
 
 /**
  * 工作空间版本
