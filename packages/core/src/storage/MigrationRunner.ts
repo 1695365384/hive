@@ -116,7 +116,10 @@ export class MigrationRunner {
           applied++;
         } catch (err: unknown) {
           // Skip if migration was already applied (concurrent access / shared DB)
-          if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+          if (err instanceof Error && (
+            err.message.includes('UNIQUE constraint failed') ||
+            err.message.includes('duplicate column name')
+          )) {
             continue;
           }
           throw err;
