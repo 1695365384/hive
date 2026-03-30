@@ -30,6 +30,7 @@ export type {
   AgentDefaults,
   ProviderRegistration,
   PreprocessRule,
+  ModelsDevProvider,
 } from './types.js';
 
 // ============================================

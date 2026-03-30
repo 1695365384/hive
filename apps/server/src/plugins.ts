@@ -10,10 +10,10 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs'
-import { resolve } from 'path'
+import { resolve, join } from 'path'
 import { pathToFileURL } from 'url'
 import type { IPlugin } from '@hive/core'
-import { getConfig } from './config.js'
+import { getConfig, HIVE_HOME } from './config.js'
 
 // ============================================
 // 类型
@@ -39,7 +39,7 @@ interface PluginPackageJson {
 // 目录扫描
 // ============================================
 
-const PLUGINS_DIR = resolve(process.cwd(), '.hive/plugins')
+const PLUGINS_DIR = resolve(HIVE_HOME, 'plugins')
 
 /**
  * 扫描 .hive/plugins/ 目录，发现合法插件

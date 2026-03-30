@@ -14,9 +14,10 @@ import {
   type MessageBus,
   noopLogger,
 } from '@hive/core'
-import { resolve } from 'path'
+import { join } from 'path'
 import type { ServerConfig } from './config.js'
 import { loadPlugins } from './plugins.js'
+import { HIVE_HOME } from './config.js'
 
 export interface HiveContext {
   /** Message bus for event-driven communication */
@@ -74,7 +75,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
       heartbeat: config.heartbeat.enabled ? config.heartbeat : undefined,
     },
     plugins,
-    dbPath: resolve(process.cwd(), '.hive/hive.db'),
+    dbPath: join(HIVE_HOME, 'hive.db'),
     logger,
   })
 

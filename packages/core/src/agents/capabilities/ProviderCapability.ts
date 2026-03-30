@@ -5,10 +5,11 @@
  */
 
 import type { AgentCapability, AgentContext } from '../core/types.js';
-import type { ProviderConfig, ProviderType } from '../../providers/types.js';
+import type { ProviderConfig, ProviderType, ModelSpec, ModelsDevProvider } from '../../providers/types.js';
 import type { WorkspaceManager } from '../../workspace/index.js';
 import { getKnownProvidersSync, getProviderType } from '../../providers/adapters/index.js';
 import { getProviderRegistry } from '../../providers/metadata/provider-registry.js';
+import { getModelsDevClient } from '../../providers/metadata/models-dev.js';
 import { createSqlitePersistence } from '../../providers/metadata/sqlite-persistence.js';
 import { createWorkspacePersistence } from '../../providers/metadata/workspace-persistence.js';
 import type { SessionCapability } from './SessionCapability.js';
@@ -176,6 +177,22 @@ export class ProviderCapability implements AgentCapability {
    */
   useSync(name: string, apiKey?: string): boolean {
     return this.context.providerManager.switch(name, apiKey);
+  }
+
+  /**
+   * 列出所有已知提供商（含 logo、baseUrl、defaultModel）
+   */
+  async listAllProviders(): Promise<ModelsDevProvider[]> {
+    this.configurePersistenceIfNeeded();
+    return getModelsDevClient().getAllProviders();
+  }
+
+  /**
+   * 列出指定提供商的模型列表
+   */
+  async listProviderModels(providerId: string): Promise<ModelSpec[]> {
+    this.configurePersistenceIfNeeded();
+    return getModelsDevClient().getProviderModels(providerId);
   }
 
 }
