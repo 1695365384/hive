@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_ROOT="$(dirname "$SCRIPT_DIR")"
 OUT_DIR="$SERVER_ROOT/bundle"
 PNPM_STORE="$SERVER_ROOT/../../node_modules/.pnpm"
-NATIVE_SRC="$PNPM_STORE/better-sqlite3@11.10.0/node_modules/better-sqlite3"
+NATIVE_SRC="$(find "$PNPM_STORE" -maxdepth 1 -type d -name 'better-sqlite3@*' | head -1)/node_modules/better-sqlite3"
 SEA_BINARY="$OUT_DIR/hive-server"
 
 # =============================================
