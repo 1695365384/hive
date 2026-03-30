@@ -67,6 +67,9 @@ packages/app/dist/
 # npm pack 产物
 *.tgz
 
+# 插件打包产物
+*.zip
+
 # Coverage 报告
 coverage/
 *.lcov
