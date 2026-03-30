@@ -9,21 +9,8 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows-latest
-            arch: x64
-          - platform: macos-latest
-            arch: arm64
-            target: '--target aarch64-apple-darwin'
-          - platform: macos-latest
-            arch: x64
-            target: '--target x86_64-apple-darwin'
-
-    runs-on: ${{ matrix.platform }}
+  build-windows:
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +27,56 @@ jobs:
           cache: 'pnpm'
 
       - name: Install Rust
-        if: matrix.platform == 'macos-latest'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          rustup default stable
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build server
+        run: pnpm --filter @bundy-lmw/hive-server build
+
+      - name: Build frontend
+        run: pnpm --filter @bundy-lmw/hive-desktop build
+
+      - name: Build Tauri (MSI)
+        shell: bash
+        working-directory: ./apps/desktop
+        run: npx @tauri-apps/cli build --bundles msi
+
+      - name: Find MSI
+        id: msi
+        shell: pwsh
+        run: |
+          $f = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/msi" -Filter "*.msi" | Select-Object -First 1
+          echo "path=$($f.FullName)" | Out-String -Width 4096
+
+      - name: Upload Windows MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-desktop-windows-x64
+          path: ${{ steps.msi.outputs.path }}
+          retention-days: 1
+
+  build-macos-arm64:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install Rust
         run: rustup default stable
 
       - name: Install deps
@@ -52,46 +88,73 @@ jobs:
       - name: Build frontend
         run: pnpm --filter @bundy-lmw/hive-desktop build
 
-      - name: Build Tauri
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: ${{ matrix.target }}
+      - name: Build Tauri (DMG, ARM64)
+        working-directory: ./apps/desktop
+        run: npx @tauri-apps/cli build --target aarch64-apple-darwin --bundles dmg
 
-      - name: Find MSI (Windows)
-        if: matrix.platform == 'windows-latest'
-        id: msi
-        shell: pwsh
-        run: |
-          $f = Get-ChildItem "src-tauri/target/release/bundle/msi" -Filter "*.msi" -Recurse | Select-Object -First 1
-          "path=$($f.FullName)" | Out-String -Width 4096
-
-      - name: Find DMG (macOS)
-        if: matrix.platform == 'macos-latest'
+      - name: Find DMG
         id: dmg
         shell: bash
         run: |
-          find src-tauri/target -name "*.dmg" -type f | head -1 | xargs -I{} echo "path={}"
+          find apps/desktop/src-tauri/target -name "*.dmg" -type f | head -1 | xargs -I{} echo "path={}"
 
-      - name: Upload Windows artifact
-        if: matrix.platform == 'windows-latest'
+      - name: Upload macOS ARM64 DMG
         uses: actions/upload-artifact@v4
         with:
-          name: hive-desktop-windows-msi
-          path: ${{ steps.msi.outputs.path }}
+          name: hive-desktop-macos-arm64
+          path: ${{ steps.dmg.outputs.path }}
           retention-days: 1
 
-      - name: Upload macOS artifact
-        if: matrix.platform == 'macos-latest'
+  build-macos-x64:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install Rust
+        run: |
+          rustup default stable
+          rustup target add x86_64-apple-darwin
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build server
+        run: pnpm --filter @bundy-lmw/hive-server build
+
+      - name: Build frontend
+        run: pnpm --filter @bundy-lmw/hive-desktop build
+
+      - name: Build Tauri (DMG, x64)
+        working-directory: ./apps/desktop
+        run: npx @tauri-apps/cli build --target x86_64-apple-darwin --bundles dmg
+
+      - name: Find DMG
+        id: dmg
+        shell: bash
+        run: |
+          find apps/desktop/src-tauri/target -name "*.dmg" -type f | head -1 | xargs -I{} echo "path={}"
+
+      - name: Upload macOS x64 DMG
         uses: actions/upload-artifact@v4
         with:
-          name: hive-desktop-macos-${{ matrix.arch }}
+          name: hive-desktop-macos-x64
           path: ${{ steps.dmg.outputs.path }}
           retention-days: 1
 
   release:
-    needs: build
+    needs: [build-windows, build-macos-arm64, build-macos-x64]
     runs-on: ubuntu-latest
 
     steps:
