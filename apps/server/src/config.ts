@@ -6,14 +6,33 @@
  */
 
 import { config as dotenvConfig } from 'dotenv'
-import { existsSync, readFileSync } from 'fs'
-import { resolve } from 'path'
+import { existsSync, readFileSync, mkdirSync } from 'fs'
+import { resolve, join } from 'path'
 import AjvModule from 'ajv'
 const Ajv = AjvModule.default
 
+/**
+ * Hive 工作空间根目录
+ *
+ * 优先级: HIVE_HOME 环境变量 > ~/.hive
+ */
+function getHiveHome(): string {
+  if (process.env.HIVE_HOME) {
+    return process.env.HIVE_HOME
+  }
+  return resolve(process.env.HOME || '~', '.hive')
+}
+
+export const HIVE_HOME = getHiveHome()
+
+// 确保工作空间目录存在
+if (!existsSync(HIVE_HOME)) {
+  mkdirSync(HIVE_HOME, { recursive: true })
+}
+
 // Load .env file if exists (for env var interpolation)
-if (existsSync(resolve(process.cwd(), '.env'))) {
-  dotenvConfig()
+if (existsSync(join(HIVE_HOME, '.env'))) {
+  dotenvConfig({ path: join(HIVE_HOME, '.env') })
 }
 
 /**
@@ -123,7 +142,7 @@ function interpolateConfig(obj: unknown): unknown {
  * Load and parse hive.config.json
  */
 function loadJsonConfig(): HiveConfigJson {
-  const configPath = resolve(process.cwd(), 'hive.config.json')
+  const configPath = join(HIVE_HOME, 'hive.config.json')
 
   if (!existsSync(configPath)) {
     return {}
@@ -135,7 +154,7 @@ function loadJsonConfig(): HiveConfigJson {
     const interpolated = interpolateConfig(raw) as HiveConfigJson
 
     // Validate against JSON Schema
-    const schemaPath = resolve(process.cwd(), 'hive.config.schema.json')
+    const schemaPath = join(HIVE_HOME, 'hive.config.schema.json')
     if (existsSync(schemaPath)) {
       const schemaContent = readFileSync(schemaPath, 'utf-8')
       const schema = JSON.parse(schemaContent)

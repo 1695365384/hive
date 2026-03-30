@@ -138,6 +138,7 @@ export {
   type IProvider,
   type ProviderType,
   type ProviderAdapter,
+  type ModelsDevProvider,
 } from './providers/index.js';
 
 // ============================================
