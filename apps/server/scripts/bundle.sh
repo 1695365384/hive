@@ -6,6 +6,11 @@ SERVER_ROOT="$(dirname "$SCRIPT_DIR")"
 OUT_DIR="$SERVER_ROOT/bundle"
 PNPM_STORE="$SERVER_ROOT/../../node_modules/.pnpm"
 NATIVE_SRC="$(find "$PNPM_STORE" -maxdepth 1 -type d -name 'better-sqlite3@*' | head -1)/node_modules/better-sqlite3"
+if [ ! -d "$NATIVE_SRC" ]; then
+  echo "[sea] ERROR: better-sqlite3 not found in $PNPM_STORE"
+  echo "[sea] Make sure 'pnpm install' has been run and better-sqlite3 is a dependency"
+  exit 1
+fi
 SEA_BINARY="$OUT_DIR/hive-server"
 
 # =============================================

@@ -34,7 +34,7 @@ jobs:
 
       - name: Build frontend
         working-directory: apps/desktop
-        run: npx tsc --noEmit && npx vite build
+        run: pnpm exec tsc --noEmit && pnpm exec vite build
 
       - name: Upload frontend dist
         uses: actions/upload-artifact@v4
@@ -93,7 +93,7 @@ jobs:
         working-directory: apps/desktop
         run: |
           TARGET=${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
-          npx @tauri-apps/cli build --bundles dmg --target "$TARGET" --ci \
+          pnpm exec @tauri-apps/cli build --bundles dmg --target "$TARGET" --ci \
             --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Debug bundle output
@@ -168,7 +168,7 @@ jobs:
         working-directory: apps/desktop
         shell: bash
         run: |
-          npx @tauri-apps/cli build --bundles msi --ci \
+          pnpm exec @tauri-apps/cli build --bundles msi --ci \
             --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Find MSI
