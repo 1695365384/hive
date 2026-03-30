@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.hive.desktop",
   "build": {
-    "beforeDevCommand": "bash scripts/dev.sh",
+    "beforeDevCommand": "pnpm dev:ui",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
