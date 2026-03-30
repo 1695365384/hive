@@ -48,7 +48,7 @@ mkdir -p "$OUT_DIR"
 # =============================================
 echo "[sea] Step 1: esbuild bundle..."
 
-pnpm exec esbuild "$SERVER_ROOT/src/main.ts" \
+pnpm --filter @bundy-lmw/hive-server exec esbuild "$SERVER_ROOT/src/main.ts" \
   --bundle \
   --platform=node \
   --target=node22 \
@@ -130,12 +130,12 @@ cp "$NODE_BIN" "$SEA_BINARY"
 # macOS: remove signature -> inject -> re-sign
 if [[ "$OSTYPE" == "darwin"* ]]; then
   codesign --remove-signature "$SEA_BINARY" 2>/dev/null || true
-  npx postject "$SEA_BINARY" NODE_SEA_BLOB "$OUT_DIR/sea-prep.blob" \
+  pnpm --filter @bundy-lmw/hive-server exec postject "$SEA_BINARY" NODE_SEA_BLOB "$OUT_DIR/sea-prep.blob" \
     --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
     --macho-segment-name NODE_SEA
   codesign --sign - "$SEA_BINARY" 2>/dev/null || true
 else
-  npx postject "$SEA_BINARY" NODE_SEA_BLOB "$OUT_DIR/sea-prep.blob" \
+  pnpm --filter @bundy-lmw/hive-server exec postject "$SEA_BINARY" NODE_SEA_BLOB "$OUT_DIR/sea-prep.blob" \
     --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
 fi
 
