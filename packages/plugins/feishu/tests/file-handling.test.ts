@@ -1,11 +1,11 @@
 /**
- * @hive/plugin-feishu - File Handling Unit Tests
+ * @bundy-lmw/hive-plugin-feishu - File Handling Unit Tests
  *
  * 测试文件上传、下载、发送和接收功能。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { IMessageBus, ILogger } from '@hive/core'
+import type { IMessageBus, ILogger } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK
 const {
