@@ -1,10 +1,10 @@
 /**
- * @hive/plugin-feishu - Message Format Conversion Tests
+ * @bundy-lmw/hive-plugin-feishu - Message Format Conversion Tests
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { FeishuChannel } from '../src/channel.js'
-import type { IMessageBus, ILogger, ChannelMessage } from '@hive/core'
+import type { IMessageBus, ILogger, ChannelMessage } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK - use vi.hoisted for proper hoisting
 const { mockCreate } = vi.hoisted(() => {
@@ -29,6 +29,15 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
     },
     AppType: { SelfBuild: 'SelfBuild' },
     Domain: { Feishu: 'https://open.feishu.cn' },
+    WSClient: class MockWSClient {
+      start = vi.fn().mockResolvedValue(undefined)
+      stop = vi.fn().mockResolvedValue(undefined)
+      close = vi.fn()
+    },
+    EventDispatcher: class MockEventDispatcher {
+      register = vi.fn().mockReturnThis()
+    },
+    LoggerLevel: { warn: 'warn', info: 'info', error: 'error', debug: 'debug' },
   }
 })
 
@@ -94,8 +103,8 @@ describe('Message Format Conversion', () => {
       await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
       // Check emitted message
-      expect(mockMessageBus.emit).toHaveBeenCalled()
-      const emittedMessage = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+      expect(mockMessageBus.publish).toHaveBeenCalled()
+      const emittedMessage = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
 
       expect(emittedMessage.id).toBe('msg_456')
       expect(emittedMessage.content).toBe('Hello World')
@@ -134,7 +143,7 @@ describe('Message Format Conversion', () => {
 
       await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
-      const emittedMessage = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+      const emittedMessage = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
       expect(emittedMessage.type).toBe('markdown')
     })
 
@@ -163,7 +172,7 @@ describe('Message Format Conversion', () => {
 
       await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
-      const emittedMessage = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+      const emittedMessage = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
       expect(emittedMessage.type).toBe('image')
       expect(emittedMessage.content).toContain('image')
     })
@@ -191,7 +200,7 @@ describe('Message Format Conversion', () => {
 
       await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
-      const emittedMessage = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+      const emittedMessage = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
       expect(emittedMessage.raw).toEqual(feishuEvent)
     })
   })
@@ -273,8 +282,8 @@ describe('Message Format Conversion', () => {
         vi.clearAllMocks()
         await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
-        if (mockMessageBus.emit.mock.calls.length > 0) {
-          const message = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+        if (mockMessageBus.publish.mock.calls.length > 0) {
+          const message = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
           expect(message.type).toBe(expected)
         }
       }
@@ -306,7 +315,7 @@ describe('Message Format Conversion', () => {
       // Should not throw, use content as-is
       await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
-      const message = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+      const message = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
       expect(message.content).toBe('not valid json')
     })
 
@@ -333,7 +342,7 @@ describe('Message Format Conversion', () => {
 
       await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
-      const message = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+      const message = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
       // When no sender ID is available, it will be undefined
       // This is acceptable - the message is still processed
       expect(message.id).toBe('msg_no_sender')
@@ -362,7 +371,7 @@ describe('Message Format Conversion', () => {
 
       await channel.handleWebhook(feishuEvent, 'sig', '1700000000', 'nonce')
 
-      const message = mockMessageBus.emit.mock.calls[0][1] as ChannelMessage
+      const message = mockMessageBus.publish.mock.calls[0][1] as ChannelMessage
       expect(message.content).toBe('')
     })
   })
