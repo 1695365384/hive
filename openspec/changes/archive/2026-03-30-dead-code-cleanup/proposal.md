@@ -72,8 +72,8 @@
 
 ## Impact
 
-- **Breaking**: `validateAgentConfig()`、`validateProviderConfig()`、`validateOrThrow()` 从 `@hive/core` 导出中移除（无外部调用方）
-- **Breaking**: `preprocessParams()` 从 `@hive/core` 导出中移除（仅测试使用）
+- **Breaking**: `validateAgentConfig()`、`validateProviderConfig()`、`validateOrThrow()` 从 `@bundy-lmw/hive-core` 导出中移除（无外部调用方）
+- **Breaking**: `preprocessParams()` 从 `@bundy-lmw/hive-core` 导出中移除（仅测试使用）
 - **Breaking**: `getActiveProvider()`、`getAllProviders()`、`switchProvider()`、`getMcpServersForAgent()` 从 ProviderManager 移除
 - **Breaking**: `getModels()`、`getModelSpec()`、`getContextWindow()` 等 ProviderManager 方法移除（后续由 provider-layer-abstraction change 重新实现 ModelSpec 数据流）
 - `packages/core` 不再依赖 `ajv`

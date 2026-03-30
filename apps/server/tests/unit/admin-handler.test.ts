@@ -8,16 +8,29 @@ vi.mock('node:fs', () => ({
   mkdirSync: vi.fn(),
 }))
 
-vi.mock('node:child_process', () => ({
-  execSync: vi.fn(),
-}))
-
 vi.mock('../../src/config.js', () => ({
   HIVE_HOME: '/tmp/test-hive',
 }))
 
+vi.mock('../../src/plugin-manager/index.js', () => ({
+  searchPlugins: vi.fn(),
+  installPlugin: vi.fn(),
+  listPlugins: vi.fn().mockReturnValue('No plugins installed.'),
+  removePlugin: vi.fn(),
+}))
+
+vi.mock('../../src/plugin-manager/registry.js', () => ({
+  loadRegistry: vi.fn().mockReturnValue({}),
+  saveRegistry: vi.fn(),
+  addPlugin: vi.fn(),
+  removePlugin: vi.fn(),
+  getPlugin: vi.fn(),
+  hasPlugin: vi.fn(),
+}))
+
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { execSync } from 'node:child_process'
+import { searchPlugins, installPlugin, listPlugins, removePlugin } from '../../src/plugin-manager/index.js'
+import { loadRegistry } from '../../src/plugin-manager/registry.js'
 import { AdminWsHandler } from '../../src/gateway/ws/admin-handler.js'
 import type { WsRequest } from '../../src/gateway/ws/types.js'
 
@@ -475,8 +488,55 @@ describe('AdminWsHandler', () => {
   // Plugin Handlers
   // ============================================
 
+  describe('plugin.available', () => {
+    it('should return available plugins from npm search', async () => {
+      vi.mocked(searchPlugins).mockResolvedValue({
+        packages: [
+          { name: '@bundy-lmw/hive-plugin-feishu', version: '1.0.1', description: '飞书消息通道插件' },
+        ],
+        total: 1,
+      })
+
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.available'))
+
+      const res = messages[0] as any
+      expect(res.success).toBe(true)
+      expect(res.result).toHaveLength(1)
+      expect(res.result[0].name).toBe('@bundy-lmw/hive-plugin-feishu')
+      expect(res.result[0].version).toBe('1.0.1')
+      expect(res.result[0].description).toBe('飞书消息通道插件')
+      expect(searchPlugins).toHaveBeenCalledWith(undefined)
+    })
+
+    it('should pass keyword to search', async () => {
+      vi.mocked(searchPlugins).mockResolvedValue({ packages: [], total: 0 })
+
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.available', { keyword: 'feishu' }))
+
+      const res = messages[0] as any
+      expect(res.success).toBe(true)
+      expect(searchPlugins).toHaveBeenCalledWith('feishu')
+    })
+
+    it('should return error on search failure', async () => {
+      vi.mocked(searchPlugins).mockRejectedValue(new Error('Network error'))
+
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.available'))
+
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.code).toBe('INTERNAL')
+      expect(res.error.message).toBe('Network error')
+    })
+  })
+
   describe('plugin.list', () => {
-    it('should return empty array without server', async () => {
+    it('should return empty list when no plugins installed', async () => {
+      vi.mocked(loadRegistry).mockReturnValue({})
+
       const { handler, ws, getSentMessages } = setup()
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.list'))
 
@@ -485,15 +545,50 @@ describe('AdminWsHandler', () => {
       expect(res.result).toEqual([])
     })
 
-    it('should return empty array with server', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: {} } as any)
+    it('should return plugins from registry with config', async () => {
+      vi.mocked(existsSync).mockReturnValue(true)
+      vi.mocked(loadRegistry).mockReturnValue({
+        'feishu': {
+          source: 'npm:@bundy-lmw/hive-plugin-feishu@1.0.1',
+          installedAt: '2026-03-30T00:00:00.000Z',
+          resolvedVersion: '1.0.1',
+        },
+      })
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        pluginConfigs: {
+          '@bundy-lmw/hive-plugin-feishu': { appId: 'test-app', appSecret: 'test-secret' },
+        },
+      }))
 
+      const { handler, ws, getSentMessages } = setup()
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.list'))
 
       const res = messages[0] as any
       expect(res.success).toBe(true)
-      expect(res.result).toEqual([])
+      expect(res.result).toHaveLength(1)
+      expect(res.result[0].name).toBe('@bundy-lmw/hive-plugin-feishu')
+      expect(res.result[0].version).toBe('1.0.1')
+      expect(res.result[0].config).toEqual({ appId: 'test-app', appSecret: 'test-secret' })
+      expect(res.result[0].enabled).toBe(true)
+    })
+
+    it('should return empty config when pluginConfigs not set', async () => {
+      vi.mocked(existsSync).mockReturnValue(true)
+      vi.mocked(loadRegistry).mockReturnValue({
+        'feishu': {
+          source: 'npm:@bundy-lmw/hive-plugin-feishu@1.0.1',
+          installedAt: '2026-03-30T00:00:00.000Z',
+          resolvedVersion: '1.0.1',
+        },
+      })
+      vi.mocked(readFileSync).mockReturnValue('{}')
+
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.list'))
+
+      const res = messages[0] as any
+      expect(res.success).toBe(true)
+      expect(res.result[0].config).toEqual({})
     })
   })
 
@@ -507,72 +602,61 @@ describe('AdminWsHandler', () => {
       expect(res.error.code).toBe('VALIDATION')
     })
 
-    it('should install from npm', async () => {
-      vi.mocked(existsSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('plugins')) return true
-        return false
-      })
-
-      const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.install', { source: '@hive/plugin-test' }))
-
-      const res = messages.find((m: any) => m.type === 'res')!
-      expect(res.success).toBe(true)
-      expect(res.result.id).toBe('@hive/plugin-test')
-
-      const event = messages.find((m: any) => m.type === 'event')!
-      expect(event.event).toBe('plugin.installed')
-
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining('npm install'),
-        expect.objectContaining({ timeout: 60_000 }),
-      )
-    })
-
-    it('should install from git URL', async () => {
-      vi.mocked(existsSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('.tmp-install/package.json')) return true
-        if (typeof path === 'string' && path.includes('plugins')) return true
-        return false
-      })
-      vi.mocked(readFileSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('.tmp-install/package.json')) {
-          return JSON.stringify({ name: 'git-plugin', hive: { plugin: true } })
-        }
-        return '{}'
+    it('should install plugin and write config', async () => {
+      vi.mocked(installPlugin).mockResolvedValue({
+        success: true,
+        name: '@bundy-lmw/hive-plugin-test',
+        version: '1.0.0',
       })
 
       const { handler, ws, getSentMessages } = setup()
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.install', {
-        source: 'https://github.com/user/plugin.git',
+        source: '@bundy-lmw/hive-plugin-test',
       }))
 
       const res = messages.find((m: any) => m.type === 'res')!
       expect(res.success).toBe(true)
-      expect(execSync).toHaveBeenCalledWith(expect.stringContaining('git clone'), expect.anything())
+      expect(res.result.id).toBe('@bundy-lmw/hive-plugin-test')
+      expect(res.result.version).toBe('1.0.0')
+      expect(res.result.enabled).toBe(true)
+
+      const event = messages.find((m: any) => m.type === 'event')!
+      expect(event.event).toBe('plugin.installed')
+      expect(event.data.name).toBe('@bundy-lmw/hive-plugin-test')
+
+      expect(installPlugin).toHaveBeenCalledWith('@bundy-lmw/hive-plugin-test')
+      expect(writeFileSync).toHaveBeenCalled()
     })
 
-    it('should fail git install without hive.plugin in package.json', async () => {
-      vi.mocked(existsSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('.tmp-install/package.json')) return true
-        if (typeof path === 'string' && path.includes('plugins')) return true
-        return false
-      })
-      vi.mocked(readFileSync).mockImplementation((path: string) => {
-        if (typeof path === 'string' && path.includes('.tmp-install/package.json')) {
-          return JSON.stringify({ name: 'bad-plugin' })
-        }
-        return '{}'
+    it('should return error when installPlugin fails', async () => {
+      vi.mocked(installPlugin).mockResolvedValue({
+        success: false,
+        name: '',
+        error: 'Package not found',
       })
 
       const { handler, ws, getSentMessages } = setup()
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.install', {
-        source: 'https://github.com/user/bad-plugin.git',
+        source: '@bundy-lmw/hive-plugin-nonexist',
       }))
 
       const res = messages[0] as any
       expect(res.success).toBe(false)
-      expect(res.error.message).toContain('missing hive.plugin')
+      expect(res.error.code).toBe('INTERNAL')
+      expect(res.error.message).toBe('Package not found')
+    })
+
+    it('should handle installPlugin throwing', async () => {
+      vi.mocked(installPlugin).mockRejectedValue(new Error('npm registry unavailable'))
+
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.install', {
+        source: '@bundy-lmw/hive-plugin-test',
+      }))
+
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.message).toBe('npm registry unavailable')
     })
   })
 
@@ -586,21 +670,38 @@ describe('AdminWsHandler', () => {
       expect(res.error.code).toBe('VALIDATION')
     })
 
-    it('should uninstall existing plugin', async () => {
-      vi.mocked(existsSync).mockReturnValue(true)
+    it('should uninstall plugin and clean config', async () => {
+      vi.mocked(removePlugin).mockReturnValue({ success: true })
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        pluginConfigs: { 'test-plugin': { key: 'val' } },
+      }))
 
       const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.uninstall', { id: 'test-plugin' }))
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.uninstall', {
+        id: 'test-plugin',
+      }))
 
       const res = messages.find((m: any) => m.type === 'res')!
       expect(res.success).toBe(true)
-      expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining('rm -rf'),
-        expect.anything(),
-      )
+      expect(removePlugin).toHaveBeenCalledWith('test-plugin')
 
       const event = messages.find((m: any) => m.type === 'event')!
       expect(event.event).toBe('plugin.uninstalled')
+      expect(event.data.id).toBe('test-plugin')
+    })
+
+    it('should return error when removePlugin fails', async () => {
+      vi.mocked(removePlugin).mockReturnValue({ success: false, error: 'Plugin not found' })
+
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.uninstall', {
+        id: 'nonexistent',
+      }))
+
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.code).toBe('INTERNAL')
+      expect(res.error.message).toBe('Plugin not found')
     })
   })
 
@@ -614,15 +715,46 @@ describe('AdminWsHandler', () => {
       expect(res.error.code).toBe('VALIDATION')
     })
 
-    it('should return success for valid update', async () => {
+    it('should write plugin config and broadcast event', async () => {
+      vi.mocked(readFileSync).mockReturnValue('{}')
+
       const { handler, ws, getSentMessages } = setup()
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.updateConfig', {
-        id: 'test-plugin',
-        config: { key: 'value' },
+        id: 'feishu',
+        config: { appId: 'new-app-id', appSecret: 'new-secret' },
       }))
 
-      const res = messages[0] as any
+      const event = messages.find((m: any) => m.type === 'event')!
+      expect(event.event).toBe('plugin.configChanged')
+      expect(event.data.id).toBe('feishu')
+      expect(event.data.config).toEqual({ appId: 'new-app-id', appSecret: 'new-secret' })
+
+      const res = messages.find((m: any) => m.type === 'res')!
       expect(res.success).toBe(true)
+      expect(writeFileSync).toHaveBeenCalled()
+    })
+
+    it('should merge config with existing pluginConfigs', async () => {
+      vi.mocked(loadRegistry).mockReturnValue({})
+      vi.mocked(existsSync).mockReturnValue(true)
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        pluginConfigs: { 'other-plugin': { key: 'val' } },
+      }))
+
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.updateConfig', {
+        id: 'feishu',
+        config: { appId: 'test' },
+      }))
+
+      const res = messages.find((m: any) => m.type === 'res')!
+      expect(res.success).toBe(true)
+
+      // Verify writeFileSync was called with merged config
+      const writeCall = vi.mocked(writeFileSync).mock.calls[0]
+      const written = JSON.parse(writeCall[1] as string)
+      expect(written.pluginConfigs.feishu).toEqual({ appId: 'test' })
+      expect(written.pluginConfigs['other-plugin']).toEqual({ key: 'val' })
     })
   })
 

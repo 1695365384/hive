@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeFeishuPluginConfig } from '../../src/bootstrap.js'
+import { normalizeFeishuPluginConfig } from '../../src/plugins.js'
 
 describe('normalizeFeishuPluginConfig', () => {
   it('returns the original config when no feishu channel config is present', () => {

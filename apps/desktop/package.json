@@ -1,5 +1,5 @@
 {
-  "name": "@hive/desktop",
+  "name": "@bundy-lmw/hive-desktop",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "tauri dev",
     "dev:ui": "vite",
     "dev:server": "node --watch ../../apps/server/dist/main.js",
-    "build": "pnpm --filter @hive/server build && tsc && vite build",
+    "build": "pnpm --filter @bundy-lmw/hive-server build && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
   },

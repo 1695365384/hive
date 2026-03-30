@@ -1,6 +1,6 @@
 ## 1. 依赖安装与目录结构
 
-- [x] 1.1 安装新依赖：`pnpm --filter @hive/core add cheerio turndown` 及其类型定义 `@types/turndown`
+- [x] 1.1 安装新依赖：`pnpm --filter @bundy-lmw/hive-core add cheerio turndown` 及其类型定义 `@types/turndown`
 - [x] 1.2 创建目录结构：`packages/core/src/tools/built-in/`、`packages/core/src/tools/built-in/utils/`
 
 ## 2. 通用工具基础设施
@@ -56,4 +56,4 @@
 - [x] 11.7 为 web-fetch-tool 编写单元测试：成功抓取、内容截断、无效 URL
 - [x] 11.8 为 ToolRegistry 编写单元测试：注册/查询、agent 类型工具分配、自定义工具、memory-tools 集成
 - [x] 11.9 更新现有 runner 测试和 capability 测试适配新的工具格式
-- [x] 11.10 运行 `pnpm --filter @hive/core test` 确保全部测试通过
+- [x] 11.10 运行 `pnpm --filter @bundy-lmw/hive-core test` 确保全部测试通过

@@ -1,4 +1,4 @@
-## 1. MessageBus 迁移到 @hive/core
+## 1. MessageBus 迁移到 @bundy-lmw/hive-core
 
 - [x] 1.1 创建 `packages/core/src/bus/` 目录
 - [x] 1.2 复制 `packages/orchestrator/src/bus/MessageBus.ts` → `packages/core/src/bus/MessageBus.ts`
@@ -6,12 +6,12 @@
 - [x] 1.4 更新 `packages/core/src/index.ts` 添加 `export { MessageBus } from './bus/MessageBus.js'` 和类型导出
 - [x] 1.5 更新 `packages/core/src/bus/MessageBus.ts` 的 import 路径（移除 `../bus/` 前缀引用）
 
-## 2. 删除 @hive/orchestrator 包
+## 2. 删除 @bundy-lmw/hive-orchestrator 包
 
-- [x] 2.1 从 `apps/server/package.json` 移除 `@hive/orchestrator` 依赖
+- [x] 2.1 从 `apps/server/package.json` 移除 `@bundy-lmw/hive-orchestrator` 依赖
 - [x] 2.2 删除 `packages/orchestrator/` 整个目录
-- [x] 2.3 更新 `apps/server/src/bootstrap.ts` import：`from '@hive/orchestrator'` → `from '@hive/core'`
-- [x] 2.4 更新 `apps/server/src/heartbeat-scheduler.ts` import：`from '@hive/orchestrator'` → `from '@hive/core'`
+- [x] 2.3 更新 `apps/server/src/bootstrap.ts` import：`from '@bundy-lmw/hive-orchestrator'` → `from '@bundy-lmw/hive-core'`
+- [x] 2.4 更新 `apps/server/src/heartbeat-scheduler.ts` import：`from '@bundy-lmw/hive-orchestrator'` → `from '@bundy-lmw/hive-core'`
 - [x] 2.5 更新 `packages/orchestrator/package.json` 的 `pnpm-workspace.yaml`（如果有workspace引用）
 - [x] 2.6 从根 `pnpm-workspace.yaml` 移除 orchestrator 包引用
 
@@ -54,5 +54,5 @@
 
 - [x] 7.1 运行 `npm run build` 验证编译通过
 - [x] 7.2 运行 `npm test` 验证所有测试通过（重点：scheduler、agent、message-bus 相关测试）
-- [x] 7.3 检查没有遗留的 `@hive/orchestrator` 引用
+- [x] 7.3 检查没有遗留的 `@bundy-lmw/hive-orchestrator` 引用
 - [x] 7.4 确认 `packages/orchestrator` 目录已完全删除

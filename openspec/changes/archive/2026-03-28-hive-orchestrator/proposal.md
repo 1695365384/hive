@@ -1,6 +1,6 @@
 ## Why
 
-当前 Hive 项目只有 `@hive/core` 一个核心包，提供了 Agent 的基础能力。但在实际生产场景中，需要：
+当前 Hive 项目只有 `@bundy-lmw/hive-core` 一个核心包，提供了 Agent 的基础能力。但在实际生产场景中，需要：
 
 1. **多 Agent 协作编排** - 多个 Agent 需要协调执行，共享状态
 2. **外部平台接入** - 飞书、QQ、Telegram 等平台需要与 Agent 交互
@@ -19,7 +19,7 @@
 
 ### 官方插件（独立包）
 
-- `@hive/plugin-feishu` - 飞书机器人插件（WebSocket 连接飞书服务器）
+- `@bundy-lmw/hive-plugin-feishu` - 飞书机器人插件（WebSocket 连接飞书服务器）
 
 ### 不包含
 
@@ -69,7 +69,7 @@ packages/
 ### 依赖关系
 
 ```
-@hive/plugin-feishu → @hive/orchestrator → @hive/core
+@bundy-lmw/hive-plugin-feishu → @bundy-lmw/hive-orchestrator → @bundy-lmw/hive-core
 ```
 
 ### 外部依赖

@@ -87,6 +87,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   const adminHandler = createAdminWsHandler()
   adminHandler.setServer(context.server)
   adminHandler.setHttpServer(server)
+  adminHandler.setPlugins(context.plugins)
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)

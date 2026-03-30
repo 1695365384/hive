@@ -4,8 +4,8 @@
 `apps/server/src/plugins.ts` SHALL 读取 `hive.config.json` 中的 `pluginConfigs`，对每个条目通过 `await import(packageName)` 动态加载插件模块，取 `mod.default` 作为插件类，用对应配置实例化后返回 `IPlugin[]`。
 
 #### Scenario: 加载单个插件
-- **WHEN** `pluginConfigs` 包含 `{ "@hive/plugin-feishu": { apps: [...] } }`
-- **THEN** 执行 `import('@hive/plugin-feishu')`，取 `mod.default`，执行 `new Plugin({ apps: [...] })`，返回包含该插件实例的数组
+- **WHEN** `pluginConfigs` 包含 `{ "@bundy-lmw/hive-plugin-feishu": { apps: [...] } }`
+- **THEN** 执行 `import('@bundy-lmw/hive-plugin-feishu')`，取 `mod.default`，执行 `new Plugin({ apps: [...] })`，返回包含该插件实例的数组
 
 #### Scenario: 加载多个插件
 - **WHEN** `pluginConfigs` 包含多个插件配置

@@ -13,13 +13,13 @@ packages/core/
 ```
 
 **现状**：
-- `@hive/core` 是单 Agent SDK
+- `@bundy-lmw/hive-core` 是单 Agent SDK
 - 无内置的多 Agent 编排能力
 - 无外部通信通道
 - 无插件扩展机制
 
 **约束**：
-- 必须与 `@hive/core` 解耦，单向依赖
+- 必须与 `@bundy-lmw/hive-core` 解耦，单向依赖
 - 不引入外部消息中间件（Redis、RabbitMQ 等）
 - 初期聚焦单机场景，不考虑分布式
 - 外部平台通过插件形式接入
@@ -122,7 +122,7 @@ interface FeishuPlugin extends PlatformAdapter {
 ```
 
 **决定**:
-- 飞书插件作为独立包 `@hive/plugin-feishu`
+- 飞书插件作为独立包 `@bundy-lmw/hive-plugin-feishu`
 - 通过 WebSocket 连接飞书服务器（非自建服务端）
 - 消息格式转换在插件内完成
 - 其他平台（QQ、Telegram）可复用相同模式
@@ -163,7 +163,7 @@ packages/
 这是新模块，无需迁移。部署步骤：
 
 1. 创建 `packages/orchestrator` 目录
-2. 初始化 `package.json`，依赖 `@hive/core`
+2. 初始化 `package.json`，依赖 `@bundy-lmw/hive-core`
 3. 实现核心组件（按 tasks.md 顺序）
 4. 创建 `packages/plugins/feishu` 飞书插件
 5. 添加单元测试
