@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Build core
+        run: pnpm --filter @bundy-lmw/hive-core build
+
+      - name: Test core
+        run: pnpm --filter @bundy-lmw/hive-core test
+
+      - name: Test server
+        run: pnpm --filter @bundy-lmw/hive-server test
+
+      - name: Type check desktop
+        run: pnpm --filter @bundy-lmw/hive-desktop exec tsc --noEmit
