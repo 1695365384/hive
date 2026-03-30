@@ -19,14 +19,18 @@ export function Dashboard() {
   ];
 
   return (
-    <div className="flex h-screen bg-gray-950 text-white">
+    <div className="flex h-screen bg-stone-950 text-stone-100">
       {/* Sidebar */}
-      <aside className="w-48 border-r border-gray-800 flex flex-col">
-        <div className="p-4 border-b border-gray-800">
-          <h1 className="text-lg font-bold">Hive</h1>
-          <div className="flex items-center gap-1.5 mt-1">
-            <div className={`w-2 h-2 rounded-full ${state === "connected" ? "bg-green-500" : state === "reconnecting" ? "bg-yellow-500" : "bg-red-500"}`} />
-            <span className="text-xs text-gray-400 capitalize">{state}</span>
+      <aside className="w-52 bg-stone-900 border-r border-stone-800 flex flex-col">
+        {/* Logo */}
+        <div className="p-4 border-b border-stone-800 flex items-center gap-3">
+          <img src="/logo.svg" alt="Hive" className="w-9 h-9" />
+          <div>
+            <h1 className="text-lg font-bold text-amber-400 tracking-wide">Hive</h1>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <div className={`w-1.5 h-1.5 rounded-full ${state === "connected" ? "bg-green-500" : state === "reconnecting" ? "bg-amber-500" : "bg-red-500"}`} />
+              <span className="text-[11px] text-stone-500 capitalize">{state}</span>
+            </div>
           </div>
         </div>
 
@@ -35,10 +39,10 @@ export function Dashboard() {
             <button
               key={item.id}
               onClick={() => setPage(item.id)}
-              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                 page === item.id
-                  ? "bg-gray-800 text-white"
-                  : "text-gray-400 hover:bg-gray-800/50 hover:text-white"
+                  ? "bg-amber-500/15 text-amber-400 font-medium"
+                  : "text-stone-400 hover:bg-stone-800 hover:text-stone-200"
               }`}
             >
               {item.label}
@@ -46,13 +50,13 @@ export function Dashboard() {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-gray-800">
-          <p className="text-xs text-gray-500">v0.1.0</p>
+        <div className="p-3 border-t border-stone-800">
+          <p className="text-[11px] text-stone-600">v0.1.0</p>
         </div>
       </aside>
 
       {/* Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto bg-stone-950">
         {page === "status" && <StatusPage />}
         {page === "config" && <ConfigPage />}
         {page === "logs" && <LogViewer />}

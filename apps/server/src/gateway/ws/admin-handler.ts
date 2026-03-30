@@ -37,7 +37,7 @@ interface AdminClient {
   logSubscribed: boolean
 }
 
-type MethodHandler = (params: unknown, requestId: string) => WsResponse
+type MethodHandler = (params: unknown, requestId: string) => WsResponse | Promise<WsResponse>
 
 // ============================================
 // AdminWsHandler
@@ -67,6 +67,8 @@ export class AdminWsHandler extends EventEmitter {
       ['status.get', this.handleStatusGet.bind(this)],
       ['server.restart', this.handleServerRestart.bind(this)],
       ['server.getProviders', this.handleGetProviders.bind(this)],
+      ['provider.list', this.handleProviderList.bind(this)],
+      ['provider.getModels', this.handleProviderGetModels.bind(this)],
       ['plugin.list', this.handlePluginList.bind(this)],
       ['plugin.install', this.handlePluginInstall.bind(this)],
       ['plugin.uninstall', this.handlePluginUninstall.bind(this)],
@@ -108,8 +110,9 @@ export class AdminWsHandler extends EventEmitter {
       if (!msg) return
 
       if (msg.type === 'req') {
-        const response = this.handleRequest(msg)
-        ws.send(JSON.stringify(response))
+        this.handleRequest(msg).then(response => {
+          ws.send(JSON.stringify(response))
+        })
       }
     })
 
@@ -146,7 +149,7 @@ export class AdminWsHandler extends EventEmitter {
     }
   }
 
-  private handleRequest(req: WsRequest): WsResponse {
+  private async handleRequest(req: WsRequest): Promise<WsResponse> {
     const handler = this.handlers.get(req.method)
     if (!handler) {
       return createErrorResponse(
@@ -157,7 +160,7 @@ export class AdminWsHandler extends EventEmitter {
     }
 
     try {
-      return handler(req.params, req.id)
+      return await handler(req.params, req.id)
     } catch (error) {
       return createErrorResponse(
         req.id,
@@ -262,6 +265,50 @@ export class AdminWsHandler extends EventEmitter {
 
     const providers = this.server.agent.listProviders()
     return createSuccessResponse(id, providers)
+  }
+
+  private async handleProviderList(_params: unknown, id: string): Promise<WsResponse> {
+    if (!this.server) {
+      return createErrorResponse(id, 'INTERNAL', 'Server not initialized')
+    }
+
+    try {
+      const providers = await this.server.agent.listAllProviders()
+      return createSuccessResponse(id, providers.map(p => ({
+        id: p.id,
+        name: p.name,
+        logo: p.logo,
+        type: p.type,
+        defaultModel: p.models.length > 0 ? p.models[0].id : undefined,
+        modelCount: p.models.length,
+      })))
+    } catch (error) {
+      return createErrorResponse(id, 'INTERNAL', error instanceof Error ? error.message : 'Failed to list providers')
+    }
+  }
+
+  private async handleProviderGetModels(params: unknown, id: string): Promise<WsResponse> {
+    const { providerId } = params as { providerId: string }
+    if (!providerId) {
+      return createErrorResponse(id, 'VALIDATION', 'providerId is required')
+    }
+
+    if (!this.server) {
+      return createErrorResponse(id, 'INTERNAL', 'Server not initialized')
+    }
+
+    try {
+      const models = await this.server.agent.listProviderModels(providerId)
+      return createSuccessResponse(id, models.map(m => ({
+        id: m.id,
+        name: m.name,
+        family: m.family,
+        contextWindow: m.contextWindow,
+        maxOutputTokens: m.maxOutputTokens,
+      })))
+    } catch (error) {
+      return createErrorResponse(id, 'INTERNAL', error instanceof Error ? error.message : 'Failed to get models')
+    }
   }
 
   // ============================================

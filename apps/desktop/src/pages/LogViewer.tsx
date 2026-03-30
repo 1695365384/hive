@@ -10,9 +10,9 @@ interface LogEntry {
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  debug: "text-gray-500",
-  info: "text-blue-400",
-  warn: "text-yellow-400",
+  debug: "text-stone-500",
+  info: "text-amber-400",
+  warn: "text-orange-400",
   error: "text-red-400",
 };
 
@@ -74,11 +74,11 @@ export function LogViewer() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 p-3 border-b border-gray-800">
+      <div className="flex items-center gap-3 p-3 border-b border-stone-800">
         <select
           value={levelFilter}
           onChange={(e) => setLevelFilter(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-300"
+          className="bg-stone-800 border border-stone-700 rounded px-2 py-1 text-sm text-stone-300"
         >
           <option value="">All Levels</option>
           <option value="debug">Debug</option>
@@ -91,12 +91,12 @@ export function LogViewer() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter logs..."
-          className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1 text-sm text-white placeholder-gray-500"
+          className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-1 text-sm text-stone-100 placeholder-stone-500"
         />
-        <span className="text-xs text-gray-500">{filteredLogs.length} logs</span>
+        <span className="text-xs text-stone-500">{filteredLogs.length} logs</span>
         <button
           onClick={() => setAutoScroll(true)}
-          className={`text-xs px-2 py-1 rounded ${autoScroll ? "bg-blue-600" : "bg-gray-800"} transition-colors`}
+          className={`text-xs px-2 py-1 rounded ${autoScroll ? "bg-amber-600" : "bg-stone-800"} transition-colors`}
         >
           Auto Scroll
         </button>
@@ -110,16 +110,16 @@ export function LogViewer() {
       >
         {filteredLogs.map((log) => (
           <div key={log.id} className="flex gap-2">
-            <span className="text-gray-600 w-20 shrink-0">
+            <span className="text-stone-600 w-20 shrink-0">
               {new Date(log.timestamp).toLocaleTimeString()}
             </span>
-            <span className={`w-12 shrink-0 uppercase ${LEVEL_COLORS[log.level] ?? "text-gray-400"}`}>
+            <span className={`w-12 shrink-0 uppercase ${LEVEL_COLORS[log.level] ?? "text-stone-400"}`}>
               {log.level}
             </span>
-            <span className="text-gray-600 w-24 shrink-0 truncate">
+            <span className="text-stone-600 w-24 shrink-0 truncate">
               [{log.source}]
             </span>
-            <span className="text-gray-300 break-all">{log.message}</span>
+            <span className="text-stone-300 break-all">{log.message}</span>
           </div>
         ))}
         <div ref={bottomRef} />

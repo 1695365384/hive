@@ -131,7 +131,10 @@ export async function runCli(args: string[]): Promise<void> {
 }
 
 // Auto-start if run directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isDirectRun = process.argv[1] &&
+  (import.meta.url === `file://${process.argv[1]}` ||
+   import.meta.url === new URL(process.argv[1], `file://${process.cwd()}/`).href)
+if (isDirectRun) {
   startServer().catch((error) => {
     console.error('[hive] Failed to start:', error)
     process.exit(1)

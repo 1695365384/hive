@@ -171,6 +171,14 @@ export class Agent {
     return this.providerCap.listPresets();
   }
 
+  async listAllProviders() {
+    return this.providerCap.listAllProviders();
+  }
+
+  async listProviderModels(providerId: string) {
+    return this.providerCap.listProviderModels(providerId);
+  }
+
   useProvider(name: string, apiKey?: string): boolean {
     return this.providerCap.useSync(name, apiKey);
   }

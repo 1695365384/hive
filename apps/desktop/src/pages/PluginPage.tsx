@@ -54,20 +54,20 @@ export function PluginPage() {
       <h2 className="text-xl font-semibold">Plugins</h2>
 
       {/* Install */}
-      <div className="bg-gray-900 rounded-lg p-4 space-y-3">
-        <h3 className="text-sm font-medium text-gray-400 uppercase">Install Plugin</h3>
+      <div className="bg-stone-900 rounded-lg p-4 space-y-3 border border-stone-800">
+        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">Install Plugin</h3>
         <div className="flex gap-2">
           <input
             type="text"
             value={installSource}
             onChange={(e) => setInstallSource(e.target.value)}
             placeholder="npm package name, git URL, or local path"
-            className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder-gray-500"
+            className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm text-stone-100 placeholder-stone-500"
           />
           <button
             onClick={handleInstall}
             disabled={installing || !installSource.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 rounded text-sm transition-colors"
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 rounded text-sm transition-colors"
           >
             {installing ? "Installing..." : "Install"}
           </button>
@@ -76,22 +76,22 @@ export function PluginPage() {
       </div>
 
       {/* Installed Plugins */}
-      <div className="bg-gray-900 rounded-lg p-4 space-y-3">
-        <h3 className="text-sm font-medium text-gray-400 uppercase">
+      <div className="bg-stone-900 rounded-lg p-4 space-y-3 border border-stone-800">
+        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">
           Installed ({plugins.length})
         </h3>
         {plugins.length === 0 ? (
-          <p className="text-sm text-gray-500">No plugins installed</p>
+          <p className="text-sm text-stone-500">No plugins installed</p>
         ) : (
           <div className="space-y-2">
             {plugins.map((plugin) => (
               <div
                 key={plugin.id}
-                className="flex items-center justify-between p-3 bg-gray-800 rounded"
+                className="flex items-center justify-between p-3 bg-stone-800 rounded"
               >
                 <div>
                   <p className="text-sm font-medium">{plugin.name}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-stone-500">
                     v{plugin.version} {plugin.description && `- ${plugin.description}`}
                   </p>
                 </div>

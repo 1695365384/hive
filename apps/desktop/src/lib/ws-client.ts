@@ -17,10 +17,11 @@ interface PendingRequest {
 
 type EventCallback = (data: any) => void
 
-const DEFAULT_WS_URL = 'ws://localhost:4450/ws/admin'
+const DEFAULT_WS_URL = 'ws://127.0.0.1:4450/ws/admin'
 const REQUEST_TIMEOUT = 30_000
 const MAX_RECONNECT_DELAY = 30_000
 const INITIAL_RECONNECT_DELAY = 500
+const MAX_RECONNECT_ATTEMPTS = 10
 
 export class WsClient {
   private ws: WebSocket | null = null
@@ -30,6 +31,7 @@ export class WsClient {
   private stateListeners = new Set<(state: ConnectionState) => void>()
   private reconnectDelay = INITIAL_RECONNECT_DELAY
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempts = 0
   private url: string
   private subscriptions: string[] = [] // 记录已订阅的事件
   private destroyed = false
@@ -89,6 +91,14 @@ export class WsClient {
       this.ws.close()
       this.ws = null
     }
+  }
+
+  /** 手动重试连接（从 failed 状态恢复） */
+  reconnect(): void {
+    this.reconnectAttempts = 0
+    this.reconnectDelay = INITIAL_RECONNECT_DELAY
+    this.destroyed = false
+    this.connect()
   }
 
   // ============================================
@@ -155,6 +165,8 @@ export class WsClient {
   }
 
   onStateChange(callback: (state: ConnectionState) => void): () => void {
+    // 立即同步当前状态，避免订阅时连接已建立但拿不到状态
+    callback(this.state)
     this.stateListeners.add(callback)
     return () => this.stateListeners.delete(callback)
   }
@@ -215,6 +227,14 @@ export class WsClient {
   private scheduleReconnect(): void {
     if (this.destroyed) return
     if (this.reconnectTimer) return
+
+    this.reconnectAttempts++
+
+    // 超过最大重试次数，进入 failed 状态
+    if (this.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+      this.setState('failed')
+      return
+    }
 
     this.setState('reconnecting')
 

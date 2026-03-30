@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"pnpm dev:server\" \"pnpm dev:ui\"",
-    "dev:server": "pnpm --filter @hive/server build && node ../../server/dist/main.js",
+    "dev": "pnpm tauri dev",
+    "dev:server": "pnpm --filter @hive/server build && node ../../apps/server/dist/main.js",
     "dev:ui": "vite",
     "build": "pnpm --filter @hive/server build && tsc && vite build",
     "preview": "vite preview",
