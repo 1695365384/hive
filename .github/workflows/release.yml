@@ -96,10 +96,24 @@ jobs:
           npx @tauri-apps/cli build --bundles dmg --target "$TARGET" --ci \
             --config '{"build":{"beforeBuildCommand":""}}'
 
+      - name: Debug bundle output
+        if: always()
+        run: |
+          echo "=== Bundle directory ==="
+          find apps/desktop/src-tauri/target -type d -name "bundle" 2>/dev/null
+          echo "=== All dmg/app files ==="
+          find apps/desktop/src-tauri/target -name "*.dmg" -o -name "*.app" 2>/dev/null || true
+
       - name: Find DMG
         id: dmg
         run: |
-          find apps/desktop/src-tauri/target -name "*.dmg" -type f | head -1 | xargs -I{} echo "path={}"
+          DMG=$(find apps/desktop/src-tauri/target -name "*.dmg" -type f | head -1)
+          if [ -z "$DMG" ]; then
+            echo "ERROR: No DMG found"
+            find apps/desktop/src-tauri/target -name "*.dmg" -o -name "*.app" 2>/dev/null || true
+            exit 1
+          fi
+          echo "path=$DMG" >> "$GITHUB_OUTPUT"
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
