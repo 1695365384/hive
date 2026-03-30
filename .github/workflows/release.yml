@@ -97,7 +97,7 @@ jobs:
             --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Debug bundle output
-        if: always()
+        if: failure()
         run: |
           echo "=== Bundle directory ==="
           find apps/desktop/src-tauri/target -type d -name "bundle" 2>/dev/null
@@ -177,12 +177,12 @@ jobs:
         run: |
           $f = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle" -Filter "*.msi" -Recurse | Select-Object -First 1
           if ($f) {
-            echo "path=$($f.FullName)"
+            "path=$($f.FullName)" >> $env:GITHUB_OUTPUT
           } else {
             Write-Host "No MSI found, checking for exe..."
             $e = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle" -Filter "*.exe" -Recurse | Select-Object -First 1
             if ($e) {
-              echo "path=$($e.FullName)"
+              "path=$($e.FullName)" >> $env:GITHUB_OUTPUT
             } else {
               Write-Host "No MSI or EXE found"
               exit 1
