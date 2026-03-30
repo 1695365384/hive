@@ -8,7 +8,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import type { HiveContext } from '../bootstrap.js'
-import type { IChannel, IWebhookHandler } from '@hive/core'
+import type { IChannel, IWebhookHandler } from '@bundy-lmw/hive-core'
 import { createAuthMiddleware } from './auth.js'
 
 /** Maximum message length (100KB) */
@@ -115,6 +115,17 @@ export function createHttpGateway(ctx: HiveContext): Hono {
         500
       )
     }
+  })
+
+  // List plugins
+  app.get('/api/plugins', (c) => {
+    return c.json({
+      plugins: ctx.plugins.map((p) => ({
+        id: p.metadata.id,
+        name: p.metadata.name,
+        version: p.metadata.version,
+      })),
+    })
   })
 
   // List sessions

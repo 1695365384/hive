@@ -76,7 +76,7 @@
 动态加载插件 SHALL 验证路径安全性，MUST 拒绝绝对路径和包含 `..` 的路径。
 
 #### Scenario: 合法相对路径
-- **WHEN** 插件名为 `@hive/plugin-feishu`
+- **WHEN** 插件名为 `@bundy-lmw/hive-plugin-feishu`
 - **THEN** SHALL 允许加载
 
 #### Scenario: 绝对路径被拒绝

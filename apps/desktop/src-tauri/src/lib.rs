@@ -53,6 +53,9 @@ async fn spawn_server(state: &ServerState) -> Result<(), String> {
         restart_count: 0,
     });
 
+    // 确保 port 空闲（启动前 + 重启前都要做）
+    kill_port_processes(4450).await;
+
     match do_spawn(&state.entry, &state.project_root).await {
         Ok(child) => {
             let pid = child.id();
@@ -84,6 +87,24 @@ async fn health_check(port: u16) -> bool {
         .unwrap_or(false)
 }
 
+/// 杀掉占用指定 port 的进程
+async fn kill_port_processes(port: u16) {
+    if let Ok(output) = tokio::process::Command::new("lsof")
+        .args(["-ti", &format!(":{}", port)])
+        .output()
+        .await
+    {
+        let pids_str = String::from_utf8_lossy(&output.stdout).to_string();
+        for pid in pids_str.lines().filter(|l| !l.is_empty()) {
+            eprintln!("[hive] Killing process {} on port {}", pid, port);
+            let _ = tokio::process::Command::new("kill")
+                .args(["-9", pid])
+                .output()
+                .await;
+        }
+    }
+}
+
 // ============================================
 // Auto Restart Watcher (Task 5.3)
 // ============================================
@@ -95,15 +116,17 @@ async fn watch_server(app: AppHandle, state: Arc<ServerState>) {
     let mut last_restart = std::time::Instant::now();
 
     loop {
-        // Wait for the server process to exit
-        {
+        // 1. 尽快获取 child 所有权并释放锁（锁只在这里短暂持有）
+        let opt_child = {
             let mut guard = state.child.lock().await;
-            if let Some(ref mut child) = *guard {
-                match child.wait().await {
-                    Ok(status) => eprintln!("[hive] Server exited with status: {}", status),
-                    Err(e) => eprintln!("[hive] Server error: {}", e),
-                }
-                *guard = None;
+            guard.take() // 取出所有权，guard 变为 None，scope 结束时锁立即释放
+        };
+
+        // 2. 锁已释放，安全地等待进程退出（不占锁）
+        if let Some(mut child) = opt_child {
+            match child.wait().await {
+                Ok(status) => eprintln!("[hive] Server exited with status: {}", status),
+                Err(e) => eprintln!("[hive] Server error: {}", e),
             }
         }
 
@@ -139,6 +162,7 @@ async fn watch_server(app: AppHandle, state: Arc<ServerState>) {
             restart_count: consecutive_restarts,
         });
 
+        // spawn_server 内部会确保 port 空闲
         match spawn_server(&state).await {
             Ok(()) => {
                 // Health check polling (Task 5.2)
@@ -195,18 +219,30 @@ async fn get_server_status(state: tauri::State<'_, Arc<ServerState>>) -> Result<
 
 #[tauri::command]
 async fn restart_server(state: tauri::State<'_, Arc<ServerState>>) -> Result<(), String> {
-    {
+    eprintln!("[hive] restart_server called");
+
+    // 1. 取出 child（watch_server 不再持锁，所以这里能立即拿到）
+    let opt_child = {
         let mut guard = state.child.lock().await;
-        if let Some(ref mut c) = *guard {
-            eprintln!("[hive] Killing server for restart...");
-            let _ = c.start_kill();
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), c.wait()).await;
-            *guard = None;
+        guard.take()
+    };
+
+    // 2. 杀掉并等待进程退出（不占锁）
+    if let Some(mut child) = opt_child {
+        eprintln!("[hive] Killing server for restart...");
+        let _ = child.start_kill();
+        match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
+            Ok(Ok(status)) => eprintln!("[hive] Server killed, exited: {}", status),
+            Ok(Err(e)) => eprintln!("[hive] Server wait error: {}", e),
+            Err(_) => eprintln!("[hive] Server kill timed out (force exit)"),
         }
     }
 
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    spawn_server(&state).await
+    // 3. spawn_server 会 kill port + 等 port 空闲后启动
+    spawn_server(&state).await.map_err(|e| {
+        eprintln!("[hive] spawn_server failed: {}", e);
+        e
+    })
 }
 
 // ============================================

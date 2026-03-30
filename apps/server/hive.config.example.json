@@ -11,7 +11,7 @@
     "model": "glm-4-flash"
   },
   "plugins": {
-    "@hive/plugin-feishu": {
+    "@bundy-lmw/hive-plugin-feishu": {
       "apps": [
         {
           "appId": "your-app-id",

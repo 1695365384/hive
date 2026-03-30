@@ -1,8 +1,8 @@
 ## 1. 项目初始化
 
 - [x] 1.1 创建 `packages/orchestrator` 目录结构
-- [x] 1.2 初始化 `package.json`，设置 `@hive/orchestrator` 包名
-- [x] 1.3 配置 `tsconfig.json`，依赖 `@hive/core`
+- [x] 1.2 初始化 `package.json`，设置 `@bundy-lmw/hive-orchestrator` 包名
+- [x] 1.3 配置 `tsconfig.json`，依赖 `@bundy-lmw/hive-core`
 - [x] 1.4 创建 `src/index.ts` 导出公开 API
 - [x] 1.5 编写单元测试框架配置
 
@@ -42,8 +42,8 @@
 ## 5. 飞书插件初始化
 
 - [x] 5.1 创建 `packages/plugins/feishu` 目录结构
-- [x] 5.2 初始化 `package.json`，设置 `@hive/plugin-feishu` 包名
-- [x] 5.3 配置 `tsconfig.json`，依赖 `@hive/orchestrator`
+- [x] 5.2 初始化 `package.json`，设置 `@bundy-lmw/hive-plugin-feishu` 包名
+- [x] 5.3 配置 `tsconfig.json`，依赖 `@bundy-lmw/hive-orchestrator`
 - [x] 5.4 创建 `src/index.ts` 导出插件
 
 ## 6. 飞书 WebSocket 客户端

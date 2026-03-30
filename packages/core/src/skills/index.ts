@@ -8,7 +8,7 @@
  *
  * 使用方式：
  * ```typescript
- * import { SkillRegistry, initializeSkills } from '@hive/core/skills';
+ * import { SkillRegistry, initializeSkills } from '@bundy-lmw/hive-core/skills';
  *
  * // 初始化技能系统
  * const registry = await initializeSkills();
