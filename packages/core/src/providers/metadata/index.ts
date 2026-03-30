@@ -16,6 +16,9 @@ import type { ProviderInfo } from './provider-registry.js';
 // 导出工作空间持久化
 export { WorkspacePersistence, createWorkspacePersistence } from './workspace-persistence.js';
 
+// 导出 SQLite 持久化
+export { SqlitePersistence, createSqlitePersistence } from './sqlite-persistence.js';
+
 // 导出 ProviderRegistry
 export {
   getProviderRegistry,
@@ -120,10 +123,18 @@ function getStaticModels(providerId: string): ModelSpec[] {
 /**
  * 获取模型元数据
  *
- * 优先从 Models.dev 获取，失败时回退到静态数据
+ * 优先从 SQLite 快速查询，其次从 Models.dev 获取，最后回退到静态数据
  */
 export async function fetchModelSpec(providerId: string, modelId: string): Promise<ModelSpec | undefined> {
-  // 尝试从 Models.dev 获取
+  // 1. 尝试从 SQLite 快速查询
+  const registry = getProviderRegistry();
+  const sqlite = registry.getSqlitePersistence();
+  if (sqlite) {
+    const spec = sqlite.getModelSpec(providerId, modelId);
+    if (spec) return spec;
+  }
+
+  // 2. 尝试从 Models.dev 获取（内存缓存 / API）
   try {
     const client = getModelsDevClient();
     const model = await client.getModel(modelId);
@@ -132,7 +143,7 @@ export async function fetchModelSpec(providerId: string, modelId: string): Promi
     // 忽略错误，使用静态数据
   }
 
-  // 回退到静态数据
+  // 3. 回退到静态数据
   const staticModels = getStaticModels(providerId);
   return staticModels.find(m => m.id === modelId || m.aliases?.includes(modelId));
 }

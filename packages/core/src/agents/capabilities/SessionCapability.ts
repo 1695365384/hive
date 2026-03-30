@@ -31,6 +31,8 @@ export interface SessionCapabilityConfig {
   autoSave?: boolean;
   /** 是否启用压缩 */
   enableCompression?: boolean;
+  /** 模型上下文窗口大小（用于压缩阈值计算） */
+  contextWindowSize?: number;
   /** 工作空间管理器（可选） */
   workspaceManager?: WorkspaceManager;
 }
@@ -84,6 +86,9 @@ export class SessionCapability implements AgentCapability {
       repository,
       autoSave: this.config.autoSave ?? true,
       enableCompression: this.config.enableCompression ?? true,
+      compression: this.config.contextWindowSize
+        ? { compression: { contextWindowSize: this.config.contextWindowSize } }
+        : undefined,
     });
 
     // 自动恢复上次会话

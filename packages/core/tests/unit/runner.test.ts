@@ -50,6 +50,7 @@ vi.mock('../../src/providers/ProviderManager.js', () => ({
   createProviderManager: vi.fn(() => ({
     getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
     getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelWithSpec: vi.fn().mockResolvedValue({ model: { modelId: 'mock-model' }, spec: null }),
     active: {
       id: 'mock',
       baseUrl: 'https://api.test.com',
@@ -60,6 +61,7 @@ vi.mock('../../src/providers/ProviderManager.js', () => ({
   ProviderManager: vi.fn().mockImplementation(() => ({
     getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
     getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+    getModelWithSpec: vi.fn().mockResolvedValue({ model: { modelId: 'mock-model' }, spec: null }),
     active: {
       id: 'mock',
       baseUrl: 'https://api.test.com',
@@ -92,6 +94,7 @@ describe('AgentRunner', () => {
       const providerManager = {
         getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
         getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+        getModelWithSpec: vi.fn().mockResolvedValue({ model: { modelId: 'mock-model' }, spec: null }),
         active: {
           id: 'mock',
           baseUrl: 'https://api.test.com',
@@ -165,6 +168,7 @@ describe('createAgentRunner', () => {
   it('should accept provider manager', () => {
     const providerManager = {
       getModel: vi.fn().mockReturnValue({ modelId: 'mock-model' }),
+      getModelWithSpec: vi.fn().mockResolvedValue({ model: { modelId: 'mock-model' }, spec: null }),
       active: null,
     } as any;
     const runner = createAgentRunner(providerManager);

@@ -292,8 +292,8 @@ describe('ChatCapability', () => {
   describe('集成', () => {
     it('should work with AgentContext', async () => {
       await capability.send('Hello');
-      // LLMRuntime 通过 providerManager.getModel() 获取模型
-      expect(context.providerManager.getModel).toHaveBeenCalled();
+      // LLMRuntime 通过 providerManager.getModelWithSpec() 获取模型
+      expect(context.providerManager.getModelWithSpec).toHaveBeenCalled();
     });
   });
 });

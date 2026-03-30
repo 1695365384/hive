@@ -33,6 +33,7 @@ export function createMockProviderManager(overrides?: {
     get: vi.fn(),
     getModel: vi.fn().mockReturnValue({ modelId: 'mock-model', provider: 'mock' }),
     getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model', provider: 'mock' }),
+    getModelWithSpec: vi.fn().mockResolvedValue({ model: { modelId: 'mock-model', provider: 'mock' }, spec: null }),
   } as unknown as ProviderManager;
 }
 

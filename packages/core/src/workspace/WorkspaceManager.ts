@@ -184,6 +184,7 @@ export class WorkspaceManager {
       logsDir: path.join(this.rootPath, 'logs'),
       cacheDir: path.join(this.rootPath, 'cache'),
       modelsDevCacheFile: path.join(this.rootPath, 'cache', 'models-dev.json'),
+      modelsDevDbFile: path.join(this.rootPath, 'models-dev.db'),
       dbFile: path.join(this.rootPath, 'hive.db'),
     };
   }

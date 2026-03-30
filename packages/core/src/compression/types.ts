@@ -44,7 +44,7 @@ export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
   preserveRecent: 5,
   summaryThreshold: 10,
   maxSummaryTokens: 500,
-  contextWindowSize: 200000, // Claude 默认上下文窗口
+  contextWindowSize: 200000, // 默认值，建议通过构造参数传入实际模型的 contextWindow
   thresholdPercentage: 0.8, // 80%
 };
 

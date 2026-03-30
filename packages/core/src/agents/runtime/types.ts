@@ -109,6 +109,12 @@ export interface RuntimeResult {
   error?: string;
   /** 执行耗时（毫秒） */
   duration: number;
+  /** 模型规格信息 */
+  modelSpec?: {
+    contextWindow: number;
+    maxOutputTokens: number;
+    supportsTools: boolean;
+  };
 }
 
 // ============================================

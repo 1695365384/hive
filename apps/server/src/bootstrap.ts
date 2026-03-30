@@ -67,7 +67,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
             name: config.provider.id.toUpperCase(),
             apiKey: config.provider.apiKey,
             model: config.provider.model,
-            baseUrl: config.provider.baseUrl || `https://api.${config.provider.id}.com`,
           },
         ],
         activeProvider: config.provider.id,

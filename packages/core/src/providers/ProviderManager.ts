@@ -7,10 +7,13 @@
 
 import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ProviderConfig, ConfigSource, ExternalConfig } from './types.js';
+import type { ModelSpec } from './types.js';
 import type { ILogger } from '../plugins/types.js';
 import { noopLogger } from '../plugins/types.js';
 import { adapterRegistry } from './adapters/index.js';
 import { createConfigChain } from './sources/index.js';
+import { getProviderInfoSync } from './metadata/provider-registry.js';
+import { fetchModelSpec } from './metadata/index.js';
 
 /**
  * Provider 信息
@@ -73,8 +76,8 @@ export class ProviderManager {
     if (!this.externalConfig?.providers) return;
 
     for (const config of this.externalConfig.providers) {
-      // 解析 API Key
-      const resolvedConfig = this.resolveApiKey(config);
+      // 从 Registry 补全缺失的 baseUrl、type、apiKey
+      const resolvedConfig = this.resolveFromRegistry(config);
       this.providers.set(resolvedConfig.id, {
         config: resolvedConfig,
       });
@@ -82,21 +85,61 @@ export class ProviderManager {
   }
 
   /**
-   * 解析 API Key（支持环境变量）
+   * 从 providers 表补全缺失配置
+   *
+   * providers 表是 baseUrl 和 npmPackage 的唯一来源：
+   * - baseUrl: providers 表 → 适配器
+   * - npmPackage: providers 表 → 适配器工厂匹配
+   * - defaultModel: providers 表
+   * - apiKey: 用户配置 > 环境变量(由 providers 表 envKeys 指定)
+   *
+   * models 表仅用于：校验模型合法性 + 获取 context window 等元数据
    */
-  private resolveApiKey(config: ProviderConfig): ProviderConfig {
-    // 如果已有 apiKey，直接返回
-    if (config.apiKey) return config;
+  private resolveFromRegistry(config: ProviderConfig): ProviderConfig {
+    const info = getProviderInfoSync(config.id);
+    const resolved = { ...config };
 
-    // 尝试从环境变量读取
-    const envKey = config.extra?.apiKeyEnv as string ?? `${config.id.toUpperCase()}_API_KEY`;
-    const apiKey = process.env[envKey];
-
-    if (apiKey) {
-      return { ...config, apiKey };
+    // 1. baseUrl 始终来自 providers 表（用户配置中不应包含 baseUrl）
+    if (info?.baseUrl) {
+      resolved.baseUrl = info.baseUrl;
     }
 
-    return config;
+    // 2. npmPackage 来自 providers 表（用于适配器匹配）
+    if (info?.npmPackage) {
+      resolved.npmPackage = info.npmPackage;
+    }
+
+    // 3. type 来自 providers 表
+    if (info?.type) {
+      resolved.type = info.type;
+    }
+
+    // 4. defaultModel 来自 providers 表
+    if (!resolved.model && info?.defaultModel) {
+      resolved.model = info.defaultModel;
+    }
+
+    // 5. apiKey: 用户配置 > 环境变量
+    if (!resolved.apiKey && info?.envKeys?.length) {
+      for (const envKey of info.envKeys) {
+        const apiKey = process.env[envKey];
+        if (apiKey) {
+          resolved.apiKey = apiKey;
+          break;
+        }
+      }
+    }
+
+    // fallback: ${PROVIDER_ID}_API_KEY
+    if (!resolved.apiKey) {
+      const fallbackEnvKey = `${config.id.toUpperCase()}_API_KEY`;
+      const apiKey = process.env[fallbackEnvKey];
+      if (apiKey) {
+        resolved.apiKey = apiKey;
+      }
+    }
+
+    return resolved;
   }
 
   /**
@@ -110,8 +153,9 @@ export class ProviderManager {
       for (const config of configs) {
         // 外部配置优先，不覆盖
         if (!this.providers.has(config.id)) {
-          this.providers.set(config.id, {
-            config,
+          const resolved = this.resolveFromRegistry(config);
+          this.providers.set(resolved.id, {
+            config: resolved,
           });
         }
       }
@@ -187,12 +231,52 @@ export class ProviderManager {
     return this.providers.delete(id);
   }
 
+  /**
+   * 重新从 providers 表补全所有已注册的 Provider 配置
+   *
+   * 在 SQLite 持久化初始化后调用，确保 baseUrl、npmPackage 等
+   * 从数据库获取而非使用构造时的空值。
+   */
+  reResolveAll(): void {
+    for (const [id, info] of this.providers) {
+      info.config = this.resolveFromRegistry(info.config);
+    }
+  }
+
   // ============================================
   // AI SDK 集成方法
   // ============================================
 
   /**
-   * 获取 AI SDK 模型实例
+   * 获取 AI SDK 模型实例及 ModelSpec
+   *
+   * @param modelId 可选的模型 ID，不提供则使用默认
+   * @returns 模型实例和 ModelSpec，若 Provider 不可用则返回 null
+   */
+  async getModelWithSpec(modelId?: string): Promise<{ model: LanguageModelV3; spec: ModelSpec | null } | null> {
+    const config = this.active;
+    if (!config) return null;
+
+    const adapter = adapterRegistry.getOrCreate(config);
+    const model = adapter.createModel(config, modelId);
+    if (!model) return null;
+
+    // 异步获取 ModelSpec
+    let spec: ModelSpec | null = null;
+    try {
+      const effectiveModelId = modelId ?? config.model;
+      if (effectiveModelId) {
+        spec = await fetchModelSpec(config.id, effectiveModelId) ?? null;
+      }
+    } catch {
+      // ModelSpec 获取失败不影响正常运行
+    }
+
+    return { model, spec };
+  }
+
+  /**
+   * 获取 AI SDK 模型实例（同步，向后兼容）
    *
    * @param modelId 可选的模型 ID，不提供则使用默认
    */
