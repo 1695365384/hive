@@ -7,7 +7,7 @@
     "dev": "tauri dev",
     "dev:ui": "vite",
     "dev:server": "node --watch ../../apps/server/dist/main.js",
-    "build": "pnpm --filter @bundy-lmw/hive-server build && tsc && vite build",
+    "build": "pnpm --filter @bundy-lmw/hive-server build && bash ../../apps/server/scripts/bundle.sh && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
   },
