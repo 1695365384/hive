@@ -8,7 +8,7 @@
 
 import { EventEmitter } from 'node:events'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 import type { WebSocket } from 'ws'
 import type {
@@ -17,6 +17,7 @@ import type {
 } from './types.js'
 import { createSuccessResponse, createErrorResponse, createEvent } from './types.js'
 import type { Server as HttpServer } from 'node:http'
+import { HIVE_HOME } from '../../config.js'
 import type {
   ServerConfig, ConfigUpdateParams, ServerStatus,
   PluginInfo, PluginInstallParams, PluginUninstallParams,
@@ -55,7 +56,7 @@ export class AdminWsHandler extends EventEmitter {
   constructor() {
     super()
     this.logBuffer = new LogBuffer(10_000)
-    this.configPath = resolve(process.cwd(), 'hive.config.json')
+    this.configPath = join(HIVE_HOME, 'hive.config.json')
     this.startTime = Date.now()
 
     // 注册方法处理器
@@ -286,7 +287,7 @@ export class AdminWsHandler extends EventEmitter {
     }
 
     try {
-      const pluginsDir = resolve(process.cwd(), '.hive/plugins')
+      const pluginsDir = join(HIVE_HOME, 'plugins')
       if (!existsSync(pluginsDir)) {
         mkdirSync(pluginsDir, { recursive: true })
       }
@@ -320,7 +321,7 @@ export class AdminWsHandler extends EventEmitter {
     }
 
     try {
-      const pluginDir = resolve(process.cwd(), '.hive/plugins', pluginId)
+      const pluginDir = join(HIVE_HOME, 'plugins', pluginId)
       if (existsSync(pluginDir)) {
         execSync(`rm -rf "${pluginDir}"`, { stdio: 'pipe' })
       }
@@ -556,7 +557,7 @@ export class AdminWsHandler extends EventEmitter {
 
   private getVersion(): string {
     try {
-      const pkgPath = resolve(process.cwd(), 'package.json')
+      const pkgPath = resolve(HIVE_HOME, 'package.json')
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
       return pkg.version ?? '0.0.0'
     } catch {
@@ -618,7 +619,7 @@ export class AdminWsHandler extends EventEmitter {
   }
 
   private installFromLocal(source: string, pluginsDir: string): void {
-    const resolvedSource = resolve(process.cwd(), source)
+    const resolvedSource = resolve(source)
     if (!existsSync(resolvedSource)) {
       throw new Error(`Path not found: ${source}`)
     }
