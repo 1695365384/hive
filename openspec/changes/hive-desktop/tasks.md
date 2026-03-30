@@ -30,10 +30,10 @@
 
 ## 5. Rust Sidecar 管理
 
-- [ ] 5.1 实现 sidecar spawn 逻辑（开发模式：spawn 系统 node；生产模式：spawn sidecar 二进制）
-- [ ] 5.2 实现健康检查轮询（poll /health 直到就绪）
-- [ ] 5.3 实现进程退出检测和自动重启（500ms 延迟，最大 5 次连续重启）
-- [ ] 5.4 通过 Tauri event 通知 WebView sidecar 状态变化
+- [x] 5.1 实现 sidecar spawn 逻辑（开发模式：spawn 系统 node；生产模式：spawn sidecar 二进制）
+- [x] 5.2 实现健康检查轮询（poll /health 直到就绪）
+- [x] 5.3 实现进程退出检测和自动重启（500ms 延迟，最大 5 次连续重启）
+- [x] 5.4 通过 Tauri event 通知 WebView sidecar 状态变化
 
 ## 6. 前端 WS 客户端
 
@@ -54,6 +54,6 @@
 
 ## 8. 系统集成
 
-- [ ] 8.1 实现系统托盘图标和快捷菜单（显示窗口 / 重启服务 / 退出）
-- [ ] 8.2 实现系统通知（服务重启完成 / 插件安装完成 / 错误告警）
-- [ ] 8.3 配置 `pnpm dev` 一键启动脚本（concurrently 运行 server build + tauri dev）
+- [x] 8.1 实现系统托盘图标和快捷菜单（显示窗口 / 重启服务 / 退出）
+- [x] 8.2 实现系统通知（服务重启完成 / 插件安装完成 / 错误告警）
+- [x] 8.3 配置 `pnpm dev` 一键启动脚本（concurrently 运行 server build + tauri dev）
