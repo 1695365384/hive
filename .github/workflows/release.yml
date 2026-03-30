@@ -1,0 +1,131 @@
+name: Release Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            arch: x64
+          - platform: macos-latest
+            arch: arm64
+            target: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            arch: x64
+            target: '--target x86_64-apple-darwin'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install Rust
+        if: matrix.platform == 'macos-latest'
+        run: rustup default stable
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build server
+        run: pnpm --filter @bundy-lmw/hive-server build
+
+      - name: Build frontend
+        run: pnpm --filter @bundy-lmw/hive-desktop build
+
+      - name: Build Tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.target }}
+
+      - name: Find MSI (Windows)
+        if: matrix.platform == 'windows-latest'
+        id: msi
+        shell: pwsh
+        run: |
+          $f = Get-ChildItem "src-tauri/target/release/bundle/msi" -Filter "*.msi" -Recurse | Select-Object -First 1
+          "path=$($f.FullName)" | Out-String -Width 4096
+
+      - name: Find DMG (macOS)
+        if: matrix.platform == 'macos-latest'
+        id: dmg
+        shell: bash
+        run: |
+          find src-tauri/target -name "*.dmg" -type f | head -1 | xargs -I{} echo "path={}"
+
+      - name: Upload Windows artifact
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-desktop-windows-msi
+          path: ${{ steps.msi.outputs.path }}
+          retention-days: 1
+
+      - name: Upload macOS artifact
+        if: matrix.platform == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-desktop-macos-${{ matrix.arch }}
+          path: ${{ steps.dmg.outputs.path }}
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_REF: ${{ github.ref }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        shell: bash
+        run: ls -la artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: Hive Desktop v${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/*.msi
+            artifacts/*.dmg
