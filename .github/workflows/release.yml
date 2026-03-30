@@ -10,9 +10,9 @@ env:
 
 jobs:
   # ============================================
-  # Build server + frontend once (shared)
+  # Build web artifacts (server + frontend)
   # ============================================
-  build-common:
+  build-web:
     runs-on: ubuntu-latest
 
     steps:
@@ -41,14 +41,14 @@ jobs:
       - name: Build frontend
         run: pnpm --filter @bundy-lmw/hive-desktop build
 
-      - name: Upload server artifact
+      - name: Upload server dist
         uses: actions/upload-artifact@v4
         with:
           name: server-dist
           path: apps/server/dist
           retention-days: 1
 
-      - name: Upload frontend artifact
+      - name: Upload frontend dist
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
@@ -56,25 +56,24 @@ jobs:
           retention-days: 1
 
   # ============================================
-  # Build Tauri on Windows (MSI)
+  # Build Tauri on Windows
   # ============================================
   build-windows:
-    needs: build-common
+    needs: build-web
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: '9'
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
 
       - name: Install Rust
         shell: bash
@@ -82,10 +81,10 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           rustup default stable
 
-      - name: Install node_modules (for beforeBuildCommand)
+      - name: Install deps
         run: pnpm install
 
-      - name: Download server
+      - name: Download web artifacts
         uses: actions/download-artifact@v4
         with:
           name: server-dist
@@ -97,10 +96,15 @@ jobs:
           name: frontend-dist
           path: apps/desktop/dist
 
-      - name: Build Tauri (MSI)
-        working-directory: ./apps/desktop
-        shell: bash
-        run: npx @tauri-apps/cli build --bundles msi
+      - name: Build Tauri
+        working-directory: ./apps/desktop/src-tauri
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: "dummy"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          # Override beforeBuildCommand to empty since web is pre-built
+          cargo tauri build --bundles msi --no-dev --ci --config "{\"build\":{\"beforeBuildCommand\":\"\"}}"
 
       - name: Find MSI
         id: msi
@@ -117,10 +121,10 @@ jobs:
           retention-days: 1
 
   # ============================================
-  # Build Tauri on macOS (ARM64 + x64)
+  # Build Tauri on macOS
   # ============================================
   build-macos:
-    needs: build-common
+    needs: build-web
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -130,26 +134,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: '9'
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
 
       - name: Install Rust
         run: |
           rustup default stable
           rustup target add ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
 
-      - name: Install node_modules (for beforeBuildCommand)
+      - name: Install deps
         run: pnpm install
 
-      - name: Download server
+      - name: Download web artifacts
         uses: actions/download-artifact@v4
         with:
           name: server-dist
@@ -161,10 +164,15 @@ jobs:
           name: frontend-dist
           path: apps/desktop/dist
 
-      - name: Build Tauri (${{ matrix.arch }})
-        working-directory: ./apps/desktop
+      - name: Build Tauri
+        working-directory: ./apps/desktop/src-tauri
         shell: bash
-        run: npx @tauri-apps/cli build --target ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }} --bundles dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: "dummy"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          # Override beforeBuildCommand to empty since web is pre-built
+          cargo tauri build --bundles dmg --target ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }} --no-dev --ci --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Find DMG
         id: dmg
