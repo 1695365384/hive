@@ -14,6 +14,8 @@ struct ServerState {
     child: tokio::sync::Mutex<Option<tokio::process::Child>>,
     entry: String,
     project_root: String,
+    /// App resources path (set at runtime via tauri path API, used for SEA binary)
+    resource_root: std::sync::Mutex<Option<String>>,
     status: tokio::sync::watch::Sender<ServerStatus>,
 }
 
@@ -28,16 +30,16 @@ struct ServerStatus {
 // Server Lifecycle
 // ============================================
 
-async fn do_spawn(entry: &str, cwd: &str) -> Result<tokio::process::Child, String> {
-    eprintln!("[hive] Starting server: node {} (cwd: {})", entry, cwd);
+async fn do_spawn(bin: &str, args: &[&str], cwd: &str) -> Result<tokio::process::Child, String> {
+    eprintln!("[hive] Starting server: {} {} (cwd: {})", bin, args.join(" "), cwd);
 
-    let child = tokio::process::Command::new("node")
-        .arg(entry)
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.args(args)
         .current_dir(cwd)
         .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn server: {}", e))?;
+        .stderr(std::process::Stdio::inherit());
+
+    let child = cmd.spawn().map_err(|e| format!("Failed to spawn server: {}", e))?;
 
     if let Some(pid) = child.id() {
         eprintln!("[hive] Server started with pid {}", pid);
@@ -56,7 +58,21 @@ async fn spawn_server(state: &ServerState) -> Result<(), String> {
     // 确保 port 空闲（启动前 + 重启前都要做）
     kill_port_processes(4450).await;
 
-    match do_spawn(&state.entry, &state.project_root).await {
+    // Resolve server binary:
+    // - Bundled app (SEA): directly execute hive-server binary, cwd = bundle dir (for node_modules/)
+    // - Dev mode: use system node to run entry script
+    let spawn_info = {
+        let res_root = state.resource_root.lock().unwrap();
+        if let Some(ref res_root) = *res_root {
+            let sea_bin = format!("{}/server/hive-server", res_root);
+            (sea_bin, Vec::<&str>::new(), res_root.clone())
+        } else {
+            ("node".to_string(), vec![state.entry.as_str()], state.project_root.clone())
+        }
+    };
+    let result = do_spawn(&spawn_info.0, &spawn_info.1, &spawn_info.2).await;
+
+    match result {
         Ok(child) => {
             let pid = child.id();
             *state.child.lock().await = Some(child);
@@ -331,6 +347,7 @@ pub fn run() {
         child: tokio::sync::Mutex::new(None),
         entry: server_entry,
         project_root: project_root_str,
+        resource_root: std::sync::Mutex::new(None),
         status: tokio::sync::watch::Sender::new(ServerStatus {
             state: "starting".to_string(),
             pid: None,
@@ -350,6 +367,15 @@ pub fn run() {
         .setup(move |app| {
             if let Err(e) = build_tray(app.handle()) {
                 eprintln!("[hive] Failed to build tray: {}", e);
+            }
+
+            // Set resource_root from tauri path API (only available in bundled app)
+            use tauri::path::BaseDirectory;
+            if let Ok(res_path) = app.path().resolve(".", BaseDirectory::Resource) {
+                let res_root = res_path.to_string_lossy().to_string();
+                eprintln!("[hive] Resource root: {}", res_root);
+                let state = app.state::<Arc<ServerState>>();
+                *state.resource_root.lock().unwrap() = Some(res_root);
             }
 
             let app_handle = app.handle().clone();
@@ -378,25 +404,7 @@ pub fn run() {
                         }
                     }
 
-                    // Build server
-                    eprintln!("[hive] Building server...");
-                    let root = resolve_project_root();
-                    match tokio::process::Command::new("pnpm")
-                        .args(["--filter", "@hive/server", "build"])
-                        .current_dir(&root)
-                        .output()
-                        .await
-                    {
-                        Ok(output) if output.status.success() => {
-                            eprintln!("[hive] Server build complete");
-                        }
-                        Ok(output) => {
-                            eprintln!("[hive] Server build failed: {}", String::from_utf8_lossy(&output.stderr));
-                        }
-                        Err(e) => eprintln!("[hive] Server build skipped: {}", e),
-                    }
-
-                    // Spawn initial server
+                    // Spawn initial server (bundle is pre-built, no runtime build needed)
                     match spawn_server(&spawn_state).await {
                         Ok(()) => {
                             // Health check polling (Task 5.2)
