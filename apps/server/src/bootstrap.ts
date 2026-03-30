@@ -13,7 +13,7 @@ import {
   type Server,
   type MessageBus,
   noopLogger,
-} from '@hive/core'
+} from '@bundy-lmw/hive-core'
 import { join } from 'path'
 import type { ServerConfig } from './config.js'
 import { loadPlugins } from './plugins.js'

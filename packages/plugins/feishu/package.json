@@ -1,6 +1,6 @@
 {
-  "name": "@hive/plugin-feishu",
-  "version": "1.0.0",
+  "name": "@bundy-lmw/hive-plugin-feishu",
+  "version": "1.0.3",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,6 +10,18 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "hive": {
+    "plugin": true,
+    "entry": "dist/index.js"
+  },
+  "keywords": [
+    "hive-plugin",
+    "feishu",
+    "lark",
+    "hive",
+    "agent",
+    "bot"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:zip": "node scripts/build-zip.mjs",
@@ -19,7 +31,7 @@
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {
-    "@hive/core": "workspace:*",
+    "@bundy-lmw/hive-core": "^1.0.0",
     "@larksuiteoapi/node-sdk": "^1.59.0"
   },
   "devDependencies": {
@@ -29,9 +41,15 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "config.json"
   ],
-  "publishConfig": {
-    "access": "public"
-  }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1695365384/hive.git",
+    "directory": "packages/plugins/feishu"
+  },
+  "homepage": "https://github.com/1695365384/hive#readme",
+  "license": "MIT"
 }

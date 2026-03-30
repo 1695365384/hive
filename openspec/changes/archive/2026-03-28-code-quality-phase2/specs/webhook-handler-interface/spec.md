@@ -4,7 +4,7 @@
 `packages/core/src/plugins/types.ts` SHALL define a `WebhookHandler` interface with a `handleWebhook` method. The method signature SHALL accept `body: unknown`, `signature?: string`, `timestamp?: string`, `nonce?: string` and return `Promise<unknown>`.
 
 #### Scenario: Interface exists in plugin types
-- **WHEN** importing from `@hive/core`
+- **WHEN** importing from `@bundy-lmw/hive-core`
 - **THEN** `WebhookHandler` interface SHALL be available as an exported type
 
 ### Requirement: Gateway uses WebhookHandler type

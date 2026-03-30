@@ -1,4 +1,4 @@
-# @hive/server
+# @bundy-lmw/hive-server
 
 Hive 多 Agent 协作框架的服务器应用。
 
@@ -27,7 +27,7 @@ pnpm build
     "model": "glm-4-plus"
   },
   "plugins": {
-    "@hive/plugin-feishu": {
+    "@bundy-lmw/hive-plugin-feishu": {
       "apps": [
         {
           "appId": "${FEISHU_APP_ID}",
@@ -39,25 +39,7 @@ pnpm build
 }
 ```
 
-环境变量使用 `${VAR_NAME}` 语法，会自动从 `.env` 文件或系统环境变量中读取。
-
-### 方式二：使用 .env 文件
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env` 文件：
-
-```env
-# LLM 提供商配置
-PROVIDER_ID=glm
-API_KEY=your-api-key-here
-
-# 飞书插件（可选）
-FEISHU_APP_ID=cli_xxxxxx
-FEISHU_APP_SECRET=xxxxxx
-```
+环境变量使用 `${VAR_NAME}` 语法，会自动从系统环境变量中读取。
 
 ## 使用
 
@@ -127,7 +109,7 @@ Hive 支持通过插件扩展通道能力。
 ```json
 {
   "plugins": {
-    "@hive/plugin-feishu": {
+    "@bundy-lmw/hive-plugin-feishu": {
       "apps": [
         {
           "appId": "cli_xxxxxx",
@@ -152,7 +134,7 @@ https://your-server.com/webhook/feishu/{appId}
 创建新插件需要实现 `IPlugin` 接口：
 
 ```typescript
-import type { IPlugin, IChannel, PluginContext } from '@hive/core'
+import type { IPlugin, IChannel, PluginContext } from '@bundy-lmw/hive-core'
 
 export class MyPlugin implements IPlugin {
   readonly metadata = {
@@ -219,6 +201,10 @@ pnpm test
 # 测试监视模式
 pnpm test:watch
 ```
+
+## GitHub
+
+[https://github.com/1695365384/hive](https://github.com/1695365384/hive)
 
 ## 许可证
 

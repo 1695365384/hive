@@ -23,7 +23,7 @@
  *
  * 使用方式：
  * ```typescript
- * import { Agent, createAgent, ask } from '@hive/core';
+ * import { Agent, createAgent, ask } from '@bundy-lmw/hive-core';
  *
  * // 方式 1: 创建实例
  * const agent = new Agent();

@@ -38,7 +38,7 @@ export function ConfigPage() {
   const [draftModel, setDraftModel] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [dirty, setDirty] = useState(false);
+  const [_dirty, setDirty] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
 
   useEffect(() => {
@@ -137,8 +137,10 @@ export function ConfigPage() {
             setRestarting(true);
             try {
               await invoke("restart_server");
-            } catch {
-              // Server is shutting down, this is expected
+            } catch (err) {
+              console.error("[restart_server] failed:", err);
+              setRestarting(false);
+              setError(err instanceof Error ? err.message : "Restart failed");
             }
           }}
           disabled={restarting}

@@ -1,6 +1,6 @@
 ## Context
 
-Hive 是一个多 Agent 协作框架，核心包 `@hive/core` 采用能力委托模式（Agent → AgentContext → Capabilities）。当前代码经过快速迭代后积累了技术债务：两套执行引擎（Runner + Task）、不一致的能力初始化契约、AgentContext 职责过重、类型定义分散等问题。本次重构不改变外部 API 行为，仅清理内部架构。
+Hive 是一个多 Agent 协作框架，核心包 `@bundy-lmw/hive-core` 采用能力委托模式（Agent → AgentContext → Capabilities）。当前代码经过快速迭代后积累了技术债务：两套执行引擎（Runner + Task）、不一致的能力初始化契约、AgentContext 职责过重、类型定义分散等问题。本次重构不改变外部 API 行为，仅清理内部架构。
 
 ## Goals / Non-Goals
 
