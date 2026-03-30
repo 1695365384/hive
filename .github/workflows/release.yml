@@ -97,14 +97,13 @@ jobs:
           path: apps/desktop/dist
 
       - name: Build Tauri
-        working-directory: ./apps/desktop/src-tauri
-        shell: pwsh
+        working-directory: ./apps/desktop
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: "dummy"
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
-          # Override beforeBuildCommand to empty since web is pre-built
-          cargo tauri build --bundles msi --no-dev --ci --config "{\"build\":{\"beforeBuildCommand\":\"\"}}"
+          npx @tauri-apps/cli build --bundles msi --ci --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Find MSI
         id: msi
@@ -165,14 +164,14 @@ jobs:
           path: apps/desktop/dist
 
       - name: Build Tauri
-        working-directory: ./apps/desktop/src-tauri
+        working-directory: ./apps/desktop
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: "dummy"
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: |
-          # Override beforeBuildCommand to empty since web is pre-built
-          cargo tauri build --bundles dmg --target ${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }} --no-dev --ci --config '{"build":{"beforeBuildCommand":""}}'
+          TARGET=${{ matrix.arch == 'arm64' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}
+          npx @tauri-apps/cli build --bundles dmg --target "$TARGET" --ci --config '{"build":{"beforeBuildCommand":""}}'
 
       - name: Find DMG
         id: dmg
