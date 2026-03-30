@@ -1,6 +1,6 @@
 ## Why
 
-当前 `@hive/core` 包存在严重的代码冗余和架构设计问题：`AgentRunner` 和 `Task` 两套执行引擎重复实现相同的 SDK 调用逻辑（约 70% 重复）；`AgentCapability` 接口契约不一致（部分能力添加了未在接口中定义的 `initializeAsync()`）；`AgentContextImpl` 同时承担 5 种角色（DI 容器、Service Locator、工厂、生命周期管理器、能力注册表），违反单一职责原则；`ChatCapability` 绕过 `AgentRunner` 直接调用 SDK 导致超时和控制逻辑重复；类型定义分散在两个文件边界模糊；`ProviderManager` 单例与实例模式混用存在状态不一致风险。这些问题增加了维护成本，降低了代码可测试性，且在持续迭代中会加速恶化。
+当前 `@bundy-lmw/hive-core` 包存在严重的代码冗余和架构设计问题：`AgentRunner` 和 `Task` 两套执行引擎重复实现相同的 SDK 调用逻辑（约 70% 重复）；`AgentCapability` 接口契约不一致（部分能力添加了未在接口中定义的 `initializeAsync()`）；`AgentContextImpl` 同时承担 5 种角色（DI 容器、Service Locator、工厂、生命周期管理器、能力注册表），违反单一职责原则；`ChatCapability` 绕过 `AgentRunner` 直接调用 SDK 导致超时和控制逻辑重复；类型定义分散在两个文件边界模糊；`ProviderManager` 单例与实例模式混用存在状态不一致风险。这些问题增加了维护成本，降低了代码可测试性，且在持续迭代中会加速恶化。
 
 ## What Changes
 

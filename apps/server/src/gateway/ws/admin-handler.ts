@@ -9,15 +9,18 @@
 import { EventEmitter } from 'node:events'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
-import { execSync } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 import type { WebSocket } from 'ws'
+import { searchPlugins, installPlugin, removePlugin } from '../../plugin-manager/index.js'
+import { loadRegistry } from '../../plugin-manager/registry.js'
+import { scanPluginDir } from '../../plugins.js'
 import type {
   WsRequest, WsResponse, WsEvent,
   WsSuccessResponse, WsErrorResponse, ErrorCode,
 } from './types.js'
 import { createSuccessResponse, createErrorResponse, createEvent } from './types.js'
 import type { Server as HttpServer } from 'node:http'
-import { HIVE_HOME } from '../../config.js'
+import { HIVE_HOME, getConfig } from '../../config.js'
 import type {
   ServerConfig, ConfigUpdateParams, ServerStatus,
   PluginInfo, PluginInstallParams, PluginUninstallParams,
@@ -26,7 +29,7 @@ import type {
   ProviderPresetInfo, ModelSummary,
 } from './data-types.js'
 import { LogBuffer } from './log-buffer.js'
-import type { Server } from '@hive/core'
+import type { Server, IPlugin, ILogger, IMessageBus } from '@bundy-lmw/hive-core'
 
 // ============================================
 // 类型
@@ -52,6 +55,8 @@ export class AdminWsHandler extends EventEmitter {
   private httpServer: HttpServer | null = null
   private startTime: number
   private handlers: Map<string, MethodHandler>
+  /** 加载的插件实例，按 registry key 索引 */
+  private pluginInstances: Map<string, IPlugin> = new Map()
 
   constructor() {
     super()
@@ -70,6 +75,7 @@ export class AdminWsHandler extends EventEmitter {
       ['provider.list', this.handleProviderList.bind(this)],
       ['provider.getModels', this.handleProviderGetModels.bind(this)],
       ['plugin.list', this.handlePluginList.bind(this)],
+      ['plugin.available', this.handlePluginAvailable.bind(this)],
       ['plugin.install', this.handlePluginInstall.bind(this)],
       ['plugin.uninstall', this.handlePluginUninstall.bind(this)],
       ['plugin.updateConfig', this.handlePluginUpdateConfig.bind(this)],
@@ -97,6 +103,64 @@ export class AdminWsHandler extends EventEmitter {
   /** 注入 HttpServer 实例 */
   setHttpServer(httpServer: HttpServer): void {
     this.httpServer = httpServer
+  }
+
+  /** 注入插件实例（在 bootstrap 后调用） */
+  setPlugins(plugins: IPlugin[]): void {
+    const manifests = scanPluginDir()
+    for (const plugin of plugins) {
+      // 匹配 manifest name 或 registry key（短名）
+      const manifest = manifests.find(m => m.name === plugin.metadata.name)
+      if (manifest) {
+        this.pluginInstances.set(manifest.name, plugin)
+      }
+    }
+  }
+
+  /** 重启指定插件（用最新配置重新初始化） */
+  private async reloadPlugin(pluginId: string): Promise<void> {
+    const oldPlugin = this.pluginInstances.get(pluginId)
+    if (!oldPlugin) {
+      console.warn(`[reloadPlugin] Plugin not found in instances: ${pluginId}`)
+      return
+    }
+    if (!this.server) return
+
+    // 停用旧实例
+    await oldPlugin.deactivate()
+    if (oldPlugin.destroy) await oldPlugin.destroy()
+
+    // 查找 manifest
+    const manifests = scanPluginDir()
+    const manifest = manifests.find(m => m.name === pluginId)
+    if (!manifest) {
+      console.error(`[reloadPlugin] Manifest not found for: ${pluginId}`)
+      return
+    }
+
+    // 用最新配置创建新实例
+    const { pluginConfigs } = getConfig()
+    const config = pluginConfigs?.[pluginId] ?? {}
+    try {
+      const entryUrl = pathToFileURL(manifest.entry).href
+      const mod = await import(entryUrl)
+      const PluginClass = mod.default
+      const newPlugin = new PluginClass(config) as IPlugin
+
+      // 初始化并激活（复用 server 的 bus/logger）
+      await newPlugin.initialize(
+        this.server.bus,
+        this.server.logger,
+        (channel) => this.server!.registerChannel(channel),
+      )
+      await newPlugin.activate()
+
+      // 更新实例 map
+      this.pluginInstances.set(pluginId, newPlugin)
+      console.log(`[reloadPlugin] Plugin reloaded: ${pluginId}`)
+    } catch (error) {
+      console.error(`[reloadPlugin] Failed to reload ${pluginId}:`, error instanceof Error ? error.message : error)
+    }
   }
 
   /** 处理新的 WS 连接 */
@@ -315,18 +379,65 @@ export class AdminWsHandler extends EventEmitter {
   // Plugin Handlers
   // ============================================
 
-  private handlePluginList(_params: unknown, id: string): WsResponse {
-    if (!this.server) {
-      return createSuccessResponse(id, [])
-    }
+  /** 搜索 npm 上可用的 Hive 插件 */
+  private async handlePluginAvailable(params: unknown, id: string): Promise<WsResponse> {
+    const raw = (params ?? {}) as { keyword?: unknown }
+    const keyword = typeof raw.keyword === 'string' ? raw.keyword : undefined
 
-    // 从已加载的插件获取信息
-    // 注意: 需要从 plugins.ts 的加载结果获取
-    const plugins: PluginInfo[] = []
-    return createSuccessResponse(id, plugins)
+    try {
+      const { packages } = await searchPlugins(keyword)
+      const items = packages.map((pkg) => ({
+        name: pkg.name,
+        version: pkg.version,
+        description: pkg.description,
+      }))
+      return createSuccessResponse(id, items)
+    } catch (error) {
+      return createErrorResponse(
+        id,
+        'INTERNAL',
+        error instanceof Error ? error.message : 'Search failed',
+      )
+    }
   }
 
-  private handlePluginInstall(params: unknown, id: string): WsResponse {
+  /** 列出已安装的插件 */
+  private handlePluginList(_params: unknown, id: string): WsResponse {
+    try {
+      const config = this.loadConfig()
+      const items: PluginInfo[] = []
+
+      // 读取 registry 获取结构化数据
+      const registry = loadRegistry()
+
+      for (const [name, entry] of Object.entries(registry)) {
+        // entry.source 格式: "npm:@bundy-lmw/hive-plugin-feishu@1.0.1"
+        // 提取包名
+        const pkgName = entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
+        const pluginConfig = config.pluginConfigs?.[pkgName]
+        console.log('[plugin.list] pkgName:', pkgName, 'pluginConfig:', pluginConfig)
+        items.push({
+          id: name,
+          name: pkgName,
+          version: entry.resolvedVersion,
+          source: entry.source,
+          installedAt: entry.installedAt,
+          description: undefined,
+          enabled: true,
+          channels: [],
+          config: pluginConfig ?? {},
+        })
+      }
+
+      return createSuccessResponse(id, items)
+    } catch (error) {
+      console.error('[plugin.list] Failed to load plugins:', error instanceof Error ? error.message : error)
+      return createSuccessResponse(id, [])
+    }
+  }
+
+  /** 安装插件 */
+  private async handlePluginInstall(params: unknown, id: string): Promise<WsResponse> {
     const { source } = params as PluginInstallParams
 
     if (!source || typeof source !== 'string') {
@@ -334,24 +445,24 @@ export class AdminWsHandler extends EventEmitter {
     }
 
     try {
-      const pluginsDir = join(HIVE_HOME, 'plugins')
-      if (!existsSync(pluginsDir)) {
-        mkdirSync(pluginsDir, { recursive: true })
+      const result = await installPlugin(source)
+
+      if (!result.success) {
+        return createErrorResponse(id, 'INTERNAL', result.error || 'Installation failed')
       }
 
-      if (source.startsWith('https://') || source.startsWith('git+')) {
-        // Git install
-        this.installFromGit(source, pluginsDir)
-      } else if (source.startsWith('.') || source.startsWith('/')) {
-        // Local path - copy
-        this.installFromLocal(source, pluginsDir)
-      } else {
-        // npm install
-        this.installFromNpm(source, pluginsDir)
-      }
+      this.broadcastEvent('plugin.installed', {
+        id: result.name,
+        name: result.name,
+        version: result.version,
+      })
 
-      this.broadcastEvent('plugin.installed', { id: source, name: source, version: 'latest' })
-      return createSuccessResponse(id, { id: source, name: source, version: 'latest', enabled: true })
+      return createSuccessResponse(id, {
+        id: result.name,
+        name: result.packageName ?? result.name,
+        version: result.version,
+        enabled: true,
+      })
     } catch (error) {
       return createErrorResponse(
         id,
@@ -361,6 +472,7 @@ export class AdminWsHandler extends EventEmitter {
     }
   }
 
+  /** 卸载插件 */
   private handlePluginUninstall(params: unknown, id: string): WsResponse {
     const { id: pluginId } = params as PluginUninstallParams
     if (!pluginId) {
@@ -368,9 +480,22 @@ export class AdminWsHandler extends EventEmitter {
     }
 
     try {
-      const pluginDir = join(HIVE_HOME, 'plugins', pluginId)
-      if (existsSync(pluginDir)) {
-        execSync(`rm -rf "${pluginDir}"`, { stdio: 'pipe' })
+      // 先查 entry（removePlugin 会把它删掉）
+      const entry = loadRegistry()[pluginId]
+      const result = removePlugin(pluginId)
+
+      if (!result.success) {
+        return createErrorResponse(id, 'INTERNAL', result.error || 'Uninstall failed')
+      }
+
+      // 从 hive.config.json 清除插件配置（用包名 key）
+      if (entry) {
+        const config = this.loadConfig()
+        const pkgKey = entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
+        if (config.pluginConfigs && pkgKey in config.pluginConfigs) {
+          delete config.pluginConfigs[pkgKey]
+          this.saveConfig(config)
+        }
       }
 
       this.broadcastEvent('plugin.uninstalled', { id: pluginId })
@@ -384,14 +509,32 @@ export class AdminWsHandler extends EventEmitter {
     }
   }
 
-  private handlePluginUpdateConfig(params: unknown, id: string): WsResponse {
+  /** 更新插件配置（写入 hive.config.json） */
+  private async handlePluginUpdateConfig(params: unknown, id: string): Promise<WsResponse> {
     const { id: pluginId, config } = params as PluginConfigUpdateParams
     if (!pluginId || !config) {
       return createErrorResponse(id, 'VALIDATION', 'id and config are required')
     }
 
     try {
-      // TODO: 更新 hive.config.json 中对应插件的配置
+      // 从 registry 中查找包全名作为 pluginConfigs 的 key
+      const registry = loadRegistry()
+      const entry = registry[pluginId]
+      const pkgKey = entry
+        ? entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
+        : pluginId
+
+      const cfg = this.loadConfig()
+      if (!cfg.pluginConfigs) {
+        cfg.pluginConfigs = {}
+      }
+      cfg.pluginConfigs[pkgKey] = config
+      this.saveConfig(cfg)
+
+      // 重启插件使新配置生效
+      await this.reloadPlugin(pluginId)
+
+      this.broadcastEvent('plugin.configChanged', { id: pluginId, config })
       return createSuccessResponse(id, { success: true })
     } catch (error) {
       return createErrorResponse(
@@ -547,6 +690,7 @@ export class AdminWsHandler extends EventEmitter {
         auth: { ...defaults.auth, ...raw.auth },
         provider: { ...defaults.provider, ...raw.provider },
         heartbeat: { ...defaults.heartbeat, ...raw.heartbeat },
+        pluginConfigs: raw.plugins || {},
       }
       this.configCache = config
       return config
@@ -561,7 +705,10 @@ export class AdminWsHandler extends EventEmitter {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true })
     }
-    writeFileSync(this.configPath, JSON.stringify(config, null, 2), 'utf-8')
+    // 写入时将 pluginConfigs 改名为 plugins（与 hive.config.json 格式对齐）
+    const { pluginConfigs, ...rest } = config
+    const fileConfig = { ...rest, plugins: pluginConfigs }
+    writeFileSync(this.configPath, JSON.stringify(fileConfig, null, 2), 'utf-8')
     this.configCache = config
   }
 
@@ -617,74 +764,6 @@ export class AdminWsHandler extends EventEmitter {
     return []
   }
 
-  // ============================================
-  // 插件安装
-  // ============================================
-
-  private installFromNpm(source: string, pluginsDir: string): void {
-    execSync(`npm install --production --prefix "${pluginsDir}" "${source}"`, {
-      stdio: 'pipe',
-      timeout: 60_000,
-    })
-  }
-
-  private installFromGit(url: string, pluginsDir: string): void {
-    const tmpDir = resolve(pluginsDir, '.tmp-install')
-    if (existsSync(tmpDir)) {
-      execSync(`rm -rf "${tmpDir}"`, { stdio: 'pipe' })
-    }
-    execSync(`git clone --depth 1 "${url}" "${tmpDir}"`, {
-      stdio: 'pipe',
-      timeout: 60_000,
-    })
-
-    // 验证 package.json
-    const pkgPath = resolve(tmpDir, 'package.json')
-    if (!existsSync(pkgPath)) {
-      execSync(`rm -rf "${tmpDir}"`, { stdio: 'pipe' })
-      throw new Error('Invalid plugin: no package.json found')
-    }
-
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
-    if (!pkg.hive?.plugin) {
-      execSync(`rm -rf "${tmpDir}"`, { stdio: 'pipe' })
-      throw new Error('Invalid plugin: missing hive.plugin in package.json')
-    }
-
-    // 安装依赖
-    if (existsSync(resolve(tmpDir, 'package.json'))) {
-      execSync(`cd "${tmpDir}" && npm install --production`, {
-        stdio: 'pipe',
-        timeout: 60_000,
-      })
-    }
-
-    // 移动到 plugins 目录
-    const pluginName = pkg.name ?? url.split('/').pop() ?? 'unknown'
-    const targetDir = resolve(pluginsDir, pluginName)
-    execSync(`mv "${tmpDir}" "${targetDir}"`, { stdio: 'pipe' })
-  }
-
-  private installFromLocal(source: string, pluginsDir: string): void {
-    const resolvedSource = resolve(source)
-    if (!existsSync(resolvedSource)) {
-      throw new Error(`Path not found: ${source}`)
-    }
-
-    const pkgPath = resolve(resolvedSource, 'package.json')
-    if (!existsSync(pkgPath)) {
-      throw new Error('Invalid plugin: no package.json found')
-    }
-
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
-    if (!pkg.hive?.plugin) {
-      throw new Error('Invalid plugin: missing hive.plugin in package.json')
-    }
-
-    const pluginName = pkg.name ?? 'local-plugin'
-    const targetDir = resolve(pluginsDir, pluginName)
-    execSync(`cp -r "${resolvedSource}" "${targetDir}"`, { stdio: 'pipe' })
-  }
 }
 
 // ============================================

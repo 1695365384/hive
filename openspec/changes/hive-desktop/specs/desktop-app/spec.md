@@ -17,7 +17,7 @@ apps/desktop/
 │   ├── components/      # 通用组件
 │   ├── hooks/           # 自定义 hooks
 │   └── lib/             # 工具函数
-├── package.json         # @hive/desktop
+├── package.json         # @bundy-lmw/hive-desktop
 ├── vite.config.ts
 └── tsconfig.json
 ```

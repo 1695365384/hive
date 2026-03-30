@@ -30,7 +30,7 @@
 
 ### D1: 插件接口设计
 
-**决策**: 定义 `IPlugin` 和 `IChannel` 接口在 `@hive/core` 中
+**决策**: 定义 `IPlugin` 和 `IChannel` 接口在 `@bundy-lmw/hive-core` 中
 
 **理由**:
 - Core 定义接口，插件实现接口
@@ -99,7 +99,7 @@ const channels = config.apps.map(app => new FeishuChannel(app))
 │                            │                           │
 │                            ▼                           │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │              @hive/plugin-feishu                │   │
+│  │              @bundy-lmw/hive-plugin-feishu                │   │
 │  │  ┌──────────────┐    ┌──────────────────────┐   │   │
 │  │  │ FeishuPlugin │───▶│ FeishuChannel (x N)  │   │   │
 │  │  └──────────────┘    └──────────┬───────────┘   │   │

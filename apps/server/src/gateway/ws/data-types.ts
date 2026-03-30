@@ -57,6 +57,7 @@ export interface ServerConfig {
     intervalMs: number
     model?: string
   }
+  pluginConfigs?: Record<string, Record<string, unknown>>
 }
 
 export interface ConfigUpdateParams {
@@ -94,6 +95,8 @@ export interface PluginInfo {
   id: string
   name: string
   version: string
+  source?: string
+  installedAt?: string
   description?: string
   enabled: boolean
   channels?: string[]

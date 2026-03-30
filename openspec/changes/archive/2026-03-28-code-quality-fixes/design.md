@@ -1,6 +1,6 @@
 ## Context
 
-Hive 是一个多 Agent 协作框架，`@hive/core` 作为 SDK 包被 `apps/server` 和 `packages/plugins` 消费。当前代码在类型安全、安全性、资源管理方面存在系统性问题，源于早期快速迭代阶段缺少工程规范约束。
+Hive 是一个多 Agent 协作框架，`@bundy-lmw/hive-core` 作为 SDK 包被 `apps/server` 和 `packages/plugins` 消费。当前代码在类型安全、安全性、资源管理方面存在系统性问题，源于早期快速迭代阶段缺少工程规范约束。
 
 核心问题分布：
 - 存储层（`storage/`）：10+ 处 `as any`，JSON.parse 无保护

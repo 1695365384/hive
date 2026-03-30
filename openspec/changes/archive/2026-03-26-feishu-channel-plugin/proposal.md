@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- 创建全新的 `@hive/plugin-feishu` 包，基于飞书官方 SDK 实现
+- 创建全新的 `@bundy-lmw/hive-plugin-feishu` 包，基于飞书官方 SDK 实现
 - 实现飞书事件订阅接收（通过 Webhook 或长连接）
 - 实现飞书消息发送 API 封装
 - 定义清晰的插件接口，与 Hive Core 解耦
@@ -28,8 +28,8 @@
 
 **依赖**:
 - `@larksuiteoapi/node-sdk` - 飞书官方 Node.js SDK
-- `@hive/core` - Hive 核心（仅类型依赖）
-- `@hive/orchestrator` - 消息总线（事件通信）
+- `@bundy-lmw/hive-core` - Hive 核心（仅类型依赖）
+- `@bundy-lmw/hive-orchestrator` - 消息总线（事件通信）
 
 **影响范围**:
 - `apps/server` - 需要更新插件加载机制以支持新插件接口

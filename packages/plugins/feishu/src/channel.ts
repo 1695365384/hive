@@ -1,5 +1,5 @@
 /**
- * @hive/plugin-feishu - FeishuChannel
+ * @bundy-lmw/hive-plugin-feishu - FeishuChannel
  *
  * 飞书通道实现，基于 @larksuiteoapi/node-sdk。
  * 支持 WebSocket 长连接模式（推荐）和 Webhook 模式（备用）。
@@ -17,7 +17,7 @@ import type {
   IMessageBus,
   ILogger,
   ChannelMessage,
-} from '@hive/core'
+} from '@bundy-lmw/hive-core'
 import type {
   FeishuAppConfig,
   FeishuChallengeRequest,

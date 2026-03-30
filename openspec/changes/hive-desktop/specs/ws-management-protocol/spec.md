@@ -91,7 +91,7 @@
 - **THEN** 返回已安装插件列表，包含 id、name、version、enabled、channels
 
 #### Scenario: Install plugin from npm
-- **WHEN** 前端发送 `{ method: 'plugin.install', params: { source: '@hive/plugin-feishu' } }`
+- **WHEN** 前端发送 `{ method: 'plugin.install', params: { source: '@bundy-lmw/hive-plugin-feishu' } }`
 - **THEN** 后端执行 `npm install` 到 `.hive/plugins/`，更新 `hive.config.json`
 - **THEN** 返回安装后的 `PluginInfo`
 
