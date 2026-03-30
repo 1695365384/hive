@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.hive.desktop",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "bash scripts/dev.sh",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Hive Desktop",
+        "title": "Hive",
         "width": 1024,
         "height": 768,
         "minWidth": 800,
@@ -30,6 +30,7 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ]
