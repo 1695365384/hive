@@ -4,225 +4,138 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hive - 多 Agent 协作框架。像蜜蜂一样高效协作的 AI Agent SDK。
+Hive - 多 Agent 协作框架，AI Agent SDK。pnpm monorepo，TypeScript ESM，Node.js 18+。
 
-## Common Commands
+## Monorepo Structure
+
+```
+packages/core/           @bundy-lmw/hive-core        Agent SDK 核心
+packages/plugins/feishu/ @bundy-lmw/hive-plugin-feishu 飞书插件
+apps/server/             @bundy-lmw/hive-server       HTTP/WS 服务 (Hono + ws)
+apps/desktop/            @bundy-lmw/hive-desktop      Tauri 2 桌面应用 (Rust + React 19)
+skills/                                             技能定义 (*.md + YAML frontmatter)
+```
+
+依赖关系：desktop → server → core，plugin-feishu → core。
+
+## Commands
 
 ```bash
-# Development
-npm run build          # TypeScript 编译
-npm run dev            # TypeScript 监视模式
-npm run server         # 启动 HTTP 服务 (端口 3000)
-npm run cli            # 启动命令行工具
+# 构建（按拓扑排序）
+pnpm -r build
+pnpm --filter @bundy-lmw/hive-core build
+pnpm --filter @bundy-lmw/hive-server build
 
-# Testing
-npm test               # 运行所有测试（单元测试 + 集成测试，使用 mock）
-npm run test:watch     # 测试监视模式
-npm run test:coverage  # 生成覆盖率报告
-npm run test:e2e       # 运行 E2E 测试（真实 API 调用，需要配置 API Key）
+# 开发
+pnpm --filter @bundy-lmw/hive-core dev        # tsc --watch
+pnpm --filter @bundy-lmw/hive-server dev      # tsc --watch
+cd apps/desktop && pnpm dev                    # Tauri dev（启动 Vite + Rust + server）
 
-# Single test file
-npx vitest run tests/skills.test.ts
-npx vitest run tests/e2e/agent-real.test.ts --config vitest.e2e.config.ts
+# 测试
+pnpm test                                       # core 单元 + 集成测试（mock）
+pnpm test:e2e                                   # core E2E 测试（真实 LLM API）
+npx vitest run packages/core/tests/unit/skills.test.ts           # 单个测试文件
+npx vitest run packages/core/tests/e2e/agent-real.test.ts --config packages/core/vitest.e2e.config.ts  # 单个 E2E
+
+# 发布（自动 build + version patch + publish）
+pnpm publish:core
+pnpm publish:server
+pnpm publish:feishu
 ```
 
 ## E2E Testing
 
-E2E 测试使用真实的 LLM API 验证 Agent 的实际响应能力。
+E2E 测试调用真实 LLM API，会产生费用。未配置 API Key 时自动跳过。
 
-### 配置方法
-
-**方式 1：使用 providers.json**
+配置方式（二选一）：
 ```bash
-cp providers.example.json providers.json
-# 编辑 providers.json，填入你的 API Key
-npm run test:e2e
-```
+# 方式 1：环境变量
+TEST_API_KEY=xxx TEST_PROVIDER_ID=glm pnpm test:e2e
 
-**方式 2：使用环境变量（CI 环境）**
-```bash
-TEST_API_KEY=xxx TEST_PROVIDER_ID=glm npm run test:e2e
-```
-
-### 无配置自动跳过
-
-如果没有配置 API Key，E2E 测试会自动跳过：
-```
-✓ tests/e2e/agent-real.test.ts (1 test) | 1 skipped
-```
-
-### 注意事项
-
-- E2E 测试会产生 **API 费用**
-- 超时时间设置为 60 秒（LLM 响应较慢）
-- 测试串行执行（避免 API 限流）
-- 使用宽松断言（LLM 响应内容不固定）
-
-## Architecture
-
-### 核心设计原则
-
-**主 Agent 作为唯一入口** - 所有功能通过 Agent 类访问，委托给能力模块实现。
-
-```
-Agent (主入口)
-├── ProviderCapability  - 提供商管理 (OpenAI 兼容适配器)
-├── SkillCapability     - 技能管理 (模块化扩展)
-├── ChatCapability      - 对话功能
-├── SubAgentCapability  - 子 Agent (Explore/Plan/General)
-├── WorkflowCapability  - 工作流引擎 (explore → plan → execute)
-├── SessionCapability  - 会话持久化 (SQLite)
-├── ScheduleCapability  - 定时任务与推送通知
-└── TimeoutCapability  - 心跳与超时监控
-```
-
-### 子 Agent 系统 (Claude Code 风格)
-
-| Agent | 模型 | 工具 | 用途 |
-|-------|------|------|------|
-| Explore | Provider 默认 | 只读 (file+glob+grep+web) | 文件发现、代码搜索 |
-| Plan | Provider 默认 | 只读 (file+glob+grep+web) | 计划研究、收集上下文 |
-| General | Provider 默认 | 全部 (7 个内置工具) | 复杂任务、代码修改 |
-
-### 目录结构要点
-
-```
-src/
-├── agents/
-│   ├── core/           # Agent 核心实现 (Agent.ts, AgentContext.ts, runner.ts)
-│   ├── capabilities/   # 能力模块 (委托模式)
-│   ├── dispatch/       # 智能调度 (Dispatcher, Classifier)
-│   ├── runtime/        # LLM 运行时 (LLMRuntime, 不依赖 claude-agent-sdk)
-│   ├── types/          # 类型定义
-│   └── registry/       # Agent 注册表
-├── providers/          # LLM 提供商管理
-│   ├── adapters/       # 适配器 (OpenAI 兼容, Anthropic)
-│   ├── metadata/       # Provider 元数据 (models.dev 动态加载)
-│   └── sources/        # 配置来源 (hive.config.json, 环境变量)
-├── tools/
-│   ├── built-in/       # 内置工具 (bash, file, glob, grep, web-search, web-fetch, ask-user)
-│   │   └── utils/       # 安全层 (security.ts, output-safety.ts)
-│   └── tool-registry.ts # 工具注册表
-├── hooks/              # Hooks 系统 (生命周期事件)
-├── skills/             # 技能系统 (加载器, 匹配器, 注册表)
-└── index.ts            # 顶层导出
-
-skills/                 # 技能定义文件 (*.md with YAML frontmatter)
-tests/
-├── unit/               # 单元测试（使用 mock）
-├── integration/        # 集成测试（使用 mock）
-├── e2e/                # E2E 测试（真实 API 调用）
-│   ├── test-helpers.ts # 测试辅助函数
-│   ├── agent-real.test.ts    # Agent 真实 API 测试
-│   └── provider-real.test.ts # Provider 连接测试
-├── mocks/              # Mock 工具
-└── utils/              # 测试工具函数
-```
-
-## Configuration
-
-### 提供商配置
-
-复制 `hive.config.example.json` 为 `hive.config.json` 并填入 API Key：
-
-```bash
+# 方式 2：hive.config.json
 cp apps/server/hive.config.example.json apps/server/hive.config.json
 ```
 
-配置示例：
-```json
-{
-  "provider": {
-    "id": "glm",
-    "apiKey": "your-api-key",
-    "model": "glm-4-flash",
-    "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4"
-  }
-}
+## Architecture
+
+### 核心设计：能力委托模式
+
+Agent 是唯一入口，所有功能委托给能力模块：
+
+```
+Agent
+├── ProviderCapability  - LLM 提供商管理
+├── SkillCapability     - 技能管理（模块化扩展）
+├── ChatCapability      - 对话
+├── SubAgentCapability  - 子 Agent（Explore/Plan/General）
+├── WorkflowCapability  - 工作流引擎（explore → plan → execute）
+├── SessionCapability   - 会话持久化（SQLite）
+├── ScheduleCapability  - 定时任务（node-cron）
+└── TimeoutCapability   - 心跳与超时监控
 ```
 
-也支持环境变量：
-```bash
-GLM_API_KEY=xxx
-DEEPSEEK_API_KEY=xxx
-```
+### 子 Agent 系统（Claude Code 风格）
 
-### 技能定义
+| Agent | 工具 | 用途 |
+|-------|------|------|
+| Explore | 只读 (file+glob+grep+web) | 文件发现、代码搜索 |
+| Plan | 只读 (file+glob+grep+web) | 计划研究、收集上下文 |
+| General | 全部 (7 个内置工具) | 复杂任务、代码修改 |
 
-技能位于 `skills/` 目录，使用 YAML frontmatter：
+### Server 网关
 
-```markdown
----
-name: Code Review
-description: Used when user asks to review code...
-tags:
-  - code-quality
----
+- **HTTP**（Hono）：POST /chat, /api/sessions, /webhook/:plugin/:appId
+- **WebSocket**：`/ws/admin`（管理面板）、`/ws/chat`（对话）
+- 默认端口：4450
 
-# Code Review Skill
-...
-```
+### Desktop 应用
+
+Tauri 2 桌面端，Rust sidecar 管理 server 进程：
+- **开发模式**：用系统 `node` 直接运行 `apps/server/dist/main.js`
+- **生产模式**：执行 Node.js SEA 单文件二进制（`apps/server/scripts/bundle.sh` 打包，约 106MB）
+- 前端通过 WebSocket (`localhost:4450`) 与 server 通信
+- Zustand 状态管理，TanStack React Query 数据请求
+
+### Provider 配置链
+
+优先级：外部配置 (`hive.config.json`) > 环境变量 > 预设默认值
+
+国产 LLM 通过 OpenAI 兼容适配器 + AI SDK (`@ai-sdk/openai`) 接入，不依赖 `claude-agent-sdk`。
+
+### Workspace 协议
+
+本地开发用 `workspace:*`，发布到 npm 后用户安装的是 `^x.x.x`：
+- `apps/server` 依赖 core：`"@bundy-lmw/hive-core": "workspace:*"`
+- `packages/plugins/feishu` 依赖 core：`"@bundy-lmw/hive-core": "^1.0.0"`（独立 npm 包）
 
 ## Hooks System
 
-Hooks 提供生命周期事件钩子，在关键节点插入自定义逻辑。
+生命周期事件钩子，支持优先级（highest > high > normal > low > lowest）：
 
-| Hook 类型 | 触发时机 |
-|-----------|----------|
-| `session:start` / `session:end` / `session:error` | 会话生命周期 |
-| `tool:before` / `tool:after` | 工具调用前后 |
-| `capability:init` / `capability:dispose` | 能力生命周期 |
+| Hook | 触发时机 |
+|------|----------|
+| `session:start/end/error` | 会话生命周期 |
+| `tool:before/after` | 工具调用前后 |
+| `capability:init/dispose` | 能力生命周期 |
 | `workflow:phase` | 工作流阶段变化 |
 
 ```typescript
-// 注册 Hook 示例 (server.ts 中有完整示例)
 agent.context.hookRegistry.on('tool:before', async (ctx) => {
   if (ctx.toolName === 'Bash') {
-    // 安全检查逻辑
-    return { proceed: true }; // 或 { proceed: false, error: ... }
+    return { proceed: true }; // 或 { proceed: false, error: '...' }
   }
 }, { priority: 'highest' });
 ```
 
-## Key Implementation Patterns
+## Key Patterns
 
-### 能力模块委托模式
+- **内置工具安全层**：`tools/built-in/utils/security.ts`（路径约束、SSRF 防护、命令白名单）
+- **ServiceRegistry**：服务生命周期管理和依赖注入
+- **技能定义**：`skills/` 目录下 Markdown 文件 + YAML frontmatter
+- **插件系统**：server 动态加载 npm 插件，通过 WebSocket channel 通信
 
-Agent 类不直接实现功能，而是委托给能力模块：
+## Tech Stack
 
-```typescript
-// Agent.ts
-class Agent {
-  private chatCap: ChatCapability;
-  private workflowCap: WorkflowCapability;
-
-  async chat(prompt: string) {
-    return this.chatCap.send(prompt);  // 委托
-  }
-}
-```
-
-### 提供商配置链
-
-配置按优先级合并：外部配置 > 环境变量 > 预设默认值
-
-### 服务注册表
-
-`ServiceRegistry` 提供服务生命周期管理和依赖注入：
-
-```typescript
-const registry = new ServiceRegistry();
-registry.register(service);
-await registry.initializeAll();
-await registry.startAll();
-```
-
-## Notes
-
-- TypeScript ESM 模块，Node.js 18+
-- 使用 `tsx` 运行 TypeScript (开发时)
-- 测试框架: Vitest
-- LLM 调用基于 AI SDK (`@ai-sdk/openai`)，不依赖 `claude-agent-sdk`
-- 国产 LLM 通过 OpenAI 兼容适配器 + Chat Completions API 接入
-- 配置使用 `hive.config.json`（已加入 .gitignore）
-- 内置工具系统使用 AI SDK 标准 `tool()` + Zod schema
+- **Core/Server**: TypeScript ESM, AI SDK, Hono, better-sqlite3, Zod v4, Vitest
+- **Desktop**: Tauri 2 (Rust), React 19, Vite 7, Tailwind CSS 4, Zustand
+- **Build**: esbuild (server bundle), Node.js SEA (单文件二进制), tsc
