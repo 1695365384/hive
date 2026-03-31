@@ -45,6 +45,18 @@ interface HandlerContext {
 - **WHEN** 编写 `ConfigHandler` 单元测试
 - **THEN** SHALL 仅需 mock `HandlerContext` 接口，无需 mock 整个 AdminWsHandler
 
+#### Scenario: AdminWsHandler 接收注入的 HiveLogger
+- **WHEN** AdminWsHandler 构造函数被调用
+- **THEN** SHALL 接收外部传入的 HiveLogger 实例
+- **THEN** SHALL NOT 内部创建 HiveLogger
+- **THEN** SHALL NOT 调用 `overrideConsole()`
+
+#### Scenario: ChatWsHandler 接收注入的 HiveLogger
+- **WHEN** ChatWsHandler 构造函数被调用
+- **THEN** SHALL 接收外部传入的 HiveLogger 实例
+- **THEN** SHALL NOT 内部创建 HiveLogger
+- **THEN** SHALL NOT 调用 `overrideConsole()`
+
 ### Requirement: Domain Handler 拆分清单
 AdminWsHandler 中的 21 个管理 handler SHALL 拆分为 5 个独立 Domain Handler 类：
 

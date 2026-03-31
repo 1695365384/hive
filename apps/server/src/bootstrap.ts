@@ -14,6 +14,7 @@ import {
   type MessageBus,
   noopLogger,
 } from '@bundy-lmw/hive-core'
+import type { Logger as PinoLogger } from 'pino'
 import { join } from 'path'
 import type { ServerConfig } from './config.js'
 import { loadPlugins } from './plugins.js'
@@ -40,6 +41,8 @@ export interface HiveContext {
 
 export interface BootstrapOptions {
   config: ServerConfig
+  /** Optional pino Logger — when provided, ILogger wraps this instance instead of raw console */
+  pinoLogger?: PinoLogger
 }
 
 function createLogger(level: string): ILogger {
@@ -54,9 +57,23 @@ function createLogger(level: string): ILogger {
   }
 }
 
+/** Wrap a pino Logger to satisfy the ILogger interface */
+function createPinoAdapter(logger: PinoLogger): ILogger {
+  const fmt = (msg: string, args: unknown[]) =>
+    args.length > 0 ? `${msg} ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}` : msg
+  return {
+    debug: (msg, ...args) => logger.debug({ source: 'server' }, fmt(msg, args)),
+    info: (msg, ...args) => logger.info({ source: 'server' }, fmt(msg, args)),
+    warn: (msg, ...args) => logger.warn({ source: 'server' }, fmt(msg, args)),
+    error: (msg, ...args) => logger.error({ source: 'server' }, fmt(msg, args)),
+  }
+}
+
 export async function bootstrap(options: BootstrapOptions): Promise<HiveContext> {
   const { config } = options
-  const logger = createLogger(config.logLevel)
+  const logger = options.pinoLogger
+    ? createPinoAdapter(options.pinoLogger)
+    : createLogger(config.logLevel)
   const plugins = await loadPlugins()
 
   const server = createServer({

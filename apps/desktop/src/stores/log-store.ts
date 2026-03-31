@@ -38,10 +38,15 @@ export const useLogStore = create<LogState>((set) => ({
     set((state) => {
       if (entries.length === 0) return state;
 
-      const newErrors = entries.filter((e) => e.level === "error").length;
-      const newUnread = entries.length;
-      const merged = [...state.logs, ...entries].slice(-MAX_LOGS);
-      const lastId = entries[entries.length - 1]?.id ?? state.lastId;
+      // Deduplicate by id (React StrictMode remount can cause duplicate fetches)
+      const existingIds = new Set(state.logs.map((e) => e.id));
+      const unique = entries.filter((e) => !existingIds.has(e.id));
+      if (unique.length === 0) return state;
+
+      const newErrors = unique.filter((e) => e.level === "error").length;
+      const newUnread = unique.length;
+      const merged = [...state.logs, ...unique].slice(-MAX_LOGS);
+      const lastId = unique[unique.length - 1]?.id ?? state.lastId;
 
       return {
         logs: merged,

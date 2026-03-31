@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: 日志写入工作空间 logs 目录
 FileLogger SHALL 将日志写入工作空间下的 `logs/` 目录，文件命名为 `hive-YYYY-MM-DD.log`，格式为纯文本。
@@ -28,17 +28,7 @@ FileLogger SHALL 将日志写入工作空间下的 `logs/` 目录，文件命名
 - **THEN** FileLogger（作为 HiveLogger 的一部分）SHALL 在 main.ts 中创建唯一实例
 - **THEN** AdminWsHandler 和 ChatWsHandler SHALL NOT 自行创建 FileLogger
 
-### Requirement: 过期日志文件自动清理
-FileLogger SHALL 在初始化时清理超过保留期的日志文件。默认保留 7 天。
-
-#### Scenario: 清理超过 7 天的日志文件
-- **WHEN** FileLogger 初始化
-- **THEN** SHALL 扫描 `logs/` 目录
-- **THEN** SHALL 删除修改时间超过 7 天的 `.log` 文件
-
-#### Scenario: 保留期可配置
-- **WHEN** 传入 `retentionDays: 30`
-- **THEN** SHALL 只删除超过 30 天的日志文件
+## MODIFIED Requirements
 
 ### Requirement: FileLogger 优雅关闭
 FileLogger SHALL 提供 `dispose()` 方法关闭文件流。SHALL 由 main.ts 的 close 函数统一调用。

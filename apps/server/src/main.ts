@@ -8,6 +8,9 @@ import { getConfig, HIVE_HOME } from './config.js'
 import { join } from 'node:path'
 import { bootstrap, shutdown, type HiveContext } from './bootstrap.js'
 import { registerGracefulShutdown } from './graceful-shutdown.js'
+import { LogBuffer } from './gateway/ws/log-buffer.js'
+import { createHiveLogger, type HiveLogger } from './logging/hive-logger.js'
+import type { LogEntry } from './gateway/ws/data-types.js'
 
 export interface ServerOptions {
   port?: number
@@ -34,30 +37,45 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     plugins: options.plugins || cfg.plugins,
   }
 
+  // ---- 1. Create shared LogBuffer + HiveLogger (singleton) ----
+  const logBuffer = new LogBuffer(10_000)
+  const logSubscribers: Array<(entry: LogEntry) => void> = []
+
+  const hiveLogger: HiveLogger = createHiveLogger(
+    logBuffer,
+    (entry) => logSubscribers.forEach(fn => fn(entry)),
+    { dir: join(HIVE_HOME, 'logs'), retentionDays: 7 },
+  )
+  hiveLogger.overrideConsole() // 全局唯一一次
+
   console.log('[hive] Bootstrapping...')
-  const context = await bootstrap({ config: serverConfig })
+  const context = await bootstrap({
+    config: serverConfig,
+    pinoLogger: hiveLogger.logger,
+  })
   console.log('[hive] Bootstrap complete')
 
-  // Create Admin WS Handler first (to get HiveLogger for HTTP gateway)
+  // ---- 2. Create WS Handlers (inject HiveLogger, no overrideConsole) ----
   const { WebSocketServer } = await import('ws')
   const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')
   const { createChatWsHandler } = await import('./gateway/ws/chat-handler.js')
   const adminWs = new WebSocketServer({ noServer: true })
   const chatWs = new WebSocketServer({ noServer: true })
-  const adminHandler = createAdminWsHandler({
-    dir: join(HIVE_HOME, 'logs'),
-    retentionDays: 7,
-  })
-  const chatHandler = createChatWsHandler({
-    dir: join(HIVE_HOME, 'logs'),
-    retentionDays: 7,
-  })
 
-  // Create HTTP server (with HiveLogger for request logging)
+  const adminHandler = createAdminWsHandler(hiveLogger, logBuffer)
+  const chatHandler = createChatWsHandler(hiveLogger)
+
+  // Register broadcast subscribers
+  logSubscribers.push(
+    (entry) => adminHandler.pushLog(entry),
+    (entry) => chatHandler.pushLog(entry),
+  )
+
+  // ---- 3. Create HTTP server ----
   const { createServer } = await import('http')
   const { createHttpGateway } = await import('./gateway/http.js')
 
-  const app = createHttpGateway(context, adminHandler.getHiveLogger())
+  const app = createHttpGateway(context, hiveLogger)
 
   const server = createServer(async (req, res) => {
     try {
@@ -149,6 +167,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     chatWs.close()
     wsGateway.close()
     server.close()
+    await hiveLogger.dispose()
     await shutdown(context)
   }
 
