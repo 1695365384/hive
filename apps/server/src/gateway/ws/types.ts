@@ -68,6 +68,7 @@ export type ErrorCode =
   | 'INTERNAL'
   | 'TIMEOUT'
   | 'UNAUTHORIZED'
+  | 'AGENT_NOT_READY'
 
 // ============================================
 // 事件 (event)
