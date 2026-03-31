@@ -91,14 +91,21 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   // Setup Admin WebSocket
   const { WebSocketServer } = await import('ws')
   const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')
+  const { createChatWsHandler } = await import('./gateway/ws/chat-handler.js')
   const adminWs = new WebSocketServer({ noServer: true })
+  const chatWs = new WebSocketServer({ noServer: true })
   const adminHandler = createAdminWsHandler({
+    dir: join(HIVE_HOME, 'logs'),
+    retentionDays: 7,
+  })
+  const chatHandler = createChatWsHandler({
     dir: join(HIVE_HOME, 'logs'),
     retentionDays: 7,
   })
   adminHandler.setServer(context.server)
   adminHandler.setHttpServer(server)
   adminHandler.setPlugins(context.plugins)
+  chatHandler.setServer(context.server)
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
@@ -116,6 +123,10 @@ export async function startServer(options: ServerOptions = {}): Promise<{
       adminWs.handleUpgrade(request, socket, head, (ws) => {
         adminWs.emit('connection', ws, request)
       })
+    } else if (url.pathname === '/ws/chat') {
+      chatWs.handleUpgrade(request, socket, head, (ws) => {
+        chatWs.emit('connection', ws, request)
+      })
     }
     // 其他 WS 升级（如插件 channel）由 wsGateway 处理
   })
@@ -124,10 +135,16 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     adminHandler.handleConnection(ws)
   })
 
+  chatWs.on('connection', (ws) => {
+    chatHandler.handleConnection(ws)
+  })
+
   // Build close function before listening (so signal handlers can use it)
   const close = async () => {
     adminHandler.closeAll()
+    chatHandler.closeAll()
     adminWs.close()
+    chatWs.close()
     wsGateway.close()
     server.close()
     await shutdown(context)
@@ -145,6 +162,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     server.listen(serverConfig.port, () => {
       console.log(`[hive] Server started on port ${serverConfig.port}`)
       console.log(`[hive] Admin WS available at ws://localhost:${serverConfig.port}/ws/admin`)
+      console.log(`[hive] Chat WS available at ws://localhost:${serverConfig.port}/ws/chat`)
       resolve({ context, close })
     })
   })
