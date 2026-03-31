@@ -95,6 +95,10 @@ export class AdminWsHandler extends EventEmitter {
     this.pluginHandler.setPlugins(plugins)
   }
 
+  getHiveLogger(): HiveLogger | null {
+    return this.hiveLogger
+  }
+
   // ============================================
   // 连接管理
   // ============================================

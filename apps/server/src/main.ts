@@ -38,11 +38,26 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   const context = await bootstrap({ config: serverConfig })
   console.log('[hive] Bootstrap complete')
 
-  // Create HTTP server
+  // Create Admin WS Handler first (to get HiveLogger for HTTP gateway)
+  const { WebSocketServer } = await import('ws')
+  const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')
+  const { createChatWsHandler } = await import('./gateway/ws/chat-handler.js')
+  const adminWs = new WebSocketServer({ noServer: true })
+  const chatWs = new WebSocketServer({ noServer: true })
+  const adminHandler = createAdminWsHandler({
+    dir: join(HIVE_HOME, 'logs'),
+    retentionDays: 7,
+  })
+  const chatHandler = createChatWsHandler({
+    dir: join(HIVE_HOME, 'logs'),
+    retentionDays: 7,
+  })
+
+  // Create HTTP server (with HiveLogger for request logging)
   const { createServer } = await import('http')
   const { createHttpGateway } = await import('./gateway/http.js')
 
-  const app = createHttpGateway(context)
+  const app = createHttpGateway(context, adminHandler.getHiveLogger())
 
   const server = createServer(async (req, res) => {
     try {
@@ -88,20 +103,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   const { createWebSocketGateway } = await import('./gateway/websocket.js')
   const wsGateway = createWebSocketGateway(server, context)
 
-  // Setup Admin WebSocket
-  const { WebSocketServer } = await import('ws')
-  const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')
-  const { createChatWsHandler } = await import('./gateway/ws/chat-handler.js')
-  const adminWs = new WebSocketServer({ noServer: true })
-  const chatWs = new WebSocketServer({ noServer: true })
-  const adminHandler = createAdminWsHandler({
-    dir: join(HIVE_HOME, 'logs'),
-    retentionDays: 7,
-  })
-  const chatHandler = createChatWsHandler({
-    dir: join(HIVE_HOME, 'logs'),
-    retentionDays: 7,
-  })
+  // Configure handlers
   adminHandler.setServer(context.server)
   adminHandler.setHttpServer(server)
   adminHandler.setPlugins(context.plugins)
