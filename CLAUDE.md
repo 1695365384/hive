@@ -134,6 +134,60 @@ agent.context.hookRegistry.on('tool:before', async (ctx) => {
 - **技能定义**：`skills/` 目录下 Markdown 文件 + YAML frontmatter
 - **插件系统**：server 动态加载 npm 插件，通过 WebSocket channel 通信
 
+## OpenSpec → ECC 工作流
+
+### 完整生命周期
+
+```
+EXPLORE → PROPOSE → CHECKPOINT → IMPLEMENT → VERIFY → REVIEW → COVERAGE → LEARN → ARCHIVE
+  opsx       opsx       ECC         ECC      ECC     ECC      ECC     ECC    opsx
+ explore    propose    checkpoint  tdd循环  verify  reviewer coverage learn  archive
+```
+
+### 各阶段说明
+
+**Phase 0 — 探索与规划**（`/opsx:explore` → `/opsx:propose`）
+- 自由思考，产出 proposal + design + specs + tasks
+- 如果用户说"实现 xxx"但不存在对应 change，先引导创建
+
+**Phase 1 — 基线快照**（`/checkpoint`）
+- 在开始实现前创建检查点，保存当前测试通过状态和文件快照
+- 实现出问题时可以 `/checkpoint` 对比或回退
+
+**Phase 2 — 实现**（每个 task 按 TDD 循环）
+- 先写测试（RED）→ 再实现（GREEN）→ 重构（IMPROVE）
+- 每个 task 完成后运行测试确认通过
+- 使用 research context（只读探索）理解代码，dev context（写代码）时切换
+- 跨会话时用 `/save-session` 保存进度，下次 `/resume-session` 恢复
+
+**Phase 3 — 验证**（`/verify`）
+- 全量验证：构建检查 → 类型检查 → 测试套件 → console.log 审计 → Git 状态
+- 验证失败则回到 Phase 2 修复
+
+**Phase 4 — 审查**（code-reviewer + security-reviewer agents）
+- code-reviewer：逻辑错误、边界条件、错误处理、可读性
+- security-reviewer：注入、认证、secrets（涉及用户输入/API 端点时）
+- CRITICAL/HIGH 问题必须修复，MEDIUM 按优先级处理
+
+**Phase 5 — 覆盖率**（`/test-coverage`）
+- 检查是否达到 80% 覆盖率，生成缺失测试建议
+- 优先补齐：快乐路径、错误处理、边界条件
+
+**Phase 6 — 沉淀**（`/learn` → `/evolve`）
+- 从本次实现中提取可复用模式（错误解决、调试技巧、项目约定）
+- 相关模式聚类为技能或命令，供后续 change 复用
+
+**Phase 7 — 归档**（`/opsx:archive`）
+- 所有 tasks 完成、verify 通过、coverage 达标后归档
+- 可选：`/update-docs` 同步文档，`/update-codemaps` 更新架构图
+
+### 自动触发规则
+
+- 用户说"实现 xxx"/"开始做 xxx" → 自动查找 OpenSpec change 并从 Phase 1 开始
+- 用户说"继续" → 恢复上次中断的阶段
+- 复杂 change（涉及 core + server + desktop） → 使用 `/orchestrate` 并行处理独立模块
+- 每个 task 完成时 → hooks 自动执行 post-edit:typecheck + post:quality-gate
+
 ## Tech Stack
 
 - **Core/Server**: TypeScript ESM, AI SDK, Hono, better-sqlite3, Zod v4, Vitest
