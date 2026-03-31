@@ -116,6 +116,7 @@ export class AgentRunner {
     prompt: string,
     options?: AgentExecuteOptions,
   ): Promise<AgentResult> {
+    console.log(`[agent] Executing ${config.type} agent: ${prompt.slice(0, 80)}${prompt.length > 80 ? '...' : ''}`)
     const preset = AGENT_PRESETS[config.type];
     const runtimeConfig: RuntimeConfig = {
       prompt,
@@ -146,12 +147,14 @@ export class AgentRunner {
           this.runtime.run(runtimeConfig),
           timeoutPromise,
         ]);
-        if (!result.success && options?.onError) {
-          options.onError(new Error(result.error));
+        if (!result.success) {
+          console.error(`[agent] ${config.type} agent failed: ${result.error}`)
+          options?.onError?.(new Error(result.error));
         }
         return this.mapToAgentResult(result);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
+        console.error(`[agent] ${config.type} agent error: ${err.message}`)
         if (options?.onError) {
           options.onError(err);
         }
@@ -163,6 +166,7 @@ export class AgentRunner {
 
     const result = await this.runtime.run(runtimeConfig);
     if (!result.success && options?.onError) {
+      console.error(`[agent] ${config.type} agent failed: ${result.error}`)
       options.onError(new Error(result.error));
     }
     return this.mapToAgentResult(result);
@@ -192,6 +196,7 @@ export class AgentRunner {
    */
   async runTask(config: TaskConfig): Promise<TaskResult> {
     const startTime = Date.now();
+    console.log(`[agent] Task "${config.name}" started: ${config.prompt.slice(0, 80)}${config.prompt.length > 80 ? '...' : ''}`)
 
     // 如果指定了 agentType，使用预设配置
     let systemPrompt = config.systemPrompt;
@@ -218,6 +223,9 @@ export class AgentRunner {
       tools: this.toolRegistry.getToolsForAgent((config.agentType || 'general') as ToolAgentType),
     });
 
+    if (!result.success) {
+      console.error(`[agent] Task "${config.name}" failed: ${result.error}`)
+    }
     return {
       name: config.name,
       text: result.text,

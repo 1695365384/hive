@@ -99,7 +99,7 @@ function resolveManifest(pluginDir: string, dirName: string): PluginManifest | n
 
   const nmEntries = readdirSync(nmDir, { withFileTypes: true })
   for (const nmEntry of nmEntries) {
-    if (!nmEntry.isDirectory()) continue
+    if (!nmEntry.isDirectory() || nmEntry.name === '.bin' || nmEntry.name === '.package-lock.json') continue
 
     if (nmEntry.name.startsWith('@')) {
       const manifest = resolveScopedPackage(nmDir, nmEntry.name, pluginDir, dirName)

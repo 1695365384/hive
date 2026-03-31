@@ -29,7 +29,9 @@ import type {
   ProviderPresetInfo, ModelSummary,
 } from './data-types.js'
 import { LogBuffer } from './log-buffer.js'
+import { createHiveLogger, type HiveLogger, type HiveLoggerOptions } from '../../logging/hive-logger.js'
 import type { Server, IPlugin, ILogger, IMessageBus } from '@bundy-lmw/hive-core'
+import type { HookType } from '@bundy-lmw/hive-core'
 
 // ============================================
 // 类型
@@ -38,9 +40,11 @@ import type { Server, IPlugin, ILogger, IMessageBus } from '@bundy-lmw/hive-core
 interface AdminClient {
   ws: WebSocket
   logSubscribed: boolean
+  /** threadIds owned by this client for targeted event delivery */
+  threadIds: Set<string>
 }
 
-type MethodHandler = (params: unknown, requestId: string) => WsResponse | Promise<WsResponse>
+type MethodHandler = (params: unknown, requestId: string, ws?: WebSocket) => WsResponse | Promise<WsResponse>
 
 // ============================================
 // AdminWsHandler
@@ -49,6 +53,7 @@ type MethodHandler = (params: unknown, requestId: string) => WsResponse | Promis
 export class AdminWsHandler extends EventEmitter {
   private clients: Set<AdminClient> = new Set()
   private logBuffer: LogBuffer
+  private hiveLogger: HiveLogger | null = null
   private configCache: ServerConfig | null = null
   private configPath: string
   private server: Server | null = null
@@ -57,12 +62,26 @@ export class AdminWsHandler extends EventEmitter {
   private handlers: Map<string, MethodHandler>
   /** 加载的插件实例，按 registry key 索引 */
   private pluginInstances: Map<string, IPlugin> = new Map()
+  /** 注册的 hook 订阅 ID，用于清理 */
+  private hookIds: string[] = []
+  /** threadId → WebSocket 映射，用于定向事件推送 */
+  private threadClientMap: Map<string, WebSocket> = new Map()
 
-  constructor() {
+  constructor(logFileOptions?: HiveLoggerOptions) {
     super()
     this.logBuffer = new LogBuffer(10_000)
     this.configPath = join(HIVE_HOME, 'hive.config.json')
     this.startTime = Date.now()
+
+    // 初始化 pino 日志
+    if (logFileOptions) {
+      this.hiveLogger = createHiveLogger(
+        this.logBuffer,
+        (entry) => this.broadcastLog(entry),
+        logFileOptions,
+      )
+      this.hiveLogger.overrideConsole()
+    }
 
     // 注册方法处理器
     this.handlers = new Map<string, MethodHandler>([
@@ -80,15 +99,16 @@ export class AdminWsHandler extends EventEmitter {
       ['plugin.uninstall', this.handlePluginUninstall.bind(this)],
       ['plugin.updateConfig', this.handlePluginUpdateConfig.bind(this)],
       ['log.getHistory', this.handleLogGetHistory.bind(this)],
+      ['log.tail', this.handleLogTail.bind(this)],
+      ['log.listDates', this.handleLogListDates.bind(this)],
+      ['log.getByDate', this.handleLogGetByDate.bind(this)],
       ['log.subscribe', this.handleLogSubscribe.bind(this)],
       ['log.unsubscribe', this.handleLogUnsubscribe.bind(this)],
       ['session.list', this.handleSessionList.bind(this)],
       ['session.get', this.handleSessionGet.bind(this)],
       ['session.delete', this.handleSessionDelete.bind(this)],
+      ['chat.send', this.handleChatSend.bind(this)],
     ])
-
-    // 拦截 console 输出
-    this.interceptConsole()
   }
 
   // ============================================
@@ -98,6 +118,7 @@ export class AdminWsHandler extends EventEmitter {
   /** 注入 Server 实例（在 start 后调用） */
   setServer(server: Server): void {
     this.server = server
+    this.subscribeAgentHooks()
   }
 
   /** 注入 HttpServer 实例 */
@@ -115,6 +136,58 @@ export class AdminWsHandler extends EventEmitter {
         this.pluginInstances.set(manifest.name, plugin)
       }
     }
+  }
+
+  // ============================================
+  // Agent Hook 订阅（直接捕获 Agent 运行日志）
+  // ============================================
+
+  /** 订阅 Agent hook 事件，通过 pino logger 统一分发 */
+  private subscribeAgentHooks(): void {
+    const registry = this.server?.agent?.context?.hookRegistry
+    if (!registry) return
+
+    const logger = this.hiveLogger?.logger
+    const observe = (fn: (ctx: any) => void) => fn as any
+
+    // Agent 思考过程
+    this.hookIds.push(registry.on('agent:thinking', observe((ctx: any) => {
+      logger?.info({ source: 'agent' }, `[${ctx.type}] ${ctx.thought}`)
+    })))
+
+    // 任务进度
+    this.hookIds.push(registry.on('task:progress', observe((ctx: any) => {
+      logger?.debug({ source: 'agent' }, `${ctx.description} (${ctx.progress}%)`)
+    })))
+
+    // 工具调用前
+    this.hookIds.push(registry.on('tool:before', observe((ctx: any) => {
+      const input = typeof ctx.input === 'object'
+        ? Object.keys(ctx.input as object).join(', ')
+        : String(ctx.input ?? '')
+      logger?.info({ source: 'agent' }, `[tool] calling ${ctx.toolName}(${input})`)
+    })))
+
+    // 工具调用后
+    this.hookIds.push(registry.on('tool:after', observe((ctx: any) => {
+      const status = ctx.success ? 'ok' : 'failed'
+      logger?.info({ source: 'agent' }, `[tool] ${ctx.toolName} ${status}`)
+    })))
+
+    // API 超时
+    this.hookIds.push(registry.on('timeout:api', observe((ctx: any) => {
+      logger?.error({ source: 'agent' }, `API timeout after ${ctx.timeout}ms (attempt ${ctx.attempt}/${ctx.maxAttempts})`)
+    })))
+  }
+
+  /** 清理 hook 订阅 */
+  private unsubscribeAgentHooks(): void {
+    const registry = this.server?.agent?.context?.hookRegistry
+    if (!registry) return
+    for (const id of this.hookIds) {
+      registry.off(id)
+    }
+    this.hookIds = []
   }
 
   /** 重启指定插件（用最新配置重新初始化） */
@@ -165,7 +238,7 @@ export class AdminWsHandler extends EventEmitter {
 
   /** 处理新的 WS 连接 */
   handleConnection(ws: WebSocket): void {
-    const client: AdminClient = { ws, logSubscribed: false }
+    const client: AdminClient = { ws, logSubscribed: false, threadIds: new Set() }
     this.clients.add(client)
 
     ws.on('message', (raw) => {
@@ -174,28 +247,38 @@ export class AdminWsHandler extends EventEmitter {
       if (!msg) return
 
       if (msg.type === 'req') {
-        this.handleRequest(msg).then(response => {
+        this.handleRequest(msg, client).then(response => {
           ws.send(JSON.stringify(response))
         })
       }
     })
 
     ws.on('close', () => {
+      // Clean up thread mappings for this client
+      for (const tid of client.threadIds) {
+        this.threadClientMap.delete(tid)
+      }
       this.clients.delete(client)
     })
 
     ws.on('error', () => {
+      for (const tid of client.threadIds) {
+        this.threadClientMap.delete(tid)
+      }
       this.clients.delete(client)
     })
   }
 
   /** 关闭所有连接（graceful shutdown 时调用） */
-  closeAll(): void {
+  async closeAll(): Promise<void> {
     this.broadcastEvent('server.shutting_down', { reason: 'shutdown' })
+    this.unsubscribeAgentHooks()
     for (const client of this.clients) {
       client.ws.close()
     }
     this.clients.clear()
+    this.threadClientMap.clear()
+    await this.hiveLogger?.dispose()
   }
 
   // ============================================
@@ -213,7 +296,7 @@ export class AdminWsHandler extends EventEmitter {
     }
   }
 
-  private async handleRequest(req: WsRequest): Promise<WsResponse> {
+  private async handleRequest(req: WsRequest, client: AdminClient): Promise<WsResponse> {
     const handler = this.handlers.get(req.method)
     if (!handler) {
       return createErrorResponse(
@@ -224,7 +307,7 @@ export class AdminWsHandler extends EventEmitter {
     }
 
     try {
-      return await handler(req.params, req.id)
+      return await handler(req.params, req.id, client.ws)
     } catch (error) {
       return createErrorResponse(
         req.id,
@@ -244,6 +327,9 @@ export class AdminWsHandler extends EventEmitter {
   }
 
   private handleConfigUpdate(params: unknown, id: string): WsResponse {
+    if (!params || typeof params !== 'object') {
+      return createErrorResponse(id, 'VALIDATION', 'params must be an object')
+    }
     const updates = params as ConfigUpdateParams
     const config = this.loadConfig()
 
@@ -415,7 +501,7 @@ export class AdminWsHandler extends EventEmitter {
         // 提取包名
         const pkgName = entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
         const pluginConfig = config.pluginConfigs?.[pkgName]
-        console.log('[plugin.list] pkgName:', pkgName, 'pluginConfig:', pluginConfig)
+        console.debug('[plugin.list] pkgName:', pkgName, 'pluginConfig:', pluginConfig)
         items.push({
           id: name,
           name: pkgName,
@@ -555,15 +641,50 @@ export class AdminWsHandler extends EventEmitter {
     return createSuccessResponse(id, entries)
   }
 
-  private handleLogSubscribe(_params: unknown, id: string, _ws?: WebSocket): WsResponse {
-    // 标记当前客户端为 log subscriber
-    // 由于 handler 签名限制，通过 event 方式处理
-    this.emit('log:subscribe')
+  /** 增量拉取：返回 sinceId 之后的日志（前端轮询用） */
+  private handleLogTail(params: unknown, id: string): WsResponse {
+    const { sinceId, limit } = params as { sinceId?: string; limit?: number }
+    const entries = this.logBuffer.query({ sinceId, limit: limit ?? 200 })
+    return createSuccessResponse(id, entries)
+  }
+
+  /** 列出有日志文件的日期 */
+  private handleLogListDates(_params: unknown, id: string): WsResponse {
+    const dates = this.hiveLogger?.listLogDates() ?? []
+    return createSuccessResponse(id, dates)
+  }
+
+  /** 按日期读取历史日志 */
+  private handleLogGetByDate(params: unknown, id: string): WsResponse {
+    const { date, limit, offset } = params as { date?: string; limit?: number; offset?: number }
+    if (!date) {
+      return createErrorResponse(id, 'VALIDATION', 'date is required')
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return createErrorResponse(id, 'VALIDATION', 'date must be YYYY-MM-DD format')
+    }
+    const entries = this.hiveLogger?.getLogsByDate(date, limit ?? 200, offset ?? 0) ?? []
+    return createSuccessResponse(id, entries)
+  }
+
+  private handleLogSubscribe(_params: unknown, id: string, ws?: WebSocket): WsResponse {
+    // 查找并标记对应客户端为 log subscriber
+    for (const client of this.clients) {
+      if (client.ws === ws) {
+        client.logSubscribed = true
+        break
+      }
+    }
     return createSuccessResponse(id, { success: true })
   }
 
-  private handleLogUnsubscribe(_params: unknown, id: string): WsResponse {
-    this.emit('log:unsubscribe')
+  private handleLogUnsubscribe(_params: unknown, id: string, ws?: WebSocket): WsResponse {
+    for (const client of this.clients) {
+      if (client.ws === ws) {
+        client.logSubscribed = false
+        break
+      }
+    }
     return createSuccessResponse(id, { success: true })
   }
 
@@ -579,7 +700,7 @@ export class AdminWsHandler extends EventEmitter {
 
   private handleSessionGet(params: unknown, id: string): WsResponse {
     const { id: sessionId } = params as SessionGetParams
-    if (!sessionId) {
+    if (!sessionId || typeof sessionId !== 'string') {
       return createErrorResponse(id, 'VALIDATION', 'id is required')
     }
     return createSuccessResponse(id, null)
@@ -587,16 +708,94 @@ export class AdminWsHandler extends EventEmitter {
 
   private handleSessionDelete(params: unknown, id: string): WsResponse {
     const { id: sessionId } = params as SessionDeleteParams
-    if (!sessionId) {
+    if (!sessionId || typeof sessionId !== 'string') {
       return createErrorResponse(id, 'VALIDATION', 'id is required')
     }
     return createSuccessResponse(id, { success: true })
   }
 
   // ============================================
+  // Agent Chat
+  // ============================================
+
+  private async handleChatSend(params: unknown, id: string, ws?: WebSocket): Promise<WsResponse> {
+    const { prompt, threadId } = params as { prompt?: string; threadId?: string }
+
+    // 参数校验
+    if (!prompt || typeof prompt !== 'string') {
+      return createErrorResponse(id, 'VALIDATION', 'prompt is required and must be a string')
+    }
+
+    if (!this.server) {
+      return createErrorResponse(id, 'AGENT_NOT_READY', 'Server not initialized')
+    }
+
+    const agent = this.server.agent
+    if (!agent) {
+      return createErrorResponse(id, 'AGENT_NOT_READY', 'Agent not initialized')
+    }
+
+    // 立即返回 threadId，异步执行
+    const tid = threadId || crypto.randomUUID()
+
+    // 记录 threadId → client 映射，用于定向事件推送
+    if (ws) {
+      this.threadClientMap.set(tid, ws)
+      const client = this.findClientByWs(ws)
+      if (client) client.threadIds.add(tid)
+    }
+
+    // 异步执行 Agent chat（fire-and-forget）
+    this.runAgentChat(prompt, tid).catch((err) => {
+      console.error(`[chat.send] Agent execution failed: ${err.message}`)
+      this.sendEventToThread(tid, 'agent.complete', { threadId: tid, success: false, error: err.message })
+    })
+
+    return createSuccessResponse(id, { threadId: tid })
+  }
+
+  /** 异步执行 Agent chat 并流式推送事件（定向发送到发起请求的客户端） */
+  private async runAgentChat(prompt: string, threadId: string): Promise<void> {
+    // toolCallId 映射：toolName → id
+    const toolCallIdMap = new Map<string, string>()
+
+    const emit = (event: string, data: unknown) => {
+      this.sendEventToThread(threadId, event, data)
+    }
+
+    emit('agent.start', { threadId, agentType: 'general' })
+
+    await this.server!.agent.chat(prompt, {
+      onReasoning: (text: string) => {
+        emit('agent.reasoning', { threadId, text })
+      },
+      onText: (text: string) => {
+        emit('agent.text-delta', { threadId, text })
+      },
+      onToolCall: (toolName: string, input: unknown) => {
+        const toolCallId = crypto.randomUUID()
+        toolCallIdMap.set(toolName, toolCallId)
+        emit('agent.tool-call', { threadId, toolCallId, toolName, args: input })
+      },
+      onToolResult: (toolName: string, output: unknown) => {
+        const toolCallId = toolCallIdMap.get(toolName) ?? crypto.randomUUID()
+        emit('agent.tool-result', { threadId, toolCallId, toolName, result: output })
+      },
+    })
+
+    emit('agent.complete', { threadId, success: true })
+
+    // Clean up thread mapping
+    this.threadClientMap.delete(threadId)
+    const client = this.findClientByThreadId(threadId)
+    if (client) client.threadIds.delete(threadId)
+  }
+
+  // ============================================
   // 事件广播
   // ============================================
 
+  /** 广播事件到所有连接的客户端 */
   private broadcastEvent(event: string, data: unknown): void {
     const msg = createEvent(event, data)
     const payload = JSON.stringify(msg)
@@ -605,6 +804,32 @@ export class AdminWsHandler extends EventEmitter {
         client.ws.send(payload)
       }
     }
+  }
+
+  /** 定向发送事件到指定 threadId 对应的客户端 */
+  private sendEventToThread(threadId: string, event: string, data: unknown): void {
+    const targetWs = this.threadClientMap.get(threadId)
+    if (targetWs && targetWs.readyState === targetWs.OPEN) {
+      targetWs.send(JSON.stringify(createEvent(event, data)))
+    } else {
+      // Fallback: broadcast (e.g. client disconnected mid-stream)
+      this.broadcastEvent(event, data)
+    }
+  }
+
+  /** 通过 WS 实例查找 AdminClient */
+  private findClientByWs(ws: WebSocket): AdminClient | undefined {
+    for (const client of this.clients) {
+      if (client.ws === ws) return client
+    }
+    return undefined
+  }
+
+  /** 通过 threadId 查找 AdminClient */
+  private findClientByThreadId(threadId: string): AdminClient | undefined {
+    const ws = this.threadClientMap.get(threadId)
+    if (!ws) return undefined
+    return this.findClientByWs(ws)
   }
 
   /** 推送日志到所有已订阅的客户端 */
@@ -618,54 +843,6 @@ export class AdminWsHandler extends EventEmitter {
     }
   }
 
-  // ============================================
-  // Console 拦截
-  // ============================================
-
-  private interceptConsole(): void {
-    const origLog = console.log
-    const origWarn = console.warn
-    const origError = console.error
-    const origDebug = console.debug
-
-    const extractSource = (args: unknown[]): string => {
-      const first = String(args[0] ?? '')
-      // 匹配 [server], [plugin:feishu], [agent] 等来源标记
-      const match = first.match(/^\[([^\]]+)\]/)
-      return match ? match[1] : 'server'
-    }
-
-    const formatMessage = (args: unknown[]): string => {
-      return args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
-    }
-
-    console.log = (...args: unknown[]) => {
-      origLog.apply(console, args)
-      const entry = this.logBuffer.add('info', extractSource(args), formatMessage(args))
-      this.broadcastLog(entry)
-    }
-
-    console.warn = (...args: unknown[]) => {
-      origWarn.apply(console, args)
-      const entry = this.logBuffer.add('warn', extractSource(args), formatMessage(args))
-      this.broadcastLog(entry)
-    }
-
-    console.error = (...args: unknown[]) => {
-      origError.apply(console, args)
-      const entry = this.logBuffer.add('error', extractSource(args), formatMessage(args))
-      this.broadcastLog(entry)
-    }
-
-    console.debug = (...args: unknown[]) => {
-      origDebug.apply(console, args)
-      const entry = this.logBuffer.add('debug', extractSource(args), formatMessage(args))
-      this.broadcastLog(entry)
-    }
-  }
-
-  // ============================================
-  // 配置读写
   // ============================================
 
   private loadConfig(): ServerConfig {
@@ -770,6 +947,6 @@ export class AdminWsHandler extends EventEmitter {
 // 工厂函数
 // ============================================
 
-export function createAdminWsHandler(): AdminWsHandler {
-  return new AdminWsHandler()
+export function createAdminWsHandler(logFileOptions?: HiveLoggerOptions): AdminWsHandler {
+  return new AdminWsHandler(logFileOptions)
 }

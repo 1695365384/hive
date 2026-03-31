@@ -4,13 +4,20 @@
  * Unified entry point for both CLI and HTTP/WebSocket server.
  */
 
-import { getConfig } from './config.js'
+import { getConfig, HIVE_HOME } from './config.js'
+import { join } from 'node:path'
 import { bootstrap, shutdown, type HiveContext } from './bootstrap.js'
+import { registerGracefulShutdown } from './graceful-shutdown.js'
 
 export interface ServerOptions {
   port?: number
   plugins?: string[]
+  /** Register SIGTERM/SIGINT handlers (default: true for sidecar mode) */
+  registerSignals?: boolean
 }
+
+/** Module-level close function for signal handler access */
+let _closeFn: (() => Promise<void>) | null = null
 
 /**
  * Start Hive server with all gateways
@@ -19,6 +26,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   context: HiveContext
   close: () => Promise<void>
 }> {
+  const { registerSignals = true } = options
   const cfg = getConfig()
   const serverConfig = {
     ...cfg,
@@ -84,7 +92,10 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   const { WebSocketServer } = await import('ws')
   const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')
   const adminWs = new WebSocketServer({ noServer: true })
-  const adminHandler = createAdminWsHandler()
+  const adminHandler = createAdminWsHandler({
+    dir: join(HIVE_HOME, 'logs'),
+    retentionDays: 7,
+  })
   adminHandler.setServer(context.server)
   adminHandler.setHttpServer(server)
   adminHandler.setPlugins(context.plugins)
@@ -92,6 +103,16 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
     if (url.pathname === '/ws/admin') {
+      // 认证检查：auth.enabled 时要求 token 参数匹配 apiKey
+      if (serverConfig.auth?.enabled && serverConfig.auth.apiKey) {
+        const token = url.searchParams.get('token')
+        if (token !== serverConfig.auth.apiKey) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+          socket.destroy()
+          return
+        }
+      }
+
       adminWs.handleUpgrade(request, socket, head, (ws) => {
         adminWs.emit('connection', ws, request)
       })
@@ -103,20 +124,28 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     adminHandler.handleConnection(ws)
   })
 
+  // Build close function before listening (so signal handlers can use it)
+  const close = async () => {
+    adminHandler.closeAll()
+    adminWs.close()
+    wsGateway.close()
+    server.close()
+    await shutdown(context)
+  }
+
+  // Store at module level so signal handlers can access it
+  _closeFn = close
+
+  // Register graceful shutdown BEFORE server.listen so SIGTERM is caught immediately
+  if (registerSignals) {
+    registerGracefulShutdown({ close })
+  }
+
   return new Promise((resolve) => {
     server.listen(serverConfig.port, () => {
       console.log(`[hive] Server started on port ${serverConfig.port}`)
       console.log(`[hive] Admin WS available at ws://localhost:${serverConfig.port}/ws/admin`)
-      resolve({
-        context,
-        close: async () => {
-          adminHandler.closeAll()
-          adminWs.close()
-          wsGateway.close()
-          server.close()
-          await shutdown(context)
-        },
-      })
+      resolve({ context, close })
     })
   })
 }
