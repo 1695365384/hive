@@ -11,6 +11,36 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Agent, createAgent } from '../../src/agents/core/index.js';
 import type { ProviderConfig } from '../../src/providers/types.js';
+import { streamText } from 'ai';
+
+// ============================================
+// Mock ProviderManager — 让 chat() 可以调用 LLM
+// ============================================
+
+vi.mock('../../src/providers/ProviderManager.js', () => {
+  const fakeModel = {
+    modelId: 'mock-model',
+    provider: 'mock-provider',
+    specificationVersion: 'v3',
+    defaultObjectGenerationMode: 'json',
+    supportedObjectModes: ['json', 'tool', 'grammar'],
+    maxEmbeddingsPerCall: 1,
+  };
+  class MockProviderManager {
+    active: any = null;
+    all: any[] = [];
+    getModelWithSpec = vi.fn().mockResolvedValue({ model: fakeModel, spec: null });
+    getModelForProvider = vi.fn().mockResolvedValue(fakeModel);
+    getModel = vi.fn().mockResolvedValue(fakeModel);
+    switch = vi.fn().mockReturnValue(false);
+    reResolveAll = vi.fn();
+    dispose = vi.fn();
+  }
+  return {
+    ProviderManager: MockProviderManager,
+    createProviderManager: vi.fn().mockImplementation(() => new MockProviderManager()),
+  };
+});
 
 describe('Agent + Provider Integration', () => {
   // ============================================
@@ -708,6 +738,121 @@ describe('Agent + Provider Integration', () => {
         // 验证 context 中的 provider 也已更新
         expect(agent.context.providerManager.active?.id).toBe(providers[0].id);
       }
+    });
+  });
+
+  // ============================================
+  // Provider 切换后 Chat 行为验证（智能 mock）
+  // ============================================
+  describe('Chat Behavior After Provider Switch', () => {
+    let agent: Agent;
+
+    beforeEach(async () => {
+      agent = createAgent();
+      await agent.initialize();
+    });
+
+    afterEach(async () => {
+      await agent.dispose();
+    });
+
+    it('should call streamText during chat', async () => {
+      (streamText as any).mockReturnValueOnce({
+        fullStream: (async function* () {
+          yield { type: 'start' };
+          yield { type: 'text-delta', text: 'Hello from mock provider' };
+          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 10, outputTokens: 5 } };
+        })(),
+        text: Promise.resolve('Hello from mock provider'),
+        finishReason: Promise.resolve('stop'),
+        steps: Promise.resolve([]),
+        totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
+      });
+
+      const result = await agent.chat('hello');
+
+      expect(result).toBe('Hello from mock provider');
+      expect(streamText).toHaveBeenCalled();
+    });
+
+    it('should trigger provider:beforeChange hook on useProvider', async () => {
+      const providers = agent.listProviders();
+      if (providers.length < 1) return;
+
+      const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+      agent.context.hookRegistry.on('provider:beforeChange', hookSpy);
+
+      agent.useProvider(providers[0].id);
+
+      expect(hookSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newProviderId: providers[0].id,
+        })
+      );
+    });
+
+    it('should trigger provider:afterChange hook on successful switch', async () => {
+      const providers = agent.listProviders();
+      if (providers.length < 1) return;
+
+      const hookSpy = vi.fn().mockReturnValue({ proceed: true });
+      agent.context.hookRegistry.on('provider:afterChange', hookSpy);
+
+      const providerCap = (agent as any).providerCap;
+      await providerCap.use(providers[0].id);
+
+      expect(hookSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          newProvider: providers[0].id,
+        })
+      );
+    });
+
+    it('should still chat after provider switch', async () => {
+      const providers = agent.listProviders();
+      if (providers.length < 1) return;
+
+      // 先切换 provider
+      agent.useProvider(providers[0].id);
+
+      // 再 chat
+      (streamText as any).mockReturnValueOnce({
+        fullStream: (async function* () {
+          yield { type: 'start' };
+          yield { type: 'text-delta', text: 'Response after switch' };
+          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 10, outputTokens: 5 } };
+        })(),
+        text: Promise.resolve('Response after switch'),
+        finishReason: Promise.resolve('stop'),
+        steps: Promise.resolve([]),
+        totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
+      });
+
+      const result = await agent.chat('test after switch');
+      expect(result).toBe('Response after switch');
+      expect(streamText).toHaveBeenCalled();
+    });
+
+    it('should pass provider config to LLM via streamText call', async () => {
+      (streamText as any).mockReturnValueOnce({
+        fullStream: (async function* () {
+          yield { type: 'start' };
+          yield { type: 'text-delta', text: 'OK' };
+          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 10, outputTokens: 5 } };
+        })(),
+        text: Promise.resolve('OK'),
+        finishReason: Promise.resolve('stop'),
+        steps: Promise.resolve([]),
+        totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
+      });
+
+      await agent.chat('hello');
+
+      // streamText 应该被调用，且包含 model 参数
+      const callArgs = (streamText as any).mock.calls[0][0];
+      expect(callArgs).toBeDefined();
+      expect(callArgs.model).toBeDefined();
     });
   });
 });

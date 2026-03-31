@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createBashTool } from '../../../src/tools/built-in/bash-tool.js';
+import { createBashTool, createRawBashTool } from '../../../src/tools/built-in/bash-tool.js';
+import type { ToolResult } from '../../../src/tools/harness/types.js';
 
 // Mock child_process.exec
 vi.mock('node:child_process', () => ({
@@ -22,7 +23,6 @@ describe('createBashTool', () => {
     it('should block execution when allowed=false', async () => {
       const tool = createBashTool({ allowed: false });
       const result = await tool.execute!({ command: 'echo hello', timeout: 5000 }, {} as any);
-      expect(result).toContain('[Security]');
       expect(result).toContain('无权限');
       expect(mockExec).not.toHaveBeenCalled();
     });
@@ -33,7 +33,7 @@ describe('createBashTool', () => {
       });
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'echo hello', timeout: 5000 }, {} as any);
-      expect(result).toBe('hello\n');
+      expect(result).toContain('hello');
       expect(mockExec).toHaveBeenCalled();
     });
   });
@@ -45,7 +45,7 @@ describe('createBashTool', () => {
       });
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'malicious_command xyz', timeout: 5000 }, {} as any);
-      expect(result).toBe('output');
+      expect(result).toContain('output');
       expect(mockExec).toHaveBeenCalled();
     });
 
@@ -143,7 +143,83 @@ describe('createBashTool', () => {
       });
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'ls', timeout: 5000 }, {} as any);
-      expect(result).toBe('command not found');
+      expect(result).toContain('command not found');
+    });
+  });
+});
+
+describe('createRawBashTool', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('ToolResult return type', () => {
+    it('should return ToolResult for OK', async () => {
+      mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
+        cb(null, 'hello\n', '');
+      });
+      const tool = createRawBashTool({ allowed: true });
+      const result = await tool.execute!({ command: 'echo hello', timeout: 5000 }, {} as any) as ToolResult;
+
+      expect(result).toHaveProperty('ok', true);
+      expect(result).toHaveProperty('code', 'OK');
+      expect(result.data).toContain('hello');
+      expect(typeof result).not.toBe('string');
+    });
+
+    it('should return ToolResult for PERMISSION', async () => {
+      const tool = createRawBashTool({ allowed: false });
+      const result = await tool.execute!({ command: 'echo hello', timeout: 5000 }, {} as any) as ToolResult;
+
+      expect(result).toHaveProperty('ok', false);
+      expect(result).toHaveProperty('code', 'PERMISSION');
+    });
+
+    it('should return ToolResult for DANGEROUS_CMD', async () => {
+      const tool = createRawBashTool({ allowed: true });
+      const result = await tool.execute!({ command: 'rm -rf /', timeout: 5000 }, {} as any) as ToolResult;
+
+      expect(result).toHaveProperty('ok', false);
+      expect(result).toHaveProperty('code', 'DANGEROUS_CMD');
+      expect(result.context).toHaveProperty('command');
+      expect(result.context).toHaveProperty('description');
+    });
+
+    it('should return ToolResult for COMMAND_BLOCKED', async () => {
+      const tool = createRawBashTool({ allowed: true });
+      const result = await tool.execute!({ command: '/usr/bin/evil', timeout: 5000 }, {} as any) as ToolResult;
+
+      expect(result).toHaveProperty('ok', false);
+      expect(result).toHaveProperty('code', 'COMMAND_BLOCKED');
+      expect(result.context).toHaveProperty('command');
+    });
+
+    it('should return ToolResult for TIMEOUT', async () => {
+      mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
+        const err = new Error('Command timed out') as NodeJS.ErrnoException;
+        err.killed = true;
+        cb(err, '', '');
+      });
+      const tool = createRawBashTool({ allowed: true });
+      const result = await tool.execute!({ command: 'sleep 999', timeout: 1000 }, {} as any) as ToolResult;
+
+      expect(result).toHaveProperty('ok', false);
+      expect(result).toHaveProperty('code', 'TIMEOUT');
+      expect(result.context).toHaveProperty('timeout', 1000);
+    });
+
+    it('should return ToolResult for OK when command exits non-zero but has output', async () => {
+      mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
+        const err = new Error('command not found');
+        cb(err, '', 'command not found');
+      });
+      const tool = createRawBashTool({ allowed: true });
+      const result = await tool.execute!({ command: 'nonexistent_cmd', timeout: 5000 }, {} as any) as ToolResult;
+
+      // Non-killed errors resolve with stdout+stderr (bash convention: non-zero exit is output, not failure)
+      expect(result).toHaveProperty('ok', true);
+      expect(result).toHaveProperty('code', 'OK');
+      expect(result.data).toContain('command not found');
     });
   });
 });

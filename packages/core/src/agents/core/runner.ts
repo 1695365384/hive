@@ -381,3 +381,6 @@ export class AgentRunner {
 export function createAgentRunner(providerManager?: ProviderManager): AgentRunner {
   return new AgentRunner(providerManager);
 }
+
+// Re-export for lightweight import path (avoids barrel loading storage/SQLite)
+export { createProviderManager } from '../../providers/ProviderManager.js';

@@ -3,6 +3,8 @@
  *
  * 使用 AI SDK tool() + Zod schema 定义。
  * 支持超时控制、危险命令检查、输出截断。
+ *
+ * 内层 rawTool 返回 ToolResult（结构化），外层 createBashTool 返回 string（AI SDK 兼容）。
  */
 
 import { exec } from 'node:child_process';
@@ -10,6 +12,8 @@ import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
 import { isDangerousCommand, isCommandAllowed } from './utils/security.js';
+import type { ToolResult } from '../harness/types.js';
+import { withHarness, type RawTool } from '../harness/with-harness.js';
 
 export interface BashToolOptions {
   /** 是否允许执行命令（用于 Agent 权限控制） */
@@ -25,27 +29,43 @@ const bashInputSchema = z.object({
 export type BashToolInput = z.infer<typeof bashInputSchema>;
 
 /**
- * 创建 Bash 工具
+ * 创建 Bash rawTool（execute → ToolResult）
+ *
+ * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
  */
-export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, string> {
-  return tool({
+export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolInput> {
+  return {
     description: '在 shell 中执行命令。用于运行脚本、git 操作、构建项目等。返回 stdout 和 stderr 的合并输出。',
     inputSchema: zodSchema(bashInputSchema),
-    execute: async ({ command, timeout }): Promise<string> => {
+    execute: async ({ command, timeout }): Promise<ToolResult> => {
       // 权限检查
       if (options?.allowed === false) {
-        return '[Security] 当前 Agent 无权限执行 shell 命令';
+        return {
+          ok: false,
+          code: 'PERMISSION',
+          error: '当前 Agent 无权限执行 shell 命令',
+        };
       }
 
       // 危险命令检查
       const danger = isDangerousCommand(command);
       if (danger.dangerous) {
-        return `[Security] 阻止危险命令: ${danger.description}\n命令: ${command}`;
+        return {
+          ok: false,
+          code: 'DANGEROUS_CMD',
+          error: `阻止危险命令: ${danger.description}\n命令: ${command}`,
+          context: { command, description: danger.description },
+        };
       }
 
-      // 命令策略检查（仅阻止路径形式命令等不允许执行的命令）
+      // 命令策略检查
       if (!isCommandAllowed(command)) {
-        return `[Security] 命令被策略阻止: ${command.split(/\s+/)[0]}`;
+        return {
+          ok: false,
+          code: 'COMMAND_BLOCKED',
+          error: `命令被策略阻止: ${command.split(/\s+/)[0]}`,
+          context: { command },
+        };
       }
 
       const timeoutMs = timeout ?? 120_000;
@@ -59,8 +79,10 @@ export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, s
           }, (error, stdout, stderr) => {
             if (error) {
               // 区分超时和其他错误
-              if (error.killed) {
-                reject(new Error(`命令超时 (${timeoutMs}ms): ${command}`));
+              if ('killed' in error && error.killed) {
+                const timeoutErr = new Error(`命令超时 (${timeoutMs}ms): ${command}`);
+                (timeoutErr as any).killed = true;
+                reject(timeoutErr);
               } else {
                 resolve(stdout + stderr);
               }
@@ -70,13 +92,40 @@ export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, s
           });
         });
 
-        return truncateOutput(result);
+        return {
+          ok: true,
+          code: 'OK',
+          data: truncateOutput(result),
+        };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return `[Error] 命令执行失败: ${msg}`;
+        const isKilled = error instanceof Error && 'killed' in error && (error as any).killed;
+        if (isKilled) {
+          return {
+            ok: false,
+            code: 'TIMEOUT',
+            error: `命令超时 (${timeoutMs}ms): ${command}`,
+            context: { timeout: timeoutMs, command },
+          };
+        }
+        return {
+          ok: false,
+          code: 'EXEC_ERROR',
+          error: `命令执行失败: ${msg}`,
+          context: { command },
+        };
       }
     },
-  });
+  };
+}
+
+/**
+ * 创建 Bash 工具（AI SDK 兼容，execute → string）
+ *
+ * 内部使用 createRawBashTool + withHarness 包装。
+ */
+export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, string> {
+  return withHarness(createRawBashTool(options));
 }
 
 /** 默认 Bash 工具实例（全权限） */

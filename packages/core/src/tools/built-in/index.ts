@@ -6,10 +6,10 @@
  */
 
 // 工具工厂
-export { createBashTool, bashTool } from './bash-tool.js';
+export { createBashTool, createRawBashTool, bashTool } from './bash-tool.js';
 export type { BashToolOptions } from './bash-tool.js';
 
-export { createFileTool, fileTool, fileToolReadOnly } from './file-tool.js';
+export { createFileTool, createRawFileTool, fileTool, fileToolReadOnly } from './file-tool.js';
 export type { FileToolOptions } from './file-tool.js';
 
 export { createGlobTool, globTool } from './glob-tool.js';
