@@ -788,6 +788,68 @@ describe('SkillRegistry', () => {
 
       fs.rmSync(skillsDir, { recursive: true, force: true });
     });
+
+    it('应该在 userSkillsDir 不存在时不自动创建目录且不报错', async () => {
+      const nonexistentDir = path.join(tmpdir(), `hive-test-nonexistent-${Date.now()}`);
+      const testRegistry = createSkillRegistry({
+        builtinSkillsDir: nonexistentDir,
+        userSkillsDir: nonexistentDir + '-user',
+      });
+
+      // 不应抛出错误
+      await testRegistry.initialize();
+
+      // 目录不应被创建
+      expect(fs.existsSync(nonexistentDir)).toBe(false);
+      expect(fs.existsSync(nonexistentDir + '-user')).toBe(false);
+    });
+
+    it('应该同时加载内置技能和用户技能', async () => {
+      const builtinDir = createTempSkillsFixture();
+      const userDir = fs.mkdtempSync(path.join(tmpdir(), 'hive-user-skills-'));
+
+      const userSkillDir = path.join(userDir, 'user-skill');
+      fs.mkdirSync(userSkillDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(userSkillDir, 'SKILL.md'),
+        `---
+name: User Skill
+description: A user-installed skill for "user task"
+version: 1.0.0
+---
+
+# User Skill
+
+User skill content.`,
+        'utf-8'
+      );
+
+      const testRegistry = createSkillRegistry({
+        builtinSkillsDir: builtinDir,
+        userSkillsDir: userDir,
+      });
+
+      await testRegistry.initialize();
+
+      expect(testRegistry.size).toBe(3);
+      expect(testRegistry.has('User Skill')).toBe(true);
+      expect(testRegistry.has('Code Review')).toBe(true);
+      expect(testRegistry.has('API Testing')).toBe(true);
+
+      fs.rmSync(builtinDir, { recursive: true, force: true });
+      fs.rmSync(userDir, { recursive: true, force: true });
+    });
+
+    it('userSkillsDir 默认值应为 .hive/skills.local', () => {
+      const testRegistry = createSkillRegistry({
+        builtinSkillsDir: '/test/skills',
+      });
+
+      // Access internal config via type assertion for testing
+      const config = (testRegistry as unknown as { config: { userSkillsDir: string } }).config;
+      expect(config.userSkillsDir).toContain('.hive');
+      expect(config.userSkillsDir).toContain('skills.local');
+    });
   });
 });
 
