@@ -14,8 +14,7 @@ import type {
   WsRequest, WsResponse,
 } from './types.js'
 import { createSuccessResponse, createErrorResponse, createEvent } from './types.js'
-import { LogBuffer } from './log-buffer.js'
-import { createHiveLogger, type HiveLogger, type HiveLoggerOptions } from '../../logging/hive-logger.js'
+import type { HiveLogger } from '../../logging/hive-logger.js'
 
 // ============================================
 // 类型
@@ -37,18 +36,9 @@ export class ChatWsHandler extends EventEmitter {
   private hiveLogger: HiveLogger | null = null
   private hookIds: string[] = []
 
-  constructor(logFileOptions?: HiveLoggerOptions) {
+  constructor(hiveLogger: HiveLogger | null) {
     super()
-
-    if (logFileOptions) {
-      const logBuffer = new LogBuffer(10_000)
-      this.hiveLogger = createHiveLogger(
-        logBuffer,
-        (entry) => this.broadcastLog(entry),
-        logFileOptions,
-      )
-      this.hiveLogger.overrideConsole()
-    }
+    this.hiveLogger = hiveLogger
   }
 
   // ============================================
@@ -147,7 +137,6 @@ export class ChatWsHandler extends EventEmitter {
     }
     this.clients.clear()
     this.threadClientMap.clear()
-    await this.hiveLogger?.dispose()
   }
 
   // ============================================
@@ -262,6 +251,11 @@ export class ChatWsHandler extends EventEmitter {
     }
   }
 
+  /** Push a log entry to connected chat clients — called by main.ts subscriber */
+  pushLog(entry: import('./data-types.js').LogEntry): void {
+    this.broadcastLog(entry)
+  }
+
   /** 广播事件到所有连接的客户端 */
   private broadcastEvent(event: string, data: unknown): void {
     const msg = createEvent(event, data)
@@ -306,6 +300,6 @@ export class ChatWsHandler extends EventEmitter {
 // 工厂函数
 // ============================================
 
-export function createChatWsHandler(logFileOptions?: HiveLoggerOptions): ChatWsHandler {
-  return new ChatWsHandler(logFileOptions)
+export function createChatWsHandler(hiveLogger: HiveLogger | null): ChatWsHandler {
+  return new ChatWsHandler(hiveLogger)
 }
