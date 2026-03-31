@@ -1,20 +1,41 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  ## Tech Stack
+  - Language: TypeScript ESM, Node.js 18+, Rust (Tauri)
+  - Monorepo: pnpm workspace
+    - packages/core — @bundy-lmw/hive-core (Agent SDK)
+    - packages/plugins/feishu — @bundy-lmw/hive-plugin-feishu (飞书插件)
+    - apps/server — @bundy-lmw/hive-server (Hono + ws, port 4450)
+    - apps/desktop — @bundy-lmw/hive-desktop (Tauri 2 + React 19)
+  - LLM: AI SDK (@ai-sdk/openai), 国产模型通过 OpenAI 兼容适配器接入
+  - Database: better-sqlite3 (native module)
+  - Validation: Zod v4
+  - Testing: Vitest (80% coverage requirement)
+  - Build: esbuild (server bundle), Node.js SEA (single binary), tsc
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  ## Architecture
+  - Agent 是唯一入口，委托给能力模块 (Capability Delegation Pattern)
+  - 子 Agent 系统: Explore (只读) → Plan (只读) → General (全权限)
+  - Dispatcher 自动分类: LLM 语义 + regex 双保险
+  - Provider 配置链: 外部配置 > 环境变量 > 预设默认值
+  - Server 网关: HTTP (Hono) + WebSocket (/ws/admin, /ws/chat)
+  - Desktop: Rust sidecar 管理 server 进程，开发模式用系统 node，生产用 SEA binary
+
+  ## Conventions
+  - Workspace 协议: 本地开发用 "workspace:*"，发布用 "^x.x.x"
+  - Commit format: <type>: <description> (feat/fix/refactor/docs/test/chore)
+  - Hooks: tool:before/after, session:start/end, workflow:phase
+  - 技能定义: skills/ 目录下 Markdown + YAML frontmatter
+  - 插件系统: server 动态加载 npm 包，WebSocket channel 通信
+  - 安全: 路径约束、SSRF 防护、命令白名单 (tools/built-in/utils/security.ts)
+
+rules:
+  proposal:
+    - Include architecture impact analysis (which capabilities/modules affected)
+    - Specify whether change affects core, server, desktop, or plugin
+    - Always include a "Non-goals" section
+  tasks:
+    - Break tasks into chunks of max 2 hours
+    - Mark dependencies between tasks explicitly
+    - Include test verification step for each task
