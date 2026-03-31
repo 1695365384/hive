@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { getWsClient } from "../lib/ws-client";
+import { useServerStore } from "../stores/server-store";
 
 interface ServerConfig {
   server: { port: number; host: string; logLevel: string };
@@ -28,7 +28,8 @@ interface ModelInfo {
 
 export function ConfigPage() {
   const [config, setConfig] = useState<ServerConfig | null>(null);
-  const [restarting, setRestarting] = useState(false);
+  const restarting = useServerStore((s) => s.restarting);
+  const startRestart = useServerStore((s) => s.startRestart);
 
   // Provider editing state
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -88,7 +89,7 @@ export function ConfigPage() {
         provider: { id: draftProvider, apiKey: draftApiKey, model: draftModel || undefined },
       });
 
-      await invoke("restart_server");
+      await startRestart();
 
       // Update local config to match draft
       if (config) {
@@ -98,8 +99,6 @@ export function ConfigPage() {
         });
       }
       setDirty(false);
-      setRestarting(true);
-      setTimeout(() => setRestarting(false), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save configuration";
       setError(msg);
@@ -133,15 +132,11 @@ export function ConfigPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Configuration</h2>
         <button
-          onClick={async () => {
-            setRestarting(true);
-            try {
-              await invoke("restart_server");
-            } catch (err) {
+          onClick={() => {
+            startRestart().catch((err) => {
               console.error("[restart_server] failed:", err);
-              setRestarting(false);
               setError(err instanceof Error ? err.message : "Restart failed");
-            }
+            });
           }}
           disabled={restarting}
           className="px-4 py-2 bg-stone-800 hover:bg-stone-700 disabled:bg-stone-800 disabled:cursor-not-allowed rounded text-sm transition-colors"

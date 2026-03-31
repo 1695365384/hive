@@ -40,8 +40,18 @@ export class LogBuffer {
     query?: string
     limit?: number
     offset?: number
+    sinceId?: string
   }): LogEntry[] {
     let result = this.buffer
+
+    // sinceId: 返回该 ID 之后的所有日志（用于轮询增量拉取）
+    if (options?.sinceId) {
+      const idx = this.buffer.findIndex(e => e.id === options.sinceId)
+      if (idx >= 0) {
+        result = result.slice(idx + 1)
+      }
+      // sinceId 不存在时返回全部（可能是 counter 重置）
+    }
 
     if (options?.level) {
       result = result.filter(e => e.level === options.level)
