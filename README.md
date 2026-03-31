@@ -19,7 +19,7 @@
   <p>
     <img src="https://img.shields.io/badge/Node.js-18+-green" alt="Node.js">
     <img src="https://img.shields.io/badge/TypeScript-5.0+-blue" alt="TypeScript">
-    <img src="https://img.shields.io/badge/905%20tests-passing-brightgreen" alt="Tests">
+    <img src="https://img.shields.io/badge/956%20tests-passing-brightgreen" alt="Tests">
     <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
   </p>
 </div>
@@ -198,15 +198,16 @@ Hive 原生内置 5 家国产模型的预设配置，设置环境变量即可使
 
 **第二步** — 安装并启动
 
-```
+```bash
 pnpm install
-pnpm run server
+pnpm --filter @bundy-lmw/hive-server build
+pnpm --filter @bundy-lmw/hive-server start
 ```
 
 **第三步** — 发送请求
 
 ```
-POST http://localhost:3000/chat
+POST http://localhost:4450/chat
 Content-Type: application/json
 
 {"prompt": "帮我重构登录模块"}
@@ -231,8 +232,8 @@ npm install @bundy-lmw/hive-core
 
 ### CLI 调试
 
-```
-pnpm run cli
+```bash
+pnpm --filter @bundy-lmw/hive-server cli
 ```
 
 | 命令 | 说明 |
@@ -374,19 +375,19 @@ Markdown 文件定义技能，YAML frontmatter 声明元数据，系统自动加
 
 ```
 hive/
-├── packages/core/             Agent SDK 核心
+├── packages/core/             @bundy-lmw/hive-core — Agent SDK 核心
 │   ├── agents/core/           入口、上下文、运行器
-│   ├── agents/capabilities/   7 个能力模块
+│   ├── agents/capabilities/   能力模块
 │   ├── agents/dispatch/       智能路由
 │   ├── agents/runtime/        LLM 运行时（AI SDK）
 │   ├── providers/             LLM 提供商管理
 │   ├── tools/built-in/        内置工具（bash/file/grep/glob/web）
 │   ├── skills/                技能系统
 │   └── hooks/                 生命周期钩子
-├── packages/orchestrator/     多 Agent 编排（调度器 + 事件总线）
-├── packages/plugins/feishu/   飞书渠道插件
-├── apps/server/               HTTP/WS 服务
-└── skills/                    技能定义
+├── packages/plugins/feishu/   @bundy-lmw/hive-plugin-feishu — 飞书渠道插件
+├── apps/server/               @bundy-lmw/hive-server — HTTP/WS 服务（Hono）
+├── apps/desktop/              @bundy-lmw/hive-desktop — Tauri 2 桌面应用
+└── skills/                    技能定义（Markdown + YAML frontmatter）
 ```
 
 ---
@@ -454,12 +455,11 @@ hive/
 | 命令 | 说明 |
 |:-----|:-----|
 | `pnpm install` | 安装依赖 |
-| `pnpm run build` | 构建 |
-| `pnpm run dev` | 监视模式 |
-| `pnpm test` | 运行测试（905 个用例） |
-| `pnpm run test:e2e` | E2E 测试（需 API Key） |
-| `pnpm run server` | 启动 HTTP 服务 |
-| `pnpm run cli` | 启动 CLI |
+| `pnpm -r build` | 构建所有包 |
+| `pnpm test` | 运行测试（956 个用例） |
+| `pnpm test:e2e` | E2E 测试（需 API Key） |
+| `pnpm --filter @bundy-lmw/hive-server start` | 启动 HTTP 服务 |
+| `pnpm --filter @bundy-lmw/hive-server cli` | 启动 CLI |
 
 ---
 
@@ -479,5 +479,5 @@ hive/
 ---
 
 <p align="center">
-  欢迎提交 <a href="https://github.com/farion1231/hive/issues">Issue</a> 和 <a href="https://github.com/farion1231/hive/pulls">Pull Request</a>！
+  欢迎提交 <a href="https://github.com/1695365384/hive/issues">Issue</a> 和 <a href="https://github.com/1695365384/hive/pulls">Pull Request</a>！
 </p>
