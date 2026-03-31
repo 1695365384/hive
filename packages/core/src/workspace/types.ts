@@ -118,11 +118,11 @@ export interface WorkspacePaths {
   metadataFile: string;
   /** 提供商配置文件 */
   providersFile: string;
-  /** 会话目录 */
+  /** @deprecated Sessions are stored in SQLite */
   sessionsDir: string;
-  /** 记忆目录 */
+  /** @deprecated Memory feature not implemented */
   memoryDir: string;
-  /** 日志目录 */
+  /** @deprecated Logs managed by file-logger */
   logsDir: string;
   /** 缓存目录 */
   cacheDir: string;
