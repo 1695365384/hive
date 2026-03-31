@@ -180,8 +180,8 @@ describe('E2E Test Configuration', () => {
     if (!hasConfig) {
       console.log('\n⚠️  E2E 测试跳过：未配置 API Key');
       console.log('   配置方法：');
-      console.log('   1. 复制 providers.example.json 为 providers.json');
-      console.log('   2. 在 providers.json 中填入你的 API Key');
+      console.log('   1. 复制 hive.config.example.json 为 hive.config.json');
+      console.log('   2. 在 hive.config.json 中填入你的 API Key');
       console.log('   或设置环境变量：TEST_API_KEY=xxx\n');
     }
 
