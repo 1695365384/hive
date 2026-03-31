@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: createServer 工厂函数
 `createServer()` SHALL 返回一个 `Server` 实例，提供统一的启动、停止和访问接口。Server SHALL 同时管理 `/ws/admin` 和 `/ws/chat` 两个 WebSocket 端点。
@@ -65,52 +65,3 @@ interface ServerOptions {
 - **THEN** `/ws/admin` SHALL 接受管理协议消息
 - **THEN** `/ws/chat` SHALL 接受对话协议消息
 - **THEN** 两个端点 SHALL 独立运行，互不影响
-
-### Requirement: Server 内部 ChannelContext 管理
-Server SHALL 在内部维护一个 Channel 注册表，允许通过 `registerChannel()` 注册 Channel 实例。
-
-```typescript
-interface Server {
-  registerChannel(channel: IChannel): void
-}
-```
-
-#### Scenario: 插件注册 Channel
-- **WHEN** 插件调用 `server.registerChannel(channel)`
-- **THEN** Server SHALL 将该 Channel 存入内部注册表
-- **THEN** 后续 `server.getChannel(id)` 可找到该 Channel
-
-#### Scenario: Channel 自动用于消息推送
-- **WHEN** Agent 处理消息并产生响应
-- **THEN** Server SHALL 通过内部订阅 `message:response` 事件
-- **THEN** Server SHALL 根据响应的 `channelId` 查找对应 Channel 并调用 `channel.send()`
-
-### Requirement: 定时任务引擎内嵌
-当 `dbPath` 提供时，Server SHALL 在内部创建和管理 `ScheduleEngine`，无需外部调用 `setDependencies()`。
-
-#### Scenario: ScheduleEngine 由 Server 自动初始化
-- **WHEN** `createServer({ dbPath: '/path/to/hive.db' })`
-- **THEN** Server SHALL 创建 DatabaseManager、ScheduleRepository、ScheduleEngine
-- **THEN** Server SHALL 调用 `agent.schedule.setDependencies(repository, engine)`
-- **THEN** `engine.start()` SHALL 在 `server.start()` 中被调用
-
-#### Scenario: 定时任务触发后自动推送结果
-- **WHEN** ScheduleEngine 触发任务完成事件 `schedule:completed`
-- **THEN** Server SHALL 通过 `resolveNotifyTarget` 找到目标 Channel
-- **THEN** Server SHALL 调用 `channel.send()` 将结果推送给用户
-
-### Requirement: HeartbeatScheduler 使用 cron 持久化调度
-当 `config.heartbeat.enabled` 为 true 时，Server SHALL 启动 `HeartbeatScheduler`，其内部使用 `node-cron` 而非 `setInterval`。
-
-#### Scenario: 心跳调度使用 cron
-- **WHEN** `config.heartbeat.intervalMs` 为 300000（5 分钟）
-- **THEN** HeartbeatScheduler SHALL 使用 cron 表达式 `*/5 * * * *` 注册调度
-- **THEN** 应用重启后心跳调度自动恢复
-
-### Requirement: 向后兼容 createAgent()
-`createAgent()` SHALL 继续正常工作，不因引入 `createServer()` 而受影响。
-
-#### Scenario: createAgent 不加载 Server 特性
-- **WHEN** 调用 `createAgent({ externalConfig: {...} })`
-- **THEN** 返回的 Agent SHALL 不包含定时任务引擎、插件加载、Channel 注册表
-- **THEN** Agent 的 `schedule` capability SHALL 工作但 repository/engine 为 undefined（除非手动 setDependencies）

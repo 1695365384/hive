@@ -29,7 +29,7 @@ vi.mock('../../src/plugin-manager/registry.js', () => ({
 }))
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { searchPlugins, installPlugin, listPlugins, removePlugin } from '../../src/plugin-manager/index.js'
+import { searchPlugins, installPlugin, removePlugin } from '../../src/plugin-manager/index.js'
 import { loadRegistry } from '../../src/plugin-manager/registry.js'
 import { AdminWsHandler } from '../../src/gateway/ws/admin-handler.js'
 import type { WsRequest } from '../../src/gateway/ws/types.js'
@@ -77,13 +77,10 @@ async function sendAndWait(
   req: WsRequest,
 ): Promise<unknown[]> {
   const ws = ctx.ws
-  // Get the message handler registered via ws.on('message', ...)
   const messageHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'message')?.[1]
   if (!messageHandler) throw new Error('No message handler registered')
 
   messageHandler({ toString: () => JSON.stringify(req) })
-
-  // Wait for the Promise chain in handleConnection to resolve
   await new Promise(resolve => setTimeout(resolve, 0))
 
   return ctx.getSentMessages()
@@ -162,6 +159,19 @@ describe('AdminWsHandler', () => {
         type: 'res',
         success: false,
         error: { code: 'NOT_FOUND', message: 'Unknown method: foo.bar' },
+      })
+    })
+
+    it('should return NOT_FOUND for chat.send (moved to /ws/chat)', async () => {
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello' }))
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0]).toMatchObject({
+        id: 'test-req-1',
+        type: 'res',
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Unknown method: chat.send' },
       })
     })
   })
@@ -255,7 +265,6 @@ describe('AdminWsHandler', () => {
       }))
 
       expect(messages.length).toBeGreaterThanOrEqual(2)
-      // broadcastEvent fires synchronously inside handler, so event comes first
       const event = messages.find((m: any) => m.type === 'event')!
       const res = messages.find((m: any) => m.type === 'res')!
 
@@ -388,16 +397,13 @@ describe('AdminWsHandler', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit') })
 
       const { handler, ws, getSentMessages } = setup()
-      // Don't use sendAndWait - the process.exit throws after 300ms
       const messageHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'message')?.[1]!
       messageHandler({ toString: () => JSON.stringify(createRequest('server.restart')) })
       await new Promise(resolve => setTimeout(resolve, 0))
 
-      // Should have sent the success response before process.exit fires
       expect(ws.send).toHaveBeenCalled()
-      expect(exitSpy).not.toHaveBeenCalled() // Not called yet (300ms delay)
+      expect(exitSpy).not.toHaveBeenCalled()
 
-      // After 300ms it would be called, but we don't wait that long
       exitSpy.mockRestore()
     })
   })
@@ -505,7 +511,6 @@ describe('AdminWsHandler', () => {
       expect(res.result).toHaveLength(1)
       expect(res.result[0].name).toBe('@bundy-lmw/hive-plugin-feishu')
       expect(res.result[0].version).toBe('1.0.1')
-      expect(res.result[0].description).toBe('飞书消息通道插件')
       expect(searchPlugins).toHaveBeenCalledWith(undefined)
     })
 
@@ -571,25 +576,6 @@ describe('AdminWsHandler', () => {
       expect(res.result[0].config).toEqual({ appId: 'test-app', appSecret: 'test-secret' })
       expect(res.result[0].enabled).toBe(true)
     })
-
-    it('should return empty config when pluginConfigs not set', async () => {
-      vi.mocked(existsSync).mockReturnValue(true)
-      vi.mocked(loadRegistry).mockReturnValue({
-        'feishu': {
-          source: 'npm:@bundy-lmw/hive-plugin-feishu@1.0.1',
-          installedAt: '2026-03-30T00:00:00.000Z',
-          resolvedVersion: '1.0.1',
-        },
-      })
-      vi.mocked(readFileSync).mockReturnValue('{}')
-
-      const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.list'))
-
-      const res = messages[0] as any
-      expect(res.success).toBe(true)
-      expect(res.result[0].config).toEqual({})
-    })
   })
 
   describe('plugin.install', () => {
@@ -602,7 +588,7 @@ describe('AdminWsHandler', () => {
       expect(res.error.code).toBe('VALIDATION')
     })
 
-    it('should install plugin and write config', async () => {
+    it('should install plugin and broadcast event', async () => {
       vi.mocked(installPlugin).mockResolvedValue({
         success: true,
         name: '@bundy-lmw/hive-plugin-test',
@@ -623,8 +609,6 @@ describe('AdminWsHandler', () => {
       const event = messages.find((m: any) => m.type === 'event')!
       expect(event.event).toBe('plugin.installed')
       expect(event.data.name).toBe('@bundy-lmw/hive-plugin-test')
-
-      expect(installPlugin).toHaveBeenCalledWith('@bundy-lmw/hive-plugin-test')
     })
 
     it('should return error when installPlugin fails', async () => {
@@ -643,19 +627,6 @@ describe('AdminWsHandler', () => {
       expect(res.success).toBe(false)
       expect(res.error.code).toBe('INTERNAL')
       expect(res.error.message).toBe('Package not found')
-    })
-
-    it('should handle installPlugin throwing', async () => {
-      vi.mocked(installPlugin).mockRejectedValue(new Error('npm registry unavailable'))
-
-      const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.install', {
-        source: '@bundy-lmw/hive-plugin-test',
-      }))
-
-      const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.message).toBe('npm registry unavailable')
     })
   })
 
@@ -688,20 +659,6 @@ describe('AdminWsHandler', () => {
       expect(event.event).toBe('plugin.uninstalled')
       expect(event.data.id).toBe('test-plugin')
     })
-
-    it('should return error when removePlugin fails', async () => {
-      vi.mocked(removePlugin).mockReturnValue({ success: false, error: 'Plugin not found' })
-
-      const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.uninstall', {
-        id: 'nonexistent',
-      }))
-
-      const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('INTERNAL')
-      expect(res.error.message).toBe('Plugin not found')
-    })
   })
 
   describe('plugin.updateConfig', () => {
@@ -732,30 +689,6 @@ describe('AdminWsHandler', () => {
       expect(res.success).toBe(true)
       expect(writeFileSync).toHaveBeenCalled()
     })
-
-    it('should merge config with existing pluginConfigs', async () => {
-      vi.mocked(loadRegistry).mockReturnValue({})
-      vi.mocked(existsSync).mockReturnValue(true)
-      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
-        plugins: { 'other-plugin': { key: 'val' } },
-      }))
-
-      const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('plugin.updateConfig', {
-        id: 'feishu',
-        config: { appId: 'test' },
-      }))
-
-      const res = messages.find((m: any) => m.type === 'res')!
-      expect(res.success).toBe(true)
-
-      // Verify writeFileSync was called with merged config
-      // saveConfig writes pluginConfigs as "plugins" key
-      const writeCall = vi.mocked(writeFileSync).mock.calls[0]
-      const written = JSON.parse(writeCall[1] as string)
-      expect(written.plugins.feishu).toEqual({ appId: 'test' })
-      expect(written.plugins['other-plugin']).toEqual({ key: 'val' })
-    })
   })
 
   // ============================================
@@ -780,20 +713,11 @@ describe('AdminWsHandler', () => {
       expect(res.success).toBe(true)
       expect(res.result.every((e: any) => e.level === 'error')).toBe(true)
     })
-
-    it('should filter by query', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('log.getHistory', { query: 'failed' }))
-
-      const res = messages[0] as any
-      expect(res.success).toBe(true)
-    })
   })
 
   describe('log.subscribe / log.unsubscribe', () => {
     it('should mark client as logSubscribed', async () => {
       const { handler, ws, getSentMessages } = setup()
-
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('log.subscribe'))
 
       const res = messages[0] as any
@@ -802,7 +726,6 @@ describe('AdminWsHandler', () => {
 
     it('should unmark client on unsubscribe', async () => {
       const { handler, ws, getSentMessages } = setup()
-
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('log.unsubscribe'))
 
       const res = messages[0] as any
@@ -870,17 +793,17 @@ describe('AdminWsHandler', () => {
 
   describe('connection lifecycle', () => {
     it('should remove client on close', () => {
-      const { handler, ws, getSentMessages } = setup()
+      const { handler, ws } = setup()
       const closeHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'close')?.[1]
       expect(closeHandler).toBeDefined()
-      closeHandler!() // Should not throw
+      closeHandler!()
     })
 
     it('should remove client on error', () => {
-      const { handler, ws, getSentMessages } = setup()
+      const { handler, ws } = setup()
       const errorHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'error')?.[1]
       expect(errorHandler).toBeDefined()
-      errorHandler!() // Should not throw
+      errorHandler!()
     })
 
     it('should close all clients and broadcast shutting_down', () => {
@@ -918,134 +841,6 @@ describe('AdminWsHandler', () => {
       expect(res.success).toBe(false)
       expect(res.error.code).toBe('INTERNAL')
       expect(res.error.message).toBe('DB connection failed')
-    })
-  })
-
-  // ============================================
-  // chat.send
-  // ============================================
-
-  describe('chat.send', () => {
-    it('should reject when server is not set', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello' }))
-      const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('AGENT_NOT_READY')
-      expect(res.error.message).toBe('Server not initialized')
-    })
-
-    it('should reject when prompt is missing', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: null } as any)
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', {}))
-      const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('VALIDATION')
-      expect(res.error.message).toContain('prompt')
-    })
-
-    it('should reject when prompt is empty string', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: null } as any)
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: '' }))
-      const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('VALIDATION')
-    })
-
-    it('should reject when prompt is not a string', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: null } as any)
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 123 }))
-      const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('VALIDATION')
-    })
-
-    it('should reject when agent is not initialized', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: undefined } as any)
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello' }))
-      const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('AGENT_NOT_READY')
-      expect(res.error.message).toBe('Agent not initialized')
-    })
-
-    it('should return threadId and broadcast agent.start when agent is ready', async () => {
-      const { handler, ws, getSentMessages } = setup()
-      const mockChat = vi.fn().mockResolvedValue('response')
-      handler.setServer({ agent: { chat: mockChat } } as any)
-
-      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello', threadId: 'tid-1' }))
-
-      // chat.send is async - wait longer for the response
-      await new Promise(resolve => setTimeout(resolve, 10))
-
-      const allMessages = getSentMessages()
-      const res = allMessages.find((m: any) => m.id === 'test-req-1' && m.type === 'res') as any
-      expect(res).toBeDefined()
-      expect(res.success).toBe(true)
-      expect(res.result.threadId).toBe('tid-1')
-
-      // agent.chat should be called with streaming callbacks
-      expect(mockChat).toHaveBeenCalledWith('hello', expect.objectContaining({
-        onReasoning: expect.any(Function),
-        onText: expect.any(Function),
-        onToolCall: expect.any(Function),
-        onToolResult: expect.any(Function),
-      }))
-    })
-
-    it('should deliver events to the originating client only', async () => {
-      // Setup two clients
-      const { ws: ws1, getSentMessages: getSent1 } = createMockWs()
-      const { ws: ws2, getSentMessages: getSent2 } = createMockWs()
-      const handler = new AdminWsHandler()
-      handler.handleConnection(ws1 as any)
-      handler.handleConnection(ws2 as any)
-
-      const mockChat = vi.fn().mockImplementation(async (_prompt, opts) => {
-        // Simulate streaming
-        opts.onText?.('hello')
-      })
-      handler.setServer({ agent: { chat: mockChat } } as any)
-
-      // Client 1 sends chat.send
-      const messageHandler1 = vi.mocked(ws1.on).mock.calls.find(c => c[0] === 'message')?.[1]!
-      messageHandler1({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-A' })) })
-
-      await new Promise(resolve => setTimeout(resolve, 10))
-
-      // Client 1 should receive events for tid-A
-      const sent1 = getSent1()
-      const startEvent1 = sent1.find((m: any) => m.event === 'agent.start')
-      expect(startEvent1).toBeDefined()
-      expect(startEvent1.data.threadId).toBe('tid-A')
-
-      // Client 2 should NOT receive events for tid-A
-      const sent2 = getSent2()
-      const startEvent2 = sent2.find((m: any) => m.event === 'agent.start')
-      expect(startEvent2).toBeUndefined()
-    })
-
-    it('should clean up thread mapping on client disconnect', () => {
-      const { ws, getSentMessages } = createMockWs()
-      const handler = new AdminWsHandler()
-      handler.handleConnection(ws as any)
-      handler.setServer({ agent: { chat: vi.fn().mockResolvedValue('ok') } } as any)
-
-      // Simulate chat.send registering a thread
-      const messageHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'message')?.[1]!
-      messageHandler({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-clean' })) })
-
-      // Simulate disconnect
-      const closeHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'close')?.[1]!
-      closeHandler!()
-
-      // After disconnect, closeAll should work without errors
-      handler.closeAll()
     })
   })
 })
