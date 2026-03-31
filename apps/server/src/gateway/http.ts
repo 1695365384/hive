@@ -6,9 +6,10 @@
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { logger } from 'hono/logger'
+import type { Context } from 'hono'
 import type { HiveContext } from '../bootstrap.js'
 import type { IChannel, IWebhookHandler } from '@bundy-lmw/hive-core'
+import type { HiveLogger } from '../logging/hive-logger.js'
 import { createAuthMiddleware } from './auth.js'
 
 /** Maximum message length (100KB) */
@@ -28,11 +29,30 @@ function setSession(key: string, value: { id: string; messages: Array<{ role: st
   sessions.set(key, value)
 }
 
-export function createHttpGateway(ctx: HiveContext): Hono {
+/** Custom Hono logger middleware that writes to HiveLogger (LogBuffer + broadcastLog) */
+function hiveLoggerMiddleware(hiveLogger: HiveLogger | null) {
+  return async (c: Context, next: () => Promise<void>) => {
+    const start = Date.now()
+    await next()
+    const ms = Date.now() - start
+    const method = c.req.method
+    const path = c.req.path
+    const status = c.res.status
+    if (hiveLogger) {
+      const color = status < 400 ? 'info' : status < 500 ? 'warn' : 'error'
+      hiveLogger.logger[color === 'info' ? 'info' : color === 'warn' ? 'warn' : 'error'](
+        { source: 'http' },
+        `${method} ${path} ${status} ${ms}ms`,
+      )
+    }
+  }
+}
+
+export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | null): Hono {
   const app = new Hono()
 
   // Middleware
-  app.use('*', logger())
+  app.use('*', hiveLoggerMiddleware(hiveLogger ?? null))
   const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
     : ['http://localhost:3000'];
