@@ -40,6 +40,8 @@ import type { HookType } from '@bundy-lmw/hive-core'
 interface AdminClient {
   ws: WebSocket
   logSubscribed: boolean
+  /** threadIds owned by this client for targeted event delivery */
+  threadIds: Set<string>
 }
 
 type MethodHandler = (params: unknown, requestId: string, ws?: WebSocket) => WsResponse | Promise<WsResponse>
@@ -62,6 +64,8 @@ export class AdminWsHandler extends EventEmitter {
   private pluginInstances: Map<string, IPlugin> = new Map()
   /** 注册的 hook 订阅 ID，用于清理 */
   private hookIds: string[] = []
+  /** threadId → WebSocket 映射，用于定向事件推送 */
+  private threadClientMap: Map<string, WebSocket> = new Map()
 
   constructor(logFileOptions?: HiveLoggerOptions) {
     super()
@@ -103,6 +107,7 @@ export class AdminWsHandler extends EventEmitter {
       ['session.list', this.handleSessionList.bind(this)],
       ['session.get', this.handleSessionGet.bind(this)],
       ['session.delete', this.handleSessionDelete.bind(this)],
+      ['chat.send', this.handleChatSend.bind(this)],
     ])
   }
 
@@ -233,7 +238,7 @@ export class AdminWsHandler extends EventEmitter {
 
   /** 处理新的 WS 连接 */
   handleConnection(ws: WebSocket): void {
-    const client: AdminClient = { ws, logSubscribed: false }
+    const client: AdminClient = { ws, logSubscribed: false, threadIds: new Set() }
     this.clients.add(client)
 
     ws.on('message', (raw) => {
@@ -249,10 +254,17 @@ export class AdminWsHandler extends EventEmitter {
     })
 
     ws.on('close', () => {
+      // Clean up thread mappings for this client
+      for (const tid of client.threadIds) {
+        this.threadClientMap.delete(tid)
+      }
       this.clients.delete(client)
     })
 
     ws.on('error', () => {
+      for (const tid of client.threadIds) {
+        this.threadClientMap.delete(tid)
+      }
       this.clients.delete(client)
     })
   }
@@ -265,6 +277,7 @@ export class AdminWsHandler extends EventEmitter {
       client.ws.close()
     }
     this.clients.clear()
+    this.threadClientMap.clear()
     await this.hiveLogger?.dispose()
   }
 
@@ -702,9 +715,87 @@ export class AdminWsHandler extends EventEmitter {
   }
 
   // ============================================
+  // Agent Chat
+  // ============================================
+
+  private async handleChatSend(params: unknown, id: string, ws?: WebSocket): Promise<WsResponse> {
+    const { prompt, threadId } = params as { prompt?: string; threadId?: string }
+
+    // 参数校验
+    if (!prompt || typeof prompt !== 'string') {
+      return createErrorResponse(id, 'VALIDATION', 'prompt is required and must be a string')
+    }
+
+    if (!this.server) {
+      return createErrorResponse(id, 'AGENT_NOT_READY', 'Server not initialized')
+    }
+
+    const agent = this.server.agent
+    if (!agent) {
+      return createErrorResponse(id, 'AGENT_NOT_READY', 'Agent not initialized')
+    }
+
+    // 立即返回 threadId，异步执行
+    const tid = threadId || crypto.randomUUID()
+
+    // 记录 threadId → client 映射，用于定向事件推送
+    if (ws) {
+      this.threadClientMap.set(tid, ws)
+      const client = this.findClientByWs(ws)
+      if (client) client.threadIds.add(tid)
+    }
+
+    // 异步执行 Agent chat（fire-and-forget）
+    this.runAgentChat(prompt, tid).catch((err) => {
+      console.error(`[chat.send] Agent execution failed: ${err.message}`)
+      this.sendEventToThread(tid, 'agent.complete', { threadId: tid, success: false, error: err.message })
+    })
+
+    return createSuccessResponse(id, { threadId: tid })
+  }
+
+  /** 异步执行 Agent chat 并流式推送事件（定向发送到发起请求的客户端） */
+  private async runAgentChat(prompt: string, threadId: string): Promise<void> {
+    // toolCallId 映射：toolName → id
+    const toolCallIdMap = new Map<string, string>()
+
+    const emit = (event: string, data: unknown) => {
+      this.sendEventToThread(threadId, event, data)
+    }
+
+    emit('agent.start', { threadId, agentType: 'general' })
+
+    await this.server!.agent.chat(prompt, {
+      onReasoning: (text: string) => {
+        emit('agent.reasoning', { threadId, text })
+      },
+      onText: (text: string) => {
+        emit('agent.text-delta', { threadId, text })
+      },
+      onToolCall: (toolName: string, input: unknown) => {
+        const toolCallId = crypto.randomUUID()
+        toolCallIdMap.set(toolName, toolCallId)
+        emit('agent.tool-call', { threadId, toolCallId, toolName, args: input })
+      },
+      onToolResult: (toolName: string, output: unknown) => {
+        const toolCallId = toolCallIdMap.get(toolName) ?? crypto.randomUUID()
+        emit('agent.tool-result', { threadId, toolCallId, toolName, result: output })
+      },
+    })
+
+    emit('agent.complete', { threadId, success: true })
+
+    // Clean up thread mapping
+    this.threadClientMap.delete(threadId)
+    const client = this.findClientByThreadId(threadId)
+    if (client) client.threadIds.delete(threadId)
+  }
+
+  // ============================================
   // 事件广播
   // ============================================
 
+  /** 广播事件到所有连接的客户端 */
   private broadcastEvent(event: string, data: unknown): void {
     const msg = createEvent(event, data)
     const payload = JSON.stringify(msg)
@@ -713,6 +804,32 @@ export class AdminWsHandler extends EventEmitter {
         client.ws.send(payload)
       }
     }
+  }
+
+  /** 定向发送事件到指定 threadId 对应的客户端 */
+  private sendEventToThread(threadId: string, event: string, data: unknown): void {
+    const targetWs = this.threadClientMap.get(threadId)
+    if (targetWs && targetWs.readyState === targetWs.OPEN) {
+      targetWs.send(JSON.stringify(createEvent(event, data)))
+    } else {
+      // Fallback: broadcast (e.g. client disconnected mid-stream)
+      this.broadcastEvent(event, data)
+    }
+  }
+
+  /** 通过 WS 实例查找 AdminClient */
+  private findClientByWs(ws: WebSocket): AdminClient | undefined {
+    for (const client of this.clients) {
+      if (client.ws === ws) return client
+    }
+    return undefined
+  }
+
+  /** 通过 threadId 查找 AdminClient */
+  private findClientByThreadId(threadId: string): AdminClient | undefined {
+    const ws = this.threadClientMap.get(threadId)
+    if (!ws) return undefined
+    return this.findClientByWs(ws)
   }
 
   /** 推送日志到所有已订阅的客户端 */

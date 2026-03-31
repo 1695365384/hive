@@ -1,5 +1,6 @@
 import { useWsClient } from "../hooks/use-ws-client";
 import { useLogStore } from "../stores/log-store";
+import { useServerStore } from "../stores/server-store";
 
 type DrawerHeight = "collapsed" | "half" | "full";
 
@@ -12,6 +13,7 @@ export function StatusBar({ drawerHeight, onToggle }: StatusBarProps) {
   const unreadCount = useLogStore((s) => s.unreadCount);
   const errorCount = useLogStore((s) => s.errorCount);
   const { state } = useWsClient();
+  const restarting = useServerStore((s) => s.restarting);
 
   return (
     <div className="flex items-center justify-between px-3 py-1 border-t border-stone-800 bg-stone-900 text-xs text-stone-500 shrink-0 select-none">
@@ -19,14 +21,16 @@ export function StatusBar({ drawerHeight, onToggle }: StatusBarProps) {
         <div className="flex items-center gap-1.5">
           <div
             className={`w-1.5 h-1.5 rounded-full ${
-              state === "connected"
+              restarting
+                ? "bg-amber-500 animate-pulse"
+                : state === "connected"
                 ? "bg-green-500"
                 : state === "reconnecting"
                 ? "bg-amber-500"
                 : "bg-red-500"
             }`}
           />
-          <span className="capitalize">{state}</span>
+          <span className="capitalize">{restarting ? "restarting" : state}</span>
         </div>
       </div>
       <button

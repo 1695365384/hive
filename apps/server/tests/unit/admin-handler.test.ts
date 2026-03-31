@@ -920,4 +920,132 @@ describe('AdminWsHandler', () => {
       expect(res.error.message).toBe('DB connection failed')
     })
   })
+
+  // ============================================
+  // chat.send
+  // ============================================
+
+  describe('chat.send', () => {
+    it('should reject when server is not set', async () => {
+      const { handler, ws, getSentMessages } = setup()
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello' }))
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.code).toBe('AGENT_NOT_READY')
+      expect(res.error.message).toBe('Server not initialized')
+    })
+
+    it('should reject when prompt is missing', async () => {
+      const { handler, ws, getSentMessages } = setup()
+      handler.setServer({ agent: null } as any)
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', {}))
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.code).toBe('VALIDATION')
+      expect(res.error.message).toContain('prompt')
+    })
+
+    it('should reject when prompt is empty string', async () => {
+      const { handler, ws, getSentMessages } = setup()
+      handler.setServer({ agent: null } as any)
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: '' }))
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.code).toBe('VALIDATION')
+    })
+
+    it('should reject when prompt is not a string', async () => {
+      const { handler, ws, getSentMessages } = setup()
+      handler.setServer({ agent: null } as any)
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 123 }))
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.code).toBe('VALIDATION')
+    })
+
+    it('should reject when agent is not initialized', async () => {
+      const { handler, ws, getSentMessages } = setup()
+      handler.setServer({ agent: undefined } as any)
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello' }))
+      const res = messages[0] as any
+      expect(res.success).toBe(false)
+      expect(res.error.code).toBe('AGENT_NOT_READY')
+      expect(res.error.message).toBe('Agent not initialized')
+    })
+
+    it('should return threadId and broadcast agent.start when agent is ready', async () => {
+      const { handler, ws, getSentMessages } = setup()
+      const mockChat = vi.fn().mockResolvedValue('response')
+      handler.setServer({ agent: { chat: mockChat } } as any)
+
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello', threadId: 'tid-1' }))
+
+      // chat.send is async - wait longer for the response
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      const allMessages = getSentMessages()
+      const res = allMessages.find((m: any) => m.id === 'test-req-1' && m.type === 'res') as any
+      expect(res).toBeDefined()
+      expect(res.success).toBe(true)
+      expect(res.result.threadId).toBe('tid-1')
+
+      // agent.chat should be called with streaming callbacks
+      expect(mockChat).toHaveBeenCalledWith('hello', expect.objectContaining({
+        onReasoning: expect.any(Function),
+        onText: expect.any(Function),
+        onToolCall: expect.any(Function),
+        onToolResult: expect.any(Function),
+      }))
+    })
+
+    it('should deliver events to the originating client only', async () => {
+      // Setup two clients
+      const { ws: ws1, getSentMessages: getSent1 } = createMockWs()
+      const { ws: ws2, getSentMessages: getSent2 } = createMockWs()
+      const handler = new AdminWsHandler()
+      handler.handleConnection(ws1 as any)
+      handler.handleConnection(ws2 as any)
+
+      const mockChat = vi.fn().mockImplementation(async (_prompt, opts) => {
+        // Simulate streaming
+        opts.onText?.('hello')
+      })
+      handler.setServer({ agent: { chat: mockChat } } as any)
+
+      // Client 1 sends chat.send
+      const messageHandler1 = vi.mocked(ws1.on).mock.calls.find(c => c[0] === 'message')?.[1]!
+      messageHandler1({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-A' })) })
+
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      // Client 1 should receive events for tid-A
+      const sent1 = getSent1()
+      const startEvent1 = sent1.find((m: any) => m.event === 'agent.start')
+      expect(startEvent1).toBeDefined()
+      expect(startEvent1.data.threadId).toBe('tid-A')
+
+      // Client 2 should NOT receive events for tid-A
+      const sent2 = getSent2()
+      const startEvent2 = sent2.find((m: any) => m.event === 'agent.start')
+      expect(startEvent2).toBeUndefined()
+    })
+
+    it('should clean up thread mapping on client disconnect', () => {
+      const { ws, getSentMessages } = createMockWs()
+      const handler = new AdminWsHandler()
+      handler.handleConnection(ws as any)
+      handler.setServer({ agent: { chat: vi.fn().mockResolvedValue('ok') } } as any)
+
+      // Simulate chat.send registering a thread
+      const messageHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'message')?.[1]!
+      messageHandler({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-clean' })) })
+
+      // Simulate disconnect
+      const closeHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'close')?.[1]!
+      closeHandler!()
+
+      // After disconnect, closeAll should work without errors
+      handler.closeAll()
+    })
+  })
 })

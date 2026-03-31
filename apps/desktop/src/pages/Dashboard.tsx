@@ -1,22 +1,27 @@
 import { useState } from "react";
 import { useWsClient } from "../hooks/use-ws-client";
 import { useLogPolling } from "../hooks/use-log-polling";
+import { useServerStore } from "../stores/server-store";
 import { ConfigPage } from "./ConfigPage";
 import { PluginPage } from "./PluginPage";
 import { StatusPage } from "./StatusPage";
+import { ChatPage } from "./ChatPage";
 import { LogDrawer } from "../components/LogDrawer";
 import { StatusBar } from "../components/StatusBar";
+import { MessageSquare } from "lucide-react";
 
-type Page = "status" | "config" | "plugins";
+type Page = "status" | "config" | "plugins" | "chat";
 type DrawerHeight = "collapsed" | "half" | "full";
 
 export function Dashboard() {
   const [page, setPage] = useState<Page>("status");
   const [drawerHeight, setDrawerHeight] = useState<DrawerHeight>("collapsed");
   const { state } = useWsClient();
+  const restarting = useServerStore((s) => s.restarting);
   useLogPolling();
 
-  const navItems: { id: Page; label: string }[] = [
+  const navItems: { id: Page; label: string; icon?: React.ReactNode }[] = [
+    { id: "chat", label: "Chat", icon: <MessageSquare className="w-4 h-4" /> },
     { id: "status", label: "Status" },
     { id: "config", label: "Config" },
     { id: "plugins", label: "Plugins" },
@@ -40,7 +45,9 @@ export function Dashboard() {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div
                   className={`w-1.5 h-1.5 rounded-full ${
-                    state === "connected"
+                    restarting
+                      ? "bg-amber-500 animate-pulse"
+                      : state === "connected"
                       ? "bg-green-500"
                       : state === "reconnecting"
                       ? "bg-amber-500"
@@ -48,23 +55,24 @@ export function Dashboard() {
                   }`}
                 />
                 <span className="text-[11px] text-stone-500 capitalize">
-                  {state}
+                  {restarting ? "restarting" : state}
                 </span>
               </div>
             </div>
           </div>
 
-          <nav className="flex-1 p-2">
+          <nav className="flex-1 p-2 space-y-0.5">
             {navItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setPage(item.id)}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 flex items-center gap-2.5 ${
                   page === item.id
-                    ? "bg-amber-500/15 text-amber-400 font-medium"
-                    : "text-stone-400 hover:bg-stone-800 hover:text-stone-200"
+                    ? "bg-amber-500/15 text-amber-400 font-medium shadow-sm shadow-amber-500/5"
+                    : "text-stone-400 hover:bg-stone-800/80 hover:text-stone-200"
                 }`}
               >
+                {item.icon}
                 {item.label}
               </button>
             ))}
@@ -78,6 +86,7 @@ export function Dashboard() {
         {/* Content */}
         <main className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 overflow-auto">
+            {page === "chat" && <ChatPage />}
             {page === "status" && <StatusPage />}
             {page === "config" && <ConfigPage />}
             {page === "plugins" && <PluginPage />}

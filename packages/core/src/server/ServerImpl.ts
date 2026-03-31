@@ -79,6 +79,7 @@ class ServerImpl implements Server {
   private scheduleEngine: ScheduleEngine | null = null;
   private heartbeatScheduler: HeartbeatScheduler | null = null;
   private started = false;
+  private dbManager: ReturnType<typeof createDatabase> | undefined;
 
   /** WorkspaceManager — 由 createServer() 创建，在 start() 中初始化 */
   _workspaceManager: WorkspaceManager | undefined;
@@ -208,6 +209,18 @@ class ServerImpl implements Server {
       }
     }
 
+    // 销毁插件（释放外部资源）
+    for (const plugin of this.plugins) {
+      try {
+        if (plugin.destroy) {
+          await plugin.destroy();
+          this.logger.info(`[server] Plugin destroyed: ${plugin.metadata.name}`);
+        }
+      } catch (error) {
+        this.logger.error(`[server] Failed to destroy plugin:`, error);
+      }
+    }
+
     // 停止心跳
     if (this.heartbeatScheduler) {
       this.heartbeatScheduler.stop();
@@ -219,6 +232,20 @@ class ServerImpl implements Server {
       await this.scheduleEngine.stop();
       this.logger.info('[server] Schedule engine stopped');
     }
+
+    // 关闭数据库连接
+    if (this.dbManager) {
+      try {
+        this.dbManager.close();
+        this.logger.info('[server] Database closed');
+      } catch (error) {
+        this.logger.error(`[server] Failed to close database:`, error);
+      }
+    }
+
+    // 释放 MessageBus 所有订阅
+    this.bus.clear();
+    this.logger.info('[server] MessageBus cleared');
 
     this.logger.info('[server] Stopped.');
   }
@@ -244,6 +271,7 @@ class ServerImpl implements Server {
       const dbPath = this._dbPath || resolve(process.cwd(), '.hive/hive.db');
       const dbManager = createDatabase({ dbPath });
       await dbManager.initialize();
+      this.dbManager = dbManager;
       const scheduleRepo = createScheduleRepository(dbManager.getDb());
 
       const engine = createScheduleEngine(scheduleRepo, async ({ schedule: task }) => {

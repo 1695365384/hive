@@ -120,12 +120,15 @@ export class ChatCapability implements AgentCapability {
       onToolCall: (toolName, input) => {
         toolCallCount++;
         this.handleToolUse(toolName, input, sessionId, taskId, toolCallCount, options);
+        options?.onToolCall?.(toolName, input);
       },
       onToolResult: (toolName, toolOutput) => {
         this.handleToolResult(toolName, toolOutput, sessionId);
+        options?.onToolResult?.(toolName, toolOutput);
       },
       onReasoning: (text) => {
         this.emitThinking(sessionId, text, 'reflecting');
+        options?.onReasoning?.(text);
       },
     };
 

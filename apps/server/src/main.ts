@@ -7,11 +7,17 @@
 import { getConfig, HIVE_HOME } from './config.js'
 import { join } from 'node:path'
 import { bootstrap, shutdown, type HiveContext } from './bootstrap.js'
+import { registerGracefulShutdown } from './graceful-shutdown.js'
 
 export interface ServerOptions {
   port?: number
   plugins?: string[]
+  /** Register SIGTERM/SIGINT handlers (default: true for sidecar mode) */
+  registerSignals?: boolean
 }
+
+/** Module-level close function for signal handler access */
+let _closeFn: (() => Promise<void>) | null = null
 
 /**
  * Start Hive server with all gateways
@@ -20,6 +26,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   context: HiveContext
   close: () => Promise<void>
 }> {
+  const { registerSignals = true } = options
   const cfg = getConfig()
   const serverConfig = {
     ...cfg,
@@ -117,20 +124,28 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     adminHandler.handleConnection(ws)
   })
 
+  // Build close function before listening (so signal handlers can use it)
+  const close = async () => {
+    adminHandler.closeAll()
+    adminWs.close()
+    wsGateway.close()
+    server.close()
+    await shutdown(context)
+  }
+
+  // Store at module level so signal handlers can access it
+  _closeFn = close
+
+  // Register graceful shutdown BEFORE server.listen so SIGTERM is caught immediately
+  if (registerSignals) {
+    registerGracefulShutdown({ close })
+  }
+
   return new Promise((resolve) => {
     server.listen(serverConfig.port, () => {
       console.log(`[hive] Server started on port ${serverConfig.port}`)
       console.log(`[hive] Admin WS available at ws://localhost:${serverConfig.port}/ws/admin`)
-      resolve({
-        context,
-        close: async () => {
-          adminHandler.closeAll()
-          adminWs.close()
-          wsGateway.close()
-          server.close()
-          await shutdown(context)
-        },
-      })
+      resolve({ context, close })
     })
   })
 }

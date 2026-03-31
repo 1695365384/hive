@@ -121,6 +121,12 @@ export interface AgentOptions {
   onText?: (text: string) => void;
   /** 回调：工具使用 */
   onTool?: (toolName: string, input?: unknown) => void;
+  /** 回调：工具调用（流式，含输入参数） */
+  onToolCall?: (toolName: string, input: unknown) => void;
+  /** 回调：工具结果 */
+  onToolResult?: (toolName: string, output: unknown) => void;
+  /** 回调：推理/思考过程 */
+  onReasoning?: (text: string) => void;
   /** 回调：错误 */
   onError?: (error: Error) => void;
 }
