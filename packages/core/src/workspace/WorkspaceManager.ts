@@ -78,9 +78,6 @@ export class WorkspaceManager {
     // 保存元数据
     await this.saveMetadata();
 
-    // 保存默认配置
-    await this.saveConfig();
-
     this.currentGroup = 'default';
     this.initialized = true;
   }
@@ -135,11 +132,6 @@ export class WorkspaceManager {
     const paths = this.getPaths();
     const dirs = [
       paths.root,
-      paths.sessionsDir,
-      path.join(paths.sessionsDir, 'default'),
-      path.join(paths.sessionsDir, 'archive'),
-      paths.memoryDir,
-      paths.logsDir,
       paths.cacheDir,
     ];
 
@@ -229,6 +221,7 @@ export class WorkspaceManager {
 
   /**
    * 获取当前会话组
+   * @deprecated Sessions are stored in SQLite, session groups are no longer used
    */
   getCurrentGroup(): string {
     return this.currentGroup;
@@ -236,6 +229,7 @@ export class WorkspaceManager {
 
   /**
    * 设置当前会话组
+   * @deprecated Sessions are stored in SQLite, session groups are no longer used
    */
   async setCurrentGroup(name: string): Promise<void> {
     if (!this.metadata) {
@@ -252,6 +246,7 @@ export class WorkspaceManager {
 
   /**
    * 获取所有会话组
+   * @deprecated Sessions are stored in SQLite, session groups are no longer used
    */
   getSessionGroups(): SessionGroup[] {
     return this.metadata?.sessionGroups ?? [];
@@ -259,6 +254,7 @@ export class WorkspaceManager {
 
   /**
    * 创建会话组
+   * @deprecated Sessions are stored in SQLite, session groups are no longer used
    */
   async createSessionGroup(name: string, description?: string): Promise<SessionGroup> {
     if (!this.metadata) {
@@ -290,6 +286,7 @@ export class WorkspaceManager {
 
   /**
    * 删除会话组
+   * @deprecated Sessions are stored in SQLite, session groups are no longer used
    */
   async deleteSessionGroup(name: string): Promise<boolean> {
     if (!this.metadata) {
@@ -325,6 +322,7 @@ export class WorkspaceManager {
 
   /**
    * 重命名会话组
+   * @deprecated Sessions are stored in SQLite, session groups are no longer used
    */
   async renameSessionGroup(oldName: string, newName: string): Promise<boolean> {
     if (!this.metadata) {
@@ -370,6 +368,7 @@ export class WorkspaceManager {
 
   /**
    * 获取会话存储路径（按组）
+   * @deprecated Sessions are stored in SQLite
    */
   getSessionsPath(group?: string): string {
     const groupName = group ?? this.currentGroup;
@@ -378,6 +377,7 @@ export class WorkspaceManager {
 
   /**
    * 获取记忆文件路径
+   * @deprecated Memory feature not implemented
    */
   getMemoryPath(): string {
     return path.join(this.getPaths().memoryDir, 'facts.json');
@@ -385,6 +385,7 @@ export class WorkspaceManager {
 
   /**
    * 获取日志文件路径
+   * @deprecated Logs managed by file-logger
    */
   getLogPath(): string {
     return path.join(this.getPaths().logsDir, 'agent.log');
