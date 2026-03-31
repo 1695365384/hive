@@ -8,6 +8,7 @@
 
 import { Command } from 'commander'
 import { createPluginCommand } from '../plugin-manager/cli.js'
+import { createSkillCommand } from './commands/skill/index.js'
 
 const VERSION = '1.0.0'
 
@@ -141,6 +142,9 @@ program
 
 // hive plugin
 program.addCommand(createPluginCommand())
+
+// hive skill
+program.addCommand(createSkillCommand())
 
 export async function main(): Promise<void> {
   program.parse()

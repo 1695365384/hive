@@ -13,7 +13,8 @@ packages/core/           @bundy-lmw/hive-core        Agent SDK 核心
 packages/plugins/feishu/ @bundy-lmw/hive-plugin-feishu 飞书插件
 apps/server/             @bundy-lmw/hive-server       HTTP/WS 服务 (Hono + ws)
 apps/desktop/            @bundy-lmw/hive-desktop      Tauri 2 桌面应用 (Rust + React 19)
-skills/                                             技能定义 (*.md + YAML frontmatter)
+.hive/skills/                                         内置技能 (committed, 在 DEFAULT_WORKSPACE_DIR 下)
+.hive/skills.local/                                   用户安装的技能 (gitignored, via hive skill add)
 ```
 
 依赖关系：desktop → server → core，plugin-feishu → core。
@@ -41,6 +42,13 @@ npx vitest run packages/core/tests/e2e/agent-real.test.ts --config packages/core
 pnpm publish:core
 pnpm publish:server
 pnpm publish:feishu
+
+# 技能管理 (兼容 agentskills.io 生态)
+hive skill add vercel-labs/agent-skills           # 从 GitHub 仓库安装所有技能
+hive skill add vercel-labs/agent-skills -s frontend-design  # 仅安装指定技能
+hive skill add vercel-labs/agent-skills --list    # 预览可用技能
+hive skill list                                     # 列出已安装技能
+hive skill remove <name>                            # 移除用户技能
 ```
 
 ## E2E Testing

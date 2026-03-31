@@ -13,6 +13,7 @@ import { SkillLoader, createSkillLoader } from './loader.js';
 import { SkillMatcher, createSkillMatcher } from './matcher.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { DEFAULT_WORKSPACE_DIR } from '../workspace/index.js';
 
 function resolveBuiltinSkillsDir(): string {
   const envSkillsDir = process.env.HIVE_SKILLS_DIR?.trim();
@@ -20,7 +21,7 @@ function resolveBuiltinSkillsDir(): string {
     return path.resolve(envSkillsDir);
   }
 
-  return path.resolve(process.cwd(), 'skills');
+  return path.resolve(process.cwd(), DEFAULT_WORKSPACE_DIR, 'skills');
 }
 
 /**
@@ -38,6 +39,7 @@ export class SkillRegistry {
     this.matcher = createSkillMatcher();
     this.config = {
       builtinSkillsDir: resolveBuiltinSkillsDir(),
+      userSkillsDir: path.resolve(process.cwd(), DEFAULT_WORKSPACE_DIR, 'skills.local'),
       enableAutoMatch: true,
       showSkillsInPrompt: true,
       ...config,
@@ -107,7 +109,7 @@ export class SkillRegistry {
 
     for (const dir of dirs) {
       if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+        continue;
       }
 
       const nextSignature = this.computeDirSignature(dir);
@@ -124,7 +126,7 @@ export class SkillRegistry {
 
   private loadFromDirectorySync(dir: string): void {
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      return;
     }
 
     this.loader = createSkillLoader({

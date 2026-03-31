@@ -81,3 +81,6 @@ node-compile-cache/
 
 # esbuild server bundle output
 apps/server/bundle/
+
+# User-installed skills (via hive skill add)
+.hive/skills.local/
