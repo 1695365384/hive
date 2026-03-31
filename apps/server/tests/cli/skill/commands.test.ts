@@ -9,6 +9,14 @@ import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 
 const CLI = 'node dist/cli/index.js';
+const shell = process.platform === 'win32' ? undefined : (process.env.SHELL || '/bin/zsh');
+
+const execOpts = (extra?: Record<string, unknown>) => ({
+  cwd: path.resolve('apps/server'),
+  encoding: 'utf-8' as const,
+  shell: shell as any,
+  ...extra,
+});
 
 describe('hive skill CLI', () => {
   let testDir: string;
@@ -20,7 +28,7 @@ describe('hive skill CLI', () => {
   });
 
   it('应该显示 skill 帮助信息', () => {
-    const output = execSync(`${CLI} skill --help`, { cwd: path.resolve('apps/server'), encoding: 'utf-8' });
+    const output = execSync(`${CLI} skill --help`, execOpts());
     expect(output).toContain('add');
     expect(output).toContain('list');
     expect(output).toContain('remove');
@@ -28,7 +36,7 @@ describe('hive skill CLI', () => {
 
   it('应该在缺少 source 参数时报错', () => {
     try {
-      execSync(`${CLI} skill add`, { cwd: path.resolve('apps/server'), encoding: 'utf-8' });
+      execSync(`${CLI} skill add`, execOpts());
       expect.unreachable('Should have thrown');
     } catch (error) {
       const output = (error as { stderr?: string }).stderr ?? '';
@@ -38,7 +46,7 @@ describe('hive skill CLI', () => {
 
   it('应该在缺少 name 参数时报错', () => {
     try {
-      execSync(`${CLI} skill remove`, { cwd: path.resolve('apps/server'), encoding: 'utf-8' });
+      execSync(`${CLI} skill remove`, execOpts());
       expect.unreachable('Should have thrown');
     } catch (error) {
       const output = (error as { stderr?: string }).stderr ?? '';
@@ -48,20 +56,15 @@ describe('hive skill CLI', () => {
 
   it('skill list 应该正常工作（无技能时）', () => {
     testDir = fs.mkdtempSync(path.join(tmpdir(), 'hive-cli-test-'));
-    const output = execSync(`${CLI} skill list`, {
-      cwd: path.resolve('apps/server'),
-      encoding: 'utf-8',
+    const output = execSync(`${CLI} skill list`, execOpts({
       env: { ...process.env, HIVE_SKILLS_DIR: testDir },
-    });
+    }));
     expect(output).toContain('No skills');
   });
 
   it('应该拒绝移除不存在的技能', () => {
     try {
-      execSync(`${CLI} skill remove nonexistent-skill-xyz`, {
-        cwd: path.resolve('apps/server'),
-        encoding: 'utf-8',
-      });
+      execSync(`${CLI} skill remove nonexistent-skill-xyz`, execOpts());
       expect.unreachable('Should have thrown');
     } catch (error) {
       const output = (error as { stderr?: string }).stderr ?? '';
@@ -81,11 +84,9 @@ describe('hive skill CLI', () => {
     );
 
     try {
-      execSync(`${CLI} skill remove test-builtin`, {
-        cwd: path.resolve('apps/server'),
-        encoding: 'utf-8',
+      execSync(`${CLI} skill remove test-builtin`, execOpts({
         env: { ...process.env, HIVE_SKILLS_DIR: testDir },
-      });
+      }));
       expect.unreachable('Should have thrown');
     } catch (error) {
       const output = (error as { stderr?: string }).stderr ?? '';
@@ -95,10 +96,7 @@ describe('hive skill CLI', () => {
 
   it('应该拒绝路径穿越的技能名', () => {
     try {
-      execSync(`${CLI} skill remove ../../etc`, {
-        cwd: path.resolve('apps/server'),
-        encoding: 'utf-8',
-      });
+      execSync(`${CLI} skill remove ../../etc`, execOpts());
       expect.unreachable('Should have thrown');
     } catch (error) {
       const output = (error as { stderr?: string }).stderr ?? '';
