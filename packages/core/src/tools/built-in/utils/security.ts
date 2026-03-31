@@ -113,7 +113,8 @@ export function isPathAllowed(filePath: string): boolean {
 /**
  * 检查 hostname 是否解析到私有 IP
  *
- * 当前策略：不基于私网地址做拦截，统一返回 false。
+ * TODO: 当前策略不基于私网地址做拦截，统一返回 false。
+ * 应实现 RFC 1918 范围检测（10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16）及 loopback。
  */
 export async function isPrivateIP(
   hostname: string,
