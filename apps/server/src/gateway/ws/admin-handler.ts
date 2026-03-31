@@ -16,7 +16,7 @@ import { createErrorResponse, createEvent } from './types.js'
 import type { Server as HttpServer } from 'node:http'
 import type { ServerConfig, LogEntry } from './data-types.js'
 import { LogBuffer } from './log-buffer.js'
-import { createHiveLogger, type HiveLogger, type HiveLoggerOptions } from '../../logging/hive-logger.js'
+import type { HiveLogger } from '../../logging/hive-logger.js'
 import type { Server, IPlugin } from '@bundy-lmw/hive-core'
 import type { HandlerContext, AdminClient, MethodHandler } from './handler-context.js'
 import { ConfigStore } from './config-store.js'
@@ -44,20 +44,12 @@ export class AdminWsHandler extends EventEmitter {
   private statusHandler!: StatusHandler
   private pluginHandler!: PluginHandler
 
-  constructor(logFileOptions?: HiveLoggerOptions) {
+  constructor(hiveLogger: HiveLogger | null, logBuffer: LogBuffer) {
     super()
-    this.logBuffer = new LogBuffer(10_000)
+    this.logBuffer = logBuffer
+    this.hiveLogger = hiveLogger
     this.configStore = new ConfigStore()
     this.startTime = Date.now()
-
-    if (logFileOptions) {
-      this.hiveLogger = createHiveLogger(
-        this.logBuffer,
-        (entry) => this.broadcastLog(entry),
-        logFileOptions,
-      )
-      this.hiveLogger.overrideConsole()
-    }
 
     const ctx = this.createContext()
     this.statusHandler = new StatusHandler(ctx, this.startTime)
@@ -99,6 +91,11 @@ export class AdminWsHandler extends EventEmitter {
     return this.hiveLogger
   }
 
+  /** Push a log entry to subscribed admin clients — called by main.ts subscriber */
+  pushLog(entry: LogEntry): void {
+    this.broadcastLog(entry)
+  }
+
   // ============================================
   // 连接管理
   // ============================================
@@ -134,7 +131,6 @@ export class AdminWsHandler extends EventEmitter {
       client.ws.close()
     }
     this.clients.clear()
-    await this.hiveLogger?.dispose()
   }
 
   // ============================================
@@ -228,6 +224,6 @@ export class AdminWsHandler extends EventEmitter {
 // 工厂函数
 // ============================================
 
-export function createAdminWsHandler(logFileOptions?: HiveLoggerOptions): AdminWsHandler {
-  return new AdminWsHandler(logFileOptions)
+export function createAdminWsHandler(hiveLogger: HiveLogger | null, logBuffer: LogBuffer): AdminWsHandler {
+  return new AdminWsHandler(hiveLogger, logBuffer)
 }

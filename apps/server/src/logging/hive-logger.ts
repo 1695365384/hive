@@ -157,13 +157,17 @@ export function createHiveLogger(
         ? time.slice(11, 23)
         : new Date(time).toISOString().slice(11, 23)
 
+      // Strip leading [source] from message to avoid duplication: "[hive] [hive] Bootstrapping..."
+      const prefix = `[${source}]`
+      const displayMsg = message.startsWith(prefix) ? message.slice(prefix.length).trimStart() : message
+
       // 1. pretty-print 到 console
       const color = LEVEL_COLORS[level] ?? ''
       const label = level.toUpperCase().padEnd(5)
-      process.stdout.write(`${DIM}${ts}${RESET} ${color}${label}${RESET} ${DIM}[${source}]${RESET} ${message}\n`)
+      process.stdout.write(`${DIM}${ts}${RESET} ${color}${label}${RESET} ${DIM}[${source}]${RESET} ${displayMsg}\n`)
 
       // 2. 写入 logBuffer
-      const logEntry = logBuffer.add(level, source, message)
+      const logEntry = logBuffer.add(level, source, displayMsg)
       broadcastLog(logEntry)
 
       // 3. 写入文件
