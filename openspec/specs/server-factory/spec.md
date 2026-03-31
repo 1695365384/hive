@@ -12,6 +12,7 @@ interface ServerOptions {
     plugins?: Array<{ name: string; config: Record<string, unknown> }>
     heartbeat?: HeartbeatConfig
     scheduleEngine?: { onCircuitBreak?: (event: ScheduleCircuitBreakEvent) => void }
+    logFile?: { dir?: string; retentionDays?: number }
   }
   dbPath?: string
   bus?: MessageBus
@@ -47,6 +48,20 @@ interface Server {
 - **WHEN** 插件注册了一个 Channel（调用 `registerChannel(channel)`）
 - **THEN** `server.getChannel(channel.id)` SHALL 返回该 Channel 实例
 - **THEN** `server.getChannel(unknownId)` SHALL 返回 `undefined`
+
+#### Scenario: 配置 logFile 时初始化文件日志
+- **WHEN** 调用 `createServer({ config: { logFile: { dir: './logs', retentionDays: 7 } } })`
+- **THEN** Server SHALL 创建 FileLogger 实例
+- **THEN** `interceptConsole()` SHALL 在捕获日志时同步写入文件
+
+#### Scenario: 未配置 logFile 时不创建 FileLogger
+- **WHEN** 调用 `createServer({ config: {} })`
+- **THEN** Server SHALL 不创建 FileLogger
+- **THEN** 日志仅存在于内存 LogBuffer
+
+#### Scenario: Server.stop() 时关闭 FileLogger
+- **WHEN** 调用 `server.stop()` 且 FileLogger 已初始化
+- **THEN** Server SHALL 调用 `fileLogger.dispose()` 关闭文件流
 
 ### Requirement: Server 内部 ChannelContext 管理
 Server SHALL 在内部维护一个 Channel 注册表，允许通过 `registerChannel()` 注册 Channel 实例。

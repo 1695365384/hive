@@ -33,11 +33,10 @@ export class WsClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
   private url: string
-  private subscriptions: string[] = [] // 记录已订阅的事件
   private destroyed = false
 
-  constructor(url = DEFAULT_WS_URL) {
-    this.url = url
+  constructor(url = DEFAULT_WS_URL, apiKey?: string) {
+    this.url = apiKey ? `${url}?token=${encodeURIComponent(apiKey)}` : url
   }
 
   // ============================================
@@ -54,8 +53,6 @@ export class WsClient {
       this.ws.onopen = () => {
         this.setState('connected')
         this.reconnectDelay = INITIAL_RECONNECT_DELAY
-        // 恢复订阅
-        this.restoreSubscriptions()
       }
 
       this.ws.onmessage = (event) => {
@@ -140,11 +137,6 @@ export class WsClient {
       this.eventListeners.set(event, new Set())
     }
     this.eventListeners.get(event)!.add(callback)
-
-    // 记录订阅以便重连后恢复
-    if (!this.subscriptions.includes(event)) {
-      this.subscriptions.push(event)
-    }
 
     // 返回取消函数
     return () => {
@@ -245,13 +237,6 @@ export class WsClient {
 
     // 指数退避
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_DELAY)
-  }
-
-  private restoreSubscriptions(): void {
-    // 恢复日志订阅
-    if (this.subscriptions.includes('log')) {
-      this.request('log.subscribe').catch(() => {})
-    }
   }
 }
 

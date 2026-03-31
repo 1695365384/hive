@@ -362,6 +362,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
+            // 第二个实例启动时，已有实例会收到回调
+        }))
         .manage(server_state)
         .invoke_handler(tauri::generate_handler![get_server_status, restart_server])
         .setup(move |app| {

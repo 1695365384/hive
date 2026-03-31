@@ -4,7 +4,8 @@
  * Unified entry point for both CLI and HTTP/WebSocket server.
  */
 
-import { getConfig } from './config.js'
+import { getConfig, HIVE_HOME } from './config.js'
+import { join } from 'node:path'
 import { bootstrap, shutdown, type HiveContext } from './bootstrap.js'
 
 export interface ServerOptions {
@@ -84,7 +85,10 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   const { WebSocketServer } = await import('ws')
   const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')
   const adminWs = new WebSocketServer({ noServer: true })
-  const adminHandler = createAdminWsHandler()
+  const adminHandler = createAdminWsHandler({
+    dir: join(HIVE_HOME, 'logs'),
+    retentionDays: 7,
+  })
   adminHandler.setServer(context.server)
   adminHandler.setHttpServer(server)
   adminHandler.setPlugins(context.plugins)
@@ -92,6 +96,16 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
     if (url.pathname === '/ws/admin') {
+      // 认证检查：auth.enabled 时要求 token 参数匹配 apiKey
+      if (serverConfig.auth?.enabled && serverConfig.auth.apiKey) {
+        const token = url.searchParams.get('token')
+        if (token !== serverConfig.auth.apiKey) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+          socket.destroy()
+          return
+        }
+      }
+
       adminWs.handleUpgrade(request, socket, head, (ws) => {
         adminWs.emit('connection', ws, request)
       })

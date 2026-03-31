@@ -39,6 +39,7 @@ export class ChatCapability implements AgentCapability {
     type: AgentThinkingHookContext['type'],
     metadata?: Record<string, unknown>,
   ): Promise<void> {
+    console.log(`[agent] ${type}: ${thought}`)
     const hookContext: AgentThinkingHookContext = {
       sessionId,
       thought,
@@ -60,6 +61,7 @@ export class ChatCapability implements AgentCapability {
     currentStep?: string,
     totalSteps?: number,
   ): Promise<void> {
+    console.debug(`[agent] ${description} (${progress}%)`)
     const hookContext: TaskProgressHookContext = {
       sessionId,
       taskId,

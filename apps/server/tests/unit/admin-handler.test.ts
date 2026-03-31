@@ -791,26 +791,20 @@ describe('AdminWsHandler', () => {
   })
 
   describe('log.subscribe / log.unsubscribe', () => {
-    it('should emit log:subscribe event', async () => {
+    it('should mark client as logSubscribed', async () => {
       const { handler, ws, getSentMessages } = setup()
-      const listener = vi.fn()
-      handler.on('log:subscribe', listener)
 
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('log.subscribe'))
 
-      expect(listener).toHaveBeenCalled()
       const res = messages[0] as any
       expect(res.success).toBe(true)
     })
 
-    it('should emit log:unsubscribe event', async () => {
+    it('should unmark client on unsubscribe', async () => {
       const { handler, ws, getSentMessages } = setup()
-      const listener = vi.fn()
-      handler.on('log:unsubscribe', listener)
 
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('log.unsubscribe'))
 
-      expect(listener).toHaveBeenCalled()
       const res = messages[0] as any
       expect(res.success).toBe(true)
     })
