@@ -23,6 +23,11 @@ FileLogger SHALL 将日志写入工作空间下的 `logs/` 目录，文件命名
 - **THEN** FileLogger SHALL 关闭当前文件
 - **THEN** FileLogger SHALL 创建带序号的新文件 `hive-2026-03-30.1.log`
 
+#### Scenario: FileLogger 在 main.ts 中单例创建
+- **WHEN** `startServer()` 启动
+- **THEN** FileLogger（作为 HiveLogger 的一部分）SHALL 在 main.ts 中创建唯一实例
+- **THEN** AdminWsHandler 和 ChatWsHandler SHALL NOT 自行创建 FileLogger
+
 ### Requirement: 过期日志文件自动清理
 FileLogger SHALL 在初始化时清理超过保留期的日志文件。默认保留 7 天。
 
@@ -36,9 +41,14 @@ FileLogger SHALL 在初始化时清理超过保留期的日志文件。默认保
 - **THEN** SHALL 只删除超过 30 天的日志文件
 
 ### Requirement: FileLogger 优雅关闭
-FileLogger SHALL 提供 `dispose()` 方法关闭文件流。
+FileLogger SHALL 提供 `dispose()` 方法关闭文件流。SHALL 由 main.ts 的 close 函数统一调用。
 
 #### Scenario: Server 停止时关闭日志文件
-- **WHEN** 调用 `fileLogger.dispose()`
+- **WHEN** 调用 `hiveLogger.dispose()`
 - **THEN** SHALL 将缓冲区中的数据刷新到磁盘
 - **THEN** SHALL 关闭 WriteStream
+
+#### Scenario: close 函数统一 dispose
+- **WHEN** main.ts 的 close() 被调用
+- **THEN** SHALL 调用一次 `hiveLogger.dispose()`
+- **THEN** AdminWsHandler.closeAll() SHALL NOT 再次调用 dispose

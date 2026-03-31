@@ -56,9 +56,17 @@ export class ChatWsHandler extends EventEmitter {
 
   private subscribeAgentHooks(): void {
     const registry = this.server?.agent?.context?.hookRegistry
-    if (!registry) return
+    if (!registry) {
+      console.warn('[chat-handler] subscribeAgentHooks: no hookRegistry available')
+      return
+    }
 
     const logger = this.hiveLogger?.logger
+    if (!logger) {
+      console.warn('[chat-handler] subscribeAgentHooks: no logger available')
+      return
+    }
+    console.log('[chat-handler] subscribeAgentHooks: subscribing to agent hooks')
     const observe = (fn: (ctx: any) => void) => fn as any
 
     this.hookIds.push(registry.on('agent:thinking', observe((ctx: any) => {

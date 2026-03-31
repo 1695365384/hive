@@ -171,6 +171,7 @@ export function useLogPolling() {
 
     return () => {
       runningRef.current = false;
+      subscribedRef.current = false;
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
