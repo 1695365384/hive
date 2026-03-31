@@ -63,6 +63,11 @@ interface Server {
 - **WHEN** 调用 `server.stop()` 且 FileLogger 已初始化
 - **THEN** Server SHALL 调用 `fileLogger.dispose()` 关闭文件流
 
+#### Scenario: Agent chat 回调通过 WS event 推送
+- **WHEN** AdminWsHandler 接收到 chat.send 请求
+- **THEN** Server SHALL 通过 agent.chat() 执行对话
+- **THEN** onReasoning/onText/onToolCall/onToolResult 回调 SHALL 通过 broadcastEvent 推送 agent.* WS event
+
 ### Requirement: Server 内部 ChannelContext 管理
 Server SHALL 在内部维护一个 Channel 注册表，允许通过 `registerChannel()` 注册 Channel 实例。
 
