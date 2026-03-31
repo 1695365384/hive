@@ -34,6 +34,7 @@ providers.json
 
 # 测试用例
 packages/core/coverage/
+.tmp-harness-test/
 
 # 会话
 .sessions
@@ -84,3 +85,6 @@ apps/server/bundle/
 
 # User-installed skills (via hive skill add)
 .hive/skills.local/
+
+# Eval results (promptfoo)
+eval/results/

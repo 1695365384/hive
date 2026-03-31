@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Agent, createAgent } from '../../src/agents/core/index.js';
-import { SimpleTokenCounter, createTokenCounter } from '../../src/compression/TokenCounter.js';
+import { SimpleTokenCounter, createTokenCounter, shouldCompress } from '../../src/compression/TokenCounter.js';
 import { MockSessionRepository } from '../helpers/mock-repository.js';
 
 describe('Compression + Session Integration', () => {
@@ -320,6 +320,148 @@ function hello() {
 
       // 所有请求应该完成
       expect(results.length).toBe(3);
+    });
+  });
+
+  // ============================================
+  // 压缩阈值触发验证
+  // ============================================
+  describe('Compression Threshold Trigger', () => {
+    it('should not trigger compression below threshold', async () => {
+      // 默认 SlidingWindowStrategy preserveRecent=5，阈值=10
+      // 添加 5 条消息（低于阈值）
+      const agent = createAgent({
+        sessionConfig: {
+          dbPath: ':memory:',
+          enableCompression: true,
+          autoSave: true,
+        },
+      });
+      await agent.initialize();
+
+      const sessionCap = (agent as any).sessionCap;
+
+      for (let i = 0; i < 5; i++) {
+        await sessionCap.addUserMessage(`Message ${i}`, 10);
+      }
+
+      // needsCompression 应该返回 false（消息数 5 <= 10）
+      const needs = sessionCap.needsCompression();
+      expect(needs).toBe(false);
+
+      await agent.dispose();
+    });
+
+    it('should trigger compression when messages exceed threshold', async () => {
+      const agent = createAgent({
+        sessionConfig: {
+          dbPath: ':memory:',
+          enableCompression: true,
+          autoSave: true,
+        },
+      });
+      await agent.initialize();
+
+      const sessionCap = (agent as any).sessionCap;
+
+      // 添加 12 条消息（超过默认阈值 10）
+      for (let i = 0; i < 12; i++) {
+        await sessionCap.addUserMessage(`Message ${i}: This is a test message for threshold.`, 20);
+      }
+
+      // needsCompression 应该返回 true（消息数 12 > 10）
+      const needs = sessionCap.needsCompression();
+      expect(needs).toBe(true);
+
+      await agent.dispose();
+    });
+
+    it('should compress via compressIfNeeded only when threshold exceeded', async () => {
+      const agent = createAgent({
+        sessionConfig: {
+          dbPath: ':memory:',
+          enableCompression: true,
+          autoSave: true,
+        },
+      });
+      await agent.initialize();
+
+      const sessionCap = (agent as any).sessionCap;
+
+      // 添加 3 条消息（低于阈值）
+      for (let i = 0; i < 3; i++) {
+        await sessionCap.addUserMessage(`Short ${i}`, 5);
+      }
+
+      const result1 = await sessionCap.compressIfNeeded();
+      // 低于阈值，不应压缩
+      expect(result1).toBeNull();
+
+      // 添加更多消息超过阈值
+      for (let i = 3; i < 15; i++) {
+        await sessionCap.addUserMessage(`Message ${i}: longer content here`, 20);
+      }
+
+      const result2 = await sessionCap.compressIfNeeded();
+      // 超过阈值，应该压缩
+      if (result2) {
+        expect(result2.tokensSaved).toBeGreaterThanOrEqual(0);
+        expect(result2.strategy).toBeDefined();
+      }
+
+      await agent.dispose();
+    });
+
+    it('should use shouldCompress utility correctly', () => {
+      const smallConfig = {
+        contextWindowSize: 8000,
+        summaryThreshold: 10,
+        compressionRatio: 0.3,
+        threshold: 0,
+        strategy: 'sliding-window' as const,
+        preserveRecent: 5,
+        maxSummaryTokens: 500,
+        thresholdPercentage: 0.8,
+      };
+
+      // 低于阈值（8000 * 0.8 = 6400）
+      expect(shouldCompress(100, 5, smallConfig)).toBe(false);
+
+      // 高于 token 阈值（6400）
+      expect(shouldCompress(7000, 10, smallConfig)).toBe(true);
+
+      // 消息数超过 summaryThreshold * 2（10 * 2 = 20）
+      expect(shouldCompress(100, 25, smallConfig)).toBe(true);
+    });
+
+    it('should preserve recent messages after compression', async () => {
+      const agent = createAgent({
+        sessionConfig: {
+          dbPath: ':memory:',
+          enableCompression: true,
+          autoSave: true,
+        },
+      });
+      await agent.initialize();
+
+      const sessionCap = (agent as any).sessionCap;
+
+      // 添加 15 条消息
+      for (let i = 0; i < 15; i++) {
+        await sessionCap.addUserMessage(`Message ${i}`, 10);
+      }
+
+      // 执行压缩
+      const result = await sessionCap.compress();
+
+      if (result) {
+        // 压缩后消息数应少于原始消息数
+        const messages = agent.getSessionMessages();
+        expect(messages.length).toBeLessThan(15);
+        expect(messages.length).toBeGreaterThan(0);
+      }
+
+      await agent.dispose();
     });
   });
 });

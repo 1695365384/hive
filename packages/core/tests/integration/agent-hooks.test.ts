@@ -11,6 +11,36 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Agent, createAgent } from '../../src/agents/core/index.js';
+import { streamText, generateText } from 'ai';
+
+// ============================================
+// Mock ProviderManager — 让 chat() 可以调用 LLM
+// ============================================
+
+vi.mock('../../src/providers/ProviderManager.js', () => {
+  const fakeModel = {
+    modelId: 'mock-model',
+    provider: 'mock-provider',
+    specificationVersion: 'v3',
+    defaultObjectGenerationMode: 'json',
+    supportedObjectModes: ['json', 'tool', 'grammar'],
+    maxEmbeddingsPerCall: 1,
+  };
+  class MockProviderManager {
+    active: any = null;
+    all: any[] = [];
+    getModelWithSpec = vi.fn().mockResolvedValue({ model: fakeModel, spec: null });
+    getModelForProvider = vi.fn().mockResolvedValue(fakeModel);
+    getModel = vi.fn().mockResolvedValue(fakeModel);
+    switch = vi.fn().mockReturnValue(false);
+    reResolveAll = vi.fn();
+    dispose = vi.fn();
+  }
+  return {
+    ProviderManager: MockProviderManager,
+    createProviderManager: vi.fn().mockImplementation(() => new MockProviderManager()),
+  };
+});
 
 describe('Agent + Hooks Integration', () => {
   // ============================================
@@ -953,6 +983,143 @@ describe('Agent + Hooks Integration', () => {
           metadata: { file: 'test.ts' },
         })
       );
+    });
+  });
+
+  // ============================================
+  // 实际 Hook 触发验证（使用全局 mock + ProviderManager mock）
+  // ============================================
+  describe('Real Hook Trigger via Chat', () => {
+    let agent: Agent;
+
+    beforeEach(async () => {
+      agent = createAgent();
+      await agent.initialize();
+    });
+
+    afterEach(async () => {
+      await agent.dispose();
+    });
+
+    /** 创建包含工具调用的流式 mock 响应 */
+    function createToolCallStreamResponse(toolName: string, toolInput: Record<string, unknown>, toolOutput: string, finalText: string) {
+      return {
+        fullStream: (async function* () {
+          yield { type: 'start' };
+          yield { type: 'tool-call', toolName, input: toolInput };
+          yield { type: 'tool-result', toolName, output: toolOutput };
+          yield { type: 'finish-step', finishReason: 'tool-calls' };
+          yield { type: 'text-delta', text: finalText };
+          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 50, outputTokens: 25 } };
+        })(),
+        text: Promise.resolve(finalText),
+        finishReason: Promise.resolve('stop'),
+        steps: Promise.resolve([]),
+        totalUsage: Promise.resolve({ inputTokens: 50, outputTokens: 25 }),
+      };
+    }
+
+    it('should fire tool:before hook during chat with tool call', async () => {
+      const beforeHook = vi.fn().mockResolvedValue({ proceed: true });
+      agent.context.hookRegistry.on('tool:before', beforeHook);
+
+      (streamText as any).mockReturnValueOnce(createToolCallStreamResponse(
+        'file', { action: 'read', path: '/test.ts' }, 'file content here', 'File read successfully'
+      ));
+
+      await agent.chat('read /test.ts');
+
+      expect(beforeHook).toHaveBeenCalled();
+      const hookCtx = beforeHook.mock.calls[0][0];
+      expect(hookCtx.toolName).toBe('file');
+      expect(hookCtx.input).toMatchObject({ action: 'read', path: '/test.ts' });
+    });
+
+    it('should fire tool:after hook with output after tool execution', async () => {
+      const afterHook = vi.fn().mockResolvedValue({ proceed: true });
+      agent.context.hookRegistry.on('tool:after', afterHook);
+
+      (streamText as any).mockReturnValueOnce(createToolCallStreamResponse(
+        'bash', { command: 'ls' }, 'file1.txt\nfile2.txt', 'Found 2 files'
+      ));
+
+      await agent.chat('list files');
+
+      expect(afterHook).toHaveBeenCalled();
+      const hookCtx = afterHook.mock.calls[0][0];
+      expect(hookCtx.toolName).toBe('bash');
+      expect(hookCtx.success).toBe(true);
+    });
+
+    it('should fire both tool:before and tool:after for a single tool call', async () => {
+      const beforeHook = vi.fn().mockResolvedValue({ proceed: true });
+      const afterHook = vi.fn().mockResolvedValue({ proceed: true });
+      agent.context.hookRegistry.on('tool:before', beforeHook);
+      agent.context.hookRegistry.on('tool:after', afterHook);
+
+      (streamText as any).mockReturnValueOnce(createToolCallStreamResponse(
+        'glob', { pattern: '**/*.ts' }, '["a.ts","b.ts"]', 'Found TypeScript files'
+      ));
+
+      await agent.chat('find TypeScript files');
+
+      expect(beforeHook).toHaveBeenCalledTimes(1);
+      expect(afterHook).toHaveBeenCalledTimes(1);
+      expect(beforeHook.mock.calls[0][0].toolName).toBe(afterHook.mock.calls[0][0].toolName);
+    });
+
+    it('should fire multiple tool hooks for multiple tool calls in stream', async () => {
+      const beforeHook = vi.fn().mockResolvedValue({ proceed: true });
+      agent.context.hookRegistry.on('tool:before', beforeHook);
+
+      (streamText as any).mockReturnValueOnce({
+        fullStream: (async function* () {
+          yield { type: 'start' };
+          yield { type: 'tool-call', toolName: 'glob', input: { pattern: '**/*.ts' } };
+          yield { type: 'tool-result', toolName: 'glob', output: '["a.ts"]' };
+          yield { type: 'finish-step', finishReason: 'tool-calls' };
+          yield { type: 'tool-call', toolName: 'grep', input: { pattern: 'import', path: '.' } };
+          yield { type: 'tool-result', toolName: 'grep', output: 'match in a.ts' };
+          yield { type: 'finish-step', finishReason: 'tool-calls' };
+          yield { type: 'text-delta', text: 'Analysis complete' };
+          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 50, outputTokens: 25 } };
+        })(),
+        text: Promise.resolve('Analysis complete'),
+        finishReason: Promise.resolve('stop'),
+        steps: Promise.resolve([]),
+        totalUsage: Promise.resolve({ inputTokens: 50, outputTokens: 25 }),
+      });
+
+      await agent.chat('analyze codebase');
+
+      expect(beforeHook.mock.calls.length).toBeGreaterThanOrEqual(2);
+      const toolNames = beforeHook.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).toolName);
+      expect(toolNames).toContain('glob');
+      expect(toolNames).toContain('grep');
+    });
+
+    it('should have toolName and input in hook context', async () => {
+      const beforeHook = vi.fn().mockResolvedValue({ proceed: true });
+      const afterHook = vi.fn().mockResolvedValue({ proceed: true });
+      agent.context.hookRegistry.on('tool:before', beforeHook);
+      agent.context.hookRegistry.on('tool:after', afterHook);
+
+      (streamText as any).mockReturnValueOnce(createToolCallStreamResponse(
+        'file', { action: 'write', path: '/output.txt', content: 'hello' }, 'written', 'Done'
+      ));
+
+      await agent.chat('write file');
+
+      // tool:before context
+      expect(beforeHook.mock.calls[0][0]).toHaveProperty('sessionId');
+      expect(beforeHook.mock.calls[0][0]).toHaveProperty('timestamp');
+      expect(beforeHook.mock.calls[0][0].toolName).toBe('file');
+      expect(beforeHook.mock.calls[0][0].input).toMatchObject({ action: 'write', path: '/output.txt' });
+
+      // tool:after context
+      expect(afterHook.mock.calls[0][0]).toHaveProperty('sessionId');
+      expect(afterHook.mock.calls[0][0]).toHaveProperty('duration');
+      expect(afterHook.mock.calls[0][0].output).toBeDefined();
     });
   });
 });

@@ -205,3 +205,75 @@ export function generateTestPresets(): Record<string, MockProvider> {
     }),
   };
 }
+
+// ============================================
+// AI SDK 流式响应 Mock 工具
+// ============================================
+
+/**
+ * 流式 chunk 类型（对齐 AI SDK streamText fullStream）
+ */
+export interface StreamChunk {
+  type: string;
+  text?: string;
+  toolName?: string;
+  input?: unknown;
+  output?: unknown;
+  finishReason?: string | null;
+  totalUsage?: { inputTokens: number; outputTokens: number };
+}
+
+/**
+ * 创建 mock 流式响应迭代器
+ *
+ * @param chunks 流式 chunk 序列
+ */
+export function createMockStreamResponse(chunks: StreamChunk[] = []): AsyncGenerator<StreamChunk> {
+  return (async function* () {
+    for (const chunk of chunks) {
+      yield chunk;
+    }
+  })();
+}
+
+/**
+ * 创建工具调用 step（对齐 AI SDK steps 结构）
+ */
+export function createToolCallStep(
+  toolName: string,
+  args: Record<string, unknown>,
+  output?: unknown,
+): { toolCalls: Array<{ toolName: string; input: unknown }>; toolResults: Array<{ toolName: string; output: unknown }>; finishReason: string } {
+  return {
+    toolCalls: [{ toolName, input: args }],
+    toolResults: output !== undefined ? [{ toolName, output }] : [],
+    finishReason: 'tool-calls',
+  };
+}
+
+/**
+ * 创建完整的流式对话 mock：文本 → 工具调用 → 工具结果 → 文本
+ */
+export function createFullStreamSequence(options: {
+  textBefore?: string;
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
+  toolOutput?: unknown;
+  textAfter?: string;
+}): StreamChunk[] {
+  const chunks: StreamChunk[] = [];
+  chunks.push({ type: 'start' });
+  if (options.textBefore) {
+    chunks.push({ type: 'text-delta', text: options.textBefore });
+  }
+  if (options.toolName && options.toolArgs) {
+    chunks.push({ type: 'tool-call', toolName: options.toolName, input: options.toolArgs });
+    chunks.push({ type: 'tool-result', toolName: options.toolName, output: options.toolOutput ?? 'done' });
+    chunks.push({ type: 'finish-step', finishReason: 'tool-calls' });
+  }
+  if (options.textAfter) {
+    chunks.push({ type: 'text-delta', text: options.textAfter });
+  }
+  chunks.push({ type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 50, outputTokens: 25 } });
+  return chunks;
+}
