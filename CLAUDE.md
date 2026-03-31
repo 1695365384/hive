@@ -188,6 +188,90 @@ EXPLORE → PROPOSE → CHECKPOINT → IMPLEMENT → VERIFY → REVIEW → COVER
 - 复杂 change（涉及 core + server + desktop） → 使用 `/orchestrate` 并行处理独立模块
 - 每个 task 完成时 → hooks 自动执行 post-edit:typecheck + post:quality-gate
 
+## GitHub 流程
+
+每个 change 从 issue 到合并的完整链路：
+
+```
+Issue → Branch → Implement → Push → PR → Review → Merge → Close Issue → Update Project
+```
+
+### Step 1 — 创建 Issue
+
+```bash
+gh issue create --repo 1695365384/hive \
+  --title "feat: 新功能名称" \
+  --body "## 描述
+## 验收标准
+- [ ] ..."
+```
+
+Issue 自动出现在 Project 面板的 "Todo" 列。
+
+### Step 2 — Issue 分支
+
+从 main 创建分支，分支名格式 `issue/<number>-<short-desc>`：
+
+```bash
+git checkout -b issue/1-health-dashboard
+```
+
+### Step 3 — 实现
+
+按 OpenSpec → ECC 流水线完成开发（见上方）。
+
+### Step 4 — 推送
+
+```bash
+git push -u origin issue/1-health-dashboard
+```
+
+### Step 5 — 提 PR
+
+```bash
+gh pr create --repo 1695365384/hive \
+  --title "feat: 新功能名称" \
+  --body "$(cat <<'EOF'
+## Summary
+- 实现了 xxx
+
+## Test plan
+- [ ] pnpm test 通过
+- [ ] pnpm test:e2e 通过（如涉及 API 变更）
+
+Closes #1
+EOF
+)"
+```
+
+PR body 里的 `Closes #1` 会自动关联 issue。PR 创建后 issue 移到 "In Progress"。
+
+### Step 6 — Review
+
+- 代码审查通过后合并 PR
+- 合并方式：squash（保持 main 历史干净）
+
+### Step 7 — 关闭 Issue + 更新 Project
+
+PR 合并后：
+- Issue 自动关闭（因为 PR body 里有 `Closes #1`）
+- Issue 移到 Project 面板的 "Done" 列
+
+### 自动触发规则
+
+- 用户说"提交代码"/"提 PR" → 自动执行 Step 4-7（测试 → issue 分支 → 推送 → PR）
+- PR 合并后 → 自动关闭关联 issue 并更新 Project 面板
+
+### Project 面板
+
+仓库使用 GitHub Project (V2)，三列看板：
+
+| 列 | 状态 | 触发条件 |
+|----|------|----------|
+| Todo | 待处理 | Issue 创建时 |
+| In Progress | 进行中 | PR 创建时 |
+| Done | 已完成 | PR 合并时 |
+
 ## Tech Stack
 
 - **Core/Server**: TypeScript ESM, AI SDK, Hono, better-sqlite3, Zod v4, Vitest
