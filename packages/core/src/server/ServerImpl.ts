@@ -12,6 +12,8 @@ import {
   createScheduleEngine,
   createWorkspaceManager,
   HeartbeatScheduler,
+  probeEnvironment,
+  scanEnvironment,
   type Agent,
   type IPlugin,
   type IChannel,
@@ -499,10 +501,21 @@ export function createServer(options: ServerOptions): Server {
     dbPath ? { path: dbPath.replace(/\/hive\.db$/, '') } : undefined,
   );
 
+  // 阶段 1: 同步探测基础环境信息，注入到 Agent 的 system prompt
+  const environmentContext = probeEnvironment();
+
+  // 阶段 2: 异步全量 PATH 扫描，存入 SQLite（不阻塞启动）
+  if (dbPath) {
+    scanEnvironment(dbPath).catch((err: unknown) => {
+      logger.warn(`[server] Phase 2 environment scan failed: ${err instanceof Error ? err.message : err}`);
+    });
+  }
+
   const agent = createAgent({
     externalConfig: options.config.externalConfig,
     sessionConfig: { workspaceManager },
     dbPath,
+    environmentContext,
   });
 
   const server = new ServerImpl(agent, bus, logger, channelContext);

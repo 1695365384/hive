@@ -1,15 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { probeEnvironment } from '../../src/environment/probe.js'
 import type { EnvironmentContext } from '../../src/environment/types.js'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const coreDir = resolve(__dirname, '../..')
-
 describe('probeEnvironment', () => {
   const originalShell = process.env.SHELL
-  const originalCwd = process.cwd()
 
   afterEach(() => {
     process.env.SHELL = originalShell
@@ -22,16 +16,18 @@ describe('probeEnvironment', () => {
     expect(env).toHaveProperty('os')
     expect(env).toHaveProperty('shell')
     expect(env).toHaveProperty('node')
-    expect(env).toHaveProperty('tools')
-    expect(env).toHaveProperty('packageManager')
-    expect(env).toHaveProperty('projectType')
+    expect(env).toHaveProperty('cpu')
+    expect(env).toHaveProperty('memory')
     expect(env).toHaveProperty('cwd')
 
     expect(env.os).toHaveProperty('platform')
     expect(env.os).toHaveProperty('arch')
     expect(env.os).toHaveProperty('version')
+    expect(env.os).toHaveProperty('displayName')
     expect(env.node).toHaveProperty('version')
-    expect(Array.isArray(env.tools)).toBe(true)
+    expect(env.cpu).toHaveProperty('model')
+    expect(env.cpu).toHaveProperty('cores')
+    expect(env.memory).toHaveProperty('totalGb')
   })
 
   it('detects OS platform and arch', () => {
@@ -42,10 +38,48 @@ describe('probeEnvironment', () => {
     expect(typeof env.os.version).toBe('string')
   })
 
+  it('generates human-readable OS displayName', () => {
+    const env = probeEnvironment()
+
+    expect(typeof env.os.displayName).toBe('string')
+    expect(env.os.displayName.length).toBeGreaterThan(0)
+
+    // displayName should not contain the raw kernel version
+    expect(env.os.displayName).not.toContain(env.os.version)
+  })
+
+  it('includes platform name in displayName', () => {
+    const env = probeEnvironment()
+
+    if (env.os.platform === 'darwin') {
+      expect(env.os.displayName).toContain('macOS')
+    } else if (env.os.platform === 'linux') {
+      expect(env.os.displayName).toContain('Linux')
+    } else if (env.os.platform === 'win32') {
+      expect(env.os.displayName).toContain('Windows')
+    }
+  })
+
   it('detects Node.js version', () => {
     const env = probeEnvironment()
 
     expect(env.node.version).toMatch(/^v\d+\.\d+\.\d+/)
+  })
+
+  it('detects CPU info', () => {
+    const env = probeEnvironment()
+
+    expect(typeof env.cpu.model).toBe('string')
+    expect(env.cpu.model.length).toBeGreaterThan(0)
+    expect(typeof env.cpu.cores).toBe('number')
+    expect(env.cpu.cores).toBeGreaterThan(0)
+  })
+
+  it('detects memory info', () => {
+    const env = probeEnvironment()
+
+    expect(typeof env.memory.totalGb).toBe('number')
+    expect(env.memory.totalGb).toBeGreaterThan(0)
   })
 
   it('detects shell from SHELL env var', () => {
@@ -66,13 +100,12 @@ describe('probeEnvironment', () => {
     expect(env.shell).toBe('unknown')
   })
 
-  it('detects common tools (git should exist in CI/dev)', () => {
-    const env = probeEnvironment()
-    // git is almost always available
-    expect(env.tools.length).toBeGreaterThanOrEqual(0)
-    if (env.tools.length > 0) {
-      expect(typeof env.tools[0]).toBe('string')
-    }
+  it('does NOT have tools/packageManager/projectType fields', () => {
+    const env = probeEnvironment() as Record<string, unknown>
+
+    expect(env).not.toHaveProperty('tools')
+    expect(env).not.toHaveProperty('packageManager')
+    expect(env).not.toHaveProperty('projectType')
   })
 
   it('uses provided cwd', () => {
@@ -85,30 +118,10 @@ describe('probeEnvironment', () => {
     expect(env.cwd).toBe(process.cwd())
   })
 
-  it('detects project type as typescript in packages/core (has tsconfig.json)', () => {
-    // coreDir always points to packages/core regardless of test runner cwd
-    const env = probeEnvironment(coreDir)
-    expect(env.projectType).toBe('typescript')
-  })
-
-  it('detects package manager from lockfile (pnpm-workspace.yaml)', () => {
-    // Monorepo root has pnpm-lock.yaml; cwd may be core/ which inherits pnpm
-    const env = probeEnvironment(coreDir)
-    // packageManager is either pnpm (from lockfile or tools) or unknown
-    expect(['pnpm', 'npm', 'yarn', 'unknown']).toContain(env.packageManager)
-  })
-
-  it('returns "unknown" project type for empty directory', () => {
-    const env = probeEnvironment('/tmp')
-    // /tmp typically has no project files
-    // (may vary, but unlikely to have tsconfig.json etc.)
-    expect(['unknown', 'typescript', 'javascript', 'golang', 'python']).toContain(env.projectType)
-  })
-
-  it('completes within 5 seconds', () => {
+  it('completes within 10ms (os module only, no external commands)', () => {
     const start = Date.now()
     probeEnvironment()
     const elapsed = Date.now() - start
-    expect(elapsed).toBeLessThan(5000)
+    expect(elapsed).toBeLessThan(10)
   })
 })
