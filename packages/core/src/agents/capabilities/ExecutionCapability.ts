@@ -16,6 +16,7 @@ import type {
 } from '../../hooks/types.js';
 import type { SessionCapability } from './SessionCapability.js';
 import type { Tool } from 'ai';
+import type { StepResult } from '../runtime/types.js';
 import { LLMRuntime } from '../runtime/LLMRuntime.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
 import { createAllSubagentTools } from '../../tools/built-in/subagent-tools.js';
@@ -84,6 +85,8 @@ export interface DispatchResult {
   cost?: { input: number; output: number; total: number };
   /** 错误信息 */
   error?: string;
+  /** 执行步骤详情（可选，用于验证） */
+  steps?: StepResult[];
 }
 
 // ============================================
@@ -167,12 +170,15 @@ export class ExecutionCapability implements AgentCapability {
         // multiple times during a single run; immutable patterns don't apply here.
         let result = '';
 
-        const runtimeResult = await this.runtime.run({
+        // Build messages array for potential retry/introspection
+        const baseMessages = historyMessages.length > 0
+          ? [...historyMessages.map(m => ({ role: m.role as string, content: m.content as string })), { role: 'user' as const, content: task }]
+          : [];
+
+        let runtimeResult = await this.runtime.run({
           system: systemPrompt,
-          messages: historyMessages.length > 0
-            ? [...historyMessages.map(m => ({ role: m.role, content: m.content })), { role: 'user', content: task }]
-            : undefined,
-          prompt: historyMessages.length === 0 ? task : undefined,
+          messages: baseMessages.length > 0 ? baseMessages as any : undefined,
+          prompt: baseMessages.length === 0 ? task : undefined,
           tools,
           maxSteps: options?.maxTurns ?? ExecutionCapability.DEFAULT_MAX_TURNS,
           model: options?.modelId,
@@ -204,6 +210,76 @@ export class ExecutionCapability implements AgentCapability {
             this.context.timeoutCap.updateActivity();
           },
         });
+
+        // Anti-hallucination defenses (only in normal mode, not explore/plan)
+        if (!options?.forceMode && runtimeResult.success && this.needsVerification(task)) {
+          // Defense 2: zero-tool-call interception
+          if (runtimeResult.tools.length === 0) {
+            const retryMessages = [
+              ...baseMessages,
+              { role: 'assistant' as const, content: result },
+              ...this.buildRetryMessages(task),
+            ] as any;
+
+            result = '';
+            runtimeResult = await this.runtime.run({
+              system: systemPrompt,
+              messages: retryMessages,
+              tools,
+              maxSteps: options?.maxTurns ?? ExecutionCapability.DEFAULT_MAX_TURNS,
+              model: options?.modelId,
+              streaming: true,
+              abortSignal: combinedSignal,
+              onText: (text: string) => {
+                result += text;
+                options?.onText?.(text);
+              },
+              onToolCall: (toolName: string, input: unknown) => {
+                options?.onTool?.(toolName, input);
+              },
+              onToolResult: (toolName: string, output: unknown) => {
+                options?.onToolResult?.(toolName, output);
+                this.context.timeoutCap.updateActivity();
+              },
+            });
+          }
+
+          // Defense 3: steps introspection
+          if (runtimeResult.tools.length > 0 && runtimeResult.steps.length > 0) {
+            const stepsSummary = this.formatStepsSummary(runtimeResult.steps);
+            const introspectionMessages = [
+              ...baseMessages,
+              { role: 'assistant' as const, content: result },
+              ...this.buildIntrospectionMessages(task, stepsSummary),
+            ] as any;
+
+            const introspectionResult = await this.runtime.run({
+              system: systemPrompt,
+              messages: introspectionMessages,
+              tools,
+              maxSteps: options?.maxTurns ?? ExecutionCapability.DEFAULT_MAX_TURNS,
+              model: options?.modelId,
+              streaming: true,
+              abortSignal: combinedSignal,
+              onText: (text: string) => {
+                result += text;
+                options?.onText?.(text);
+              },
+              onToolCall: (toolName: string, input: unknown) => {
+                options?.onTool?.(toolName, input);
+              },
+              onToolResult: (toolName: string, output: unknown) => {
+                options?.onToolResult?.(toolName, output);
+                this.context.timeoutCap.updateActivity();
+              },
+            });
+
+            // Use introspection result if it has more tools (agent found more work to do)
+            if (introspectionResult.tools.length > runtimeResult.tools.length) {
+              runtimeResult = introspectionResult;
+            }
+          }
+        }
 
         const duration = Date.now() - startTime;
         const success = runtimeResult.success;
@@ -240,6 +316,7 @@ export class ExecutionCapability implements AgentCapability {
               : undefined,
             modelId,
           ),
+          steps: runtimeResult.steps,
           duration,
         };
       } finally {
@@ -510,5 +587,59 @@ export class ExecutionCapability implements AgentCapability {
     if (activeSignals.length === 1) return activeSignals[0];
 
     return AbortSignal.any(activeSignals);
+  }
+
+  // ============================================
+  // Anti-Hallucination Defense
+  // ============================================
+
+  /**
+   * 判断任务是否为 action task（需要工具执行）。
+   * 纯问答（短文本、无动作动词）返回 false。
+   */
+  private needsVerification(task: string): boolean {
+    const trimmed = task.trim();
+    // Skip only truly trivial inputs (greetings, single words)
+    return trimmed.length > 5;
+  }
+
+  /**
+   * 将 steps 格式化为可读摘要。
+   */
+  private formatStepsSummary(steps: StepResult[]): string {
+    if (steps.length === 0) return '（无工具调用）';
+
+    const lines: string[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      if (step.toolCalls.length > 0) {
+        const toolNames = step.toolCalls.map(tc => tc.toolName).join(', ');
+        lines.push(`  步骤 ${i + 1}: 调用 ${toolNames}`);
+      } else if (step.text) {
+        const preview = step.text.length > 100 ? step.text.slice(0, 100) + '...' : step.text;
+        lines.push(`  步骤 ${i + 1}: ${preview}`);
+      }
+    }
+    return `执行记录（共 ${steps.length} 步）:\n${lines.join('\n')}`;
+  }
+
+  /**
+   * 构造防线 2 反馈消息（零工具调用拦截）。
+   */
+  private buildRetryMessages(task: string): Array<{ role: string; content: string }> {
+    return [{
+      role: 'user',
+      content: `你还没有调用任何工具来执行任务。请使用合适的工具实际执行以下任务：\n\n"${task}"\n\n不要只回复文字，必须调用工具完成操作后再报告结果。`,
+    }];
+  }
+
+  /**
+   * 构造防线 3 自省消息（steps 注入）。
+   */
+  private buildIntrospectionMessages(task: string, stepsSummary: string): Array<{ role: string; content: string }> {
+    return [{
+      role: 'user',
+      content: `以下是你的实际执行记录：\n\n${stepsSummary}\n\n原始任务："${task}"\n\n请确认你是否已经完成了全部操作。如果还有未完成的部分，请继续执行。`,
+    }];
   }
 }
