@@ -53,7 +53,7 @@ describe('Workflow Engine', () => {
       mockStreamText.mockReturnValue(createStreamResponse('Workflow completed successfully'));
 
       const result = await withAgent(async (agent) => {
-        return agent.dispatch('implement user auth');
+        return agent.dispatch('implement user auth', { forceMode: 'general' });
       });
 
       expect(result).toBeDefined();

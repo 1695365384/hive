@@ -569,7 +569,7 @@ describe('Agent + Skill Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      const result = await agent.dispatch('analyze this code');
+      const result = await agent.dispatch('analyze this code', { forceMode: 'general' });
       expect(result.text).toBe('Analysis done');
     });
 
@@ -598,7 +598,7 @@ describe('Agent + Skill Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      const r1 = await agent.dispatch('first message');
+      const r1 = await agent.dispatch('first message', { forceMode: 'general' });
       expect(r1.text).toBe('First response');
 
       // 技能仍然可用
@@ -617,7 +617,7 @@ describe('Agent + Skill Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 20, outputTokens: 10 }),
       });
 
-      const r2 = await agent.dispatch('second message');
+      const r2 = await agent.dispatch('second message', { forceMode: 'general' });
       expect(r2.text).toBe('Second response');
 
       // streamText 被调用了两次
