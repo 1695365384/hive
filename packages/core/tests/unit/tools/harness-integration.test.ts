@@ -50,9 +50,10 @@ afterEach(() => {
 async function pipeline<TInput>(
   rawTool: RawTool<TInput>,
   input: TInput,
+  toolName?: string,
 ): Promise<string> {
   const result: ToolResult = await rawTool.execute(input, {});
-  return serializeToolResult(result);
+  return serializeToolResult(result, undefined, toolName);
 }
 
 // ============================================
@@ -62,23 +63,23 @@ async function pipeline<TInput>(
 describe('BashTool harness integration', () => {
   it('should return [OK] for successful command', async () => {
     const rawTool = createRawBashTool({ allowed: true });
-    const output = await pipeline(rawTool, { command: 'echo hello' });
+    const output = await pipeline(rawTool, { command: 'echo hello' }, 'bash-tool');
 
     expect(output).toContain('[OK]');
     expect(output).toContain('hello');
   });
 
-  it('should return output for non-zero exit code commands', async () => {
+  it('should return [Error] for non-zero exit code commands', async () => {
     const rawTool = createRawBashTool({ allowed: true });
-    const output = await pipeline(rawTool, { command: 'ls /nonexistent-path-xyz-12345' });
+    const output = await pipeline(rawTool, { command: 'ls /nonexistent-path-xyz-12345' }, 'bash-tool');
 
-    // 非零退出码，stderr 合并到 stdout，bash-tool 仍然返回 ok: true
-    expect(output).toContain('[OK]');
+    expect(output).toContain('[Error]');
+    expect(output).toContain('命令执行失败');
   });
 
   it('should block dangerous commands with [Security] + [Hint]', async () => {
     const rawTool = createRawBashTool({ allowed: true });
-    const output = await pipeline(rawTool, { command: 'rm -rf /' });
+    const output = await pipeline(rawTool, { command: 'rm -rf /' }, 'bash-tool');
 
     expect(output).toContain('[Security]');
     expect(output).toContain('阻止危险命令');
@@ -87,7 +88,7 @@ describe('BashTool harness integration', () => {
 
   it('should block commands when allowed=false with [Permission]', async () => {
     const rawTool = createRawBashTool({ allowed: false });
-    const output = await pipeline(rawTool, { command: 'echo hello' });
+    const output = await pipeline(rawTool, { command: 'echo hello' }, 'bash-tool');
 
     expect(output).toContain('[Permission]');
     expect(output).toContain('无权限');
@@ -106,7 +107,7 @@ describe('FileTool harness integration', () => {
       command: 'create',
       file_path: filePath,
       content: 'hello world',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[OK]');
     expect(output).toContain('创建');
@@ -127,7 +128,7 @@ describe('FileTool harness integration', () => {
     const output = await pipeline(rawTool, {
       command: 'view',
       file_path: filePath,
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[OK]');
     expect(output).toContain('line1');
@@ -151,7 +152,7 @@ describe('FileTool harness integration', () => {
       file_path: filePath,
       old_str: 'hello',
       new_str: 'goodbye',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[OK]');
     expect(output).toContain('替换');
@@ -174,7 +175,7 @@ describe('FileTool harness integration', () => {
       file_path: filePath,
       old_str: 'nonexistent_text',
       new_str: 'replacement',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[Error]');
     expect(output).toContain('未找到');
@@ -187,7 +188,7 @@ describe('FileTool harness integration', () => {
     const output = await pipeline(rawTool, {
       command: 'view',
       file_path: join(tempDir, 'nonexistent.txt'),
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[Error]');
     expect(output).toContain('[Hint]');
@@ -201,10 +202,10 @@ describe('FileTool harness integration', () => {
       command: 'create',
       file_path: join(sshDir, 'id_rsa'),
       content: 'malicious',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[Security]');
-    expect(output).toContain('SSH 密钥');
+    expect(output).toContain('SSH');
     expect(output).toContain('[Hint]');
   });
 
@@ -215,7 +216,7 @@ describe('FileTool harness integration', () => {
       command: 'create',
       file_path: filePath,
       content: 'test',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[Permission]');
     expect(output).toContain('[Hint]');
@@ -290,7 +291,7 @@ describe('FileTool additional coverage', () => {
       file_path: filePath,
       insert_line: 1,
       insert_text: 'line2',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[OK]');
     expect(output).toContain('插入');
@@ -311,7 +312,7 @@ describe('FileTool additional coverage', () => {
       file_path: filePath,
       offset: 2,
       limit: 2,
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[OK]');
     expect(output).toContain('line2');
@@ -336,7 +337,7 @@ describe('FileTool additional coverage', () => {
       file_path: filePath,
       old_str: 'aaa',
       new_str: 'xxx',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[Error]');
     expect(output).toContain('处匹配');
@@ -357,7 +358,7 @@ describe('FileTool additional coverage', () => {
       file_path: filePath,
       insert_line: 99,
       insert_text: 'new line',
-    });
+    }, 'file-tool');
 
     expect(output).toContain('[Error]');
     expect(output).toContain('超出范围');
@@ -370,7 +371,7 @@ describe('FileTool additional coverage', () => {
     const output = await pipeline(rawTool, {
       command: 'view',
       file_path: '/dev/null/impossible',
-    });
+    }, 'file-tool');
 
     // 可能是 PATH_BLOCKED 或 IO_ERROR，只要不是崩溃就行
     expect(typeof output).toBe('string');

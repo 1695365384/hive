@@ -157,7 +157,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
  * 内部使用 createRawFileTool + withHarness 包装。
  */
 export function createFileTool(options?: FileToolOptions): Tool<FileToolInput, string> {
-  return withHarness(createRawFileTool(options));
+  return withHarness(createRawFileTool(options), { toolName: 'file-tool' });
 }
 
 // ============================================

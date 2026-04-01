@@ -84,7 +84,9 @@ export interface RetryConfig {
 }
 
 export interface HarnessConfig extends RetryConfig {
-  /** 自定义 hint 模板 */
+  /** 工具名称（用于从 hint-registry 按工具查找 hint 模板） */
+  toolName?: string;
+  /** 自定义 hint 模板（优先级最高，覆盖 toolName 和全局模板） */
   hintTemplates?: HintTemplateMap;
 }
 

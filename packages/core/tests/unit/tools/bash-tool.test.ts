@@ -208,18 +208,19 @@ describe('createRawBashTool', () => {
       expect(result.context).toHaveProperty('timeout', 1000);
     });
 
-    it('should return ToolResult for OK when command exits non-zero but has output', async () => {
+    it('should return EXEC_ERROR when command exits non-zero', async () => {
       mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
         const err = new Error('command not found');
+        (err as any).code = 127;
         cb(err, '', 'command not found');
       });
       const tool = createRawBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'nonexistent_cmd', timeout: 5000 }, {} as any) as ToolResult;
 
-      // Non-killed errors resolve with stdout+stderr (bash convention: non-zero exit is output, not failure)
-      expect(result).toHaveProperty('ok', true);
-      expect(result).toHaveProperty('code', 'OK');
-      expect(result.data).toContain('command not found');
+      expect(result).toHaveProperty('ok', false);
+      expect(result).toHaveProperty('code', 'EXEC_ERROR');
+      expect(result.error).toContain('命令执行失败');
+      expect(result.error).toContain('command not found');
     });
   });
 });

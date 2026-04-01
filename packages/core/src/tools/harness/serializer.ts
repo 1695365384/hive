@@ -6,7 +6,7 @@
  */
 
 import type { ToolResult, HintTemplateMap } from './types.js';
-import { getHint } from './hint-registry.js';
+import { getHintForTool } from './hint-registry.js';
 import { BLOCKED_CODES } from './types.js';
 
 /**
@@ -14,10 +14,12 @@ import { BLOCKED_CODES } from './types.js';
  *
  * @param result - 工具返回的 ToolResult
  * @param customTemplates - 自定义 hint 模板（合并到默认模板之上）
+ * @param toolName - 工具名（用于 hint 查找回退）
  */
 export function serializeToolResult(
   result: ToolResult,
   customTemplates?: HintTemplateMap,
+  toolName?: string,
 ): string {
   const prefix = result.ok ? '[OK]' : getSecurityPrefix(result.code);
   const lines: string[] = [];
@@ -31,7 +33,7 @@ export function serializeToolResult(
   lines.push(`${prefix} ${result.error ?? 'Unknown error'}`.trim());
 
   // 生成 hint
-  const hint = result.hint ?? resolveHint(result.code, result.context, customTemplates);
+  const hint = result.hint ?? resolveHint(result.code, result.context, customTemplates, toolName);
   if (hint) {
     lines.push(`[Hint] ${hint}`);
   }
@@ -53,11 +55,15 @@ function resolveHint(
   code: string,
   context: Record<string, unknown> | undefined,
   customTemplates?: HintTemplateMap,
+  toolName?: string,
 ): string | undefined {
   // 优先使用自定义模板
   if (customTemplates?.[code]) {
     return customTemplates[code](context ?? {});
   }
-  // 回退到全局模板
-  return getHint(code, context);
+  // 回退到按工具查找 hint
+  if (toolName) {
+    return getHintForTool(toolName, code, context);
+  }
+  return undefined;
 }

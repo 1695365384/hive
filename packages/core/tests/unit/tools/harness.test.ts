@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { serializeToolResult } from '../../../src/tools/harness/serializer.js';
-import { getHint } from '../../../src/tools/harness/hint-registry.js';
+import { getHint, getAllHintTemplates } from '../../../src/tools/harness/hint-registry.js';
 import { isRetryable, retryWithBackoff } from '../../../src/tools/harness/retry.js';
 import { withHarness } from '../../../src/tools/harness/with-harness.js';
 import type { ToolResult } from '../../../src/tools/harness/types.js';
@@ -50,7 +50,7 @@ describe('serializeToolResult', () => {
       code: 'OK',
       data: '文件已创建: /path/to/file.ts',
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[OK]');
     expect(output).toContain('文件已创建');
     expect(output).not.toContain('[Hint]');
@@ -63,7 +63,7 @@ describe('serializeToolResult', () => {
       error: '未找到要替换的文本',
       context: { path: '/path/to/file.ts' },
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[Error]');
     expect(output).toContain('未找到要替换的文本');
     expect(output).toContain('[Hint]');
@@ -87,7 +87,7 @@ describe('serializeToolResult', () => {
       error: '阻止写入敏感文件: SSH 密钥目录',
       context: { path: '/home/user/.ssh/id_rsa', description: 'SSH 密钥目录' },
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[Security]');
     expect(output).toContain('[Hint]');
   });
@@ -99,7 +99,7 @@ describe('serializeToolResult', () => {
       error: '阻止危险命令: 递归删除根目录',
       context: { command: 'rm -rf /', description: '递归删除根目录' },
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[Security]');
     expect(output).toContain('[Hint]');
   });
@@ -111,7 +111,7 @@ describe('serializeToolResult', () => {
       error: '命令被策略阻止: /usr/bin/evil',
       context: { command: '/usr/bin/evil' },
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[Security]');
     expect(output).toContain('[Hint]');
   });
@@ -124,7 +124,7 @@ describe('serializeToolResult', () => {
       context: { path: '/path/to/file.ts' },
       hint: '自定义提示: 请检查缩进',
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[Hint]');
     expect(output).toContain('自定义提示: 请检查缩进');
   });
@@ -136,7 +136,7 @@ describe('serializeToolResult', () => {
       error: '当前 Agent 无权限执行 create 操作',
       context: { command: 'create' },
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[Permission]');
   });
 
@@ -147,7 +147,7 @@ describe('serializeToolResult', () => {
       error: '找到 3 处匹配，无法确定替换位置',
       context: { path: '/path/to/file.ts', matchCount: 3 },
     };
-    const output = serializeToolResult(result);
+    const output = serializeToolResult(result, getAllHintTemplates());
     expect(output).toContain('[Error]');
     expect(output).toContain('[Hint]');
   });

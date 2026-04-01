@@ -7,9 +7,12 @@
 
 import { readdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { tool, zodSchema, type Tool } from 'ai';
+import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { isPathAllowed } from './utils/security.js';
+import { truncateOutput } from './utils/output-safety.js';
+import type { ToolResult } from '../harness/types.js';
+import { withHarness, type RawTool } from '../harness/with-harness.js';
 
 /** 最大递归深度 */
 const MAX_DEPTH = 20;
@@ -71,11 +74,12 @@ async function simpleGlob(dir: string, pattern: string): Promise<string[]> {
 }
 
 function matchGlobPart(name: string, pattern: string): boolean {
-  const regex = pattern
-    .replace(/\./g, '\\.')
+  // 先转义所有正则元字符，再将 glob 特殊字符替换为对应的正则
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*')
     .replace(/\?/g, '.');
-  return new RegExp(`^${regex}$`).test(name);
+  return new RegExp(`^${escaped}$`).test(name);
 }
 
 /** Glob 工具输入 schema */
@@ -88,19 +92,21 @@ const globInputSchema = z.object({
 export type GlobToolInput = z.infer<typeof globInputSchema>;
 
 /**
- * 创建 Glob 工具
+ * 创建 Glob rawTool（execute → ToolResult）
+ *
+ * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
  */
-export function createGlobTool(): Tool<GlobToolInput, string> {
-  return tool({
+export function createRawGlobTool(): RawTool<GlobToolInput> {
+  return {
     description: '按文件名模式搜索文件路径。支持 *（匹配任意字符）和 **（匹配目录层级）。返回匹配的文件路径列表。',
     inputSchema: zodSchema(globInputSchema),
-    execute: async ({ pattern, path: searchPath, maxResults }): Promise<string> => {
+    execute: async ({ pattern, path: searchPath, maxResults }): Promise<ToolResult> => {
       const max = maxResults ?? 100;
       const dir = resolve(searchPath || process.cwd());
 
       // 路径约束检查
       if (!isPathAllowed(dir)) {
-        return `[Security] 搜索路径不在允许的工作目录内: ${dir}`;
+        return { ok: false, code: 'PATH_BLOCKED', error: `搜索路径不在允许的工作目录内: ${dir}`, context: { path: dir } };
       }
 
       try {
@@ -121,21 +127,33 @@ export function createGlobTool(): Tool<GlobToolInput, string> {
         const sortedFiles = withStats.map(f => f.path);
 
         if (sortedFiles.length === 0) {
-          return `未找到匹配 "${pattern}" 的文件`;
+          return { ok: true, code: 'OK', data: `未找到匹配 "${pattern}" 的文件` };
         }
 
+        let output: string;
         if (sortedFiles.length > max) {
           const display = sortedFiles.slice(0, max);
-          return display.join('\n') + `\n\n[共 ${withStats.length} 个匹配，已截断显示前 ${max} 个]`;
+          output = display.join('\n') + `\n\n[共 ${withStats.length} 个匹配，已截断显示前 ${max} 个]`;
+        } else {
+          output = sortedFiles.join('\n');
         }
 
-        return sortedFiles.join('\n');
+        return { ok: true, code: 'OK', data: truncateOutput(output) };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return `[Error] 搜索失败: ${msg}`;
+        return { ok: false, code: 'EXEC_ERROR', error: `搜索失败: ${msg}` };
       }
     },
-  });
+  };
+}
+
+/**
+ * 创建 Glob 工具（AI SDK 兼容，execute → string）
+ *
+ * 内部使用 createRawGlobTool + withHarness 包装。
+ */
+export function createGlobTool(): Tool<GlobToolInput, string> {
+  return withHarness(createRawGlobTool(), { toolName: 'glob-tool' });
 }
 
 export const globTool = createGlobTool();
