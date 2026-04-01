@@ -1,6 +1,6 @@
 {
   "name": "@bundy-lmw/hive-plugin-feishu",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,7 +12,8 @@
   },
   "hive": {
     "plugin": true,
-    "entry": "dist/index.js"
+    "entry": "dist/index.js",
+    "id": "feishu"
   },
   "keywords": [
     "hive-plugin",

@@ -254,6 +254,19 @@ class ServerImpl implements Server {
   // 内部方法
   // ============================================
 
+  getPlugin(id: string): IPlugin | undefined {
+    return this.plugins.find(p => p.metadata.id === id);
+  }
+
+  replacePlugin(id: string, plugin: IPlugin): void {
+    const idx = this.plugins.findIndex(p => p.metadata.id === id);
+    if (idx >= 0) {
+      this.plugins[idx] = plugin;
+    } else {
+      this.plugins.push(plugin);
+    }
+  }
+
   private _dbPath: string | undefined;
   private _heartbeatConfig: ServerHeartbeatConfig | undefined;
   private _scheduleEngineConfig: ServerOptions['config']['scheduleEngine'];
