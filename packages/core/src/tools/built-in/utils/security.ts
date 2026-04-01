@@ -25,19 +25,19 @@ interface DangerousPattern {
 }
 
 const DANGEROUS_COMMANDS: DangerousPattern[] = [
-  { pattern: /rm\s+(-[rfRF]+\s+.*\/|^rm\s+(-[rfRF]+)\s+\/)/, description: '递归删除根目录' },
-  { pattern: /rm\s+(-[rfRF]+\s+.*~|^rm\s+(-[rfRF]+)\s+~)/, description: '递归删除用户目录' },
-  { pattern: />\s*\/dev\/sd[a-z]/, description: '覆盖磁盘设备' },
-  { pattern: /mkfs\.(ext[234]|xfs|btrfs|ntfs)/, description: '格式化文件系统' },
-  { pattern: /dd\s+if=.*of=\/dev/, description: 'DD 写入设备' },
-  { pattern: /:\(\)\s*\{.*\|.*&\s*\}\s*;/, description: 'Fork 炸弹' },
-  { pattern: /chmod\s+-R\s+777/, description: '递归设置全权限' },
-  { pattern: /chown\s+-R/, description: '递归修改所有者' },
-  { pattern: /curl.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: '管道执行远程脚本' },
-  { pattern: /wget.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: '管道执行远程脚本' },
-  { pattern: /\b(nc|ncat|netcat|socat)\b/, description: '潜在反弹 shell/隧道工具' },
-  { pattern: /\b(systemctl|service|launchctl)\b/, description: '系统服务管理命令' },
-  { pattern: /\b(insmod|rmmod|modprobe)\b/, description: '内核模块操作' },
+  { pattern: /rm\s+(-[rfRF]+\s+.*\/|^rm\s+(-[rfRF]+)\s+\/)/, description: 'Recursive delete root directory' },
+  { pattern: /rm\s+(-[rfRF]+\s+.*~|^rm\s+(-[rfRF]+)\s+~)/, description: 'Recursive delete home directory' },
+  { pattern: />\s*\/dev\/sd[a-z]/, description: 'Overwrite disk device' },
+  { pattern: /mkfs\.(ext[234]|xfs|btrfs|ntfs)/, description: 'Format filesystem' },
+  { pattern: /dd\s+if=.*of=\/dev/, description: 'DD write to device' },
+  { pattern: /:\(\)\s*\{.*\|.*&\s*\}\s*;/, description: 'Fork bomb' },
+  { pattern: /chmod\s+-R\s+777/, description: 'Recursive chmod 777' },
+  { pattern: /chown\s+-R/, description: 'Recursive chown' },
+  { pattern: /curl.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: 'Pipe remote script execution' },
+  { pattern: /wget.*(\||&&).*\s*(sudo\s+)?\s*(bash|sh|zsh)/, description: 'Pipe remote script execution' },
+  { pattern: /\b(nc|ncat|netcat|socat)\b/, description: 'Potential reverse shell/tunnel tool' },
+  { pattern: /\b(systemctl|service|launchctl)\b/, description: 'System service management' },
+  { pattern: /\b(insmod|rmmod|modprobe)\b/, description: 'Kernel module operation' },
 ];
 
 // ============================================
@@ -52,18 +52,18 @@ interface SensitivePattern {
 }
 
 const SENSITIVE_FILES: SensitivePattern[] = [
-  // 基于文件名的模式（使用 basename 匹配，避免路径片段误匹配）
-  { pattern: /^\.env(\.|$)/, description: '环境变量文件', allowRead: false, allowWrite: false },
-  { pattern: /^id_rsa(\.|$)/, description: 'SSH 私钥', allowRead: false, allowWrite: false },
-  { pattern: /^id_ed25519(\.|$)/, description: 'ED25519 私钥', allowRead: false, allowWrite: false },
-  { pattern: /\.pem$/i, description: 'PEM 证书', allowRead: false, allowWrite: false },
-  { pattern: /\.key$/i, description: '密钥文件', allowRead: false, allowWrite: false },
-  { pattern: /^credentials(\.\w+)?\.json$/i, description: '凭证文件', allowRead: false, allowWrite: false },
-  { pattern: /^secret(s)?\.(json|yaml|yml)$/i, description: '机密配置', allowRead: false, allowWrite: false },
-  // 基于路径的模式（检查完整路径）
-  { pattern: /\/\.ssh\//, description: 'SSH 密钥目录', allowRead: false, allowWrite: false },
-  { pattern: /\/etc\/passwd$/, description: '系统密码文件', allowRead: false, allowWrite: false },
-  { pattern: /\/etc\/shadow$/, description: '系统影子密码文件', allowRead: false, allowWrite: false },
+  // Filename-based patterns (match via basename to avoid path segment false positives)
+  { pattern: /^\.env(\.|$)/, description: 'Environment variable file', allowRead: false, allowWrite: false },
+  { pattern: /^id_rsa(\.|$)/, description: 'SSH private key', allowRead: false, allowWrite: false },
+  { pattern: /^id_ed25519(\.|$)/, description: 'ED25519 private key', allowRead: false, allowWrite: false },
+  { pattern: /\.pem$/i, description: 'PEM certificate', allowRead: false, allowWrite: false },
+  { pattern: /\.key$/i, description: 'Key file', allowRead: false, allowWrite: false },
+  { pattern: /^credentials(\.\w+)?\.json$/i, description: 'Credentials file', allowRead: false, allowWrite: false },
+  { pattern: /^secret(s)?\.(json|yaml|yml)$/i, description: 'Secret config', allowRead: false, allowWrite: false },
+  // Path-based patterns (match full path)
+  { pattern: /\/\.ssh\//, description: 'SSH key directory', allowRead: false, allowWrite: false },
+  { pattern: /\/etc\/passwd$/, description: 'System password file', allowRead: false, allowWrite: false },
+  { pattern: /\/etc\/shadow$/, description: 'System shadow password file', allowRead: false, allowWrite: false },
 ];
 
 // ============================================
@@ -166,11 +166,11 @@ export function isAllowedUrl(url: string): { allowed: boolean; reason?: string }
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:') {
-      return { allowed: false, reason: `不允许的 URL scheme: ${parsed.protocol}（仅允许 https://）` };
+      return { allowed: false, reason: `URL scheme not allowed: ${parsed.protocol} (only https:// is allowed)` };
     }
     return { allowed: true };
   } catch {
-    return { allowed: false, reason: '无效的 URL 格式' };
+    return { allowed: false, reason: 'Invalid URL format' };
   }
 }
 

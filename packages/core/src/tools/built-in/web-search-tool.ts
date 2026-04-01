@@ -18,12 +18,12 @@ const MAX_SEARCH_RESULTS = 10;
 
 /** Web Search 工具输入 schema */
 const webSearchInputSchema = z.object({
-  query: z.string().describe('搜索查询关键词'),
+  query: z.string().describe('Search query keywords'),
   engine: z.enum(['duckDuckGo', 'baidu', 'bing'] as const)
     .optional()
     .default('duckDuckGo')
-    .describe('搜索引擎，默认 duckDuckGo（国际）。baidu 用于中文搜索，bing 为国际引擎。'),
-  maxResults: z.number().max(20).optional().describe('最大返回结果数，默认 10'),
+    .describe('Search engine, default duckDuckGo (international). Use baidu for Chinese, bing for international.'),
+  maxResults: z.number().max(20).optional().describe('Max number of results, default 10'),
 });
 
 export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
@@ -35,13 +35,13 @@ export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
  */
 export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
   return {
-    description: '搜索网页获取最新信息。支持 DuckDuckGo Lite（国际）、百度（中文）、必应等搜索引擎，无需 API key。返回标题、URL 和摘要（纯文本，已去除 HTML 标签）。建议结合 web-fetch 工具获取完整页面内容。',
+    description: 'Search the web for latest information. Supports DuckDuckGo Lite (international), Baidu (Chinese), Bing. No API key required. Returns titles, URLs, and snippets (plain text, HTML stripped). For full page content, use web-fetch tool.',
     inputSchema: zodSchema(webSearchInputSchema),
     execute: async ({ query, engine, maxResults }): Promise<ToolResult> => {
       try {
         const searchEngine = SEARCH_ENGINES[engine];
         if (!searchEngine) {
-          return { ok: false, code: 'INVALID_INPUT', error: `不支持的搜索引擎: ${engine}` };
+          return { ok: false, code: 'INVALID_INPUT', error: `Unsupported search engine: ${engine}` };
         }
 
         const url = searchEngine.buildUrl(query);
@@ -56,14 +56,14 @@ export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
         });
 
         if (!response.ok) {
-          return { ok: false, code: 'NETWORK', error: `搜索请求失败 (HTTP ${response.status})`, context: { status: String(response.status) } };
+          return { ok: false, code: 'NETWORK', error: `Search request failed (HTTP ${response.status})`, context: { status: String(response.status) } };
         }
 
         const html = await response.text();
         const results = await searchEngine.parse(html);
 
         if (results.length === 0) {
-          return { ok: true, code: 'OK', data: `未找到 "${query}" 的搜索结果` };
+          return { ok: true, code: 'OK', data: `No search results found for "${query}"` };
         }
 
         const max = Math.min(maxResults ?? MAX_SEARCH_RESULTS, MAX_SEARCH_RESULTS);
@@ -73,7 +73,7 @@ export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
           .join('\n\n');
 
         const suffix = results.length > max
-          ? `\n\n[共 ${results.length} 个结果，已截断显示前 ${max} 个]`
+          ? `\n\n[${results.length} results total, showing first ${max}]`
           : '';
 
         return { ok: true, code: 'OK', data: truncateOutput(output + suffix) };
@@ -81,9 +81,9 @@ export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
         const msg = error instanceof Error ? error.message : String(error);
         const isNetwork = /timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
         if (isNetwork) {
-          return { ok: false, code: 'NETWORK', error: `搜索失败: ${msg}` };
+          return { ok: false, code: 'NETWORK', error: `Search failed: ${msg}` };
         }
-        return { ok: false, code: 'EXEC_ERROR', error: `搜索失败: ${msg}` };
+        return { ok: false, code: 'EXEC_ERROR', error: `Search failed: ${msg}` };
       }
     },
   };
