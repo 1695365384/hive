@@ -518,6 +518,11 @@ export function createServer(options: ServerOptions): Server {
     environmentContext,
   });
 
+  // Inject dbPath into ToolRegistry so env-tool can query SQLite
+  if (dbPath) {
+    agent.context.runner.getToolRegistry().setEnvDbProvider(() => dbPath);
+  }
+
   const server = new ServerImpl(agent, bus, logger, channelContext);
   server.setOptions(options);
   server._workspaceManager = workspaceManager;
