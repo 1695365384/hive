@@ -103,7 +103,7 @@ describe('Tool System Integration', () => {
         file_path: join(tmpDir, 'evil.ts'),
         content: 'const evil = 1;',
       }, {} as any);
-      expect(result).toContain('无权限');
+      expect(result).toContain('does not have permission');
     });
 
     it('explore agent: 不应有 bash 工具', () => {
@@ -142,7 +142,7 @@ describe('Tool System Integration', () => {
       }, {} as any);
 
       // 不应拒绝
-      expect(result).not.toContain('无权限');
+      expect(result).not.toContain('does not have permission');
 
       // 验证文件已创建
       const { readFile } = await import('node:fs/promises');
@@ -198,7 +198,7 @@ describe('Tool System Integration', () => {
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'rm -rf /' }, {} as any);
       expect(result).toContain('[Security]');
-      expect(result).toContain('阻止危险命令');
+      expect(result).toContain('Dangerous command blocked');
     });
 
     it('bash 工具应拦截 fork bomb', async () => {
@@ -213,7 +213,7 @@ describe('Tool System Integration', () => {
         command: 'view',
         file_path: join(tmpDir, '.env'),
       }, {} as any);
-      expect(result).toContain('敏感文件');
+      expect(result).toContain('sensitive file');
     });
   });
 
