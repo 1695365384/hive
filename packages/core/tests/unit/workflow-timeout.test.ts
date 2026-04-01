@@ -118,7 +118,7 @@ describe('ExecutionCapability 超时保护', () => {
       config.onText?.('Done');
       return {
         text: 'Done',
-        tools: [],
+        tools: ['bash'],
         success: true,
         usage: { promptTokens: 50, completionTokens: 10 },
         steps: [],

@@ -585,4 +585,283 @@ describe('ExecutionCapability', () => {
       expect(result.cost).toBeUndefined();
     });
   });
+
+  // ============================================
+  // Anti-hallucination 防线 2：零工具调用拦截
+  // ============================================
+
+  describe('anti-hallucination defense 2 (zero-tool-call interception)', () => {
+    it('should retry when action task produces zero tool calls', async () => {
+      // First call: success but no tools used → defense 2 retries
+      // Second call: tools used, has steps → defense 3 introspection
+      // Third call (introspection): confirms completion
+      let callCount = 0;
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        callCount++;
+        if (callCount === 1) {
+          config.onText?.('I have completed the task for you.');
+          return { ...defaultRuntimeResult, tools: [], steps: [] };
+        }
+        if (callCount === 2) {
+          config.onText?.('Actually executed the task using tools.');
+          return {
+            ...defaultRuntimeResult,
+            tools: ['bash'],
+            steps: [{ toolCalls: [{ toolName: 'bash', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' }],
+          };
+        }
+        // Introspection call
+        config.onText?.('Confirmed, all done.');
+        return {
+          ...defaultRuntimeResult,
+          tools: ['bash'],
+          steps: [{ toolCalls: [{ toolName: 'bash', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' }],
+        };
+      });
+
+      const result = await capability.run('帮我修改配置文件中的端口号');
+
+      // 1 initial + 1 retry (defense 2) + 1 introspection (defense 3)
+      expect(callCount).toBe(3);
+      expect(result.success).toBe(true);
+      expect(result.tools).toEqual(['bash']);
+    });
+
+    it('should not retry when task is too short (≤ 5 chars)', async () => {
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('你好！');
+        return { ...defaultRuntimeResult, tools: [], steps: [] };
+      });
+
+      const result = await capability.run('你好');
+
+      expect(mockRuntimeRun).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(true);
+    });
+
+    it('should not retry in explore mode', async () => {
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Found the files.');
+        return { ...defaultRuntimeResult, tools: [], steps: [] };
+      });
+
+      const result = await capability.run('explore the codebase structure', { forceMode: 'explore' });
+
+      expect(mockRuntimeRun).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(true);
+    });
+
+    it('should not retry in plan mode', async () => {
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Here is the plan.');
+        return { ...defaultRuntimeResult, tools: [], steps: [] };
+      });
+
+      const result = await capability.run('plan the architecture', { forceMode: 'plan' });
+
+      expect(mockRuntimeRun).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(true);
+    });
+
+    it('should not retry when runtime fails', async () => {
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Error occurred');
+        return { ...defaultRuntimeResult, success: false, error: 'model error', tools: [], steps: [] };
+      });
+
+      const result = await capability.run('帮我修改配置文件中的端口号');
+
+      expect(mockRuntimeRun).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // ============================================
+  // Anti-hallucination 防线 3：steps 注入自省
+  // ============================================
+
+  describe('anti-hallucination defense 3 (steps introspection)', () => {
+    it('should run introspection when tools were used and steps exist', async () => {
+      const steps = [
+        { toolCalls: [{ toolName: 'file-read', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+
+      let callCount = 0;
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        callCount++;
+        if (callCount === 1) {
+          config.onText?.('I have read the file and made changes.');
+          return { ...defaultRuntimeResult, tools: ['file-read'], steps };
+        }
+        // Introspection call: agent confirms completion (no additional tools)
+        config.onText?.('Confirmed, all changes are complete.');
+        return { ...defaultRuntimeResult, tools: ['file-read'], steps };
+      });
+
+      const result = await capability.run('帮我修改配置文件中的端口号');
+
+      // Should be called twice: original + introspection
+      expect(callCount).toBe(2);
+      expect(result.success).toBe(true);
+    });
+
+    it('should use introspection result when agent finds more work', async () => {
+      const initialSteps = [
+        { toolCalls: [{ toolName: 'file-read', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+      const extendedSteps = [
+        ...initialSteps,
+        { toolCalls: [{ toolName: 'file-str_replace', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+
+      let callCount = 0;
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        callCount++;
+        if (callCount === 1) {
+          config.onText?.('I read the file.');
+          return { ...defaultRuntimeResult, tools: ['file-read'], steps: initialSteps };
+        }
+        // Introspection: agent discovers more work needed
+        config.onText?.('I also need to write the changes.');
+        return { ...defaultRuntimeResult, tools: ['file-read', 'file-str_replace'], steps: extendedSteps };
+      });
+
+      const result = await capability.run('帮我修改配置文件中的端口号');
+
+      expect(callCount).toBe(2);
+      // Introspection found more tools → should use introspection result
+      expect(result.tools).toEqual(['file-read', 'file-str_replace']);
+    });
+
+    it('should keep original result when introspection finds no more work', async () => {
+      const steps = [
+        { toolCalls: [{ toolName: 'bash', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+
+      let callCount = 0;
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        callCount++;
+        if (callCount === 1) {
+          config.onText?.('Done.');
+          return { ...defaultRuntimeResult, tools: ['bash'], steps };
+        }
+        // Introspection: agent confirms, no new tools
+        config.onText?.('All done, nothing more to do.');
+        return { ...defaultRuntimeResult, tools: ['bash'], steps };
+      });
+
+      const result = await capability.run('run the test suite');
+
+      expect(callCount).toBe(2);
+      expect(result.tools).toEqual(['bash']);
+    });
+
+    it('should not introspect in explore mode', async () => {
+      const steps = [
+        { toolCalls: [{ toolName: 'file', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Found files.');
+        return { ...defaultRuntimeResult, tools: ['file'], steps };
+      });
+
+      await capability.run('explore the codebase', { forceMode: 'explore' });
+
+      // Only 1 call (no introspection)
+      expect(mockRuntimeRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('should skip introspection when steps are empty', async () => {
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Task done.');
+        return { ...defaultRuntimeResult, tools: ['bash'], steps: [] };
+      });
+
+      await capability.run('run the tests');
+
+      // Only 1 call (no introspection since steps.length === 0)
+      expect(mockRuntimeRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('should trigger defense 2 retry when no tools used and task is long enough', async () => {
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Here is the answer.');
+        return { ...defaultRuntimeResult, tools: [], steps: [] };
+      });
+
+      await capability.run('what is 1+1');  // 11 chars > 5, triggers defense 2
+
+      // Defense 2 triggers retry since tools.length === 0
+      expect(mockRuntimeRun).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ============================================
+  // DispatchResult.steps 保留
+  // ============================================
+
+  describe('DispatchResult.steps', () => {
+    it('should include steps from runtime result', async () => {
+      const steps = [
+        { toolCalls: [{ toolName: 'bash', input: { command: 'ls' } }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+        { toolCalls: [{ toolName: 'bash', input: { command: 'cat file' } }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Done.');
+        return { ...defaultRuntimeResult, steps };
+      });
+
+      const result = await capability.run('list files and show contents');
+
+      expect(result.steps).toBeDefined();
+      expect(result.steps!.length).toBe(2);
+      expect(result.steps![0].toolCalls[0].toolName).toBe('bash');
+    });
+
+    it('should include steps for short tasks (no defense triggered)', async () => {
+      const steps = [
+        { toolCalls: [{ toolName: 'bash', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        config.onText?.('Hi');
+        return { ...defaultRuntimeResult, tools: ['bash'], steps };
+      });
+
+      const result = await capability.run('hello world');
+
+      expect(result.steps).toBeDefined();
+      expect(result.steps!.length).toBe(1);
+    });
+
+    it('should preserve steps from introspection result when more work found', async () => {
+      const initialSteps = [
+        { toolCalls: [{ toolName: 'file', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+      const extendedSteps = [
+        ...initialSteps,
+        { toolCalls: [{ toolName: 'bash', input: {} }], toolResults: [], isToolStep: true, finishReason: 'tool-calls' },
+      ];
+
+      let callCount = 0;
+      mockRuntimeRun.mockImplementation(async (config: any) => {
+        callCount++;
+        if (callCount === 1) {
+          config.onText?.('Read file.');
+          return { ...defaultRuntimeResult, tools: ['file'], steps: initialSteps };
+        }
+        config.onText?.('Also ran command.');
+        return { ...defaultRuntimeResult, tools: ['file', 'bash'], steps: extendedSteps };
+      });
+
+      const result = await capability.run('read file and run tests');
+
+      // Introspection result has more tools → its steps should be used
+      expect(result.steps).toBeDefined();
+      expect(result.steps!.length).toBe(2);
+      expect(result.steps![1].toolCalls[0].toolName).toBe('bash');
+    });
+  });
 });
