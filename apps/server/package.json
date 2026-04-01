@@ -1,6 +1,6 @@
 {
   "name": "@bundy-lmw/hive-server",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
