@@ -310,4 +310,60 @@ describe('DynamicPromptBuilder', () => {
       expect(prompt).toContain('Linux (linux/x64)');
     });
   });
+
+  describe('schedule awareness section', () => {
+    it('should include schedule section when scheduleSummary is provided', () => {
+      const context: PromptBuildContext = {
+        task: 'Check my tasks',
+        priorResults: [],
+        agentType: 'general',
+        scheduleSummary: '\n### Current Scheduled Tasks\n\n- **Daily logs** (cron, enabled, cron: 0 9 * * *)',
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('## Scheduled Tasks');
+      expect(prompt).toContain('Daily logs');
+      expect(prompt).toContain('0 9 * * *');
+    });
+
+    it('should include schedule capability declaration even without tasks', () => {
+      const context: PromptBuildContext = {
+        task: 'Hello',
+        priorResults: [],
+        agentType: 'general',
+        scheduleSummary: '\n### Current Scheduled Tasks\n\nNo scheduled tasks configured.',
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('## Scheduled Tasks');
+      expect(prompt).toContain('No scheduled tasks configured');
+      expect(prompt).toContain('Confirmation Required');
+    });
+
+    it('should not include schedule section when scheduleSummary is undefined', () => {
+      const context: PromptBuildContext = {
+        task: 'Hello',
+        priorResults: [],
+        agentType: 'general',
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).not.toContain('## Scheduled Tasks');
+    });
+
+    it('should truncate schedule section when over budget (priority 4)', () => {
+      const smallBuilder = new DynamicPromptBuilder({ maxChars: 100 });
+
+      const context: PromptBuildContext = {
+        task: 'Test task',
+        priorResults: [],
+        agentType: 'general',
+        scheduleSummary: '\n### Current Scheduled Tasks\n\n' + '- **Task** (cron, enabled, cron: 0 9 * * *)\n'.repeat(50),
+      };
+
+      const prompt = smallBuilder.buildPrompt(context);
+      // Task should still be present
+      expect(prompt).toContain('Test task');
+    });
+  });
 });
