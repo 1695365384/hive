@@ -26,6 +26,7 @@ import type { Tool } from 'ai';
 import { LLMRuntime } from '../runtime/LLMRuntime.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
 import { createAllSubagentTools } from '../../tools/built-in/subagent-tools.js';
+import { buildScheduleSummary } from './schedule-summary.js';
 
 /**
  * 工作流能力实现
@@ -163,7 +164,7 @@ export class WorkflowCapability implements AgentCapability {
         await this.emitPhase(sessionId, 'execute', '执行任务...', previousPhase, options);
 
         // 构建 system prompt
-        const systemPrompt = this.buildSystemPrompt(task);
+        const systemPrompt = await this.buildSystemPrompt(task);
 
         // 获取全部工具 + 子 Agent 工具
         const tools = {
@@ -253,7 +254,7 @@ export class WorkflowCapability implements AgentCapability {
   /**
    * 构建 system prompt
    */
-  private buildSystemPrompt(task: string): string {
+  private async buildSystemPrompt(task: string): Promise<string> {
     const isChineseTask = /[\u4e00-\u9fa5]/.test(task);
     const languageInstruction = isChineseTask
       ? '【重要】你必须用中文回复，与用户的语言保持一致。'
@@ -268,10 +269,20 @@ export class WorkflowCapability implements AgentCapability {
       skillSection = this.context.skillRegistry.generateSkillListDescription();
     }
 
-    return this.promptTemplate.render('intelligent', {
+    let prompt = this.promptTemplate.render('intelligent', {
       languageInstruction,
       skillSection: skillSection ?? '',
       task,
     });
+
+    // Append schedule awareness section
+    const scheduleSummary = await buildScheduleSummary(this.context);
+    if (scheduleSummary) {
+      prompt += '\n\n' + this.promptTemplate.render('schedule-awareness', {
+        scheduleSummary,
+      });
+    }
+
+    return prompt;
   }
 }
