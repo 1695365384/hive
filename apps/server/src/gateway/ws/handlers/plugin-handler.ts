@@ -3,12 +3,13 @@
  *
  * plugin.list / plugin.available / plugin.install / plugin.uninstall / plugin.updateConfig
  * 含 reloadPlugin（插件热重载）
+ *
+ * 插件实例由 Server 持有，PluginHandler 通过 Server.getPlugin() / replacePlugin() 操作。
  */
 
 import { pathToFileURL } from 'node:url'
 import { searchPlugins, installPlugin, removePlugin } from '../../../plugin-manager/index.js'
 import { loadRegistry } from '../../../plugin-manager/registry.js'
-import { scanPluginDir } from '../../../plugins.js'
 import { getConfig } from '../../../config.js'
 import type { IPlugin } from '@bundy-lmw/hive-core'
 import type { HandlerContext, MethodHandler } from '../handler-context.js'
@@ -20,9 +21,6 @@ import type {
 import { createSuccessResponse, createErrorResponse } from '../types.js'
 
 export class PluginHandler extends WsDomainHandler {
-  /** 加载的插件实例，按 registry key 索引 */
-  private pluginInstances: Map<string, IPlugin> = new Map()
-
   register(): Map<string, MethodHandler> {
     return new Map<string, MethodHandler>([
       ['plugin.list', this.handlePluginList.bind(this)],
@@ -31,17 +29,6 @@ export class PluginHandler extends WsDomainHandler {
       ['plugin.uninstall', this.handlePluginUninstall.bind(this)],
       ['plugin.updateConfig', this.handlePluginUpdateConfig.bind(this)],
     ])
-  }
-
-  /** 注入插件实例（在 bootstrap 后调用） */
-  setPlugins(plugins: IPlugin[]): void {
-    const manifests = scanPluginDir()
-    for (const plugin of plugins) {
-      const manifest = manifests.find(m => m.name === plugin.metadata.name)
-      if (manifest) {
-        this.pluginInstances.set(manifest.name, plugin)
-      }
-    }
   }
 
   /** 搜索 npm 上可用的 Hive 插件 */
@@ -73,12 +60,11 @@ export class PluginHandler extends WsDomainHandler {
       const items: PluginInfo[] = []
       const registry = loadRegistry()
 
-      for (const [name, entry] of Object.entries(registry)) {
-        const pkgName = entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
-        const pluginConfig = config.pluginConfigs?.[pkgName]
+      for (const [pluginId, entry] of Object.entries(registry)) {
+        const pluginConfig = config.pluginConfigs?.[pluginId]
         items.push({
-          id: name,
-          name: pkgName,
+          id: pluginId,
+          name: entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, ''),
           version: entry.resolvedVersion,
           source: entry.source,
           installedAt: entry.installedAt,
@@ -136,7 +122,7 @@ export class PluginHandler extends WsDomainHandler {
   }
 
   /** 卸载插件 */
-  private handlePluginUninstall(params: unknown, id: string) {
+  private async handlePluginUninstall(params: unknown, id: string) {
     const { id: pluginId } = params as PluginUninstallParams
     if (!pluginId) {
       return createErrorResponse(id, 'VALIDATION', 'id is required')
@@ -152,9 +138,8 @@ export class PluginHandler extends WsDomainHandler {
 
       if (entry) {
         const config = this.ctx.loadConfig()
-        const pkgKey = entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
-        if (config.pluginConfigs && pkgKey in config.pluginConfigs) {
-          delete config.pluginConfigs[pkgKey]
+        if (config.pluginConfigs && pluginId in config.pluginConfigs) {
+          delete config.pluginConfigs[pluginId]
           this.ctx.saveConfig(config)
         }
       }
@@ -178,17 +163,11 @@ export class PluginHandler extends WsDomainHandler {
     }
 
     try {
-      const registry = loadRegistry()
-      const entry = registry[pluginId]
-      const pkgKey = entry
-        ? entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
-        : pluginId
-
       const cfg = this.ctx.loadConfig()
       if (!cfg.pluginConfigs) {
         cfg.pluginConfigs = {}
       }
-      cfg.pluginConfigs[pkgKey] = config
+      cfg.pluginConfigs[pluginId] = config
       this.ctx.saveConfig(cfg)
 
       await this.reloadPlugin(pluginId)
@@ -204,35 +183,40 @@ export class PluginHandler extends WsDomainHandler {
     }
   }
 
-  /** 重启指定插件（用最新配置重新初始化） */
+  /**
+   * 重启指定插件（swap 模式）
+   *
+   * 1. 通过 Server.getPlugin() 查找旧实例
+   * 2. 创建新实例（先验证，成功后再销毁旧实例）
+   * 3. 通过 Server.replacePlugin() 替换
+   */
   private async reloadPlugin(pluginId: string): Promise<void> {
-    const oldPlugin = this.pluginInstances.get(pluginId)
-    if (!oldPlugin) {
-      console.warn(`[reloadPlugin] Plugin not found in instances: ${pluginId}`)
-      return
-    }
-
     const server = this.ctx.getServer()
-    if (!server) return
-
-    await oldPlugin.deactivate()
-    if (oldPlugin.destroy) await oldPlugin.destroy()
-
-    const manifests = scanPluginDir()
-    const manifest = manifests.find(m => m.name === pluginId)
-    if (!manifest) {
-      console.error(`[reloadPlugin] Manifest not found for: ${pluginId}`)
+    if (!server) {
+      console.warn('[reloadPlugin] Server not available')
       return
     }
 
+    const oldPlugin = server.getPlugin(pluginId)
+    if (!oldPlugin) {
+      console.warn(`[reloadPlugin] Plugin not found: ${pluginId}`)
+      return
+    }
+
+    // 从 registry 反查 entry 路径
+    const entry = loadRegistry()[pluginId]
+    if (!entry) {
+      console.error(`[reloadPlugin] Plugin not in registry: ${pluginId}`)
+      return
+    }
+
+    // 读取最新配置（直接用 metadata.id 作为 key）
     const { pluginConfigs } = getConfig()
     const config = pluginConfigs?.[pluginId] ?? {}
-    try {
-      const entryUrl = pathToFileURL(manifest.entry).href
-      const mod = await import(entryUrl)
-      const PluginClass = mod.default
-      const newPlugin = new PluginClass(config) as IPlugin
 
+    try {
+      // Swap 模式：先创建新实例，成功后再销毁旧实例
+      const newPlugin = await this.createPluginInstance(pluginId, entry, config, server)
       await newPlugin.initialize(
         server.bus,
         server.logger,
@@ -240,10 +224,36 @@ export class PluginHandler extends WsDomainHandler {
       )
       await newPlugin.activate()
 
-      this.pluginInstances.set(pluginId, newPlugin)
+      // 新实例就绪，替换并销毁旧实例
+      server.replacePlugin(pluginId, newPlugin)
+      await oldPlugin.deactivate()
+      if (oldPlugin.destroy) await oldPlugin.destroy()
+
       console.log(`[reloadPlugin] Plugin reloaded: ${pluginId}`)
     } catch (error) {
       console.error(`[reloadPlugin] Failed to reload ${pluginId}:`, error instanceof Error ? error.message : error)
     }
+  }
+
+  /** 从 registry entry 创建插件实例 */
+  private async createPluginInstance(
+    pluginId: string,
+    entry: { source: string },
+    config: Record<string, unknown>,
+    _server: ReturnType<HandlerContext['getServer']>,
+  ): Promise<IPlugin> {
+    // 所有来源（npm/local/git）统一通过 scanPluginDir 获取 manifest，
+    // 然后用文件路径 import，避免 SEA 环境下 import(npmPkg) 无法解析。
+    const { scanPluginDir } = await import('../../../plugins.js')
+    const manifests = scanPluginDir()
+    const target = manifests.find(m => m.id === pluginId)
+
+    if (target) {
+      const entryUrl = pathToFileURL(target.entry).href
+      const mod = await import(entryUrl)
+      return new (mod.default)(config) as IPlugin
+    }
+
+    throw new Error(`Cannot resolve plugin entry for: ${pluginId} (${entry.source})`)
   }
 }

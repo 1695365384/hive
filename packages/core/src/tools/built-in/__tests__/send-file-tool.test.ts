@@ -61,7 +61,7 @@ describe('send-file-tool', () => {
     )
 
     expect(mockSendFileCb).toHaveBeenCalledWith('/tmp/report.pdf')
-    expect(result).toContain('已发送文件')
+    expect(result).toContain('Sent file')
     expect(result).toContain('report.pdf')
   })
 
@@ -73,7 +73,7 @@ describe('send-file-tool', () => {
       {} as any,
     )
 
-    expect(result).toContain('已发送图片')
+    expect(result).toContain('Sent image')
   })
 
   it('should include description in result', async () => {
@@ -95,7 +95,7 @@ describe('send-file-tool', () => {
       {} as any,
     )
 
-    expect(result).toContain('当前环境不支持文件发送')
+    expect(result).toContain('File sending not supported in current environment')
     expect(mockSendFileCb).not.toHaveBeenCalled()
   })
 
@@ -109,7 +109,7 @@ describe('send-file-tool', () => {
       {} as any,
     )
 
-    expect(result).toContain('文件不存在')
+    expect(result).toContain('File not found')
     expect(mockSendFileCb).not.toHaveBeenCalled()
   })
 
@@ -123,7 +123,7 @@ describe('send-file-tool', () => {
       {} as any,
     )
 
-    expect(result).toContain('不能发送目录')
+    expect(result).toContain('Cannot send directory')
     expect(mockSendFileCb).not.toHaveBeenCalled()
   })
 
@@ -136,7 +136,7 @@ describe('send-file-tool', () => {
       {} as any,
     )
 
-    expect(result).toContain('文件发送失败')
+    expect(result).toContain('File send failed')
     expect(result).toContain('API rate limit')
   })
 
@@ -149,7 +149,7 @@ describe('send-file-tool', () => {
       {} as any,
     )
 
-    expect(result).toContain('文件发送失败')
+    expect(result).toContain('File send failed')
     expect(result).toContain('Network error')
   })
 
@@ -159,7 +159,7 @@ describe('send-file-tool', () => {
     for (const ext of ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']) {
       mockSendFileCb.mockClear()
       const result = await tool.execute!({ filePath: `/tmp/photo${ext}` }, {} as any)
-      expect(result).toContain('已发送图片')
+      expect(result).toContain('Sent image')
     }
   })
 })

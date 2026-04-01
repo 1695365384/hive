@@ -324,16 +324,18 @@ export class AgentRunner {
 
   /**
    * 计划研究
+   * @deprecated Use explore() with thoroughness='very-thorough' instead
    */
   async plan(prompt: string): Promise<AgentResult> {
     return this.execute('plan', buildPlanPrompt(prompt));
   }
 
   /**
-   * 通用执行
+   * 评估执行
+   * @deprecated Use execute('general', prompt) instead
    */
-  async general(prompt: string): Promise<AgentResult> {
-    return this.execute('general', prompt);
+  async evaluator(prompt: string): Promise<AgentResult> {
+    return this.execute('evaluator', prompt);
   }
 
   /**
@@ -360,6 +362,7 @@ export class AgentRunner {
 
   /**
    * 快速研究 Task
+   * @deprecated Use exploreTask() with thoroughness='very-thorough' instead
    */
   async planTask(prompt: string): Promise<TaskResult> {
     return this.runTask({
@@ -370,13 +373,14 @@ export class AgentRunner {
   }
 
   /**
-   * 快速通用 Task
+   * 快速评估 Task
+   * @deprecated Use runTask() with agentType='general' instead
    */
-  async generalTask(prompt: string): Promise<TaskResult> {
+  async evaluatorTask(prompt: string): Promise<TaskResult> {
     return this.runTask({
-      name: 'general-task',
+      name: 'evaluator-task',
       prompt,
-      agentType: 'general',
+      agentType: 'evaluator',
     });
   }
 }

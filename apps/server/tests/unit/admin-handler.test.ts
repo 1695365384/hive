@@ -563,7 +563,7 @@ describe('AdminWsHandler', () => {
       })
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
         plugins: {
-          '@bundy-lmw/hive-plugin-feishu': { appId: 'test-app', appSecret: 'test-secret' },
+          feishu: { appId: 'test-app', appSecret: 'test-secret' },
         },
       }))
 

@@ -12,6 +12,8 @@ import {
   createScheduleEngine,
   createWorkspaceManager,
   HeartbeatScheduler,
+  probeEnvironment,
+  scanEnvironment,
   type Agent,
   type IPlugin,
   type IChannel,
@@ -254,6 +256,19 @@ class ServerImpl implements Server {
   // 内部方法
   // ============================================
 
+  getPlugin(id: string): IPlugin | undefined {
+    return this.plugins.find(p => p.metadata.id === id);
+  }
+
+  replacePlugin(id: string, plugin: IPlugin): void {
+    const idx = this.plugins.findIndex(p => p.metadata.id === id);
+    if (idx >= 0) {
+      this.plugins[idx] = plugin;
+    } else {
+      this.plugins.push(plugin);
+    }
+  }
+
   private _dbPath: string | undefined;
   private _heartbeatConfig: ServerHeartbeatConfig | undefined;
   private _scheduleEngineConfig: ServerOptions['config']['scheduleEngine'];
@@ -486,10 +501,21 @@ export function createServer(options: ServerOptions): Server {
     dbPath ? { path: dbPath.replace(/\/hive\.db$/, '') } : undefined,
   );
 
+  // 阶段 1: 同步探测基础环境信息，注入到 Agent 的 system prompt
+  const environmentContext = probeEnvironment();
+
+  // 阶段 2: 异步全量 PATH 扫描，存入 SQLite（不阻塞启动）
+  if (dbPath) {
+    scanEnvironment(dbPath).catch((err: unknown) => {
+      logger.warn(`[server] Phase 2 environment scan failed: ${err instanceof Error ? err.message : err}`);
+    });
+  }
+
   const agent = createAgent({
     externalConfig: options.config.externalConfig,
     sessionConfig: { workspaceManager },
     dbPath,
+    environmentContext,
   });
 
   const server = new ServerImpl(agent, bus, logger, channelContext);

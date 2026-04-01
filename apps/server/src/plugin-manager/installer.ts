@@ -135,7 +135,7 @@ async function installFromNpm(source: PluginSource, targetDir: string): Promise<
     resolvedVersion: pluginInfo.version,
   })
 
-  appendToConfig(source.resolved, templateConfig)
+  appendToConfig(source.targetName, templateConfig)
 
   return { success: true, name: source.targetName, packageName: source.resolved, version: pluginInfo.version }
 }
@@ -274,8 +274,9 @@ function tryParsePkgJson(pkgPath: string): { version: string; description?: stri
 
 /**
  * 将插件添加到 hive.config.json（原子写入）
+ * 使用 hive.id（即 targetName）作为 config key
  */
-function appendToConfig(pluginName: string, templateConfig?: Record<string, unknown>): void {
+function appendToConfig(pluginId: string, templateConfig?: Record<string, unknown>): void {
   if (!existsSync(CONFIG_PATH)) return
 
   try {
@@ -284,8 +285,8 @@ function appendToConfig(pluginName: string, templateConfig?: Record<string, unkn
     if (!config.plugins) {
       config.plugins = {}
     }
-    if (!(pluginName in config.plugins)) {
-      config.plugins[pluginName] = templateConfig ?? {}
+    if (!(pluginId in config.plugins)) {
+      config.plugins[pluginId] = templateConfig ?? {}
       atomicWriteJSON(CONFIG_PATH, config)
     }
   } catch {

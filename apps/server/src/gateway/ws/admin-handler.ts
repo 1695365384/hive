@@ -17,7 +17,7 @@ import type { Server as HttpServer } from 'node:http'
 import type { ServerConfig, LogEntry } from './data-types.js'
 import { LogBuffer } from './log-buffer.js'
 import type { HiveLogger } from '../../logging/hive-logger.js'
-import type { Server, IPlugin } from '@bundy-lmw/hive-core'
+import type { Server } from '@bundy-lmw/hive-core'
 import type { HandlerContext, AdminClient, MethodHandler } from './handler-context.js'
 import { ConfigStore } from './config-store.js'
 import {
@@ -81,10 +81,6 @@ export class AdminWsHandler extends EventEmitter {
 
   setHttpServer(httpServer: HttpServer): void {
     this.statusHandler.setHttpServer(httpServer)
-  }
-
-  setPlugins(plugins: IPlugin[]): void {
-    this.pluginHandler.setPlugins(plugins)
   }
 
   getHiveLogger(): HiveLogger | null {
