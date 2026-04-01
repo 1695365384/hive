@@ -216,7 +216,7 @@ export class PluginHandler extends WsDomainHandler {
 
     try {
       // Swap 模式：先创建新实例，成功后再销毁旧实例
-      const newPlugin = await this.createPluginInstance(entry, config, server)
+      const newPlugin = await this.createPluginInstance(pluginId, entry, config, server)
       await newPlugin.initialize(
         server.bus,
         server.logger,
@@ -237,56 +237,23 @@ export class PluginHandler extends WsDomainHandler {
 
   /** 从 registry entry 创建插件实例 */
   private async createPluginInstance(
+    pluginId: string,
     entry: { source: string },
     config: Record<string, unknown>,
-    server: ReturnType<HandlerContext['getServer']>,
+    _server: ReturnType<HandlerContext['getServer']>,
   ): Promise<IPlugin> {
-    if (entry.source.startsWith('npm:')) {
-      const npmPkg = entry.source.replace(/^npm:/, '').replace(/@[\d.]+$/, '')
-      const mod = await import(npmPkg)
-      const PluginClass = mod.default
-      return new PluginClass(config) as IPlugin
+    // 所有来源（npm/local/git）统一通过 scanPluginDir 获取 manifest，
+    // 然后用文件路径 import，避免 SEA 环境下 import(npmPkg) 无法解析。
+    const { scanPluginDir } = await import('../../../plugins.js')
+    const manifests = scanPluginDir()
+    const target = manifests.find(m => m.id === pluginId)
+
+    if (target) {
+      const entryUrl = pathToFileURL(target.entry).href
+      const mod = await import(entryUrl)
+      return new (mod.default)(config) as IPlugin
     }
 
-    // local / git 安装的插件：通过 registry key 定位目录下的 node_modules
-    const { PLUGINS_DIR } = await import('../../../plugin-manager/constants.js')
-    const { resolve } = await import('node:path')
-    const { existsSync, readdirSync } = await import('node:fs')
-    const pluginDir = resolve(PLUGINS_DIR, entry.source.replace(/^(local|git):/, ''))
-
-    // 尝试从 node_modules 找入口
-    const nmDir = resolve(pluginDir, 'node_modules')
-    if (existsSync(nmDir)) {
-      const entries = readdirSync(nmDir, { withFileTypes: true })
-      for (const nmEntry of entries) {
-        if (!nmEntry.isDirectory()) continue
-        const pkgJsonPath = resolve(nmDir, nmEntry.name, 'package.json')
-        if (existsSync(pkgJsonPath)) {
-          const { readFileSync } = await import('node:fs')
-          const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'))
-          if (pkg.hive?.plugin) {
-            const entryFile = pkg.hive.entry ?? 'dist/index.js'
-            const entryUrl = pathToFileURL(resolve(nmDir, nmEntry.name, entryFile)).href
-            const mod = await import(entryUrl)
-            return new (mod.default)(config) as IPlugin
-          }
-        }
-      }
-    }
-
-    // 回退：直接目录
-    const pkgJsonPath = resolve(pluginDir, 'package.json')
-    if (existsSync(pkgJsonPath)) {
-      const { readFileSync } = await import('node:fs')
-      const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'))
-      if (pkg.hive?.plugin) {
-        const entryFile = pkg.hive.entry ?? 'dist/index.js'
-        const entryUrl = pathToFileURL(resolve(pluginDir, entryFile)).href
-        const mod = await import(entryUrl)
-        return new (mod.default)(config) as IPlugin
-      }
-    }
-
-    throw new Error(`Cannot resolve plugin entry for: ${entry.source}`)
+    throw new Error(`Cannot resolve plugin entry for: ${pluginId} (${entry.source})`)
   }
 }
