@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+          - os: macos-13
+            arch: x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - name: Build core
+        run: pnpm --filter @bundy-lmw/hive-core build
+
+      - name: Build server
+        run: pnpm --filter @bundy-lmw/hive-server build
+
+      - name: Bundle server (SEA)
+        run: bash apps/server/scripts/bundle.sh
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Hive ${{ github.ref_name }}'
+          releaseBody: |
+            ## Hive ${{ github.ref_name }}
+
+            ### macOS 安装说明
+
+            如果双击安装包提示"已损坏"，请：
+            1. 右键点击 Hive.app → 选择"打开"
+            2. 在弹出的对话框中点击"打开"
+
+            或终端执行：
+            ```bash
+            xattr -cr /Applications/Hive.app
+            ```
+          releaseDraft: true
+          prerelease: false
