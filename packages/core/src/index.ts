@@ -498,6 +498,7 @@ export type {
 
 export {
   probeEnvironment,
+  scanEnvironment,
 } from './environment/index.js';
 
 export type {

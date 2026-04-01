@@ -59,4 +59,6 @@ export interface Server {
   stop(): Promise<void>;
   getChannel(id: string): IChannel | undefined;
   registerChannel(channel: IChannel): void;
+  getPlugin(id: string): IPlugin | undefined;
+  replacePlugin(id: string, plugin: IPlugin): void;
 }

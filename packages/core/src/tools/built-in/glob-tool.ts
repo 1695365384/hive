@@ -84,9 +84,9 @@ function matchGlobPart(name: string, pattern: string): boolean {
 
 /** Glob 工具输入 schema */
 const globInputSchema = z.object({
-  pattern: z.string().describe('Glob 模式，如 "**/*.ts"、"src/**/*.py"'),
-  path: z.string().optional().describe('搜索的根目录，默认为当前工作目录'),
-  maxResults: z.number().max(1000).optional().describe('最大返回结果数，默认 100'),
+  pattern: z.string().describe('Glob pattern, e.g. "**/*.ts", "src/**/*.py"'),
+  path: z.string().optional().describe('Root directory to search in, defaults to working directory'),
+  maxResults: z.number().max(1000).optional().describe('Max number of results to return, default 100'),
 });
 
 export type GlobToolInput = z.infer<typeof globInputSchema>;
@@ -98,7 +98,7 @@ export type GlobToolInput = z.infer<typeof globInputSchema>;
  */
 export function createRawGlobTool(): RawTool<GlobToolInput> {
   return {
-    description: '按文件名模式搜索文件路径。支持 *（匹配任意字符）和 **（匹配目录层级）。返回匹配的文件路径列表。',
+    description: 'Search file paths by name pattern. Supports * (match any chars) and ** (match directory levels). Returns matching file paths.',
     inputSchema: zodSchema(globInputSchema),
     execute: async ({ pattern, path: searchPath, maxResults }): Promise<ToolResult> => {
       const max = maxResults ?? 100;
@@ -106,7 +106,7 @@ export function createRawGlobTool(): RawTool<GlobToolInput> {
 
       // 路径约束检查
       if (!isPathAllowed(dir)) {
-        return { ok: false, code: 'PATH_BLOCKED', error: `搜索路径不在允许的工作目录内: ${dir}`, context: { path: dir } };
+        return { ok: false, code: 'PATH_BLOCKED', error: `Search path is outside the allowed working directory: ${dir}`, context: { path: dir } };
       }
 
       try {
@@ -127,13 +127,13 @@ export function createRawGlobTool(): RawTool<GlobToolInput> {
         const sortedFiles = withStats.map(f => f.path);
 
         if (sortedFiles.length === 0) {
-          return { ok: true, code: 'OK', data: `未找到匹配 "${pattern}" 的文件` };
+          return { ok: true, code: 'OK', data: `No files found matching "${pattern}"` };
         }
 
         let output: string;
         if (sortedFiles.length > max) {
           const display = sortedFiles.slice(0, max);
-          output = display.join('\n') + `\n\n[共 ${withStats.length} 个匹配，已截断显示前 ${max} 个]`;
+          output = display.join('\n') + `\n\n[${withStats.length} matches total, showing first ${max}]`;
         } else {
           output = sortedFiles.join('\n');
         }
@@ -141,7 +141,7 @@ export function createRawGlobTool(): RawTool<GlobToolInput> {
         return { ok: true, code: 'OK', data: truncateOutput(output) };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return { ok: false, code: 'EXEC_ERROR', error: `搜索失败: ${msg}` };
+        return { ok: false, code: 'EXEC_ERROR', error: `Search failed: ${msg}` };
       }
     },
   };

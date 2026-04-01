@@ -1,7 +1,7 @@
 /**
  * Pipeline 类型定义
  *
- * 子 Agent 管道（explore → plan → general）相关的类型。
+ * 子 Agent 管道（explore → plan → evaluator）相关的类型。
  * 包括阶段结果、压缩配置、动态 prompt 构建上下文。
  */
 

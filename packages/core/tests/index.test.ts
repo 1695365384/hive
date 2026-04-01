@@ -52,16 +52,15 @@ describe('Agent 模块', () => {
     it('should have core agents', () => {
       const coreAgents = getAllAgentNames();
       expect(coreAgents).toContain('explore');
-      expect(coreAgents).toContain('plan');
       expect(coreAgents).toContain('general');
-      expect(coreAgents).toHaveLength(3);
+      expect(coreAgents).toHaveLength(2);
     });
   });
 
   describe('所有 Agent', () => {
     it('should have all agents', () => {
       const allAgents = getAllAgentNames();
-      expect(allAgents.length).toBeGreaterThanOrEqual(3);
+      expect(allAgents.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -83,8 +82,7 @@ describe('Agent 模块', () => {
       expect(runner).toBeDefined();
       expect(typeof runner.execute).toBe('function');
       expect(typeof runner.explore).toBe('function');
-      expect(typeof runner.plan).toBe('function');
-      expect(typeof runner.general).toBe('function');
+      expect(typeof runner.plan).toBe('function'); // deprecated alias
     });
   });
 
