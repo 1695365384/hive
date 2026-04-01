@@ -25,13 +25,13 @@ export function setAskUserCallback(cb: AskUserCallback): void {
 
 /** Ask User 工具输入 schema */
 const askUserInputSchema = z.object({
-  question: z.string().describe('要向用户提出的问题'),
+  question: z.string().describe('The question to ask the user'),
   options: z.array(
     z.object({
-      label: z.string().describe('选项标签'),
-      description: z.string().optional().describe('选项的详细描述'),
+      label: z.string().describe('Option label'),
+      description: z.string().optional().describe('Detailed description of the option'),
     }),
-  ).optional().describe('可选的多选选项列表'),
+  ).optional().describe('Optional list of choices for the user to select from'),
 });
 
 export type AskUserToolInput = z.infer<typeof askUserInputSchema>;
@@ -43,11 +43,11 @@ export type AskUserToolInput = z.infer<typeof askUserInputSchema>;
  */
 export function createRawAskUserTool(): RawTool<AskUserToolInput> {
   return {
-    description: '向用户提出问题以获取澄清信息或让用户做选择。适用于需要用户输入才能继续的场景。',
+    description: 'Ask the user a question to get clarification or let them make a choice. Use when you need user input to proceed.',
     inputSchema: zodSchema(askUserInputSchema),
     execute: async ({ question, options }): Promise<ToolResult> => {
       if (!askUserCallback) {
-        return { ok: false, code: 'PERMISSION', error: '无回调注册，无法向用户提问', context: { reason: '无回调注册' } };
+        return { ok: false, code: 'PERMISSION', error: 'No callback registered, cannot ask user', context: { reason: 'No callback registered' } };
       }
 
       try {
@@ -55,7 +55,7 @@ export function createRawAskUserTool(): RawTool<AskUserToolInput> {
         return { ok: true, code: 'OK', data: answer };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return { ok: false, code: 'EXEC_ERROR', error: `获取用户回答失败: ${msg}` };
+        return { ok: false, code: 'EXEC_ERROR', error: `Failed to get user response: ${msg}` };
       }
     },
   };

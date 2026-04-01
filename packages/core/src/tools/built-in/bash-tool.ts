@@ -22,8 +22,8 @@ export interface BashToolOptions {
 
 /** Bash 工具输入 schema */
 const bashInputSchema = z.object({
-  command: z.string().describe('要执行的 shell 命令'),
-  timeout: z.number().min(1000).max(600000).optional().describe('超时时间（毫秒），默认 120000（2 分钟），范围 1000-600000'),
+  command: z.string().describe('Shell command to execute'),
+  timeout: z.number().min(1000).max(600000).optional().describe('Timeout in milliseconds, default 120000 (2 min), range 1000-600000'),
 });
 
 export type BashToolInput = z.infer<typeof bashInputSchema>;
@@ -35,7 +35,7 @@ export type BashToolInput = z.infer<typeof bashInputSchema>;
  */
 export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolInput> {
   return {
-    description: '在 shell 中执行命令。用于运行脚本、git 操作、构建项目等。返回 stdout 和 stderr 的合并输出。',
+    description: 'Execute commands in a shell. For running scripts, git operations, building projects, etc. Returns merged stdout and stderr output.',
     inputSchema: zodSchema(bashInputSchema),
     execute: async ({ command, timeout }): Promise<ToolResult> => {
       // 权限检查
@@ -43,7 +43,7 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
         return {
           ok: false,
           code: 'PERMISSION',
-          error: '当前 Agent 无权限执行 shell 命令',
+          error: 'Current agent does not have permission to execute shell commands',
         };
       }
 
@@ -53,7 +53,7 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
         return {
           ok: false,
           code: 'DANGEROUS_CMD',
-          error: `阻止危险命令: ${danger.description}\n命令: ${command}`,
+          error: `Dangerous command blocked: ${danger.description}\nCommand: ${command}`,
           context: { command, description: danger.description },
         };
       }
@@ -63,7 +63,7 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
         return {
           ok: false,
           code: 'COMMAND_BLOCKED',
-          error: `命令被策略阻止: ${command.split(/\s+/)[0]}`,
+          error: `Command blocked by policy: ${command.split(/\s+/)[0]}`,
           context: { command },
         };
       }
@@ -80,15 +80,15 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
             if (error) {
               // 区分超时和其他错误
               if ('killed' in error && error.killed) {
-                const timeoutErr = new Error(`命令超时 (${timeoutMs}ms): ${command}`);
+                const timeoutErr = new Error(`Command timed out (${timeoutMs}ms): ${command}`);
                 (timeoutErr as any).killed = true;
                 reject(timeoutErr);
               } else {
                 // 非零退出码：命令执行失败但未超时
                 const output = (stdout + stderr).trim();
                 const exitMsg = output
-                  ? `命令执行失败 (exit code ${error.code ?? '?'}): ${output}`
-                  : `命令执行失败 (exit code ${error.code ?? '?'}): ${error.message}`;
+                  ? `Command failed (exit code ${error.code ?? '?'}): ${output}`
+                  : `Command failed (exit code ${error.code ?? '?'}): ${error.message}`;
                 const execErr = new Error(exitMsg);
                 (execErr as any).exitCode = error.code;
                 (execErr as any).output = output;
@@ -112,14 +112,14 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
           return {
             ok: false,
             code: 'TIMEOUT',
-            error: `命令超时 (${timeoutMs}ms): ${command}`,
+            error: `Command timed out (${timeoutMs}ms): ${command}`,
             context: { timeout: timeoutMs, command },
           };
         }
         return {
           ok: false,
           code: 'EXEC_ERROR',
-          error: `命令执行失败: ${msg}`,
+          error: `Command failed: ${msg}`,
           context: { command },
         };
       }
