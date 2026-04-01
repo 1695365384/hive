@@ -62,7 +62,7 @@ describe('createGlobTool', () => {
       pattern: '*.py',
       path: tmpDir,
     }, {} as any);
-    expect(result).toContain('未找到');
+    expect(result).toContain('No files found matching');
     delete process.env.HIVE_WORKING_DIR;
   });
 
@@ -74,7 +74,7 @@ describe('createGlobTool', () => {
       path: tmpDir,
       maxResults: 1,
     }, {} as any);
-    expect(result).toContain('已截断');
+    expect(result).toContain('matches total, showing first');
     delete process.env.HIVE_WORKING_DIR;
   });
 
@@ -85,7 +85,7 @@ describe('createGlobTool', () => {
       path: '/etc',
     }, {} as any);
     expect(result).toContain('[Security]');
-    expect(result).toContain('不在允许的工作目录内');
+    expect(result).toContain('outside the allowed working directory');
   });
 
   it('should cap maxResults above 1000', async () => {
@@ -136,7 +136,7 @@ describe('createGrepTool', () => {
       pattern: 'nonexistent_pattern_xyz',
       path: tmpDir,
     }, {} as any);
-    expect(result).toContain('未找到');
+    expect(result).toContain('No matches found');
   });
 
   it('should support case insensitive search', async () => {

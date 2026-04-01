@@ -75,7 +75,7 @@ describe('BashTool harness integration', () => {
     const output = await pipeline(rawTool, { command: 'ls /nonexistent-path-xyz-12345' }, 'bash-tool');
 
     expect(output).toContain('[Error]');
-    expect(output).toContain('命令执行失败');
+    expect(output).toContain('Command failed');
   });
 
   it('should block dangerous commands with [Security] + [Hint]', async () => {
@@ -83,7 +83,7 @@ describe('BashTool harness integration', () => {
     const output = await pipeline(rawTool, { command: 'rm -rf /' }, 'bash-tool');
 
     expect(output).toContain('[Security]');
-    expect(output).toContain('阻止危险命令');
+    expect(output).toContain('Dangerous command blocked');
     expect(output).toContain('[Hint]');
   });
 
@@ -92,7 +92,7 @@ describe('BashTool harness integration', () => {
     const output = await pipeline(rawTool, { command: 'echo hello' }, 'bash-tool');
 
     expect(output).toContain('[Permission]');
-    expect(output).toContain('无权限');
+    expect(output).toContain('does not have permission');
   });
 });
 
@@ -111,7 +111,7 @@ describe('FileTool harness integration', () => {
     }, 'file-tool');
 
     expect(output).toContain('[OK]');
-    expect(output).toContain('创建');
+    expect(output).toContain('File created');
   });
 
   it('should view file with [OK] and content', async () => {
@@ -156,7 +156,7 @@ describe('FileTool harness integration', () => {
     }, 'file-tool');
 
     expect(output).toContain('[OK]');
-    expect(output).toContain('替换');
+    expect(output).toContain('File updated');
   });
 
   it('should return [Error] + [Hint] with path when match fails', async () => {
@@ -179,7 +179,7 @@ describe('FileTool harness integration', () => {
     }, 'file-tool');
 
     expect(output).toContain('[Error]');
-    expect(output).toContain('未找到');
+    expect(output).toContain('Text to replace not found');
     expect(output).toContain('[Hint]');
     expect(output).toContain(filePath);
   });
@@ -256,7 +256,7 @@ describe('Exception catch-all', () => {
 
     expect(typeof output).toBe('string');
     expect(output).toContain('[Error]');
-    expect(output).toContain('工具内部异常');
+    expect(output).toContain('Internal tool exception');
   });
 
   it('should catch non-Error throw and return [Error]', async () => {
@@ -268,7 +268,7 @@ describe('Exception catch-all', () => {
 
     expect(typeof output).toBe('string');
     expect(output).toContain('[Error]');
-    expect(output).toContain('工具内部异常');
+    expect(output).toContain('Internal tool exception');
   });
 });
 
@@ -295,7 +295,7 @@ describe('FileTool additional coverage', () => {
     }, 'file-tool');
 
     expect(output).toContain('[OK]');
-    expect(output).toContain('插入');
+    expect(output).toContain('inserted after line');
   });
 
   it('should view file with offset and limit', async () => {
@@ -341,7 +341,7 @@ describe('FileTool additional coverage', () => {
     }, 'file-tool');
 
     expect(output).toContain('[Error]');
-    expect(output).toContain('处匹配');
+    expect(output).toContain('matches, cannot determine');
   });
 
   it('should return INVALID_PARAM when insert line out of range', async () => {
@@ -362,7 +362,7 @@ describe('FileTool additional coverage', () => {
     }, 'file-tool');
 
     expect(output).toContain('[Error]');
-    expect(output).toContain('超出范围');
+    expect(output).toContain('is out of range');
     expect(output).toContain('[Hint]');
   });
 
@@ -395,7 +395,7 @@ describe('Serializer additional coverage', () => {
     };
     const output = serializeToolResult(result, customTemplates);
     expect(output).toContain('自定义超时提示');
-    expect(output).not.toContain('建议: 命令执行超时');
+    expect(output).not.toContain('Command timed out');
   });
 
   it('should serialize OK result with null data', () => {
@@ -451,6 +451,6 @@ describe('isAllowedUrl', () => {
   it('should block invalid URLs', () => {
     const result = isAllowedUrl('not-a-url');
     expect(result.allowed).toBe(false);
-    expect(result.reason).toContain('无效');
+    expect(result.reason).toContain('Invalid URL format');
   });
 });
