@@ -21,11 +21,11 @@ const MAX_FILES = 10000;
 
 /** Grep 工具输入 schema */
 const grepInputSchema = z.object({
-  pattern: z.string().describe('正则表达式搜索模式'),
-  path: z.string().optional().describe('搜索的目录，默认为当前工作目录'),
-  glob: z.string().optional().describe('文件类型过滤，如 "*.ts"、"*.tsx"，默认搜索所有文件'),
-  maxResults: z.number().max(1000).optional().describe('最大返回结果数，默认 50'),
-  caseInsensitive: z.boolean().optional().describe('是否忽略大小写，默认 false'),
+  pattern: z.string().describe('Regex search pattern'),
+  path: z.string().optional().describe('Directory to search in, defaults to working directory'),
+  glob: z.string().optional().describe('File type filter, e.g. "*.ts", "*.tsx". Defaults to all files'),
+  maxResults: z.number().max(1000).optional().describe('Max number of results to return, default 50'),
+  caseInsensitive: z.boolean().optional().describe('Case insensitive search, default false'),
 });
 
 export type GrepToolInput = z.infer<typeof grepInputSchema>;
@@ -88,7 +88,7 @@ async function collectFiles(dir: string, depth: number): Promise<string[]> {
  */
 export function createRawGrepTool(): RawTool<GrepToolInput> {
   return {
-    description: '使用正则表达式搜索文件内容。返回匹配的文件路径、行号和匹配行。',
+    description: 'Search file contents using regex. Returns matching file paths, line numbers, and matched lines.',
     inputSchema: zodSchema(grepInputSchema),
     execute: async ({ pattern, path: searchPath, glob: globFilter, maxResults, caseInsensitive }): Promise<ToolResult> => {
       const max = maxResults ?? 50;
@@ -96,7 +96,7 @@ export function createRawGrepTool(): RawTool<GrepToolInput> {
 
       // 路径约束检查
       if (!isPathAllowed(dir)) {
-        return { ok: false, code: 'PATH_BLOCKED', error: `搜索路径不在允许的工作目录内: ${dir}`, context: { path: dir } };
+        return { ok: false, code: 'PATH_BLOCKED', error: `Search path is outside the allowed working directory: ${dir}`, context: { path: dir } };
       }
 
       // 正则表达式校验
@@ -105,7 +105,7 @@ export function createRawGrepTool(): RawTool<GrepToolInput> {
         regex = new RegExp(pattern, caseInsensitive ? 'i' : '');
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return { ok: false, code: 'INVALID_PARAM', error: `正则表达式无效: ${msg}`, context: { pattern } };
+        return { ok: false, code: 'INVALID_PARAM', error: `Invalid regex: ${msg}`, context: { pattern } };
       }
 
       try {
@@ -135,7 +135,7 @@ export function createRawGrepTool(): RawTool<GrepToolInput> {
         }
 
         if (results.length === 0) {
-          return { ok: true, code: 'OK', data: `未找到匹配 "${pattern}" 的内容` };
+          return { ok: true, code: 'OK', data: `No matches found for "${pattern}"` };
         }
 
         const display = results.slice(0, max);
@@ -143,13 +143,13 @@ export function createRawGrepTool(): RawTool<GrepToolInput> {
 
         const output = formatted.join('\n');
         if (results.length > max) {
-          return { ok: true, code: 'OK', data: truncateOutput(output + `\n\n[共 ${results.length} 个匹配，已截断显示前 ${max} 个]`) };
+          return { ok: true, code: 'OK', data: truncateOutput(output + `\n\n[${results.length} matches total, showing first ${max}]`) };
         }
 
         return { ok: true, code: 'OK', data: truncateOutput(output) };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return { ok: false, code: 'EXEC_ERROR', error: `搜索失败: ${msg}` };
+        return { ok: false, code: 'EXEC_ERROR', error: `Search failed: ${msg}` };
       }
     },
   };

@@ -59,7 +59,7 @@ describe('createWebSearchTool', () => {
     const tool = createWebSearchTool();
     const result = await tool.execute!({ query: 'xyznonexistent', engine: 'duckDuckGo' }, {} as any);
 
-    expect(result).toContain('未找到');
+    expect(result).toContain('No search results found');
   });
 
   it('should handle HTTP errors', async () => {
@@ -101,7 +101,7 @@ describe('createWebSearchTool', () => {
 
     expect(result).toContain('Result 0');
     expect(result).toContain('Result 4');
-    expect(result).toContain('已截断');
+    expect(result).toContain('results total, showing first');
   });
 
   it('should cap maxResults above 20', async () => {
@@ -153,13 +153,13 @@ describe('createWebFetchTool', () => {
   it('should reject non-https URLs', async () => {
     const tool = createWebFetchTool();
     const httpResult = await tool.execute!({ url: 'http://example.com' }, {} as any);
-    expect(httpResult).toContain('不允许的 URL scheme');
+    expect(httpResult).toContain('URL scheme not allowed');
 
     const fileResult = await tool.execute!({ url: 'file:///etc/passwd' }, {} as any);
-    expect(fileResult).toContain('不允许的 URL scheme');
+    expect(fileResult).toContain('URL scheme not allowed');
 
     const ftpResult = await tool.execute!({ url: 'ftp://example.com' }, {} as any);
-    expect(ftpResult).toContain('不允许的 URL scheme');
+    expect(ftpResult).toContain('URL scheme not allowed');
   });
 
   it('should block private IP addresses (SSRF protection)', async () => {
@@ -169,7 +169,7 @@ describe('createWebFetchTool', () => {
     const result = await tool.execute!({ url: 'https://internal.corp' }, {} as any);
 
     expect(result).toContain('[Security]');
-    expect(result).toContain('内网地址');
+    expect(result).toContain('private network address denied');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -210,7 +210,7 @@ describe('createWebFetchTool', () => {
     }, {} as any);
 
     expect((result as string).length).toBeLessThan(50000);
-    expect(result).toContain('[输出已截断');
+    expect(result).toContain('[Output truncated');
   });
 
   it('should cap maxChars above 100000', async () => {
@@ -254,7 +254,7 @@ describe('createWebFetchTool', () => {
     const result = await tool.execute!({ url: 'https://example.com/empty' }, {} as any);
 
     expect(result).toContain('[Error]');
-    expect(result).toContain('空');
+    expect(result).toContain('Page content is empty');
   });
 
   it('should handle network errors', async () => {

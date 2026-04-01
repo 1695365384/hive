@@ -54,7 +54,7 @@ export function withHarness<TInput = any>(
       // 3. 异常兜底 — 确保永远返回 string
       const msg = error instanceof Error ? error.message : String(error);
       console.error('[harness] 工具内部异常:', error);
-      return `[Error] 工具内部异常: ${msg}`;
+      return `[Error] Internal tool exception: ${msg}`;
     }
   };
 
