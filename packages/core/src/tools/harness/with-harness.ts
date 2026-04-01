@@ -9,7 +9,7 @@ import { tool, type Tool } from 'ai';
 import type { ToolResult, HarnessConfig, HintTemplateMap } from './types.js';
 import { retryWithBackoff } from './retry.js';
 import { serializeToolResult } from './serializer.js';
-import { getAllHintTemplates } from './hint-registry.js';
+import { getAllHintTemplates, getToolHintTemplates } from './hint-registry.js';
 
 /**
  * RawTool 类型 — execute 返回 ToolResult
@@ -32,8 +32,11 @@ export function withHarness<TInput = any>(
   rawTool: RawTool<TInput>,
   config?: HarnessConfig,
 ): Tool<TInput, string> {
+  // 合并 hint 模板：全局 < 工具级 < 自定义
+  const toolTemplates = config?.toolName ? getToolHintTemplates(config.toolName) : {};
   const mergedTemplates: HintTemplateMap = {
     ...getAllHintTemplates(),
+    ...toolTemplates,
     ...config?.hintTemplates,
   };
 
@@ -46,7 +49,7 @@ export function withHarness<TInput = any>(
       );
 
       // 2. 序列化为 string（内部处理 hint injection）
-      return serializeToolResult(result, mergedTemplates);
+      return serializeToolResult(result, mergedTemplates, config?.toolName);
     } catch (error) {
       // 3. 异常兜底 — 确保永远返回 string
       const msg = error instanceof Error ? error.message : String(error);

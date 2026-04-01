@@ -84,7 +84,15 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
                 (timeoutErr as any).killed = true;
                 reject(timeoutErr);
               } else {
-                resolve(stdout + stderr);
+                // 非零退出码：命令执行失败但未超时
+                const output = (stdout + stderr).trim();
+                const exitMsg = output
+                  ? `命令执行失败 (exit code ${error.code ?? '?'}): ${output}`
+                  : `命令执行失败 (exit code ${error.code ?? '?'}): ${error.message}`;
+                const execErr = new Error(exitMsg);
+                (execErr as any).exitCode = error.code;
+                (execErr as any).output = output;
+                reject(execErr);
               }
             } else {
               resolve(stdout + stderr);
@@ -125,7 +133,7 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
  * 内部使用 createRawBashTool + withHarness 包装。
  */
 export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, string> {
-  return withHarness(createRawBashTool(options));
+  return withHarness(createRawBashTool(options), { toolName: 'bash-tool' });
 }
 
 /** 默认 Bash 工具实例（全权限） */

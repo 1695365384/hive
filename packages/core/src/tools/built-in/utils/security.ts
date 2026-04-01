@@ -5,7 +5,8 @@
  * 包含：危险命令检查、敏感文件检查、路径约束、SSRF 防护、命令策略校验。
  */
 
-import { resolve, isAbsolute, relative } from 'node:path';
+import { resolve, isAbsolute, relative, basename } from 'node:path';
+import dns from 'node:dns';
 
 // ============================================
 // 常量
@@ -51,14 +52,16 @@ interface SensitivePattern {
 }
 
 const SENSITIVE_FILES: SensitivePattern[] = [
-  { pattern: /\.env(\.|$)/, description: '环境变量文件', allowRead: false, allowWrite: false },
+  // 基于文件名的模式（使用 basename 匹配，避免路径片段误匹配）
+  { pattern: /^\.env(\.|$)/, description: '环境变量文件', allowRead: false, allowWrite: false },
+  { pattern: /^id_rsa(\.|$)/, description: 'SSH 私钥', allowRead: false, allowWrite: false },
+  { pattern: /^id_ed25519(\.|$)/, description: 'ED25519 私钥', allowRead: false, allowWrite: false },
+  { pattern: /\.pem$/i, description: 'PEM 证书', allowRead: false, allowWrite: false },
+  { pattern: /\.key$/i, description: '密钥文件', allowRead: false, allowWrite: false },
+  { pattern: /^credentials(\.\w+)?\.json$/i, description: '凭证文件', allowRead: false, allowWrite: false },
+  { pattern: /^secret(s)?\.(json|yaml|yml)$/i, description: '机密配置', allowRead: false, allowWrite: false },
+  // 基于路径的模式（检查完整路径）
   { pattern: /\/\.ssh\//, description: 'SSH 密钥目录', allowRead: false, allowWrite: false },
-  { pattern: /id_rsa(\.|$)/, description: 'SSH 私钥', allowRead: false, allowWrite: false },
-  { pattern: /id_ed25519(\.|$)/, description: 'ED25519 私钥', allowRead: false, allowWrite: false },
-  { pattern: /\.pem(\.|$)/, description: 'PEM 证书', allowRead: false, allowWrite: false },
-  { pattern: /\.key(\.|$)/, description: '密钥文件', allowRead: false, allowWrite: false },
-  { pattern: /credentials\.json$/, description: '凭证文件', allowRead: false, allowWrite: false },
-  { pattern: /secrets?\.(json|yaml|yml)$/, description: '机密配置', allowRead: false, allowWrite: false },
   { pattern: /\/etc\/passwd$/, description: '系统密码文件', allowRead: false, allowWrite: false },
   { pattern: /\/etc\/shadow$/, description: '系统影子密码文件', allowRead: false, allowWrite: false },
 ];
@@ -111,17 +114,49 @@ export function isPathAllowed(filePath: string): boolean {
 // ============================================
 
 /**
+ * 检查 IP 地址是否为私网/保留地址
+ *
+ * 覆盖范围：RFC 1918 私网、loopback、link-local、IPv6 本地。
+ */
+function isPrivateAddress(ip: string): boolean {
+  // IPv4
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(ip)) return true;
+  if (/^127\./.test(ip)) return true;
+  if (/^169\.254\./.test(ip)) return true;
+  if (/^0\./.test(ip)) return true;
+  if (/^22[4-9]\./.test(ip) || /^23[0-9]\./.test(ip)) return true; // 224.0.0.0/4 组播/保留
+
+  // IPv6
+  if (ip === '::1' || ip === '::') return true;
+  if (/^fe80:/i.test(ip)) return true;   // link-local
+  if (/^fc00:/i.test(ip) || /^fd00:/i.test(ip)) return true; // ULA
+
+  return false;
+}
+
+/**
  * 检查 hostname 是否解析到私有 IP
  *
- * TODO: 当前策略不基于私网地址做拦截，统一返回 false。
- * 应实现 RFC 1918 范围检测（10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16）及 loopback。
+ * 通过 DNS 解析 hostname，检查所有解析结果是否为私网地址。
  */
-export async function isPrivateIP(
-  hostname: string,
-  _resolvers?: unknown,
-): Promise<boolean> {
-  void hostname;
-  return false;
+export async function isPrivateIP(hostname: string): Promise<boolean> {
+  try {
+    const addresses = await dns.promises.resolve4(hostname);
+    return addresses.some(addr => isPrivateAddress(addr));
+  } catch {
+    // DNS 解析失败（如非域名），检查是否为 IP 字面量
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+      return isPrivateAddress(hostname);
+    }
+    // IPv6 字面量检查
+    if (/^::1$/.test(hostname) || /^::$/.test(hostname)) {
+      return true;
+    }
+    if (/^fe80:/i.test(hostname) || /^fc00:/i.test(hostname) || /^fd00:/i.test(hostname)) {
+      return true;
+    }
+    return false;
+  }
 }
 
 /**
@@ -182,11 +217,19 @@ export function isDangerousCommand(command: string): { dangerous: boolean; descr
  * 检查文件路径是否敏感
  */
 export function isSensitiveFile(filePath: string, operation: 'read' | 'write'): { sensitive: boolean; description?: string } {
-  const match = SENSITIVE_FILES.find(p => p.pattern.test(filePath));
-  if (match) {
-    const allowed = operation === 'read' ? match.allowRead : match.allowWrite;
-    if (!allowed) {
-      return { sensitive: true, description: match.description };
+  const fileName = basename(filePath);
+
+  for (const p of SENSITIVE_FILES) {
+    // 路径级模式（包含 /）用完整路径匹配
+    // 文件名级模式（以 ^ 或 \. 开头/结尾）用 basename 匹配
+    const isPathPattern = p.pattern.source.includes('/');
+    const target = isPathPattern ? filePath : fileName;
+
+    if (p.pattern.test(target)) {
+      const allowed = operation === 'read' ? p.allowRead : p.allowWrite;
+      if (!allowed) {
+        return { sensitive: true, description: p.description };
+      }
     }
   }
   return { sensitive: false };

@@ -5,9 +5,11 @@
  * 免费搜索，无需 API key。
  */
 
-import { tool, zodSchema, type Tool } from 'ai';
+import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
+import type { ToolResult } from '../harness/types.js';
+import { withHarness, type RawTool } from '../harness/with-harness.js';
 
 interface SearchResult {
   title: string;
@@ -48,13 +50,15 @@ const webSearchInputSchema = z.object({
 export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
 
 /**
- * 创建 Web Search 工具
+ * 创建 Web Search rawTool（execute → ToolResult）
+ *
+ * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
  */
-export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
-  return tool({
+export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
+  return {
     description: '搜索网页获取最新信息。使用 DuckDuckGo 搜索引擎，返回标题、URL 和摘要。搜索结果可能不包含最新内容，建议结合 web-fetch 工具获取完整页面内容。',
     inputSchema: zodSchema(webSearchInputSchema),
-    execute: async ({ query, maxResults }): Promise<string> => {
+    execute: async ({ query, maxResults }): Promise<ToolResult> => {
       try {
         const encoded = encodeURIComponent(query);
         const url = `https://lite.duckduckgo.com/lite/?q=${encoded}`;
@@ -68,14 +72,14 @@ export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
         });
 
         if (!response.ok) {
-          return `[Error] 搜索请求失败 (HTTP ${response.status})`;
+          return { ok: false, code: 'NETWORK', error: `搜索请求失败 (HTTP ${response.status})`, context: { status: String(response.status) } };
         }
 
         const html = await response.text();
         const results = await parseDuckDuckGoLite(html);
 
         if (results.length === 0) {
-          return `未找到 "${query}" 的搜索结果`;
+          return { ok: true, code: 'OK', data: `未找到 "${query}" 的搜索结果` };
         }
 
         const max = Math.min(maxResults ?? MAX_SEARCH_RESULTS, MAX_SEARCH_RESULTS);
@@ -88,13 +92,26 @@ export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
           ? `\n\n[共 ${results.length} 个结果，已截断显示前 ${max} 个]`
           : '';
 
-        return truncateOutput(output + suffix);
+        return { ok: true, code: 'OK', data: truncateOutput(output + suffix) };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return `[Error] 搜索失败: ${msg}`;
+        const isNetwork = /timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
+        if (isNetwork) {
+          return { ok: false, code: 'NETWORK', error: `搜索失败: ${msg}` };
+        }
+        return { ok: false, code: 'EXEC_ERROR', error: `搜索失败: ${msg}` };
       }
     },
-  });
+  };
+}
+
+/**
+ * 创建 Web Search 工具（AI SDK 兼容，execute → string）
+ *
+ * 内部使用 createRawWebSearchTool + withHarness 包装。
+ */
+export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
+  return withHarness(createRawWebSearchTool(), { maxRetries: 2, baseDelay: 500, toolName: 'web-search-tool' });
 }
 
 export const webSearchTool = createWebSearchTool();

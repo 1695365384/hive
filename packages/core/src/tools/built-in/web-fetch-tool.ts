@@ -6,12 +6,14 @@
  * 内置 SSRF 防护：仅允许 HTTPS，拒绝内网 IP。
  */
 
-import { tool, zodSchema, type Tool } from 'ai';
+import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import * as cheerio from 'cheerio';
 import TurndownService from 'turndown';
 import { truncateOutput } from './utils/output-safety.js';
 import { isAllowedUrl, isPrivateIP } from './utils/security.js';
+import type { ToolResult } from '../harness/types.js';
+import { withHarness, type RawTool } from '../harness/with-harness.js';
 
 const turndown = new TurndownService({
   headingStyle: 'atx',
@@ -35,25 +37,27 @@ const webFetchInputSchema = z.object({
 export type WebFetchToolInput = z.infer<typeof webFetchInputSchema>;
 
 /**
- * 创建 Web Fetch 工具
+ * 创建 Web Fetch rawTool（execute → ToolResult）
+ *
+ * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
  */
-export function createWebFetchTool(): Tool<WebFetchToolInput, string> {
-  return tool({
+export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
+  return {
     description: '获取指定 URL 的网页内容并转换为 Markdown 格式。自动去除导航、广告等噪音元素。适用于抓取文档页面、博客文章等。仅允许 HTTPS URL。',
     inputSchema: zodSchema(webFetchInputSchema),
-    execute: async ({ url, maxChars }): Promise<string> => {
+    execute: async ({ url, maxChars }): Promise<ToolResult> => {
       try {
         // URL scheme 校验
         const urlCheck = isAllowedUrl(url);
         if (!urlCheck.allowed) {
-          return `[Security] ${urlCheck.reason}`;
+          return { ok: false, code: 'INVALID_PARAM', error: urlCheck.reason, context: { url } };
         }
 
         // SSRF 检查：拒绝内网 IP
         const hostname = new URL(url).hostname;
         const privateCheck = await isPrivateIP(hostname);
         if (privateCheck) {
-          return `[Security] 拒绝访问内网地址: ${hostname}`;
+          return { ok: false, code: 'PATH_BLOCKED', error: `拒绝访问内网地址: ${hostname}` };
         }
 
         const response = await fetch(url, {
@@ -65,7 +69,7 @@ export function createWebFetchTool(): Tool<WebFetchToolInput, string> {
         });
 
         if (!response.ok) {
-          return `[Error] 请求失败 (HTTP ${response.status})`;
+          return { ok: false, code: 'NETWORK', error: `请求失败 (HTTP ${response.status})`, context: { status: String(response.status) } };
         }
 
         const html = await response.text();
@@ -81,16 +85,29 @@ export function createWebFetchTool(): Tool<WebFetchToolInput, string> {
         const markdown = turndown.turndown(bodyHtml);
 
         if (!markdown.trim()) {
-          return `[Error] 页面内容为空`;
+          return { ok: false, code: 'NOT_FOUND', error: '页面内容为空' };
         }
 
-        return truncateOutput(markdown, maxChars);
+        return { ok: true, code: 'OK', data: truncateOutput(markdown, maxChars) };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return `[Error] 抓取失败: ${msg}`;
+        const isNetwork = /timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
+        if (isNetwork) {
+          return { ok: false, code: 'NETWORK', error: `抓取失败: ${msg}` };
+        }
+        return { ok: false, code: 'EXEC_ERROR', error: `抓取失败: ${msg}` };
       }
     },
-  });
+  };
+}
+
+/**
+ * 创建 Web Fetch 工具（AI SDK 兼容，execute → string）
+ *
+ * 内部使用 createRawWebFetchTool + withHarness 包装。
+ */
+export function createWebFetchTool(): Tool<WebFetchToolInput, string> {
+  return withHarness(createRawWebFetchTool(), { maxRetries: 2, baseDelay: 500, toolName: 'web-fetch-tool' });
 }
 
 export const webFetchTool = createWebFetchTool();

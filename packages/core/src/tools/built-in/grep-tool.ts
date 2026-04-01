@@ -7,10 +7,12 @@
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, resolve, extname } from 'node:path';
-import { tool, zodSchema, type Tool } from 'ai';
+import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { isPathAllowed } from './utils/security.js';
 import { truncateOutput } from './utils/output-safety.js';
+import type { ToolResult } from '../harness/types.js';
+import { withHarness, type RawTool } from '../harness/with-harness.js';
 
 /** 最大递归深度 */
 const MAX_DEPTH = 20;
@@ -80,23 +82,33 @@ async function collectFiles(dir: string, depth: number): Promise<string[]> {
 }
 
 /**
- * 创建 Grep 工具
+ * 创建 Grep rawTool（execute → ToolResult）
+ *
+ * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
  */
-export function createGrepTool(): Tool<GrepToolInput, string> {
-  return tool({
+export function createRawGrepTool(): RawTool<GrepToolInput> {
+  return {
     description: '使用正则表达式搜索文件内容。返回匹配的文件路径、行号和匹配行。',
     inputSchema: zodSchema(grepInputSchema),
-    execute: async ({ pattern, path: searchPath, glob: globFilter, maxResults, caseInsensitive }): Promise<string> => {
+    execute: async ({ pattern, path: searchPath, glob: globFilter, maxResults, caseInsensitive }): Promise<ToolResult> => {
       const max = maxResults ?? 50;
       const dir = resolve(searchPath || process.cwd());
 
       // 路径约束检查
       if (!isPathAllowed(dir)) {
-        return `[Security] 搜索路径不在允许的工作目录内: ${dir}`;
+        return { ok: false, code: 'PATH_BLOCKED', error: `搜索路径不在允许的工作目录内: ${dir}`, context: { path: dir } };
+      }
+
+      // 正则表达式校验
+      let regex: RegExp;
+      try {
+        regex = new RegExp(pattern, caseInsensitive ? 'i' : '');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return { ok: false, code: 'INVALID_PARAM', error: `正则表达式无效: ${msg}`, context: { pattern } };
       }
 
       try {
-        const regex = new RegExp(pattern, caseInsensitive ? 'i' : '');
         const files = await collectFiles(dir, 0);
 
         const results: GrepResult[] = [];
@@ -123,7 +135,7 @@ export function createGrepTool(): Tool<GrepToolInput, string> {
         }
 
         if (results.length === 0) {
-          return `未找到匹配 "${pattern}" 的内容`;
+          return { ok: true, code: 'OK', data: `未找到匹配 "${pattern}" 的内容` };
         }
 
         const display = results.slice(0, max);
@@ -131,16 +143,25 @@ export function createGrepTool(): Tool<GrepToolInput, string> {
 
         const output = formatted.join('\n');
         if (results.length > max) {
-          return output + `\n\n[共 ${results.length} 个匹配，已截断显示前 ${max} 个]`;
+          return { ok: true, code: 'OK', data: truncateOutput(output + `\n\n[共 ${results.length} 个匹配，已截断显示前 ${max} 个]`) };
         }
 
-        return truncateOutput(output);
+        return { ok: true, code: 'OK', data: truncateOutput(output) };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return `[Error] 搜索失败: ${msg}`;
+        return { ok: false, code: 'EXEC_ERROR', error: `搜索失败: ${msg}` };
       }
     },
-  });
+  };
+}
+
+/**
+ * 创建 Grep 工具（AI SDK 兼容，execute → string）
+ *
+ * 内部使用 createRawGrepTool + withHarness 包装。
+ */
+export function createGrepTool(): Tool<GrepToolInput, string> {
+  return withHarness(createRawGrepTool(), { toolName: 'grep-tool' });
 }
 
 export const grepTool = createGrepTool();

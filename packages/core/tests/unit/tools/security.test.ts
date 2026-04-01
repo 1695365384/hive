@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import dns from 'node:dns';
 import {
   isPathAllowed,
   isPrivateIP,
@@ -63,54 +64,52 @@ describe('isPathAllowed', () => {
 });
 
 describe('isPrivateIP', () => {
-  const mockResolve4 = vi.fn<[string], Promise<string[]>>();
-  const mockResolve6 = vi.fn<[string], Promise<string[]>>();
-  const resolvers = { resolve4: mockResolve4, resolve6: mockResolve6 };
-
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockResolve4.mockResolvedValue([]);
-    mockResolve6.mockResolvedValue([]);
+    vi.restoreAllMocks();
   });
 
-  it('should not block localhost addresses', async () => {
-    mockResolve4.mockResolvedValue(['127.0.0.1']);
-    expect(await isPrivateIP('localhost', resolvers)).toBe(false);
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it('should not block private RFC1918 ranges', async () => {
-    mockResolve4.mockResolvedValue(['10.0.1.1']);
-    expect(await isPrivateIP('internal.corp', resolvers)).toBe(false);
+  it('should block localhost addresses', async () => {
+    vi.spyOn(dns.promises, 'resolve4').mockResolvedValue(['127.0.0.1']);
+    expect(await isPrivateIP('localhost')).toBe(true);
   });
 
-  it('should not block 172.16.0.0/12', async () => {
-    mockResolve4.mockResolvedValue(['172.20.0.1']);
-    expect(await isPrivateIP('private.host', resolvers)).toBe(false);
+  it('should block private RFC1918 ranges (10.x.x.x)', async () => {
+    vi.spyOn(dns.promises, 'resolve4').mockResolvedValue(['10.0.1.1']);
+    expect(await isPrivateIP('internal.corp')).toBe(true);
   });
 
-  it('should not block 192.168.0.0/16', async () => {
-    mockResolve4.mockResolvedValue(['192.168.1.1']);
-    expect(await isPrivateIP('home.local', resolvers)).toBe(false);
+  it('should block 172.16.0.0/12', async () => {
+    vi.spyOn(dns.promises, 'resolve4').mockResolvedValue(['172.20.0.1']);
+    expect(await isPrivateIP('private.host')).toBe(true);
   });
 
-  it('should not block link-local addresses', async () => {
-    mockResolve4.mockResolvedValue(['169.254.1.1']);
-    expect(await isPrivateIP('link.local', resolvers)).toBe(false);
+  it('should block 192.168.0.0/16', async () => {
+    vi.spyOn(dns.promises, 'resolve4').mockResolvedValue(['192.168.1.1']);
+    expect(await isPrivateIP('home.local')).toBe(true);
   });
 
-  it('should not block loopback IPv6', async () => {
-    mockResolve6.mockResolvedValue(['::1']);
-    expect(await isPrivateIP('localhost6', resolvers)).toBe(false);
+  it('should block link-local addresses', async () => {
+    vi.spyOn(dns.promises, 'resolve4').mockResolvedValue(['169.254.1.1']);
+    expect(await isPrivateIP('link.local')).toBe(true);
+  });
+
+  it('should block IPv6 loopback', async () => {
+    vi.spyOn(dns.promises, 'resolve4').mockRejectedValue(new Error('ENOTFOUND'));
+    expect(await isPrivateIP('::1')).toBe(true);
   });
 
   it('should allow public IPs', async () => {
-    mockResolve4.mockResolvedValue(['93.184.216.34']);
-    expect(await isPrivateIP('example.com', resolvers)).toBe(false);
+    vi.spyOn(dns.promises, 'resolve4').mockResolvedValue(['93.184.216.34']);
+    expect(await isPrivateIP('example.com')).toBe(false);
   });
 
   it('should return false on DNS failure (conservative)', async () => {
-    mockResolve4.mockRejectedValue(new Error('ENOTFOUND'));
-    expect(await isPrivateIP('nonexistent.xyz', resolvers)).toBe(false);
+    vi.spyOn(dns.promises, 'resolve4').mockRejectedValue(new Error('ENOTFOUND'));
+    expect(await isPrivateIP('nonexistent.xyz')).toBe(false);
   });
 });
 

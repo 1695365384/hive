@@ -12,15 +12,17 @@ export type { BashToolOptions } from './bash-tool.js';
 export { createFileTool, createRawFileTool, fileTool, fileToolReadOnly } from './file-tool.js';
 export type { FileToolOptions } from './file-tool.js';
 
-export { createGlobTool, globTool } from './glob-tool.js';
-export { createGrepTool, grepTool } from './grep-tool.js';
-export { createWebSearchTool, webSearchTool } from './web-search-tool.js';
-export { createWebFetchTool, webFetchTool } from './web-fetch-tool.js';
-export { createAskUserTool, askUserTool, setAskUserCallback } from './ask-user-tool.js';
-export type { AskUserCallback } from './ask-user-tool.js';
+export { createGlobTool, createRawGlobTool, globTool } from './glob-tool.js';
+export { createGrepTool, createRawGrepTool, grepTool } from './grep-tool.js';
+export { createWebSearchTool, createRawWebSearchTool, webSearchTool } from './web-search-tool.js';
+export { createWebFetchTool, createRawWebFetchTool, webFetchTool } from './web-fetch-tool.js';
+export { createAskUserTool, createRawAskUserTool, askUserTool, setAskUserCallback } from './ask-user-tool.js';
+export type { AskUserCallback, AskUserToolInput } from './ask-user-tool.js';
 
-export { createSendFileTool, sendFileTool, setSendFileCallback } from './send-file-tool.js';
-export type { SendFileCallback } from './send-file-tool.js';
+export { createSendFileTool, createRawSendFileTool, sendFileTool, setSendFileCallback } from './send-file-tool.js';
+export type { SendFileCallback, SendFileToolInput } from './send-file-tool.js';
+export type { WebFetchToolInput } from './web-fetch-tool.js';
+export type { WebSearchToolInput } from './web-search-tool.js';
 
 // 子 Agent 工具
 export { createSubagentTool, createAllSubagentTools } from './subagent-tools.js';
