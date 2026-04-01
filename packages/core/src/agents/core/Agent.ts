@@ -71,9 +71,10 @@ export class Agent {
       skillConfig,
       sessionConfig,
       timeout: timeoutConfig,
+      environmentContext,
     } = options;
 
-    this._context = new AgentContextImpl({ externalConfig, skillConfig, timeoutConfig });
+    this._context = new AgentContextImpl({ externalConfig, skillConfig, timeoutConfig, environmentContext });
 
     // 创建能力模块
     this.providerCap = new ProviderCapability();

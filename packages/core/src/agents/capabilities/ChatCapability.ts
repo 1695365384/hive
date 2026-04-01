@@ -15,6 +15,8 @@ import type {
 import { TimeoutError } from '../core/types.js';
 import { LLMRuntime } from '../runtime/LLMRuntime.js';
 import type { RuntimeConfig } from '../runtime/types.js';
+import { createDynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
+import type { PromptBuildContext } from '../types/pipeline.js';
 
 /**
  * 对话能力实现
@@ -102,8 +104,28 @@ export class ChatCapability implements AgentCapability {
     // 构建 RuntimeConfig
     // AI SDK 不允许同时传 prompt 和 messages，有历史时追加当前消息到 messages
     const history = options?.messages;
+
+    // Build system prompt: append environment context to existing systemPrompt
+    let systemPrompt = options?.systemPrompt;
+    if (this.context.environmentContext) {
+      const builder = createDynamicPromptBuilder();
+      const envOnly = builder.buildPrompt({
+        task: '',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: this.context.environmentContext,
+      } satisfies PromptBuildContext);
+
+      if (systemPrompt) {
+        // Append environment section to existing prompt
+        systemPrompt = systemPrompt + '\n\n' + envOnly;
+      } else {
+        systemPrompt = envOnly;
+      }
+    }
+
     const runtimeConfig: RuntimeConfig = {
-      system: options?.systemPrompt,
+      system: systemPrompt,
       messages: history && history.length > 0
         ? [...history, { role: 'user', content: prompt }]
         : undefined,
