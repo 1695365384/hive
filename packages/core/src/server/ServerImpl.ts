@@ -363,7 +363,7 @@ class ServerImpl implements Server {
             return { success: false, error: `Channel ${sendChannelId} does not support file sending` };
           }
           try {
-            const result = await channel.send({ to: sendChatId, content: '', filePath });
+            const result = await channel.send({ to: sendChatId, content: '', filePath, type: 'file' });
             return { success: result.success, error: result.error };
           } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };
