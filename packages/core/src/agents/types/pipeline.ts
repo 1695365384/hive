@@ -79,4 +79,6 @@ export interface PromptBuildContext {
   sessionHistory?: Array<{ role: string; content: string }>;
   /** 系统环境信息（可选，注入到 system prompt 中） */
   environmentContext?: EnvironmentContext;
+  /** 定时任务摘要（可选，注入到 schedule awareness section） */
+  scheduleSummary?: string;
 }

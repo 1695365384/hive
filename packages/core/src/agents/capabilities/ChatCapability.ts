@@ -17,6 +17,7 @@ import { LLMRuntime } from '../runtime/LLMRuntime.js';
 import type { RuntimeConfig } from '../runtime/types.js';
 import { createDynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
 import type { PromptBuildContext } from '../types/pipeline.js';
+import { buildScheduleSummary } from './schedule-summary.js';
 
 /**
  * 对话能力实现
@@ -105,7 +106,7 @@ export class ChatCapability implements AgentCapability {
     // AI SDK 不允许同时传 prompt 和 messages，有历史时追加当前消息到 messages
     const history = options?.messages;
 
-    // Build system prompt: append environment context to existing systemPrompt
+    // Build system prompt: append environment context and schedule awareness to existing systemPrompt
     let systemPrompt = options?.systemPrompt;
     if (this.context.environmentContext) {
       const builder = createDynamicPromptBuilder();
@@ -122,6 +123,19 @@ export class ChatCapability implements AgentCapability {
       } else {
         systemPrompt = envOnly;
       }
+    }
+
+    // Inject schedule awareness (independent of environmentContext)
+    const scheduleSummary = await buildScheduleSummary(this.context);
+    if (scheduleSummary) {
+      const builder = createDynamicPromptBuilder();
+      const scheduleOnly = builder.buildPrompt({
+        task: '',
+        priorResults: [],
+        agentType: 'general',
+        scheduleSummary,
+      } satisfies PromptBuildContext);
+      systemPrompt = (systemPrompt ? systemPrompt + '\n\n' : '') + scheduleOnly;
     }
 
     const runtimeConfig: RuntimeConfig = {

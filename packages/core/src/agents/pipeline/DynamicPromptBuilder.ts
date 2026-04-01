@@ -89,6 +89,14 @@ export class DynamicPromptBuilder {
       sections.set('skill', context.skillSection);
     }
 
+    // 6. Schedule awareness section
+    if (context.scheduleSummary !== undefined) {
+      const scheduleSection = this.formatScheduleSection(context.scheduleSummary);
+      if (scheduleSection) {
+        sections.set('schedule', scheduleSection);
+      }
+    }
+
     return sections;
   }
 
@@ -168,6 +176,18 @@ export class DynamicPromptBuilder {
   }
 
   /**
+   * Format schedule awareness section
+   */
+  private formatScheduleSection(scheduleSummary: string): string {
+    try {
+      const template = this.promptTemplate.load('schedule-awareness');
+      return template.replaceAll('{{scheduleSummary}}', scheduleSummary);
+    } catch {
+      return '';
+    }
+  }
+
+  /**
    * Format session history into a prompt section
    */
   private formatSessionHistory(messages: Array<{ role: string; content: string }>): string {
@@ -193,6 +213,7 @@ export class DynamicPromptBuilder {
       history: 1,       // Session history - important for context continuity
       context: 2,       // High priority but can be truncated
       skill: 4,         // Lower priority, can be removed
+      schedule: 4,      // Same as skill, can be removed
     };
 
     // Calculate total size
@@ -240,7 +261,7 @@ export class DynamicPromptBuilder {
    * Join sections into final prompt
    */
   private joinSections(sections: Map<string, string>): string {
-    const order = ['base', 'language', 'task', 'environment', 'history', 'context', 'skill'];
+    const order = ['base', 'language', 'task', 'environment', 'history', 'context', 'skill', 'schedule'];
     const parts: string[] = [];
 
     for (const name of order) {
