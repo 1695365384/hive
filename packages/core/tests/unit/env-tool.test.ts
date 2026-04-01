@@ -72,7 +72,7 @@ describe('env tool', () => {
     await seedDb()
     const result = await tool.execute({ query: 'nonexistent_tool_xyz' })
     expect(result.ok).toBe(true)
-    expect(result.data).toContain('未找到')
+    expect(result.data).toContain('No tools found matching')
   })
 
   it('returns results when no query/category params (matches all)', async () => {
@@ -92,7 +92,7 @@ describe('env tool', () => {
 
     const result = await tool.execute({ query: 'git' })
     expect(result.ok).toBe(true)
-    expect(result.data).toContain('环境探测尚未完成')
+    expect(result.data).toContain('Environment probing not yet complete')
   })
 
   it('returns error when db path not configured', async () => {

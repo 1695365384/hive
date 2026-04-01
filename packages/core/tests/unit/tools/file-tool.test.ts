@@ -64,7 +64,7 @@ describe('createFileTool', () => {
         file_path: '/etc/passwd',
       }, {} as any);
       expect(result).toContain('[Security]');
-      expect(result).toContain('不在允许的工作目录内');
+      expect(result).toContain('File path is outside the allowed working directory');
     });
 
     it('should allow paths within working directory', async () => {
@@ -96,7 +96,7 @@ describe('createFileTool', () => {
         file_path: join(tmpDir, 'nonexistent.txt'),
       }, {} as any);
       expect(result).toContain('[Error]');
-      expect(result).toContain('不存在');
+      expect(result).toContain('File not found');
     });
 
     it('should return friendly error for non-existent str_replace', async () => {
@@ -108,7 +108,7 @@ describe('createFileTool', () => {
         new_str: 'y',
       }, {} as any);
       expect(result).toContain('[Error]');
-      expect(result).toContain('不存在');
+      expect(result).toContain('File not found');
     });
 
     it('should return friendly error for non-existent insert', async () => {
@@ -120,7 +120,7 @@ describe('createFileTool', () => {
         insert_text: 'new line',
       }, {} as any);
       expect(result).toContain('[Error]');
-      expect(result).toContain('不存在');
+      expect(result).toContain('File not found');
     });
   });
 
@@ -196,7 +196,7 @@ describe('createFileTool', () => {
         new_str: 'replacement',
       }, {} as any);
       expect(result).toContain('[Error]');
-      expect(result).toContain('未找到');
+      expect(result).toContain('Text to replace not found');
     });
   });
 
