@@ -10,13 +10,10 @@
     "publish:core": "pnpm --filter @bundy-lmw/hive-core build && cd packages/core && npm version patch --no-git-tag-version && npm publish --access public",
     "publish:feishu": "pnpm --filter @bundy-lmw/hive-plugin-feishu build && cd packages/plugins/feishu && npm version patch --no-git-tag-version && npm publish --access public",
     "publish:server": "pnpm --filter @bundy-lmw/hive-server build && cd apps/server && npm version patch --no-git-tag-version && npm publish --access public",
-    "publish:all": "pnpm publish:core && pnpm publish:server && pnpm publish:feishu",
-    "eval": "promptfoo eval --config eval/promptfooconfig.yaml -o eval/res/output.json",
-    "eval:view": "promptfoo view"
+    "publish:all": "pnpm publish:core && pnpm publish:server && pnpm publish:feishu"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.0",
-    "promptfoo": "^0.121.3",
     "typescript": "^5.3.0"
   },
   "engines": {

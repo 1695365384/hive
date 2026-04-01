@@ -526,6 +526,26 @@ export class FeishuChannel implements IFeishuChannel {
   }
 
   /**
+   * 飞书支持的文件类型映射
+   */
+  private static readonly FILE_TYPE_MAP: Record<string, 'pdf' | 'doc' | 'xls' | 'ppt' | 'mp4' | 'opus' | 'stream'> = {
+    pdf: 'pdf',
+    doc: 'doc', docx: 'doc',
+    xls: 'xls', xlsx: 'xls', csv: 'xls',
+    ppt: 'ppt', pptx: 'ppt',
+    mp4: 'mp4',
+    opus: 'opus',
+    mp3: 'opus', wav: 'opus', flac: 'opus', aac: 'opus',
+  }
+
+  /**
+   * 将文件扩展名映射为飞书支持的 file_type
+   */
+  private mapFileType(ext: string): 'pdf' | 'doc' | 'xls' | 'ppt' | 'mp4' | 'opus' | 'stream' {
+    return FeishuChannel.FILE_TYPE_MAP[ext] ?? 'stream'
+  }
+
+  /**
    * 上传文件到飞书
    *
    * @returns file_key
@@ -541,7 +561,7 @@ export class FeishuChannel implements IFeishuChannel {
 
     const response = await this.client.im.file.create({
       data: {
-        file_type: ext as 'pdf' | 'doc' | 'xls' | 'ppt' | 'mp4' | 'opus' | 'stream',
+        file_type: this.mapFileType(ext),
         file_name: fileName,
         file: fs.readFileSync(absolutePath),
       },
