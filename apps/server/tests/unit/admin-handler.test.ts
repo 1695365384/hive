@@ -32,6 +32,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { searchPlugins, installPlugin, removePlugin } from '../../src/plugin-manager/index.js'
 import { loadRegistry } from '../../src/plugin-manager/registry.js'
 import { AdminWsHandler } from '../../src/gateway/ws/admin-handler.js'
+import { LogBuffer } from '../../src/gateway/ws/log-buffer.js'
 import type { WsRequest } from '../../src/gateway/ws/types.js'
 
 // ============================================
@@ -90,7 +91,8 @@ async function sendAndWait(
  * Helper: setup a handler with a connected WebSocket, return handler + context.
  */
 function setup() {
-  const handler = new AdminWsHandler()
+  const logBuffer = new LogBuffer()
+  const handler = new AdminWsHandler(null, logBuffer)
   const { ws, getSentMessages } = createMockWs()
   handler.handleConnection(ws as any)
   return { handler, ws, getSentMessages }
@@ -809,7 +811,7 @@ describe('AdminWsHandler', () => {
     it('should close all clients and broadcast shutting_down', () => {
       const { ws: ws1 } = createMockWs()
       const { ws: ws2 } = createMockWs()
-      const handler = new AdminWsHandler()
+      const handler = new AdminWsHandler(null, new LogBuffer())
       handler.handleConnection(ws1 as any)
       handler.handleConnection(ws2 as any)
 

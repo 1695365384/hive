@@ -12,7 +12,7 @@ const CLI = 'node dist/cli/index.js';
 const shell = process.platform === 'win32' ? undefined : (process.env.SHELL || '/bin/zsh');
 
 const execOpts = (extra?: Record<string, unknown>) => ({
-  cwd: path.resolve('apps/server'),
+  cwd: path.resolve('.'),
   encoding: 'utf-8' as const,
   shell: shell as any,
   ...extra,
