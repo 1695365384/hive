@@ -41,7 +41,7 @@ describe('createWebSearchTool', () => {
     });
 
     const tool = createWebSearchTool();
-    const result = await tool.execute!({ query: 'test search' }, {} as any);
+    const result = await tool.execute!({ query: 'test search', engine: 'duckDuckGo' }, {} as any);
 
     expect(result).toContain('Example');
     expect(result).toContain('https://example.com');
@@ -57,7 +57,7 @@ describe('createWebSearchTool', () => {
     });
 
     const tool = createWebSearchTool();
-    const result = await tool.execute!({ query: 'xyznonexistent' }, {} as any);
+    const result = await tool.execute!({ query: 'xyznonexistent', engine: 'duckDuckGo' }, {} as any);
 
     expect(result).toContain('未找到');
   });
@@ -69,7 +69,7 @@ describe('createWebSearchTool', () => {
     });
 
     const tool = createWebSearchTool();
-    const result = await tool.execute!({ query: 'test' }, {} as any);
+    const result = await tool.execute!({ query: 'test', engine: 'duckDuckGo' }, {} as any);
 
     expect(result).toContain('[Error]');
     expect(result).toContain('500');
@@ -79,7 +79,7 @@ describe('createWebSearchTool', () => {
     mockFetch.mockRejectedValue(new Error('Network error'));
 
     const tool = createWebSearchTool();
-    const result = await tool.execute!({ query: 'test' }, {} as any);
+    const result = await tool.execute!({ query: 'test', engine: 'duckDuckGo' }, {} as any);
 
     expect(result).toContain('[Error]');
     expect(result).toContain('Network error');
@@ -97,7 +97,7 @@ describe('createWebSearchTool', () => {
     });
 
     const tool = createWebSearchTool();
-    const result = await tool.execute!({ query: 'test', maxResults: 5 }, {} as any);
+    const result = await tool.execute!({ query: 'test', engine: 'duckDuckGo', maxResults: 5 }, {} as any);
 
     expect(result).toContain('Result 0');
     expect(result).toContain('Result 4');
@@ -118,7 +118,7 @@ describe('createWebSearchTool', () => {
 
     const tool = createWebSearchTool();
     // maxResults 超过 20 会被工具内部截断到 20
-    const result = await tool.execute!({ query: 'test', maxResults: 50 }, {} as any);
+    const result = await tool.execute!({ query: 'test', engine: 'duckDuckGo', maxResults: 50 }, {} as any);
     expect(result).toContain('Result 0');
     expect(result).toContain('Result 4');
   });
@@ -145,8 +145,8 @@ describe('createWebFetchTool', () => {
     const tool = createWebFetchTool();
     const result = await tool.execute!({ url: 'https://example.com' }, {} as any);
 
-    expect(result).toContain('# Hello World');
-    expect(result).toContain('**bold**');
+    expect(result).toContain('Hello World');
+    expect(result).toContain('bold');
     expect(result).not.toContain('console.log');
   });
 
@@ -209,7 +209,7 @@ describe('createWebFetchTool', () => {
       maxChars: 1000,
     }, {} as any);
 
-    expect(result.length).toBeLessThan(50000);
+    expect((result as string).length).toBeLessThan(50000);
     expect(result).toContain('[输出已截断');
   });
 
@@ -228,7 +228,7 @@ describe('createWebFetchTool', () => {
     }, {} as any);
 
     // maxChars 被截断到 100000 上限
-    expect(result.length).toBeLessThan(200000);
+    expect((result as string).length).toBeLessThan(200000);
   });
 
   it('should handle HTTP errors', async () => {

@@ -127,8 +127,8 @@ export interface RuntimeResult {
  * 定义 explore / plan / general 等内置 Agent 的默认参数
  */
 export interface AgentPreset {
-  /** 系统提示 */
-  system: string;
+  /** 系统提示（可选，调用方通常通过 systemPrompt 传入） */
+  system?: string;
   /** 默认工具（AI SDK 标准格式） */
   tools?: Record<string, Tool>;
   /** 默认最大步数 */

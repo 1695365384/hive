@@ -41,7 +41,7 @@ describeIfApiKey('Agent Real API Tests', () => {
     it('should respond to simple question', async () => {
       if (!ctx) return;
 
-      const response = await ctx.agent.chat('1+1等于几？只回答数字。');
+      const response = (await ctx.agent.dispatch('1+1等于几？只回答数字。')).text;
 
       console.log(`📥 Response: "${response}" (${response.length} chars)`);
       assertValidResponse(response);
@@ -52,7 +52,7 @@ describeIfApiKey('Agent Real API Tests', () => {
     it('should respond to greeting', async () => {
       if (!ctx) return;
 
-      const response = await ctx.agent.chat('你好');
+      const response = (await ctx.agent.dispatch('你好')).text;
 
       console.log(`📥 Response: "${response}" (${response.length} chars)`);
       assertValidResponse(response);
@@ -63,7 +63,7 @@ describeIfApiKey('Agent Real API Tests', () => {
     it('should answer factual question', async () => {
       if (!ctx) return;
 
-      const response = await ctx.agent.chat('中国的首都是哪里？');
+      const response = (await ctx.agent.dispatch('中国的首都是哪里？')).text;
 
       console.log(`📥 Response: "${response}" (${response.length} chars)`);
       assertValidResponse(response);
@@ -103,10 +103,10 @@ describeIfApiKey('Agent Real API Tests', () => {
       if (!ctx) return;
 
       // 发送第一条消息
-      await ctx.agent.chat('我的名字是小明');
+      await ctx.agent.dispatch('我的名字是小明');
 
       // 发送第二条消息，测试上下文
-      const response = await ctx.agent.chat('我叫什么名字？');
+      const response = (await ctx.agent.dispatch('我叫什么名字？')).text;
 
       // 验证响应中包含之前提到的名字
       assertResponseContains(response, ['小明', '名字']);

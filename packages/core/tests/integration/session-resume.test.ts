@@ -68,7 +68,7 @@ describe('Session Resume Integration', () => {
       const sessionId = agent.context.hookRegistry.getSessionId();
       expect(sessionId).toBeDefined();
 
-      await agent.chat('Hello');
+      await agent.dispatch('Hello');
       await dispose();
     });
 

@@ -175,6 +175,7 @@ export class AdminWsHandler extends EventEmitter {
       broadcastLog: (entry) => this.broadcastLog(entry),
       loadConfig: () => this.configStore.load(),
       saveConfig: (config) => this.configStore.save(config),
+      invalidateConfig: () => this.configStore.invalidate(),
       sensitizeConfig: (config) => this.configStore.sensitize(config),
       getServer: () => this.server,
       getLogBuffer: () => this.logBuffer,

@@ -10,14 +10,8 @@ import {
   createAgent,
   getAgent,
   ask,
-  explore,
-  plan,
-  general,
-  runWorkflow,
-  type AgentOptions,
-  type WorkflowOptions,
-  type WorkflowResult,
 } from '../../src/agents/index.js';
+import type { AgentOptions } from '../../src/agents/core/types.js';
 
 describe('Agent Module Exports', () => {
   describe('Agent Class', () => {
@@ -36,9 +30,6 @@ describe('Agent Module Exports', () => {
 
       expect(typeof agent.listProviders).toBe('function');
       expect(typeof agent.useProvider).toBe('function');
-      expect(typeof agent.explore).toBe('function');
-      expect(typeof agent.plan).toBe('function');
-      expect(typeof agent.general).toBe('function');
       expect(typeof agent.dispatch).toBe('function');
       // Verify dispatch returns a Promise (actual DispatchResult structure is validated in dispatcher unit tests)
       const dispatchResult = agent.dispatch('test');
@@ -81,26 +72,6 @@ describe('Agent Module Exports', () => {
       expect(ask).toBeDefined();
       expect(typeof ask).toBe('function');
     });
-
-    it('should export explore function', () => {
-      expect(explore).toBeDefined();
-      expect(typeof explore).toBe('function');
-    });
-
-    it('should export plan function', () => {
-      expect(plan).toBeDefined();
-      expect(typeof plan).toBe('function');
-    });
-
-    it('should export general function', () => {
-      expect(general).toBeDefined();
-      expect(typeof general).toBe('function');
-    });
-
-    it('should export runWorkflow function', () => {
-      expect(runWorkflow).toBeDefined();
-      expect(typeof runWorkflow).toBe('function');
-    });
   });
 
   describe('Type Exports', () => {
@@ -110,27 +81,6 @@ describe('Agent Module Exports', () => {
         maxTurns: 10,
       };
       expect(options).toBeDefined();
-    });
-
-    it('should export WorkflowOptions type', () => {
-      const options: WorkflowOptions = {
-        cwd: '/test',
-      };
-      expect(options).toBeDefined();
-    });
-
-    it('should export WorkflowResult type', () => {
-      const result: WorkflowResult = {
-        success: true,
-        analysis: {
-          type: 'simple',
-          needsExploration: true,
-          needsPlanning: false,
-          recommendedAgents: ['explore'],
-          reason: 'Test',
-        },
-      };
-      expect(result).toBeDefined();
     });
   });
 });

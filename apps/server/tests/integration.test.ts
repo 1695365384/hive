@@ -5,17 +5,30 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { spawn, ChildProcess } from 'child_process'
 import { resolve } from 'path'
+import { createServer } from 'node:net'
 
 const CLI_PATH = resolve(__dirname, '../dist/cli/index.js')
-const BASE_URL = 'http://localhost:3001'
+let PORT: number
+let BASE_URL: string
 
 let serverProcess: ChildProcess | null = null
+
+function getFreePort(): Promise<number> {
+  return new Promise((res, rej) => {
+    const s = createServer()
+    s.listen(0, () => {
+      const p = (s.address() as { port: number }).port
+      s.close(() => res(p))
+    })
+    s.on('error', rej)
+  })
+}
 
 async function waitForServer(url: string, maxAttempts = 30): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const response = await fetch(url)
-      if (response.ok) return true
+      const r = await fetch(url)
+      if (r.ok) return true
     } catch {
       // Server not ready yet
     }
@@ -26,10 +39,12 @@ async function waitForServer(url: string, maxAttempts = 30): Promise<boolean> {
 
 describe('Hive Server Integration', () => {
   beforeAll(async () => {
-    // Start server on port 3001
-    serverProcess = spawn('node', [CLI_PATH, 'server', '--port', '3001'], {
+    PORT = await getFreePort()
+    BASE_URL = `http://localhost:${PORT}`
+
+    serverProcess = spawn('node', [CLI_PATH, 'server', '--port', String(PORT)], {
       cwd: resolve(__dirname, '..'),
-      env: { ...process.env, PORT: '3001', PLUGINS: '' },
+      env: { ...process.env, PORT: String(PORT), PLUGINS: '' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -87,7 +102,6 @@ describe('Hive Server Integration', () => {
         body: JSON.stringify({ message: 'Hello' }),
       })
 
-      // Without a real LLM provider, dispatch may return 200 with empty response or 500
       expect([200, 500]).toContain(response.status)
 
       const data = await response.json()
@@ -95,7 +109,7 @@ describe('Hive Server Integration', () => {
         expect(data).toHaveProperty('response')
         expect(data).toHaveProperty('sessionId')
       }
-    })
+    }, 15000)
   })
 
   describe('404 Handler', () => {

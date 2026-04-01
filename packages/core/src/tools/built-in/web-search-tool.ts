@@ -1,8 +1,9 @@
 /**
- * Web Search 工具 — DuckDuckGo Lite 搜索
+ * Web Search 工具 — 多引擎搜索
  *
  * 使用 AI SDK tool() + Zod schema 定义。
- * 免费搜索，无需 API key。
+ * 支持 DuckDuckGo Lite、百度、必应等免费搜索引擎。
+ * 使用 cheerio 提取纯文本结果，压缩大小到 HTML 的 2-5%。
  */
 
 import { zodSchema, type Tool } from 'ai';
@@ -10,40 +11,18 @@ import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { SEARCH_ENGINES, type SearchEngineName } from './search-engines/index.js';
 
-interface SearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-}
-
-/**
- * 解析 DuckDuckGo Lite HTML 页面
- */
-async function parseDuckDuckGoLite(html: string): Promise<SearchResult[]> {
-  const results: SearchResult[] = [];
-  const resultsRegex = /<tr class="result-link"[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td class="result-snippet"[^>]*>([\s\S]*?)<\/td>/gi;
-
-  let match: RegExpExecArray | null;
-  while ((match = resultsRegex.exec(html)) !== null) {
-    const url = match[1]!;
-    const titleRaw = match[2]!.replace(/<[^>]+>/g, '').trim();
-    const snippetRaw = match[3]!.replace(/<[^>]+>/g, '').trim();
-
-    if (url && !url.startsWith('#')) {
-      results.push({ title: titleRaw, url, snippet: snippetRaw });
-    }
-  }
-
-  return results;
-}
-
-/** Web Search 工具输入 schema */
 /** 最大返回结果数 */
 const MAX_SEARCH_RESULTS = 10;
 
+/** Web Search 工具输入 schema */
 const webSearchInputSchema = z.object({
   query: z.string().describe('搜索查询关键词'),
+  engine: z.enum(['duckDuckGo', 'baidu', 'bing'] as const)
+    .optional()
+    .default('duckDuckGo')
+    .describe('搜索引擎，默认 duckDuckGo（国际）。baidu 用于中文搜索，bing 为国际引擎。'),
   maxResults: z.number().max(20).optional().describe('最大返回结果数，默认 10'),
 });
 
@@ -56,17 +35,22 @@ export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
  */
 export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
   return {
-    description: '搜索网页获取最新信息。使用 DuckDuckGo 搜索引擎，返回标题、URL 和摘要。搜索结果可能不包含最新内容，建议结合 web-fetch 工具获取完整页面内容。',
+    description: '搜索网页获取最新信息。支持 DuckDuckGo Lite（国际）、百度（中文）、必应等搜索引擎，无需 API key。返回标题、URL 和摘要（纯文本，已去除 HTML 标签）。建议结合 web-fetch 工具获取完整页面内容。',
     inputSchema: zodSchema(webSearchInputSchema),
-    execute: async ({ query, maxResults }): Promise<ToolResult> => {
+    execute: async ({ query, engine, maxResults }): Promise<ToolResult> => {
       try {
-        const encoded = encodeURIComponent(query);
-        const url = `https://lite.duckduckgo.com/lite/?q=${encoded}`;
+        const searchEngine = SEARCH_ENGINES[engine];
+        if (!searchEngine) {
+          return { ok: false, code: 'INVALID_INPUT', error: `不支持的搜索引擎: ${engine}` };
+        }
+
+        const url = searchEngine.buildUrl(query);
 
         const response = await fetch(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             'Accept': 'text/html',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
           },
           signal: AbortSignal.timeout(15_000),
         });
@@ -76,7 +60,7 @@ export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
         }
 
         const html = await response.text();
-        const results = await parseDuckDuckGoLite(html);
+        const results = await searchEngine.parse(html);
 
         if (results.length === 0) {
           return { ok: true, code: 'OK', data: `未找到 "${query}" 的搜索结果` };

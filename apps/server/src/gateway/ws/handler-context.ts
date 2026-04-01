@@ -26,6 +26,8 @@ export interface HandlerContext {
   loadConfig(): ServerConfig
   /** 保存配置 */
   saveConfig(config: ServerConfig): void
+  /** 使配置缓存失效（外部写文件后调用） */
+  invalidateConfig(): void
   /** 获取脱敏后的配置 */
   sensitizeConfig(config: ServerConfig): ServerConfig
   /** 获取 Server 实例 */

@@ -1,14 +1,13 @@
 /**
- * 7.4 withHeartbeat() 重构测试
+ * ExecutionCapability 执行测试
  *
- * 验证 chat 心跳行为
+ * 验证 dispatch/chat 执行行为
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Agent } from '../../src/agents/core/Agent.js';
-import { TimeoutError } from '../../src/agents/core/types.js';
 
-describe('Agent.withHeartbeat()', () => {
+describe('Agent dispatch/chat', () => {
   let agent: Agent;
 
   beforeEach(() => {
@@ -19,103 +18,94 @@ describe('Agent.withHeartbeat()', () => {
     vi.restoreAllMocks();
   });
 
-  describe('chat() 心跳行为', () => {
-    it('成功时应触发 session:start 和 session:end hooks', async () => {
-      const emitSpy = vi.spyOn(agent.context.hookRegistry, 'emit').mockResolvedValue(true);
-      // Mock chatCap.send 通过 spy on Agent.chat 是不行的，需要直接 mock ChatCapability
-      // 通过 monkey-patching Agent 类的 chatCap.send
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'send').mockResolvedValue('Hello!');
+  describe('dispatch() 行为', () => {
+    it('dispatch() should delegate to executionCap.run() and return full DispatchResult', async () => {
+      const executionCap = (agent as any).executionCap;
+      vi.spyOn(executionCap, 'run').mockResolvedValue({
+        text: 'Hello!',
+        success: true,
+        duration: 100,
+        tools: [],
+      });
 
-      await agent.chat('Test prompt');
+      const result = await agent.dispatch('Test prompt');
 
-      const calls = emitSpy.mock.calls.map(c => c[0]);
-      expect(calls).toContain('session:start');
-      expect(calls).toContain('session:end');
-
-      // session:end 应该包含 success: true
-      const sessionEndCall = emitSpy.mock.calls.find(c => c[0] === 'session:end');
-      expect((sessionEndCall?.[1] as any)?.success).toBe(true);
+      expect(result.text).toBe('Hello!');
+      expect(result.success).toBe(true);
+      expect(executionCap.run).toHaveBeenCalledWith('Test prompt', undefined);
     });
 
-    it('session:start 应包含 prompt 和 sessionId', async () => {
-      const emitSpy = vi.spyOn(agent.context.hookRegistry, 'emit').mockResolvedValue(true);
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'send').mockResolvedValue('Hello!');
+    it('dispatch() should pass options to executionCap.run()', async () => {
+      const executionCap = (agent as any).executionCap;
+      vi.spyOn(executionCap, 'run').mockResolvedValue({
+        text: 'result',
+        success: true,
+        duration: 100,
+        tools: [],
+      });
 
-      await agent.chat('What is AI?');
+      await agent.dispatch('Test', { forceMode: 'explore' });
 
-      const startCall = emitSpy.mock.calls.find(c => c[0] === 'session:start');
-      expect((startCall?.[1] as any)?.prompt).toBe('What is AI?');
-      expect((startCall?.[1] as any)?.sessionId).toBeDefined();
+      expect(executionCap.run).toHaveBeenCalledWith('Test', { forceMode: 'explore' });
     });
 
-    it('失败时应触发 session:error 和 session:end hooks', async () => {
-      const emitSpy = vi.spyOn(agent.context.hookRegistry, 'emit').mockResolvedValue(true);
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'send').mockRejectedValue(new Error('LLM unavailable'));
+    it('dispatch() should return DispatchResult with error on failure', async () => {
+      const executionCap = (agent as any).executionCap;
+      vi.spyOn(executionCap, 'run').mockResolvedValue({
+        text: '',
+        success: false,
+        duration: 100,
+        tools: [],
+        error: 'Something went wrong',
+      });
 
-      await expect(agent.chat('Test')).rejects.toThrow('LLM unavailable');
+      const result = await agent.dispatch('Test');
 
-      const calls = emitSpy.mock.calls.map(c => c[0]);
-      expect(calls).toContain('session:start');
-      expect(calls).toContain('session:error');
-      expect(calls).toContain('session:end');
-
-      const errorCall = emitSpy.mock.calls.find(c => c[0] === 'session:error');
-      expect((errorCall?.[1] as any)?.error?.message).toBe('LLM unavailable');
-
-      const endCall = emitSpy.mock.calls.find(c => c[0] === 'session:end');
-      expect((endCall?.[1] as any)?.success).toBe(false);
-      expect((endCall?.[1] as any)?.reason).toBe('LLM unavailable');
+      expect(result.text).toBe('');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Something went wrong');
     });
 
-    it('完成后应停止心跳', async () => {
-      const timeoutCap = (agent as any)._context.timeoutCap;
-      const stopSpy = vi.spyOn(timeoutCap, 'stopHeartbeat');
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'send').mockResolvedValue('Hello!');
+    it('dispatch() should return full DispatchResult', async () => {
+      const executionCap = (agent as any).executionCap;
+      vi.spyOn(executionCap, 'run').mockResolvedValue({
+        text: 'Response',
+        success: true,
+        duration: 200,
+        tools: ['bash', 'file'],
+        usage: { input: 100, output: 50 },
+        cost: { input: 0.0003, output: 0.00075, total: 0.00105 },
+      });
 
-      await agent.chat('Test');
+      const result = await agent.dispatch('Test task');
 
-      expect(stopSpy).toHaveBeenCalled();
+      expect(result.text).toBe('Response');
+      expect(result.success).toBe(true);
+      expect(result.tools).toEqual(['bash', 'file']);
+      expect(result.usage).toBeDefined();
+      expect(result.cost).toBeDefined();
     });
   });
 
-
-  describe('超时控制', () => {
-    it('应使用 executionTimeout 包装 Promise', async () => {
-      const timeoutCap = (agent as any)._context.timeoutCap;
-      const withTimeoutSpy = vi.spyOn(timeoutCap, 'withTimeout').mockImplementation(
-        async (promise) => promise
-      );
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'send').mockResolvedValue('Hello!');
-
-      await agent.chat('Test');
-
-      expect(withTimeoutSpy).toHaveBeenCalledWith(
-        expect.any(Promise),
-        600000, // 默认 executionTimeout
-        expect.stringContaining('timed out')
-      );
+  describe('已删除方法', () => {
+    it('Agent should not have explore method', () => {
+      expect((agent as any).explore).toBeUndefined();
     });
 
-    it('自定义 executionTimeout 应覆盖默认值', async () => {
-      const timeoutCap = (agent as any)._context.timeoutCap;
-      const withTimeoutSpy = vi.spyOn(timeoutCap, 'withTimeout').mockImplementation(
-        async (promise) => promise
-      );
-      const chatCap = (agent as any).chatCap;
-      vi.spyOn(chatCap, 'send').mockResolvedValue('Hello!');
+    it('Agent should not have plan method', () => {
+      expect((agent as any).plan).toBeUndefined();
+    });
 
-      await agent.chat('Test', { executionTimeout: 30000 });
+    it('Agent should not have general method', () => {
+      expect((agent as any).general).toBeUndefined();
+    });
 
-      expect(withTimeoutSpy).toHaveBeenCalledWith(
-        expect.any(Promise),
-        30000,
-        expect.stringContaining('timed out')
-      );
+    it('Agent should not have runSubAgent method', () => {
+      expect((agent as any).runSubAgent).toBeUndefined();
+    });
+
+    it('Agent should not have runWorkflow method', () => {
+      expect((agent as any).runWorkflow).toBeUndefined();
     });
   });
 });

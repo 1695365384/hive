@@ -6,13 +6,8 @@
 
 import type {
   AgentContext,
-  AgentOptions,
   AgentInitOptions,
-  WorkflowOptions,
-  WorkflowResult,
   ThoroughnessLevel,
-  AgentType,
-  AgentResult,
   TimeoutConfig,
   HeartbeatConfig,
   HeartbeatTaskConfig,
@@ -23,18 +18,14 @@ import type {
 } from '../../hooks/types.js';
 import { AgentContextImpl } from './AgentContext.js';
 import { TimeoutDelegation, NotificationDelegation } from './notification.js';
-import { withHeartbeat } from './heartbeat-wrapper.js';
 import { TimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { ProviderCapability } from '../capabilities/ProviderCapability.js';
 import { SkillCapability } from '../capabilities/SkillCapability.js';
-import { ChatCapability } from '../capabilities/ChatCapability.js';
-import { SubAgentCapability } from '../capabilities/SubAgentCapability.js';
-import { WorkflowCapability } from '../capabilities/WorkflowCapability.js';
+import { ExecutionCapability } from '../capabilities/ExecutionCapability.js';
+import type { DispatchOptions, DispatchResult } from '../capabilities/ExecutionCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
 import { ScheduleCapability } from '../capabilities/ScheduleCapability.js';
 import { SessionDelegation } from './session-delegation.js';
-import { Dispatcher } from '../dispatch/Dispatcher.js';
-import type { DispatchOptions, DispatchResult } from '../dispatch/types.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Session, Message } from '../../session/index.js';
@@ -48,15 +39,12 @@ export class Agent {
   private _context: AgentContextImpl;
   private providerCap: ProviderCapability;
   private skillCap: SkillCapability;
-  private chatCap: ChatCapability;
-  private subAgentCap: SubAgentCapability;
-  private workflowCap: WorkflowCapability;
+  private executionCap: ExecutionCapability;
   private sessionCap: SessionCapability;
   private scheduleCap: ScheduleCapability;
   private sessionDelegation: SessionDelegation;
   private timeoutDelegation: TimeoutDelegation;
   private notificationDelegation: NotificationDelegation;
-  private dispatcher: Dispatcher;
   private initialized: boolean = false;
   private disposed: boolean = false;
 
@@ -79,15 +67,12 @@ export class Agent {
     // 创建能力模块
     this.providerCap = new ProviderCapability();
     this.skillCap = new SkillCapability();
-    this.chatCap = new ChatCapability();
-    this.subAgentCap = new SubAgentCapability();
-    this.workflowCap = new WorkflowCapability();
+    this.executionCap = new ExecutionCapability();
     this.sessionCap = new SessionCapability(sessionConfig);
     this.scheduleCap = new ScheduleCapability();
     this.sessionDelegation = new SessionDelegation(this.sessionCap);
     this.timeoutDelegation = new TimeoutDelegation(this._context);
     this.notificationDelegation = new NotificationDelegation(this._context);
-    this.dispatcher = new Dispatcher(this._context);
 
     // 注册能力模块到上下文（使 getCapability() 可用）
     // 注意：注册顺序决定 initializeAsync 的调用顺序
@@ -95,9 +80,7 @@ export class Agent {
     this._context.registerCapability(this.sessionCap);
     this._context.registerCapability(this.providerCap);
     this._context.registerCapability(this.skillCap);
-    this._context.registerCapability(this.chatCap);
-    this._context.registerCapability(this.subAgentCap);
-    this._context.registerCapability(this.workflowCap);
+    this._context.registerCapability(this.executionCap);
     this._context.registerCapability(this.scheduleCap);
   }
 
@@ -157,6 +140,17 @@ export class Agent {
   }
 
   // ============================================
+  // 统一任务执行
+  // ============================================
+
+  /**
+   * 统一任务分发 — 唯一的任务执行入口
+   */
+  async dispatch(task: string, options?: DispatchOptions): Promise<DispatchResult> {
+    return this.executionCap.run(task, options);
+  }
+
+  // ============================================
   // 提供商管理（委托给 ProviderCapability）
   // ============================================
 
@@ -210,56 +204,6 @@ export class Agent {
 
   generateSkillInstruction(skill: Skill): string {
     return this.skillCap.generateInstruction(skill);
-  }
-
-  // ============================================
-  // 对话功能（委托给 dispatch + forceLayer='chat'）
-  // ============================================
-
-  async chat(prompt: string, options?: AgentOptions): Promise<string> {
-    return withHeartbeat(
-      this._context,
-      Promise.resolve().then(() => this.chatCap.send(prompt, options)),
-      prompt,
-      options
-    );
-  }
-
-  // ============================================
-  // 子 Agent（委托给 SubAgentCapability）
-  // ============================================
-
-  async explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium'): Promise<string> {
-    return this.subAgentCap.explore(prompt, thoroughness);
-  }
-
-  async plan(prompt: string): Promise<string> {
-    return this.subAgentCap.plan(prompt);
-  }
-
-  async general(prompt: string): Promise<string> {
-    return this.subAgentCap.general(prompt);
-  }
-
-  async runSubAgent(name: AgentType, prompt: string): Promise<AgentResult> {
-    return this.subAgentCap.run(name, prompt);
-  }
-
-  // ============================================
-  // 工作流（委托给 WorkflowCapability）
-  // ============================================
-
-  async runWorkflow(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
-    return this.workflowCap.run(task, options);
-  }
-
-  /**
-   * 智能任务分发（LLM 分类 + 自动路由）
-   *
-   * 自动将任务路由到 chat / workflow。
-   */
-  async dispatch(task: string, options?: DispatchOptions): Promise<DispatchResult> {
-    return this.dispatcher.dispatch(task, options);
   }
 
   // ============================================
@@ -357,7 +301,7 @@ export class Agent {
    */
   async runHeartbeatOnce(config?: HeartbeatTaskConfig): Promise<HeartbeatResult> {
     return this.timeoutDelegation.runHeartbeatOnce(
-      (prompt, opts) => this.chat(prompt, { modelId: opts?.modelId }),
+      async (prompt, opts) => (await this.dispatch(prompt, { modelId: opts?.modelId })).text,
       config
     );
   }

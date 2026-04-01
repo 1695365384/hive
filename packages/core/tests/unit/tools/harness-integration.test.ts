@@ -16,7 +16,8 @@ import { serializeToolResult } from '../../../src/tools/harness/serializer.js';
 import { isRetryable, retryWithBackoff } from '../../../src/tools/harness/retry.js';
 import { getHint } from '../../../src/tools/harness/hint-registry.js';
 import { _resetAllowedRoots, isAllowedUrl } from '../../../src/tools/built-in/utils/security.js';
-import type { ToolResult, RawTool } from '../../../src/tools/harness/types.js';
+import type { ToolResult } from '../../../src/tools/harness/types.js';
+import type { RawTool } from '../../../src/tools/harness/with-harness.js';
 
 // ============================================
 // Test Infrastructure

@@ -2,14 +2,10 @@
  * 内置 Agent 定义
  *
  * 核心三代理：Explore / Plan / General
+ * 提示词内容统一在 templates/ 目录的 .md 文件中维护，不在此处硬编码。
  */
 
-import type { AgentType, AgentConfig } from './types.js';
-import {
-  EXPLORE_AGENT_PROMPT,
-  PLAN_AGENT_PROMPT,
-  GENERAL_AGENT_PROMPT,
-} from '../prompts/prompts.js';
+import type { AgentConfig } from './types.js';
 
 // ============================================
 // Agent 名称常量
@@ -33,25 +29,21 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = 
   explore: {
     type: 'explore',
     description: 'Fast agent optimized for searching and analyzing codebases.',
-    prompt: EXPLORE_AGENT_PROMPT,
-    tools: ['Read', 'Glob', 'Grep'],
-    // 不指定 model，使用 Provider 默认模型
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch'],
     maxTurns: 5,
   },
 
   plan: {
     type: 'plan',
     description: 'Research agent for planning mode to gather context before planning.',
-    prompt: PLAN_AGENT_PROMPT,
-    tools: ['Read', 'Glob', 'Grep'],
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch'],
     maxTurns: 10,
   },
 
   general: {
     type: 'general',
     description: 'General-purpose agent capable of handling complex, multi-step tasks.',
-    prompt: GENERAL_AGENT_PROMPT,
-    tools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
+    tools: ['bash', 'file', 'glob', 'grep', 'web-search', 'web-fetch', 'ask-user', 'send-file'],
     maxTurns: 20,
   },
 };
