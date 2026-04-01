@@ -8,7 +8,7 @@ import { StatusPage } from "./StatusPage";
 import { ChatPage } from "./ChatPage";
 import { LogDrawer } from "../components/LogDrawer";
 import { StatusBar } from "../components/StatusBar";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Activity, Settings, Puzzle } from "lucide-react";
 
 type Page = "status" | "config" | "plugins" | "chat";
 type DrawerHeight = "collapsed" | "half" | "full";
@@ -20,11 +20,11 @@ export function Dashboard() {
   const restarting = useServerStore((s) => s.restarting);
   useLogPolling();
 
-  const navItems: { id: Page; label: string; icon?: React.ReactNode }[] = [
+  const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
     { id: "chat", label: "Chat", icon: <MessageSquare className="w-4 h-4" /> },
-    { id: "status", label: "Status" },
-    { id: "config", label: "Config" },
-    { id: "plugins", label: "Plugins" },
+    { id: "status", label: "Status", icon: <Activity className="w-4 h-4" /> },
+    { id: "config", label: "Config", icon: <Settings className="w-4 h-4" /> },
+    { id: "plugins", label: "Plugins", icon: <Puzzle className="w-4 h-4" /> },
   ];
 
   const toggleDrawer = () => {
