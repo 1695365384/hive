@@ -6,20 +6,10 @@ on:
 
 permissions:
   contents: write
-  releases: write
 
 jobs:
   build-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            arch: arm64
-          - os: macos-14
-            arch: x64
-
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
