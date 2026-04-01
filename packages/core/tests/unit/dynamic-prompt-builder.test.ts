@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DynamicPromptBuilder } from '../../src/agents/pipeline/DynamicPromptBuilder.js';
 import type { AgentPhaseResult, PromptBuildContext } from '../../src/agents/types/pipeline.js';
+import type { EnvironmentContext } from '../../src/environment/types.js';
 
 describe('DynamicPromptBuilder', () => {
   let builder: DynamicPromptBuilder;
@@ -215,6 +216,98 @@ describe('DynamicPromptBuilder', () => {
       expect(formatted).toContain('Planning Phase');
       expect(formatted).toContain('src/index.ts');
       expect(formatted).toContain('Important finding');
+    });
+  });
+
+  describe('environment context', () => {
+    const mockEnv: EnvironmentContext = {
+      os: { platform: 'darwin', arch: 'arm64', version: '23.5.0' },
+      shell: 'zsh',
+      node: { version: 'v20.11.0' },
+      tools: ['pnpm', 'npm', 'git', 'docker'],
+      packageManager: 'pnpm',
+      projectType: 'typescript',
+      cwd: '/Users/test/project',
+    };
+
+    it('should include Environment section when environmentContext is provided', () => {
+      const context: PromptBuildContext = {
+        task: 'Fix the auth bug',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: mockEnv,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('## Environment');
+      expect(prompt).toContain('macOS (darwin/arm64)');
+      expect(prompt).toContain('zsh');
+      expect(prompt).toContain('v20.11.0');
+      expect(prompt).toContain('pnpm');
+      expect(prompt).toContain('typescript');
+      expect(prompt).toContain('git, docker');
+      expect(prompt).toContain('/Users/test/project');
+    });
+
+    it('should not include Environment section when environmentContext is omitted', () => {
+      const context: PromptBuildContext = {
+        task: 'Fix the auth bug',
+        priorResults: [],
+        agentType: 'general',
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).not.toContain('## Environment');
+    });
+
+    it('should never truncate environment section (priority 0)', () => {
+      const tinyBuilder = new DynamicPromptBuilder({ maxChars: 100 });
+
+      const context: PromptBuildContext = {
+        task: 'Fix bug',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: mockEnv,
+      };
+
+      const prompt = tinyBuilder.buildPrompt(context);
+      // Environment section should survive budget cuts
+      expect(prompt).toContain('## Environment');
+    });
+
+    it('should handle environment with no tools', () => {
+      const envNoTools: EnvironmentContext = {
+        ...mockEnv,
+        tools: [],
+      };
+
+      const context: PromptBuildContext = {
+        task: 'Test',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: envNoTools,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('## Environment');
+      expect(prompt).not.toContain('Available Tools');
+    });
+
+    it('should display platform-specific OS labels', () => {
+      const linuxEnv: EnvironmentContext = {
+        ...mockEnv,
+        os: { platform: 'linux', arch: 'x64', version: '5.15.0' },
+      };
+
+      const context: PromptBuildContext = {
+        task: 'Test',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: linuxEnv,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('Linux (linux/x64)');
     });
   });
 });

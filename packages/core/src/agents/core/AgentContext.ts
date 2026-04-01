@@ -13,6 +13,7 @@ import { HookRegistry } from '../../hooks/index.js';
 import type { AgentCapability, AgentContext, SkillSystemConfig, TimeoutConfig } from './types.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Skill, SkillMatchResult } from '../../skills/index.js';
+import type { EnvironmentContext } from '../../environment/types.js';
 import { TimeoutCapability, createTimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { CapabilityRegistry } from './CapabilityRegistry.js';
 
@@ -23,6 +24,8 @@ export interface AgentContextOptions {
   externalConfig?: ExternalConfig;
   skillConfig?: SkillSystemConfig;
   timeoutConfig?: TimeoutConfig;
+  /** System environment info, injected into Agent system prompts */
+  environmentContext?: EnvironmentContext;
 }
 
 /**
@@ -34,6 +37,7 @@ export class AgentContextImpl implements AgentContext {
   readonly skillRegistry: SkillRegistry;
   readonly agentRegistry: AgentRegistryImpl;
   readonly hookRegistry: HookRegistry;
+  readonly environmentContext?: EnvironmentContext;
 
   /** 内置超时能力 */
   readonly timeoutCap: TimeoutCapability;
@@ -44,7 +48,8 @@ export class AgentContextImpl implements AgentContext {
   private initialized: boolean = false;
 
   constructor(options: AgentContextOptions = {}) {
-    const { externalConfig, skillConfig, timeoutConfig } = options;
+    const { externalConfig, skillConfig, timeoutConfig, environmentContext } = options;
+    this.environmentContext = environmentContext;
 
     this.providerManager = new ProviderManager({ externalConfig });
     this.runner = new AgentRunner(this.providerManager);

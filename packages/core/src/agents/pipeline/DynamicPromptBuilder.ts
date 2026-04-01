@@ -13,6 +13,7 @@
 
 import type { AgentPhaseResult, PromptBuildContext } from '../types/pipeline.js';
 import type { AgentType } from '../types/capabilities.js';
+import type { EnvironmentContext } from '../../environment/types.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
 
 /** Default max characters for the full prompt (~4K tokens) */
@@ -68,6 +69,11 @@ export class DynamicPromptBuilder {
     // 3. Task description
     sections.set('task', `## Task\n${context.task}`);
 
+    // 4. Environment context (priority 0 — always keep)
+    if (context.environmentContext) {
+      sections.set('environment', this.formatEnvironment(context.environmentContext));
+    }
+
     // 4. Session history (for context continuity between chat/workflow)
     if (context.sessionHistory && context.sessionHistory.length > 0) {
       sections.set('history', this.formatSessionHistory(context.sessionHistory));
@@ -102,6 +108,31 @@ export class DynamicPromptBuilder {
     } catch {
       return `You are a ${agentType} agent. Complete the task efficiently.`;
     }
+  }
+
+  /**
+   * Format environment context into a markdown section
+   */
+  private formatEnvironment(env: EnvironmentContext): string {
+    const osLabel = {
+      darwin: 'macOS',
+      linux: 'Linux',
+      win32: 'Windows',
+    }[env.os.platform] ?? env.os.platform;
+
+    return [
+      '## Environment',
+      '',
+      `- **OS**: ${osLabel} (${env.os.platform}/${env.os.arch})`,
+      `- **Shell**: ${env.shell}`,
+      `- **Node.js**: ${env.node.version}`,
+      `- **Package Manager**: ${env.packageManager}`,
+      `- **Project Type**: ${env.projectType}`,
+      ...(env.tools.length > 0
+        ? [`- **Available Tools**: ${env.tools.join(', ')}`]
+        : []),
+      `- **Working Directory**: ${env.cwd}`,
+    ].join('\n');
   }
 
   /**
@@ -155,12 +186,13 @@ export class DynamicPromptBuilder {
    */
   private applyBudget(sections: Map<string, string>): string {
     const sectionPriority: Record<string, number> = {
-      base: 0,       // Always keep
-      language: 0,   // Always keep
-      task: 0,       // Always keep
-      history: 1,    // Session history - important for context continuity
-      context: 2,    // High priority but can be truncated
-      skill: 4,      // Lower priority, can be removed
+      base: 0,          // Always keep
+      language: 0,      // Always keep
+      task: 0,          // Always keep
+      environment: 0,   // Always keep
+      history: 1,       // Session history - important for context continuity
+      context: 2,       // High priority but can be truncated
+      skill: 4,         // Lower priority, can be removed
     };
 
     // Calculate total size
@@ -208,7 +240,7 @@ export class DynamicPromptBuilder {
    * Join sections into final prompt
    */
   private joinSections(sections: Map<string, string>): string {
-    const order = ['base', 'language', 'task', 'history', 'context', 'skill'];
+    const order = ['base', 'language', 'task', 'environment', 'history', 'context', 'skill'];
     const parts: string[] = [];
 
     for (const name of order) {

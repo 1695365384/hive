@@ -511,6 +511,18 @@ export type {
 } from './bus/index.js';
 
 // ============================================
+// 环境探测
+// ============================================
+
+export {
+  probeEnvironment,
+} from './environment/index.js';
+
+export type {
+  EnvironmentContext,
+} from './environment/index.js';
+
+// ============================================
 // Server 工厂
 // ============================================
 

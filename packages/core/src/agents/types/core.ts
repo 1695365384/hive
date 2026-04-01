@@ -83,6 +83,8 @@ export interface AgentInitOptions {
   scheduleEngineConfig?: {
     onCircuitBreak?: (event: ScheduleCircuitBreakEvent) => void;
   };
+  /** 系统环境信息（注入到 Agent system prompt） */
+  environmentContext?: import('../../environment/types.js').EnvironmentContext;
 }
 
 // ============================================
@@ -165,6 +167,8 @@ export interface AgentContext {
   agentRegistry: AgentRegistry;
   /** Hook 注册表 */
   hookRegistry: HookRegistry;
+  /** 系统环境信息（可选，用于注入 Agent system prompt） */
+  environmentContext?: import('../../environment/types.js').EnvironmentContext;
 
   // 能力模块访问
   /** 获取能力模块 */

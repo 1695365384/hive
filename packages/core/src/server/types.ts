@@ -8,6 +8,7 @@ import type { ILogger } from '../types/logger.js';
 import type { ExternalConfig } from '../providers/index.js';
 import type { IChannel, IPlugin } from '../plugins/index.js';
 import type { ScheduleCircuitBreakEvent } from '../scheduler/types.js';
+import type { EnvironmentContext } from '../environment/types.js';
 
 /**
  * Server 心跳配置
@@ -43,6 +44,8 @@ export interface ServerOptions {
   bus?: MessageBus;
   /** 可选，自定义 Logger */
   logger?: ILogger;
+  /** 可选，系统环境信息（注入到 Agent system prompt） */
+  environmentContext?: EnvironmentContext;
 }
 
 /**

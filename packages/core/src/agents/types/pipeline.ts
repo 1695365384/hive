@@ -6,6 +6,7 @@
  */
 
 import type { AgentType } from './core.js';
+import type { EnvironmentContext } from '../../environment/types.js';
 
 // ============================================
 // 阶段结果
@@ -76,4 +77,6 @@ export interface PromptBuildContext {
   languageInstruction?: string;
   /** 会话历史（可选，用于保持 chat/workflow 上下文连续） */
   sessionHistory?: Array<{ role: string; content: string }>;
+  /** 系统环境信息（可选，注入到 system prompt 中） */
+  environmentContext?: EnvironmentContext;
 }
