@@ -27,6 +27,10 @@ export type { WebSearchToolInput } from './web-search-tool.js';
 // 子 Agent 工具
 export { createSubagentTool, createAllSubagentTools } from './subagent-tools.js';
 
+// 环境查询工具
+export { createEnvTool, createRawEnvTool, envTool, setEnvDbProvider } from './env-tool.js';
+export type { EnvToolInput } from './env-tool.js';
+
 // 工具基础设施
 export { truncateOutput } from './utils/output-safety.js';
 export { isDangerousCommand, isSensitiveFile } from './utils/security.js';

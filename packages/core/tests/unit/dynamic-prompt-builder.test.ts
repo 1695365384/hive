@@ -221,12 +221,11 @@ describe('DynamicPromptBuilder', () => {
 
   describe('environment context', () => {
     const mockEnv: EnvironmentContext = {
-      os: { platform: 'darwin', arch: 'arm64', version: '23.5.0' },
+      os: { platform: 'darwin', arch: 'arm64', version: '23.5.0', displayName: 'macOS 14' },
       shell: 'zsh',
       node: { version: 'v20.11.0' },
-      tools: ['pnpm', 'npm', 'git', 'docker'],
-      packageManager: 'pnpm',
-      projectType: 'typescript',
+      cpu: { model: 'Apple M1', cores: 8 },
+      memory: { totalGb: 16 },
       cwd: '/Users/test/project',
     };
 
@@ -240,12 +239,12 @@ describe('DynamicPromptBuilder', () => {
 
       const prompt = builder.buildPrompt(context);
       expect(prompt).toContain('## Environment');
-      expect(prompt).toContain('macOS (darwin/arm64)');
+      expect(prompt).toContain('macOS 14 (darwin/arm64)');
       expect(prompt).toContain('zsh');
       expect(prompt).toContain('v20.11.0');
-      expect(prompt).toContain('pnpm');
-      expect(prompt).toContain('typescript');
-      expect(prompt).toContain('git, docker');
+      expect(prompt).toContain('Apple M1');
+      expect(prompt).toContain('8 cores');
+      expect(prompt).toContain('16 GB');
       expect(prompt).toContain('/Users/test/project');
     });
 
@@ -275,28 +274,22 @@ describe('DynamicPromptBuilder', () => {
       expect(prompt).toContain('## Environment');
     });
 
-    it('should handle environment with no tools', () => {
-      const envNoTools: EnvironmentContext = {
-        ...mockEnv,
-        tools: [],
-      };
-
+    it('should mention query-environment tool', () => {
       const context: PromptBuildContext = {
         task: 'Test',
         priorResults: [],
         agentType: 'general',
-        environmentContext: envNoTools,
+        environmentContext: mockEnv,
       };
 
       const prompt = builder.buildPrompt(context);
-      expect(prompt).toContain('## Environment');
-      expect(prompt).not.toContain('Available Tools');
+      expect(prompt).toContain('env');
     });
 
     it('should display platform-specific OS labels', () => {
       const linuxEnv: EnvironmentContext = {
         ...mockEnv,
-        os: { platform: 'linux', arch: 'x64', version: '5.15.0' },
+        os: { platform: 'linux', arch: 'x64', version: '5.15.0', displayName: 'Linux' },
       };
 
       const context: PromptBuildContext = {
