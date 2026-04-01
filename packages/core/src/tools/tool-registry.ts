@@ -25,24 +25,18 @@ import { setEnvDbProvider } from './built-in/env-tool.js';
 import type { AgentType as CapabilityAgentType } from '../agents/types/capabilities.js';
 
 /** Agent types that have tool whitelists in the registry */
-export type AgentType = 'explore' | 'plan' | 'evaluator' | 'general';
+export type AgentType = 'explore' | 'general';
 
 /**
  * Agent 类型对应的工具白名单
  *
- * - explore/plan: 只读工具（file 只读版、glob、grep、web-search、web-fetch）
- * - evaluator: 全量工具（含 bash、file 全量版、ask-user）
+ * - explore: 只读工具（file 只读版、glob、grep、web-search、web-fetch、env）
+ * - general: 全量工具（含 bash、file 全量版、ask-user、send-file、env）
+ *
+ * 'plan' 别名映射到 explore，'evaluator' 别名映射到 general。
  */
 const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () => Tool }>> = {
   explore: [
-    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
-    { name: 'glob', factory: () => createGlobTool() },
-    { name: 'grep', factory: () => createGrepTool() },
-    { name: 'web-search', factory: () => createWebSearchTool() },
-    { name: 'web-fetch', factory: () => createWebFetchTool() },
-    { name: 'env', factory: () => createEnvTool() },
-  ],
-  plan: [
     { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
     { name: 'glob', factory: () => createGlobTool() },
     { name: 'grep', factory: () => createGrepTool() },
@@ -61,17 +55,12 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'send-file', factory: () => createSendFileTool() },
     { name: 'env', factory: () => createEnvTool() },
   ],
-  evaluator: [
-    { name: 'bash', factory: () => createBashTool({ allowed: true }) },
-    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view', 'create', 'str_replace', 'insert'] }) },
-    { name: 'glob', factory: () => createGlobTool() },
-    { name: 'grep', factory: () => createGrepTool() },
-    { name: 'web-search', factory: () => createWebSearchTool() },
-    { name: 'web-fetch', factory: () => createWebFetchTool() },
-    { name: 'ask-user', factory: () => createAskUserTool() },
-    { name: 'send-file', factory: () => createSendFileTool() },
-    { name: 'env', factory: () => createEnvTool() },
-  ],
+};
+
+/** Alias mapping for deprecated agent types */
+const AGENT_TYPE_ALIASES: Record<string, AgentType> = {
+  plan: 'explore',
+  evaluator: 'general',
 };
 
 /**
@@ -118,7 +107,8 @@ export class ToolRegistry {
    * 获取指定 Agent 类型的工具集
    */
   getToolsForAgent(agentType: string): Record<string, Tool> {
-    const whitelist = AGENT_TOOL_WHITELIST[agentType as AgentType] ?? AGENT_TOOL_WHITELIST.evaluator;
+    const resolvedType = AGENT_TYPE_ALIASES[agentType] ?? agentType;
+    const whitelist = AGENT_TOOL_WHITELIST[resolvedType as AgentType] ?? AGENT_TOOL_WHITELIST.general;
     const result: Record<string, Tool> = {};
 
     // 先添加白名单工具
@@ -144,7 +134,7 @@ export class ToolRegistry {
    * 注册所有内置工具（用于 evaluator Agent）
    */
   registerBuiltInTools(): void {
-    const whitelist = AGENT_TOOL_WHITELIST.evaluator;
+    const whitelist = AGENT_TOOL_WHITELIST.general;
     for (const item of whitelist) {
       this.tools.set(item.name, item.factory());
     }

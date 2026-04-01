@@ -5,9 +5,8 @@
  * 模板文件通过 `pnpm run copy-templates` 复制到 dist 目录。
  *
  * 模板目录结构:
- * - templates/explore.md            - Explore Agent 主模板
- * - templates/plan.md               - Plan Agent 主模板
- * - templates/intelligent.md        - Intelligent Agent 主模板
+ * - templates/explore.md            - Explore Agent 主模板（plan 已合并）
+ * - templates/intelligent.md        - General Agent 主模板
  * - templates/compact.md            - 上下文压缩模板
  * - templates/schedule-awareness.md - 定时任务感知模板
  */

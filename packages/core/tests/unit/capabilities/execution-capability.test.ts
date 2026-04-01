@@ -393,11 +393,12 @@ describe('ExecutionCapability', () => {
       expect(callArgs.system).toBeDefined();
     });
 
-    it('forceMode plan should use plan.md template', async () => {
+    it('forceMode plan should use explore.md template', async () => {
       await capability.run('plan the architecture', { forceMode: 'plan' });
 
       const callArgs = mockRuntimeRun.mock.calls[0][0];
       expect(callArgs.system).toBeDefined();
+      expect(callArgs.system).toContain('READ-ONLY');
     });
   });
 
