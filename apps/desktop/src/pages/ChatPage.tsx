@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useWsClient } from "../hooks/use-ws-client";
+import { useChatWsClient } from "../hooks/use-chat-ws-client";
 import {
   Send,
   Square,
@@ -33,7 +33,7 @@ type ContentPart =
 // ============================================
 
 export function ChatPage() {
-  const { request, onEvent } = useWsClient();
+  const { request, onEvent } = useChatWsClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);

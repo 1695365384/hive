@@ -5,9 +5,8 @@
  * 模板文件通过 `pnpm run copy-templates` 复制到 dist 目录。
  *
  * 模板目录结构:
- * - templates/explore.md            - Explore Agent 主模板
- * - templates/plan.md               - Plan Agent 主模板
- * - templates/intelligent.md        - Intelligent Agent 主模板
+ * - templates/explore.md            - Explore Agent 主模板（plan 已合并）
+ * - templates/intelligent.md        - General Agent 主模板
  * - templates/compact.md            - 上下文压缩模板
  * - templates/schedule-awareness.md - 定时任务感知模板
  */
@@ -17,11 +16,23 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 
 // ES 模块中获取 __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// 兼容 SEA 环境：import.meta.url 在 CJS bundle 中可能为空，回退到 process.argv[1]
+function getTemplatesDir(): string {
+  try {
+    const metaUrl = import.meta.url;
+    if (metaUrl && metaUrl !== 'undefined') {
+      const __filename = fileURLToPath(metaUrl);
+      return path.join(path.dirname(__filename), 'templates');
+    }
+  } catch { /* fallback below */ }
+
+  // SEA / CJS fallback: 从 main script 所在目录向上查找
+  const mainDir = path.dirname(process.argv[1]);
+  return path.join(mainDir, 'agents', 'prompts', 'templates');
+}
 
 // 模板目录
-export const TEMPLATES_DIR = path.join(__dirname, 'templates');
+export const TEMPLATES_DIR = getTemplatesDir();
 
 /**
  * 模板变量类型

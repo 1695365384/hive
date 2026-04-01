@@ -1,60 +1,47 @@
 /**
- * Environment Probe
+ * Environment Probe — Phase 1 (Synchronous)
  *
- * Collects system environment information at startup.
- * Runs once, results injected into Agent system prompts.
+ * Collects basic system environment information at startup using only
+ * the Node.js `os` module. Results are injected into Agent system prompts.
+ *
+ * Phase 2 (async PATH scan) is in scanner.ts.
  */
 
 import os from 'node:os'
-import { existsSync } from 'node:fs'
-import { execSync } from 'node:child_process'
-import { join } from 'node:path'
 import type { EnvironmentContext } from './types.js'
 
-/** Tools to detect concurrently */
-const TOOLS_TO_DETECT = [
-  'git', 'pnpm', 'npm', 'yarn', 'docker', 'python3', 'python',
-  'go', 'cargo', 'brew', 'bun',
-] as const
-
-/** Overall probe timeout */
-const PROBE_TIMEOUT_MS = 5_000
-
-/** Individual tool detection timeout */
-const TOOL_TIMEOUT_MS = 2_000
-
 /**
- * Detect a single tool using `which` (macOS/Linux) or `where` (Windows).
- * Returns the tool name if found, or empty string if not found / timed out.
+ * Generate human-readable OS display name.
+ *
+ * - darwin → "macOS {majorVersion}" (maps kernel version to macOS version)
+ * - linux → "Linux"
+ * - win32 → "Windows"
  */
-function detectTool(tool: string): string {
-  const cmd = os.platform() === 'win32' ? `where ${tool}` : `which ${tool}`
-  try {
-    const result = execSync(cmd, {
-      timeout: TOOL_TIMEOUT_MS,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    return result.trim() ? tool : ''
-  } catch {
-    return ''
-  }
-}
-
-/**
- * Detect all tools concurrently by spawning short-lived child processes.
- * Falls back to sequential detection if Promise.all is not available (unlikely).
- */
-function detectTools(): string[] {
-  // Spawn all detections synchronously (Node.js execSync is blocking)
-  // This is fine because probeEnvironment runs once at startup
-  const found: string[] = []
-  for (const tool of TOOLS_TO_DETECT) {
-    if (detectTool(tool)) {
-      found.push(tool)
+function getOsDisplayName(platform: string, release: string): string {
+  switch (platform) {
+    case 'darwin': {
+      const major = parseInt(release.split('.')[0], 10)
+      const DARWIN_TO_MACOS: Record<number, string> = {
+        24: '15',  // Sequoia
+        23: '14',  // Sonoma
+        22: '13',  // Ventura
+        21: '12',  // Monterey
+        20: '11',  // Big Sur
+        19: '10.15', // Catalina
+        18: '10.14', // Mojave
+        17: '10.13', // High Sierra
+        16: '10.12', // Sierra
+      }
+      const macosVersion = DARWIN_TO_MACOS[major]
+      return macosVersion ? `macOS ${macosVersion}` : `macOS (Darwin ${major})`
     }
+    case 'linux':
+      return 'Linux'
+    case 'win32':
+      return 'Windows'
+    default:
+      return platform
   }
-  return found
 }
 
 /**
@@ -68,94 +55,51 @@ function detectShell(): string {
 }
 
 /**
- * Detect project type from characteristic files in cwd
+ * Detect CPU info from os.cpus()
  */
-function detectProjectType(cwd: string): string {
-  // Check TypeScript first (tsconfig.json implies TS even if package.json exists)
-  if (existsSync(join(cwd, 'tsconfig.json'))) return 'typescript'
-  if (existsSync(join(cwd, 'go.mod'))) return 'golang'
-  if (existsSync(join(cwd, 'pyproject.toml'))) return 'python'
-  if (existsSync(join(cwd, 'requirements.txt'))) return 'python'
-  if (existsSync(join(cwd, 'package.json'))) return 'javascript'
-  return 'unknown'
+function detectCpu(): { model: string; cores: number } {
+  const cpus = os.cpus()
+  return {
+    model: cpus[0]?.model ?? 'Unknown',
+    cores: cpus.length,
+  }
 }
 
 /**
- * Detect package manager: lockfile first, then tool availability
+ * Detect total memory in GB from os.totalmem()
  */
-function detectPackageManager(cwd: string, tools: string[]): string {
-  if (existsSync(join(cwd, 'pnpm-lock.yaml'))) return 'pnpm'
-  if (existsSync(join(cwd, 'yarn.lock'))) return 'yarn'
-  if (existsSync(join(cwd, 'package-lock.json'))) return 'npm'
-
-  if (tools.includes('pnpm')) return 'pnpm'
-  if (tools.includes('yarn')) return 'yarn'
-  if (tools.includes('npm')) return 'npm'
-
-  return 'unknown'
+function detectMemory(): { totalGb: number } {
+  return {
+    totalGb: Math.round(os.totalmem() / 1024 / 1024 / 1024),
+  }
 }
 
 /**
- * Probe the system environment once at startup.
+ * Probe basic system environment (Phase 1, synchronous, < 1ms).
  *
- * Collects OS, shell, Node.js, available tools, package manager,
- * project type, and cwd. Respects a 5s overall timeout.
+ * Uses only the Node.js `os` module. No external commands.
+ * Results are injected into Agent system prompts.
  *
- * @param cwd - Working directory to detect project type (defaults to process.cwd())
+ * @param cwd - Working directory (defaults to process.cwd())
  */
 export function probeEnvironment(cwd?: string): EnvironmentContext {
-  const start = Date.now()
-  const workingDir = cwd ?? process.cwd()
-
-  // Synchronous parts (instant)
   const platform = os.platform()
+  const release = os.release()
   const arch = os.arch()
-  const osVersion = os.release()
-  const nodeVersion = process.version
-  const shell = detectShell()
-
-  // Check timeout budget before slow operations
-  const remaining = PROBE_TIMEOUT_MS - (Date.now() - start)
-  if (remaining <= 0) {
-    return {
-      os: { platform, arch, version: osVersion },
-      shell,
-      node: { version: nodeVersion },
-      tools: [],
-      packageManager: 'unknown',
-      projectType: 'unknown',
-      cwd: workingDir,
-    }
-  }
-
-  // Tool detection (potentially slow, but bounded by individual timeouts)
-  const tools = detectTools()
-
-  // Final timeout check
-  const remaining2 = PROBE_TIMEOUT_MS - (Date.now() - start)
-  if (remaining2 <= 0) {
-    return {
-      os: { platform, arch, version: osVersion },
-      shell,
-      node: { version: nodeVersion },
-      tools,
-      packageManager: 'unknown',
-      projectType: 'unknown',
-      cwd: workingDir,
-    }
-  }
-
-  // Project detection (file system checks, fast)
-  const projectType = detectProjectType(workingDir)
-  const packageManager = detectPackageManager(workingDir, tools)
 
   return {
-    os: { platform, arch, version: osVersion },
-    shell,
-    node: { version: nodeVersion },
-    tools,
-    packageManager,
-    projectType,
-    cwd: workingDir,
+    os: {
+      platform,
+      arch,
+      version: release,
+      displayName: getOsDisplayName(platform, release),
+    },
+    shell: detectShell(),
+    node: {
+      version: process.version,
+    },
+    cpu: detectCpu(),
+    memory: detectMemory(),
+    cwd: cwd ?? process.cwd(),
   }
 }

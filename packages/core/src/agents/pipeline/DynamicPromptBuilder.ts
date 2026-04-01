@@ -71,30 +71,30 @@ export class DynamicPromptBuilder {
       sections.set('language', context.languageInstruction);
     }
 
-    // 3. Task description
+    // 4. Task description
     sections.set('task', `## Task\n${context.task}`);
 
-    // 4. Environment context (priority 0 — always keep)
+    // 5. Environment context (priority 0 — always keep)
     if (context.environmentContext) {
       sections.set('environment', this.formatEnvironment(context.environmentContext));
     }
 
-    // 4. Session history (for context continuity between chat/workflow)
+    // 6. Session history (for context continuity between chat/workflow)
     if (context.sessionHistory && context.sessionHistory.length > 0) {
       sections.set('history', this.formatSessionHistory(context.sessionHistory));
     }
 
-    // 5. Prior phase results (formatted from structured data)
+    // 7. Prior phase results (formatted from structured data)
     if (context.priorResults.length > 0) {
       sections.set('context', this.formatPriorResults(context.priorResults));
     }
 
-    // 5. Skill section (lowest priority)
+    // 8. Skill section (lowest priority)
     if (context.skillSection) {
       sections.set('skill', context.skillSection);
     }
 
-    // 6. Schedule awareness section
+    // 9. Schedule awareness section
     if (context.scheduleSummary !== undefined) {
       const scheduleSection = this.formatScheduleSection(context.scheduleSummary);
       if (scheduleSection) {
@@ -111,7 +111,6 @@ export class DynamicPromptBuilder {
   private loadBaseTemplate(agentType: AgentType): string {
     const templateMap: Partial<Record<AgentType, string>> = {
       explore: 'explore',
-      plan: 'plan',
       general: 'intelligent',
     };
 
@@ -135,24 +134,17 @@ export class DynamicPromptBuilder {
    * Format environment context into a markdown section
    */
   private formatEnvironment(env: EnvironmentContext): string {
-    const osLabel = {
-      darwin: 'macOS',
-      linux: 'Linux',
-      win32: 'Windows',
-    }[env.os.platform] ?? env.os.platform;
-
     return [
       '## Environment',
       '',
-      `- **OS**: ${osLabel} (${env.os.platform}/${env.os.arch})`,
+      `- **OS**: ${env.os.displayName} (${env.os.platform}/${env.os.arch})`,
       `- **Shell**: ${env.shell}`,
       `- **Node.js**: ${env.node.version}`,
-      `- **Package Manager**: ${env.packageManager}`,
-      `- **Project Type**: ${env.projectType}`,
-      ...(env.tools.length > 0
-        ? [`- **Available Tools**: ${env.tools.join(', ')}`]
-        : []),
+      `- **CPU**: ${env.cpu.model}, ${env.cpu.cores} cores`,
+      `- **Memory**: ${env.memory.totalGb} GB`,
       `- **Working Directory**: ${env.cwd}`,
+      '',
+      'Use the `env` tool to check available tools, runtimes, and system capabilities.',
     ].join('\n');
   }
 
@@ -330,8 +322,8 @@ export class DynamicPromptBuilder {
   /**
    * Get human-readable label for a phase
    */
-  private getPhaseLabel(phase: AgentType): string {
-    const labels: Partial<Record<AgentType, string>> = {
+  private getPhaseLabel(phase: string): string {
+    const labels: Record<string, string> = {
       explore: 'Exploration Phase',
       plan: 'Planning Phase',
       general: 'Execution Phase',
