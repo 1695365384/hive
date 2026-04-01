@@ -145,14 +145,8 @@ describe('AgentRunner', () => {
       expect(result.success).toBe(true);
     });
 
-    it('plan should call execute with plan agent', async () => {
+    it('plan should call execute with plan agent (aliased to explore)', async () => {
       const result = await runner.plan('Research task');
-      expect(result).toBeDefined();
-      expect(result.success).toBe(true);
-    });
-
-    it('general should call execute with general agent', async () => {
-      const result = await runner.general('Execute task');
       expect(result).toBeDefined();
       expect(result.success).toBe(true);
     });

@@ -358,10 +358,8 @@ export class ExecutionCapability implements AgentCapability {
     let basePrompt: string;
     if (externalSystemPrompt) {
       basePrompt = externalSystemPrompt;
-    } else if (forceMode === 'explore') {
+    } else if (forceMode === 'explore' || forceMode === 'plan') {
       basePrompt = this.promptTemplate.render('explore', { task });
-    } else if (forceMode === 'plan') {
-      basePrompt = this.promptTemplate.render('plan', { task });
     } else {
       const isChineseTask = /[\u4e00-\u9fa5]/.test(task);
       const languageInstruction = isChineseTask
