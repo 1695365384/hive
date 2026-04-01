@@ -37,7 +37,7 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
   plan: {
     maxSteps: 10,
   },
-  general: {
+  evaluator: {
     maxSteps: 20,
   },
 };
