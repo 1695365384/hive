@@ -30,29 +30,29 @@ export interface FileToolOptions {
 
 const viewSchema = z.object({
   command: z.literal('view'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  offset: z.number().min(1).optional().describe('从第几行开始读取（从 1 开始）'),
-  limit: z.number().min(1).optional().describe('最多读取的行数'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  offset: z.number().min(1).optional().describe('Line number to start reading from (1-based)'),
+  limit: z.number().min(1).optional().describe('Max number of lines to read'),
 });
 
 const createSchema = z.object({
   command: z.literal('create'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  content: z.string().describe('文件内容'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  content: z.string().describe('File content'),
 });
 
 const strReplaceSchema = z.object({
   command: z.literal('str_replace'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  old_str: z.string().describe('要替换的原始文本'),
-  new_str: z.string().describe('替换后的新文本'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  old_str: z.string().describe('The original text to replace'),
+  new_str: z.string().describe('The replacement text'),
 });
 
 const insertSchema = z.object({
   command: z.literal('insert'),
-  file_path: z.string().describe('文件的绝对路径或相对于工作目录的路径'),
-  insert_text: z.string().describe('要插入的文本'),
-  insert_line: z.number().describe('插入的行号（在该行之后插入）'),
+  file_path: z.string().describe('Absolute path or path relative to working directory'),
+  insert_text: z.string().describe('Text to insert'),
+  insert_line: z.number().describe('Line number after which to insert'),
 });
 
 const fileInputSchema = z.discriminatedUnion('command', [
@@ -79,11 +79,11 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
   const allowedSet = new Set(allowed);
 
   const descSuffix = allowed.length < FILE_COMMANDS.length
-    ? ` 当前 Agent 允许的操作: [${Array.from(allowed).join(', ')}]`
+    ? ` Allowed operations for current agent: [${Array.from(allowed).join(', ')}]`
     : '';
 
   return {
-    description: `文件操作工具。支持查看、创建、编辑文件内容。${descSuffix}`,
+    description: `File operations tool. Supports viewing, creating, and editing file contents.${descSuffix}`,
     inputSchema: zodSchema(fileInputSchema),
     execute: async (args): Promise<ToolResult> => {
       const { command, file_path: rawPath } = args;
@@ -94,7 +94,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
         return {
           ok: false,
           code: 'PERMISSION',
-          error: `当前 Agent 无权限执行 '${command}' 操作。允许的操作: [${Array.from(allowed).join(', ')}]`,
+          error: `Current agent does not have permission to execute '${command}'. Allowed operations: [${Array.from(allowed).join(', ')}]`,
           context: { command, allowed: Array.from(allowed) },
         };
       }
@@ -104,7 +104,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
         return {
           ok: false,
           code: 'PATH_BLOCKED',
-          error: `文件路径不在允许的工作目录内: ${filePath}`,
+          error: `File path is outside the allowed working directory: ${filePath}`,
           context: { path: filePath },
         };
       }
@@ -116,7 +116,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
         return {
           ok: false,
           code: 'SENSITIVE_FILE',
-          error: `阻止${op === 'read' ? '读取' : '写入'}敏感文件: ${sensitive.description}\n路径: ${filePath}`,
+          error: `Access denied to ${op === 'read' ? 'read' : 'write'} sensitive file: ${sensitive.description}\nPath: ${filePath}`,
           context: { path: filePath, description: sensitive.description },
         };
       }
@@ -135,7 +135,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
             return {
               ok: false,
               code: 'UNKNOWN_COMMAND',
-              error: `未知命令: ${command}`,
+              error: `Unknown command: ${command}`,
             };
         }
       } catch (error) {
@@ -177,7 +177,7 @@ async function viewFile(
       return {
         ok: false,
         code: 'NOT_FOUND',
-        error: `文件不存在: ${filePath}`,
+        error: `File not found: ${filePath}`,
         context: { path: filePath },
       };
     }
@@ -207,7 +207,7 @@ async function createFile(filePath: string, content: string): Promise<ToolResult
   return {
     ok: true,
     code: 'OK',
-    data: `文件已创建: ${filePath}`,
+    data: `File created: ${filePath}`,
   };
 }
 
@@ -220,7 +220,7 @@ async function strReplace(filePath: string, oldStr: string, newStr: string): Pro
       return {
         ok: false,
         code: 'NOT_FOUND',
-        error: `文件不存在: ${filePath}`,
+        error: `File not found: ${filePath}`,
         context: { path: filePath },
       };
     }
@@ -232,7 +232,7 @@ async function strReplace(filePath: string, oldStr: string, newStr: string): Pro
     return {
       ok: false,
       code: 'INVALID_PARAM',
-      error: 'old_str 不能为空',
+      error: 'old_str must not be empty',
       context: { path: filePath },
     };
   }
@@ -242,7 +242,7 @@ async function strReplace(filePath: string, oldStr: string, newStr: string): Pro
     return {
       ok: false,
       code: 'MATCH_AMBIGUOUS',
-      error: `找到 ${matchCount} 处匹配，无法确定替换位置。请提供更多上下文使匹配唯一。`,
+      error: `Found ${matchCount} matches, cannot determine replacement position. Provide more context to make the match unique.`,
       context: { path: filePath, matchCount },
     };
   }
@@ -252,7 +252,7 @@ async function strReplace(filePath: string, oldStr: string, newStr: string): Pro
     return {
       ok: false,
       code: 'MATCH_FAILED',
-      error: '未找到要替换的文本。请确保 old_str 与文件内容完全匹配（包括缩进和换行）',
+      error: 'Text to replace not found. Ensure old_str exactly matches the file content (including indentation and newlines)',
       context: { path: filePath },
     };
   }
@@ -262,7 +262,7 @@ async function strReplace(filePath: string, oldStr: string, newStr: string): Pro
   return {
     ok: true,
     code: 'OK',
-    data: `文件已更新: ${filePath}（替换了 1 处）`,
+    data: `File updated: ${filePath} (1 replacement)`,
   };
 }
 
@@ -275,7 +275,7 @@ async function insertLine(filePath: string, insertLineNum: number, insertText: s
       return {
         ok: false,
         code: 'NOT_FOUND',
-        error: `文件不存在: ${filePath}`,
+        error: `File not found: ${filePath}`,
         context: { path: filePath },
       };
     }
@@ -288,7 +288,7 @@ async function insertLine(filePath: string, insertLineNum: number, insertText: s
     return {
       ok: false,
       code: 'INVALID_PARAM',
-      error: `行号 ${insertLineNum} 超出范围（文件共 ${lines.length} 行）`,
+      error: `Line number ${insertLineNum} is out of range (file has ${lines.length} lines)`,
       context: { line: insertLineNum, total: lines.length, path: filePath },
     };
   }
@@ -299,7 +299,7 @@ async function insertLine(filePath: string, insertLineNum: number, insertText: s
   return {
     ok: true,
     code: 'OK',
-    data: `文件已更新: ${filePath}（在第 ${insertLineNum} 行后插入）`,
+    data: `File updated: ${filePath} (inserted after line ${insertLineNum})`,
   };
 }
 
