@@ -1,165 +1,164 @@
 /**
- * Hint 模板注册表
+ * Hint template registry
  *
- * 按工具分组，按错误码索引。
- * 模板接收 ToolResult.context 填充变量。
+ * Grouped by tool, indexed by error code.
+ * Templates receive ToolResult.context for variable interpolation.
  */
 
 import type { HintTemplate, HintTemplateMap } from './types.js';
 
 // ============================================
-// file-tool hint 模板
+// file-tool hint templates
 // ============================================
 
 const FILE_HINTS: HintTemplateMap = {
   MATCH_FAILED: (ctx) =>
-    `建议: 先用 file view 读取 ${ctx.path ?? '目标文件'} 确认当前内容，` +
-    `注意缩进、空格和换行符的差异。` +
-    `如果文件内容与预期不符，可能已被其他进程修改。`,
+    `Hint: Use file view to read ${ctx.path ?? 'the target file'} and confirm current content. ` +
+    `Pay attention to indentation, spaces, and newline differences. ` +
+    `If the content differs from expected, the file may have been modified by another process.`,
 
   NOT_FOUND: (ctx) =>
-    `建议: 确认路径是否正确，可用 glob 搜索类似文件名。` +
-    `如果是新建文件，请使用 file create 命令。` +
-    (ctx.path ? ` 目标路径: ${ctx.path}` : ''),
+    `Hint: Verify the path is correct, or use glob to search for similar filenames. ` +
+    `If creating a new file, use the file create command.` +
+    (ctx.path ? ` Target path: ${ctx.path}` : ''),
 
   PERMISSION: (ctx) =>
-    `建议: 当前 Agent 类型无此权限（需要: ${ctx.command ?? '未知操作'}）。` +
-    `如果是文件写入操作，请使用 general agent 执行。` +
-    `如果是 bash 命令，请告知用户手动操作。`,
+    `Hint: Current agent type lacks this permission (needed: ${ctx.command ?? 'unknown operation'}). ` +
+    `For file writes, use a general agent. For bash commands, inform the user to run manually.`,
 
   PATH_BLOCKED: (ctx) =>
-    `建议: 路径 ${ctx.path ?? ''} 不在允许的工作目录内。` +
-    `请选择工作空间目录下的路径。`,
+    `Hint: Path ${ctx.path ?? ''} is outside the allowed working directory. ` +
+    `Choose a path within the workspace directory.`,
 
   INVALID_PARAM: (ctx) =>
-    `建议: 行号 ${ctx.line ?? '?'} 超出范围（文件共 ${ctx.total ?? '?'} 行）。` +
-    `请先用 file view 查看文件确认行数。`,
+    `Hint: Line number ${ctx.line ?? '?'} is out of range (file has ${ctx.total ?? '?'} lines). ` +
+    `Use file view to confirm the total line count.`,
 
   MATCH_AMBIGUOUS: (ctx) =>
-    `建议: 找到 ${ctx.matchCount ?? '多处'} 处匹配，无法确定替换位置。` +
-    `请提供更多上下文（如周围的函数名、注释等）使匹配唯一，` +
-    `或先用 file view 确认文件内容。`,
+    `Hint: Found ${ctx.matchCount ?? 'multiple'} matches, cannot determine replacement position. ` +
+    `Provide more context (e.g. surrounding function name, comments) to make the match unique, ` +
+    `or use file view to confirm file content first.`,
 
   IO_ERROR: (ctx) =>
-    `建议: 文件操作失败（${ctx.path ?? ''}）。` +
-    `可能是权限问题或磁盘空间不足，请检查后重试。`,
+    `Hint: File operation failed (${ctx.path ?? ''}). ` +
+    `This may be a permissions issue or insufficient disk space. Check and retry.`,
 
   SENSITIVE_FILE: (ctx) =>
-    `建议: 拒绝访问敏感文件（${ctx.description ?? '敏感文件'}）。` +
-    `请告知用户手动操作或使用 ask-user 工具请求许可。`,
+    `Hint: Access denied to sensitive file (${ctx.description ?? 'sensitive file'}). ` +
+    `Inform the user to handle it manually or use ask-user tool to request permission.`,
 };
 
 // ============================================
-// bash-tool hint 模板
+// bash-tool hint templates
 // ============================================
 
 const BASH_HINTS: HintTemplateMap = {
   TIMEOUT: (ctx) =>
-    `建议: 命令执行超时（${ctx.timeout ?? '?'}ms）。` +
-    `可以尝试增加 timeout 参数或优化命令。`,
+    `Hint: Command timed out (${ctx.timeout ?? '?'}ms). ` +
+    `Try increasing the timeout parameter or optimizing the command.`,
 
   EXEC_ERROR: (ctx) =>
-    `建议: 命令执行失败。请检查命令语法和依赖是否安装。` +
-    (ctx.command ? ` 命令: ${ctx.command}` : '') +
-    `可以先运行简化命令排查问题。`,
+    `Hint: Command execution failed. Check syntax and whether dependencies are installed.` +
+    (ctx.command ? ` Command: ${ctx.command}` : '') +
+    ` Try running a simplified command first to diagnose the issue.`,
 
   DANGEROUS_CMD: (ctx) =>
-    `建议: 命令被安全策略阻止（${ctx.description ?? '危险操作'}）。` +
-    `如果确实需要执行，请告知用户。`,
+    `Hint: Command blocked by security policy (${ctx.description ?? 'dangerous operation'}). ` +
+    `If execution is truly needed, inform the user.`,
 
   COMMAND_BLOCKED: () =>
-    `建议: 路径形式的命令不允许执行。` +
-    `请使用命令名（不带路径）执行。`,
+    `Hint: Path-form commands are not allowed. ` +
+    `Use the command name without a path prefix.`,
 };
 
 // ============================================
-// send-file-tool hint 模板
+// send-file-tool hint templates
 // ============================================
 
 const SEND_FILE_HINTS: HintTemplateMap = {
   NETWORK: (ctx) =>
-    `建议: 文件发送失败（网络错误: ${ctx.status ?? '未知'}）。` +
-    `系统将自动重试。如果持续失败，请检查网络连接或稍后重试。`,
+    `Hint: File send failed (network error: ${ctx.status ?? 'unknown'}). ` +
+    `System will auto-retry. If it keeps failing, check network connectivity or try later.`,
 
   NOT_FOUND: (ctx) =>
-    `建议: 文件不存在（${ctx.path ?? '未知路径'}）。` +
-    `请先确认文件路径是否正确。`,
+    `Hint: File not found (${ctx.path ?? 'unknown path'}). ` +
+    `Verify the file path is correct.`,
 
   PERMISSION: (ctx) =>
-    `建议: 当前环境不支持文件发送（${ctx.reason ?? '无回调注册'}）。` +
-    `文件发送仅在通过消息通道（如飞书）接入时可用。`,
+    `Hint: File sending not supported in current environment (${ctx.reason ?? 'no callback registered'}). ` +
+    `File sending is only available when connected via a messaging channel (e.g. Feishu).`,
 };
 
 // ============================================
-// web-search-tool hint 模板
+// web-search-tool hint templates
 // ============================================
 
 const WEB_SEARCH_HINTS: HintTemplateMap = {
   NETWORK: () =>
-    `建议: 搜索请求失败（网络错误）。系统将自动重试。` +
-    `如果持续失败，可以尝试换一个搜索词或稍后重试。`,
+    `Hint: Search request failed (network error). System will auto-retry. ` +
+    `If it keeps failing, try a different search term or retry later.`,
 };
 
 // ============================================
-// web-fetch-tool hint 模板
+// web-fetch-tool hint templates
 // ============================================
 
 const WEB_FETCH_HINTS: HintTemplateMap = {
   NETWORK: (ctx) =>
-    `建议: 页面抓取失败（HTTP ${ctx.status ?? '未知'}）。系统将自动重试。` +
-    `如果持续失败，可以尝试直接访问该 URL 或稍后重试。`,
+    `Hint: Page fetch failed (HTTP ${ctx.status ?? 'unknown'}). System will auto-retry. ` +
+    `If it keeps failing, try accessing the URL directly or retry later.`,
 
   PATH_BLOCKED: () =>
-    `建议: 拒绝访问内网地址，这是安全策略限制。` +
-    `请使用公网 URL。`,
+    `Hint: Access to private/internal network addresses is blocked by security policy. ` +
+    `Use a public URL instead.`,
 
   INVALID_PARAM: (ctx) =>
-    `建议: URL 格式无效（${ctx.url ?? ''}）。` +
-    `请提供完整的 HTTPS URL（如 https://example.com）。`,
+    `Hint: Invalid URL format (${ctx.url ?? ''}). ` +
+    `Provide a complete HTTPS URL (e.g. https://example.com).`,
 
   NOT_FOUND: () =>
-    `建议: 页面内容为空。可能是页面需要 JavaScript 渲染或有反爬机制。` +
-    `可以尝试直接访问该 URL 确认。`,
+    `Hint: Page content is empty. The page may require JavaScript rendering or have anti-scraping measures. ` +
+    `Try visiting the URL directly to confirm.`,
 };
 
 // ============================================
-// glob-tool hint 模板
+// glob-tool hint templates
 // ============================================
 
 const GLOB_HINTS: HintTemplateMap = {
   PATH_BLOCKED: (ctx) =>
-    `建议: 搜索路径 ${ctx.path ?? ''} 不在允许的工作目录内。` +
-    `请选择工作空间目录下的路径。`,
+    `Hint: Search path ${ctx.path ?? ''} is outside the allowed working directory. ` +
+    `Choose a path within the workspace directory.`,
 };
 
 // ============================================
-// grep-tool hint 模板
+// grep-tool hint templates
 // ============================================
 
 const GREP_HINTS: HintTemplateMap = {
   PATH_BLOCKED: (ctx) =>
-    `建议: 搜索路径 ${ctx.path ?? ''} 不在允许的工作目录内。` +
-    `请选择工作空间目录下的路径。`,
+    `Hint: Search path ${ctx.path ?? ''} is outside the allowed working directory. ` +
+    `Choose a path within the workspace directory.`,
 
   INVALID_PARAM: (ctx) =>
-    `建议: 正则表达式无效（${ctx.pattern ?? ''}）。` +
-    `请检查正则语法是否正确。`,
+    `Hint: Invalid regex pattern (${ctx.pattern ?? ''}). ` +
+    `Check the regex syntax is correct.`,
 };
 
 // ============================================
-// ask-user-tool hint 模板
+// ask-user-tool hint templates
 // ============================================
 
 const ASK_USER_HINTS: HintTemplateMap = {
   PERMISSION: () =>
-    `建议: 当前环境不支持向用户提问。请确保通过 ToolRegistry 注册了回调函数。`,
+    `Hint: User interaction not supported in current environment. Ensure a callback is registered via ToolRegistry.`,
 
   EXEC_ERROR: () =>
-    `建议: 获取用户回答失败。请检查回调函数是否正常工作。`,
+    `Hint: Failed to get user response. Check if the callback function is working properly.`,
 };
 
 // ============================================
-// 按工具分组注册（用于 getHint(toolName, code, context)）
+// Registry grouped by tool (for getHint(toolName, code, context))
 // ============================================
 
 const TOOL_HINT_MAP: Record<string, HintTemplateMap> = {
@@ -174,15 +173,15 @@ const TOOL_HINT_MAP: Record<string, HintTemplateMap> = {
 };
 
 // ============================================
-// 全局合并（仅包含不冲突的 key，FILE_HINTS 作为默认）
+// Global merge (non-conflicting keys, FILE_HINTS as default)
 // ============================================
 
 const ALL_HINTS: HintTemplateMap = { ...BASH_HINTS, ...SEND_FILE_HINTS, ...WEB_SEARCH_HINTS, ...WEB_FETCH_HINTS, ...GLOB_HINTS, ...GREP_HINTS, ...ASK_USER_HINTS, ...FILE_HINTS };
 
 /**
- * 根据错误码和上下文获取 hint（兼容旧 API）
+ * Get hint by error code and context (legacy API)
  *
- * @returns hint 字符串，如果无对应模板则返回 undefined
+ * @returns hint string, or undefined if no matching template
  */
 export function getHint(
   code: string,
@@ -194,36 +193,36 @@ export function getHint(
 }
 
 /**
- * 根据工具名和错误码获取 hint
+ * Get hint by tool name and error code
  *
- * 优先从指定工具的模板查找，回退到全局 ALL_HINTS。
+ * Looks up the specified tool's templates first, falls back to global ALL_HINTS.
  *
- * @param toolName - 工具名（如 'file-tool', 'grep-tool'）
- * @param code - 错误码
- * @param context - 上下文变量
- * @returns hint 字符串，如果无对应模板则返回 undefined
+ * @param toolName - Tool name (e.g. 'file-tool', 'grep-tool')
+ * @param code - Error code
+ * @param context - Context variables
+ * @returns hint string, or undefined if no matching template
  */
 export function getHintForTool(
   toolName: string,
   code: string,
   context: Record<string, unknown> = {},
 ): string | undefined {
-  // 优先从指定工具的模板查找
+  // Prefer tool-specific template
   const toolTemplate = TOOL_HINT_MAP[toolName]?.[code];
   if (toolTemplate) return toolTemplate(context);
-  // 回退到全局
+  // Fall back to global
   return getHint(code, context);
 }
 
 /**
- * 获取指定工具的 hint 模板
+ * Get hint templates for a specific tool
  */
 export function getToolHintTemplates(toolName: string): HintTemplateMap {
   return TOOL_HINT_MAP[toolName] ?? {};
 }
 
 /**
- * 获取所有 hint 模板（用于 withHarness 默认配置）
+ * Get all hint templates (for withHarness default config)
  */
 export function getAllHintTemplates(): HintTemplateMap {
   return { ...ALL_HINTS };

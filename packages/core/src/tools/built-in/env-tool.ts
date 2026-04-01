@@ -17,9 +17,9 @@ const VALID_CATEGORIES = [
 
 /** Env tool input schema */
 const envInputSchema = z.object({
-  query: z.string().optional().describe('模糊搜索关键词（如 "python"、"docker"）'),
+  query: z.string().optional().describe('Fuzzy search keyword, e.g. "python", "docker"'),
   category: z.enum(VALID_CATEGORIES).optional()
-    .describe('精确类别名（runtime / pkgManager / buildTool / container / vcs / system / other）'),
+    .describe('Exact category name (runtime / pkgManager / buildTool / container / vcs / system / other)'),
 });
 
 export type EnvToolInput = z.infer<typeof envInputSchema>;
@@ -75,25 +75,25 @@ async function queryDb(
  */
 export function createRawEnvTool(): RawTool<EnvToolInput> {
   return {
-    description: '查询系统环境中可用的工具和能力。支持按关键词模糊搜索或按类别精确查询。返回工具名称、类别、版本号和路径。可用类别：runtime（语言运行时）、pkgManager（包管理器）、buildTool（构建工具）、container（容器）、vcs（版本控制）、system（系统工具）、other（其他）。',
+    description: 'Query available tools and capabilities in the system environment. Supports fuzzy search by keyword or exact query by category. Returns tool name, category, version, and path. Categories: runtime, pkgManager, buildTool, container, vcs, system, other.',
     inputSchema: zodSchema(envInputSchema),
     execute: async ({ query, category }): Promise<ToolResult> => {
       const dbPath = dbProvider();
       if (!dbPath) {
-        return { ok: false, code: 'NOT_CONFIGURED', error: '数据库路径未配置' };
+        return { ok: false, code: 'NOT_CONFIGURED', error: 'Database path not configured' };
       }
 
       try {
         const results = await queryDb(dbPath, query, category);
 
         if (results === null) {
-          return { ok: true, code: 'OK', data: '环境探测尚未完成，请稍后再试。' };
+          return { ok: true, code: 'OK', data: 'Environment probing not yet complete, please try again later.' };
         }
 
         if (results.length === 0) {
           const hint = query
-            ? `未找到匹配 "${query}" 的工具`
-            : `类别 "${category}" 下没有工具`;
+            ? `No tools found matching "${query}"`
+            : `No tools in category "${category}"`;
           return { ok: true, code: 'OK', data: hint };
         }
 
@@ -118,7 +118,7 @@ export function createRawEnvTool(): RawTool<EnvToolInput> {
         return { ok: true, code: 'OK', data: lines.join('\n') };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        return { ok: false, code: 'DB_ERROR', error: `查询失败: ${msg}` };
+        return { ok: false, code: 'DB_ERROR', error: `Query failed: ${msg}` };
       }
     },
   };

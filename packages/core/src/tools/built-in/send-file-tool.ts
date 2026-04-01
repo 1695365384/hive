@@ -31,8 +31,8 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bm
 
 /** Send File 工具输入 schema */
 const sendFileInputSchema = z.object({
-  filePath: z.string().describe('要发送的本地文件路径（绝对路径或相对于工作目录的路径）'),
-  description: z.string().optional().describe('文件描述，会作为发送消息的附言'),
+  filePath: z.string().describe('Absolute or relative path to the local file. MUST be within the working directory; paths outside will be rejected.'),
+  description: z.string().optional().describe('File description, shown as a caption when sending'),
 });
 
 export type SendFileToolInput = z.infer<typeof sendFileInputSchema>;
@@ -44,62 +44,62 @@ export type SendFileToolInput = z.infer<typeof sendFileInputSchema>;
  */
 export function createRawSendFileTool(): RawTool<SendFileToolInput> {
   return {
-    description: '将本地文件发送给当前会话的用户。支持文件和图片。适用于：用户要求发送文件、分享生成的报告、转发下载的资源等场景。',
+    description: 'Send a local file to the current session user. Supports files and images. IMPORTANT: The file path MUST be within the working directory. Files outside the working directory will be rejected. If you need to send an external file, copy it into the working directory first using bash. Use cases: user requests to send a file, share a generated report, forward a downloaded resource.',
     inputSchema: zodSchema(sendFileInputSchema),
     execute: async ({ filePath, description }): Promise<ToolResult> => {
       if (!sendFileCallback) {
-        return { ok: false, code: 'PERMISSION', error: '当前环境不支持文件发送。仅在通过消息通道（如飞书）接入时可用。', context: { reason: '无回调注册' } };
+        return { ok: false, code: 'PERMISSION', error: 'File sending not supported in current environment. Only available when connected via a messaging channel (e.g. Feishu).', context: { reason: 'No callback registered' } };
       }
 
       const absolutePath = path.resolve(filePath);
 
       // 路径约束检查
       if (!isPathAllowed(absolutePath)) {
-        return { ok: false, code: 'PATH_BLOCKED', error: `文件路径不在允许的工作目录内: ${absolutePath}`, context: { path: absolutePath } };
+        return { ok: false, code: 'PATH_BLOCKED', error: `File path is outside the allowed working directory: ${absolutePath}`, context: { path: absolutePath } };
       }
 
       // 敏感文件检查
       const sensitive = isSensitiveFile(absolutePath, 'read');
       if (sensitive.sensitive) {
-        return { ok: false, code: 'SENSITIVE_FILE', error: `拒绝发送敏感文件（${sensitive.description}）`, context: { description: sensitive.description } };
+        return { ok: false, code: 'SENSITIVE_FILE', error: `Refused to send sensitive file (${sensitive.description})`, context: { description: sensitive.description } };
       }
 
       // 检查文件是否存在
       if (!fs.existsSync(absolutePath)) {
-        return { ok: false, code: 'NOT_FOUND', error: `文件不存在: ${absolutePath}`, context: { path: absolutePath } };
+        return { ok: false, code: 'NOT_FOUND', error: `File not found: ${absolutePath}`, context: { path: absolutePath } };
       }
 
       // 检查是否为目录
       const stat = fs.statSync(absolutePath);
       if (stat.isDirectory()) {
-        return { ok: false, code: 'NOT_FOUND', error: `不能发送目录: ${absolutePath}`, context: { path: absolutePath } };
+        return { ok: false, code: 'NOT_FOUND', error: `Cannot send directory: ${absolutePath}`, context: { path: absolutePath } };
       }
 
       try {
         const result = await sendFileCallback(absolutePath);
         if (!result.success) {
           // 检查是否为可重试的网络错误（429/5xx/timeout，不含 400 客户端错误）
-          const msg = result.error ?? '未知错误';
+          const msg = result.error ?? 'Unknown error';
           const isRetryable = /429|5\d{2}|timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
           if (isRetryable) {
-            return { ok: false, code: 'NETWORK', error: `文件发送失败: ${msg}`, context: { status: msg } };
+            return { ok: false, code: 'NETWORK', error: `File send failed: ${msg}`, context: { status: msg } };
           }
-          return { ok: false, code: 'EXEC_ERROR', error: `文件发送失败: ${msg}` };
+          return { ok: false, code: 'EXEC_ERROR', error: `File send failed: ${msg}` };
         }
 
         const ext = path.extname(absolutePath).toLowerCase();
-        const fileType = IMAGE_EXTENSIONS.has(ext) ? '图片' : '文件';
+        const fileType = IMAGE_EXTENSIONS.has(ext) ? 'image' : 'file';
         const fileName = path.basename(absolutePath);
         const descriptionText = description ? `\n${description}` : '';
 
-        return { ok: true, code: 'OK', data: `已发送${fileType}: ${fileName}${descriptionText}` };
+        return { ok: true, code: 'OK', data: `Sent ${fileType}: ${fileName}${descriptionText}` };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         const isNetwork = /timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
         if (isNetwork) {
-          return { ok: false, code: 'NETWORK', error: `文件发送失败: ${msg}`, context: { status: msg } };
+          return { ok: false, code: 'NETWORK', error: `File send failed: ${msg}`, context: { status: msg } };
         }
-        return { ok: false, code: 'EXEC_ERROR', error: `文件发送失败: ${msg}` };
+        return { ok: false, code: 'EXEC_ERROR', error: `File send failed: ${msg}` };
       }
     },
   };

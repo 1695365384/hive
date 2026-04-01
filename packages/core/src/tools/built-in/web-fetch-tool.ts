@@ -73,8 +73,8 @@ function compressText(text: string): string {
 
 /** Web Fetch 工具输入 schema */
 const webFetchInputSchema = z.object({
-  url: z.string().describe('要抓取的网页 URL（仅允许 https://）'),
-  maxChars: z.number().max(100000).optional().describe('返回内容的最大字符数，默认 30000'),
+  url: z.string().describe('Web page URL to fetch (HTTPS only)'),
+  maxChars: z.number().max(100000).optional().describe('Max characters of content to return, default 30000'),
 });
 
 export type WebFetchToolInput = z.infer<typeof webFetchInputSchema>;
@@ -86,7 +86,7 @@ export type WebFetchToolInput = z.infer<typeof webFetchInputSchema>;
  */
 export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
   return {
-    description: '获取指定 URL 的网页内容（纯文本）。自动去除导航、广告等噪音元素，提取主要内容。适用于抓取文档页面、博客文章等。仅允许 HTTPS URL。',
+    description: 'Fetch web page content (plain text) from a URL. Automatically strips navigation, ads, and noise to extract main content. Use for documentation pages, blog articles, etc. HTTPS only.',
     inputSchema: zodSchema(webFetchInputSchema),
     execute: async ({ url, maxChars }): Promise<ToolResult> => {
       try {
@@ -100,7 +100,7 @@ export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
         const hostname = new URL(url).hostname;
         const privateCheck = await isPrivateIP(hostname);
         if (privateCheck) {
-          return { ok: false, code: 'PATH_BLOCKED', error: `拒绝访问内网地址: ${hostname}` };
+          return { ok: false, code: 'PATH_BLOCKED', error: `Access to private network address denied: ${hostname}` };
         }
 
         const response = await fetch(url, {
@@ -112,7 +112,7 @@ export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
         });
 
         if (!response.ok) {
-          return { ok: false, code: 'NETWORK', error: `请求失败 (HTTP ${response.status})`, context: { status: String(response.status) } };
+          return { ok: false, code: 'NETWORK', error: `Request failed (HTTP ${response.status})`, context: { status: String(response.status) } };
         }
 
         const html = await response.text();
@@ -124,7 +124,7 @@ export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
         const compressed = compressText(mainContent);
 
         if (!compressed.trim()) {
-          return { ok: false, code: 'NOT_FOUND', error: '页面内容为空' };
+          return { ok: false, code: 'NOT_FOUND', error: 'Page content is empty' };
         }
 
         return { ok: true, code: 'OK', data: truncateOutput(compressed, maxChars) };
@@ -132,9 +132,9 @@ export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
         const msg = error instanceof Error ? error.message : String(error);
         const isNetwork = /timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
         if (isNetwork) {
-          return { ok: false, code: 'NETWORK', error: `抓取失败: ${msg}` };
+          return { ok: false, code: 'NETWORK', error: `Fetch failed: ${msg}` };
         }
-        return { ok: false, code: 'EXEC_ERROR', error: `抓取失败: ${msg}` };
+        return { ok: false, code: 'EXEC_ERROR', error: `Fetch failed: ${msg}` };
       }
     },
   };

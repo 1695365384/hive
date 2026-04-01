@@ -20,5 +20,5 @@ export function truncateOutput(text: string, maxChars: number = DEFAULT_MAX_CHAR
   if (text.length <= maxChars) {
     return text;
   }
-  return `${text.slice(0, maxChars)}\n\n[输出已截断，共 ${text.length} 字符]`;
+  return `${text.slice(0, maxChars)}\n\n[Output truncated, ${text.length} characters total]`;
 }
