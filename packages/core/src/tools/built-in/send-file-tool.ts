@@ -78,10 +78,10 @@ export function createRawSendFileTool(): RawTool<SendFileToolInput> {
       try {
         const result = await sendFileCallback(absolutePath);
         if (!result.success) {
-          // 检查是否为网络错误（可重试）
+          // 检查是否为可重试的网络错误（429/5xx/timeout，不含 400 客户端错误）
           const msg = result.error ?? '未知错误';
-          const isNetwork = /400|429|5\d{2}|timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
-          if (isNetwork) {
+          const isRetryable = /429|5\d{2}|timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);
+          if (isRetryable) {
             return { ok: false, code: 'NETWORK', error: `文件发送失败: ${msg}`, context: { status: msg } };
           }
           return { ok: false, code: 'EXEC_ERROR', error: `文件发送失败: ${msg}` };
