@@ -323,7 +323,7 @@ describe('withHarness', () => {
     const result = await wrapped.execute!({} as any, {} as any);
     expect(typeof result).toBe('string');
     expect(result).toContain('[Error]');
-    expect(result).toContain('工具内部异常');
+    expect(result).toContain('Internal tool exception');
   });
 
   it('should preserve description and inputSchema from rawTool', () => {

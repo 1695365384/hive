@@ -24,7 +24,7 @@ describe('createBashTool', () => {
     it('should block execution when allowed=false', async () => {
       const tool = createBashTool({ allowed: false });
       const result = await tool.execute!({ command: 'echo hello', timeout: 5000 }, {} as any);
-      expect(result).toContain('无权限');
+      expect(result).toContain('does not have permission');
       expect(mockExec).not.toHaveBeenCalled();
     });
 
@@ -70,7 +70,7 @@ describe('createBashTool', () => {
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'rm -rf /', timeout: 5000 }, {} as any);
       expect(result).toContain('[Security]');
-      expect(result).toContain('阻止危险命令');
+      expect(result).toContain('Dangerous command blocked');
       expect(mockExec).not.toHaveBeenCalled();
     });
 
@@ -119,7 +119,7 @@ describe('createBashTool', () => {
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'sleep 999', timeout: 1000 }, {} as any);
       expect(result).toContain('[Error]');
-      expect(result).toContain('超时');
+      expect(result).toContain('timed out');
     });
   });
 
@@ -132,7 +132,7 @@ describe('createBashTool', () => {
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'cat bigfile', timeout: 5000 }, {} as any);
       expect((result as string).length).toBeLessThan(40000);
-      expect(result).toContain('[输出已截断');
+      expect(result).toContain('[Output truncated');
     });
   });
 
@@ -220,7 +220,7 @@ describe('createRawBashTool', () => {
 
       expect(result).toHaveProperty('ok', false);
       expect(result).toHaveProperty('code', 'EXEC_ERROR');
-      expect(result.error).toContain('命令执行失败');
+      expect(result.error).toContain('Command failed');
       expect(result.error).toContain('command not found');
     });
   });

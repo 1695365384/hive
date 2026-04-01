@@ -61,7 +61,8 @@ pnpm --filter @bundy-lmw/hive-server exec esbuild "$SERVER_ROOT/src/main.ts" \
   --outfile="$OUT_DIR/index.cjs" \
   --external:better-sqlite3 \
   --log-level=info \
-  --define:process.env.NODE_ENV='"production"'
+  --define:process.env.NODE_ENV='"production"' \
+  --define:import.meta.url=undefined
 
 rm -f "$OUT_DIR/index.cjs.map"
 SIZE=$(du -h "$OUT_DIR/index.cjs" | cut -f1)
@@ -91,6 +92,15 @@ else
 fi
 
 echo "[sea] Native: node_modules/better-sqlite3 + bindings shim"
+
+# =============================================
+# Step 2.5: Copy core prompt templates
+# =============================================
+echo "[sea] Step 2.5: Copying prompt templates..."
+CORE_DIST="$SERVER_ROOT/../../packages/core/dist"
+mkdir -p "$OUT_DIR/agents/prompts/templates"
+cp "$CORE_DIST/agents/prompts/templates/"*.md "$OUT_DIR/agents/prompts/templates/"
+echo "[sea] Templates: $(ls "$OUT_DIR/agents/prompts/templates/" | wc -l | tr -d ' ') files"
 
 # =============================================
 # Step 3: Create SEA entry (wraps bundle with createRequire)

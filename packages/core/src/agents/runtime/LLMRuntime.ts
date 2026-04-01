@@ -29,16 +29,14 @@ import type {
 /**
  * 内置 Agent 预设配置
  * 注意：system prompt 由调用方通过 options.systemPrompt 传入（从 md 模板构建）
+ * 'plan' 和 'evaluator' 通过 AgentConfig 中的 maxTurns 兜底。
  */
 export const AGENT_PRESETS: Record<string, AgentPreset> = {
   explore: {
-    maxSteps: 5,
-  },
-  plan: {
     maxSteps: 10,
   },
   general: {
-    maxSteps: 20,
+    maxSteps: 30,
   },
 };
 
