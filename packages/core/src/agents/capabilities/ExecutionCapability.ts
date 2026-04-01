@@ -16,7 +16,7 @@ import type {
 } from '../../hooks/types.js';
 import type { SessionCapability } from './SessionCapability.js';
 import type { Tool } from 'ai';
-import type { StepResult } from '../runtime/types.js';
+import type { StepResult, RuntimeResult } from '../runtime/types.js';
 import { LLMRuntime } from '../runtime/LLMRuntime.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
 import { createAllSubagentTools } from '../../tools/built-in/subagent-tools.js';
@@ -87,6 +87,20 @@ export interface DispatchResult {
   error?: string;
   /** 执行步骤详情（可选，用于验证） */
   steps?: StepResult[];
+}
+
+/**
+ * 任务类型（基于工具调用结果推断）
+ */
+export type TaskType = 'information' | 'action' | 'unknown';
+
+/**
+ * 验证结果
+ */
+export interface VerificationVerdict {
+  complete: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  reason?: string;
 }
 
 // ============================================
@@ -211,72 +225,41 @@ export class ExecutionCapability implements AgentCapability {
           },
         });
 
-        // Anti-hallucination defenses (only in normal mode, not explore/plan)
-        if (!options?.forceMode && runtimeResult.success && this.needsVerification(task)) {
-          // Defense 2: zero-tool-call interception
-          if (runtimeResult.tools.length === 0) {
-            const retryMessages = [
-              ...baseMessages,
-              { role: 'assistant' as const, content: result },
-              ...this.buildRetryMessages(task),
-            ] as any;
+        // Evidence-based verification (only in normal mode, not explore/plan)
+        if (!options?.forceMode && runtimeResult.success) {
+          const taskType = this.inferTaskType(runtimeResult);
+          const verdict = this.checkCompletion(taskType, runtimeResult);
 
-            result = '';
-            runtimeResult = await this.runtime.run({
-              system: systemPrompt,
-              messages: retryMessages,
-              tools,
-              maxSteps: options?.maxTurns ?? ExecutionCapability.DEFAULT_MAX_TURNS,
-              model: options?.modelId,
-              streaming: true,
-              abortSignal: combinedSignal,
-              onText: (text: string) => {
-                result += text;
-                options?.onText?.(text);
-              },
-              onToolCall: (toolName: string, input: unknown) => {
-                options?.onTool?.(toolName, input);
-              },
-              onToolResult: (toolName: string, output: unknown) => {
-                options?.onToolResult?.(toolName, output);
-                this.context.timeoutCap.updateActivity();
-              },
-            });
-          }
+          if (!verdict.complete) {
+            // Zero-tool-call interception: only retry if unknown type (possibly lazy agent)
+            if (runtimeResult.tools.length === 0 && taskType === 'unknown') {
+              const retryMessages = [
+                ...baseMessages,
+                { role: 'assistant' as const, content: result },
+                ...this.buildRetryMessages(task),
+              ] as any;
 
-          // Defense 3: steps introspection
-          if (runtimeResult.tools.length > 0 && runtimeResult.steps.length > 0) {
-            const stepsSummary = this.formatStepsSummary(runtimeResult.steps);
-            const introspectionMessages = [
-              ...baseMessages,
-              { role: 'assistant' as const, content: result },
-              ...this.buildIntrospectionMessages(task, stepsSummary),
-            ] as any;
-
-            const introspectionResult = await this.runtime.run({
-              system: systemPrompt,
-              messages: introspectionMessages,
-              tools,
-              maxSteps: options?.maxTurns ?? ExecutionCapability.DEFAULT_MAX_TURNS,
-              model: options?.modelId,
-              streaming: true,
-              abortSignal: combinedSignal,
-              onText: (text: string) => {
-                result += text;
-                options?.onText?.(text);
-              },
-              onToolCall: (toolName: string, input: unknown) => {
-                options?.onTool?.(toolName, input);
-              },
-              onToolResult: (toolName: string, output: unknown) => {
-                options?.onToolResult?.(toolName, output);
-                this.context.timeoutCap.updateActivity();
-              },
-            });
-
-            // Use introspection result if it has more tools (agent found more work to do)
-            if (introspectionResult.tools.length > runtimeResult.tools.length) {
-              runtimeResult = introspectionResult;
+              result = '';
+              runtimeResult = await this.runtime.run({
+                system: systemPrompt,
+                messages: retryMessages,
+                tools,
+                maxSteps: options?.maxTurns ?? ExecutionCapability.DEFAULT_MAX_TURNS,
+                model: options?.modelId,
+                streaming: true,
+                abortSignal: combinedSignal,
+                onText: (text: string) => {
+                  result += text;
+                  options?.onText?.(text);
+                },
+                onToolCall: (toolName: string, input: unknown) => {
+                  options?.onTool?.(toolName, input);
+                },
+                onToolResult: (toolName: string, output: unknown) => {
+                  options?.onToolResult?.(toolName, output);
+                  this.context.timeoutCap.updateActivity();
+                },
+              });
             }
           }
         }
@@ -588,56 +571,96 @@ export class ExecutionCapability implements AgentCapability {
   }
 
   // ============================================
-  // Anti-Hallucination Defense
+  // Evidence-Based Verification
   // ============================================
 
+  /** Read-only tool names (matching ToolRegistry names) */
+  private static readonly READ_TOOLS = new Set(['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env']);
+
+  /** Write tool names (matching ToolRegistry names) — definitive write indicators */
+  private static readonly WRITE_TOOLS = new Set(['bash']);
+
   /**
-   * 判断任务是否为 action task（需要工具执行）。
-   * 纯问答（短文本、无动作动词）返回 false。
+   * Infer task type from executed tool calls (zero additional LLM cost).
+   *
+   * - information: only read tools were called
+   * - action: at least one write tool was called (conservative: mixed read+write = action)
+   * - unknown: no tool calls at all
    */
-  private needsVerification(task: string): boolean {
-    const trimmed = task.trim();
-    // Skip only truly trivial inputs (greetings, single words)
-    return trimmed.length > 5;
+  private inferTaskType(result: RuntimeResult): TaskType {
+    if (result.tools.length === 0) return 'unknown';
+
+    const hasWrite = result.tools.some(t => ExecutionCapability.WRITE_TOOLS.has(t));
+    return hasWrite ? 'action' : 'information';
   }
 
   /**
-   * 将 steps 格式化为可读摘要。
+   * Check task completion based on deterministic tool result signals.
+   *
+   * - information: at least one tool returned success with non-empty data
+   * - action: all write operations succeeded
+   * - unknown: trust original result (conservative)
    */
-  private formatStepsSummary(steps: StepResult[]): string {
-    if (steps.length === 0) return '（无工具调用）';
-
-    const lines: string[] = [];
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      if (step.toolCalls.length > 0) {
-        const toolNames = step.toolCalls.map(tc => tc.toolName).join(', ');
-        lines.push(`  步骤 ${i + 1}: 调用 ${toolNames}`);
-      } else if (step.text) {
-        const preview = step.text.length > 100 ? step.text.slice(0, 100) + '...' : step.text;
-        lines.push(`  步骤 ${i + 1}: ${preview}`);
+  private checkCompletion(taskType: TaskType, result: RuntimeResult): VerificationVerdict {
+    switch (taskType) {
+      case 'information': {
+        const hasSuccessfulRead = result.steps.some(step =>
+          step.toolResults.some(tr =>
+            ExecutionCapability.READ_TOOLS.has(tr.toolName)
+            && !tr.isError
+            && tr.result != null
+            && this.resultHasContent(tr.result),
+          ),
+        );
+        return hasSuccessfulRead
+          ? { complete: true, confidence: 'high' }
+          : { complete: false, confidence: 'high', reason: 'no_successful_data_returned' };
       }
+
+      case 'action': {
+        const writeResults = result.steps.flatMap(step =>
+          step.toolResults.filter(tr => ExecutionCapability.WRITE_TOOLS.has(tr.toolName)),
+        );
+        if (writeResults.length === 0) {
+          return { complete: true, confidence: 'high' };
+        }
+        const allSucceeded = writeResults.every(tr => !tr.isError);
+        return allSucceeded
+          ? { complete: true, confidence: 'high' }
+          : { complete: false, confidence: 'medium', reason: 'write_operations_failed' };
+      }
+
+      case 'unknown':
+        // No tools used — could be pure text reply (valid) or lazy agent (invalid).
+        // Conservative: trust original result, don't retry.
+        return { complete: true, confidence: 'low', reason: 'unclassified_task' };
     }
-    return `执行记录（共 ${steps.length} 步）:\n${lines.join('\n')}`;
   }
 
   /**
-   * 构造防线 2 反馈消息（零工具调用拦截）。
+   * Check if a tool result contains meaningful content (non-empty string or object).
+   */
+  private resultHasContent(result: unknown): boolean {
+    if (typeof result === 'string') return result.trim().length > 0;
+    if (typeof result === 'object' && result !== null) {
+      // Check for ok/data pattern used by harness tools
+      const r = result as Record<string, unknown>;
+      if (r.data != null) {
+        return typeof r.data === 'string' ? r.data.trim().length > 0 : true;
+      }
+      if (r.ok === true) return true;
+      return Object.keys(r).length > 0;
+    }
+    return false;
+  }
+
+  /**
+   * Build retry message for zero-tool-call interception.
    */
   private buildRetryMessages(task: string): Array<{ role: string; content: string }> {
     return [{
       role: 'user',
       content: `你还没有调用任何工具来执行任务。请使用合适的工具实际执行以下任务：\n\n"${task}"\n\n不要只回复文字，必须调用工具完成操作后再报告结果。`,
-    }];
-  }
-
-  /**
-   * 构造防线 3 自省消息（steps 注入）。
-   */
-  private buildIntrospectionMessages(task: string, stepsSummary: string): Array<{ role: string; content: string }> {
-    return [{
-      role: 'user',
-      content: `以下是你的实际执行记录：\n\n${stepsSummary}\n\n原始任务："${task}"\n\n请确认你是否已经完成了全部操作。如果还有未完成的部分，请继续执行。`,
     }];
   }
 }
