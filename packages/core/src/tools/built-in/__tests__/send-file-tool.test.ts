@@ -22,6 +22,13 @@ vi.mock('path', async (importOriginal) => {
   }
 })
 
+// Mock security utils to allow /tmp paths in tests
+vi.mock('../utils/security.js', () => ({
+  isPathAllowed: vi.fn().mockReturnValue(true),
+  isSensitiveFile: vi.fn().mockReturnValue({ sensitive: false, description: '' }),
+  isDangerousCommand: vi.fn().mockReturnValue({ dangerous: false }),
+}))
+
 // hoist the mock callback
 const { mockSendFileCb } = vi.hoisted(() => ({
   mockSendFileCb: vi.fn().mockResolvedValue({ success: true }),

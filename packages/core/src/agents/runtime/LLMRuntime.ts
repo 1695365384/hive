@@ -26,27 +26,18 @@ import type {
 // Agent 预设
 // ============================================
 
-import {
-  EXPLORE_AGENT_PROMPT,
-  PLAN_AGENT_PROMPT,
-  GENERAL_AGENT_PROMPT,
-} from '../prompts/prompts.js';
-
 /**
  * 内置 Agent 预设配置
+ * 注意：system prompt 由调用方通过 options.systemPrompt 传入（从 md 模板构建）
  */
 export const AGENT_PRESETS: Record<string, AgentPreset> = {
   explore: {
-    system: EXPLORE_AGENT_PROMPT,
     maxSteps: 5,
-    // 不指定 model，使用 Provider 默认模型
   },
   plan: {
-    system: PLAN_AGENT_PROMPT,
     maxSteps: 10,
   },
   general: {
-    system: GENERAL_AGENT_PROMPT,
     maxSteps: 20,
   },
 };

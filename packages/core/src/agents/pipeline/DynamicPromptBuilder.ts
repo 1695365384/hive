@@ -61,7 +61,12 @@ export class DynamicPromptBuilder {
     const baseTemplate = this.loadBaseTemplate(context.agentType);
     sections.set('base', baseTemplate);
 
-    // 2. Language instruction
+    // 2. Tool descriptions (dynamically injected from ToolRegistry)
+    if (context.toolDescriptions && context.toolDescriptions.length > 0) {
+      sections.set('tools', this.formatToolDescriptions(context.toolDescriptions));
+    }
+
+    // 3. Language instruction
     if (context.languageInstruction) {
       sections.set('language', context.languageInstruction);
     }
@@ -116,6 +121,14 @@ export class DynamicPromptBuilder {
     } catch {
       return `You are a ${agentType} agent. Complete the task efficiently.`;
     }
+  }
+
+  /**
+   * Format tool descriptions into a markdown section
+   */
+  private formatToolDescriptions(tools: Array<{ name: string; description: string }>): string {
+    const items = tools.map(t => `- **${t.name}**: ${t.description}`).join('\n');
+    return `## Your Tools\n\n${items}`;
   }
 
   /**
@@ -207,6 +220,7 @@ export class DynamicPromptBuilder {
   private applyBudget(sections: Map<string, string>): string {
     const sectionPriority: Record<string, number> = {
       base: 0,          // Always keep
+      tools: 0,         // Always keep (dynamically injected)
       language: 0,      // Always keep
       task: 0,          // Always keep
       environment: 0,   // Always keep
@@ -261,7 +275,7 @@ export class DynamicPromptBuilder {
    * Join sections into final prompt
    */
   private joinSections(sections: Map<string, string>): string {
-    const order = ['base', 'language', 'task', 'environment', 'history', 'context', 'skill', 'schedule'];
+    const order = ['base', 'tools', 'language', 'task', 'environment', 'history', 'context', 'skill', 'schedule'];
     const parts: string[] = [];
 
     for (const name of order) {

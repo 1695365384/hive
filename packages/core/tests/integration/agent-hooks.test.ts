@@ -13,6 +13,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Agent, createAgent } from '../../src/agents/core/index.js';
 import { streamText, generateText } from 'ai';
 
+// Mock ai module so streamText is a spy
+vi.mock('ai', () => ({
+  streamText: vi.fn(),
+  generateText: vi.fn(),
+  stepCountIs: vi.fn((n: number) => n),
+  tool: vi.fn((config: Record<string, unknown>) => config),
+  zodSchema: vi.fn((schema: unknown) => schema),
+}));
+
 // ============================================
 // Mock ProviderManager — 让 chat() 可以调用 LLM
 // ============================================
@@ -995,6 +1004,7 @@ describe('Agent + Hooks Integration', () => {
     beforeEach(async () => {
       agent = createAgent();
       await agent.initialize();
+      vi.clearAllMocks();
     });
 
     afterEach(async () => {
@@ -1027,7 +1037,7 @@ describe('Agent + Hooks Integration', () => {
         'file', { action: 'read', path: '/test.ts' }, 'file content here', 'File read successfully'
       ));
 
-      await agent.chat('read /test.ts');
+      await agent.dispatch('read /test.ts');
 
       expect(beforeHook).toHaveBeenCalled();
       const hookCtx = beforeHook.mock.calls[0][0];
@@ -1043,7 +1053,7 @@ describe('Agent + Hooks Integration', () => {
         'bash', { command: 'ls' }, 'file1.txt\nfile2.txt', 'Found 2 files'
       ));
 
-      await agent.chat('list files');
+      await agent.dispatch('list files');
 
       expect(afterHook).toHaveBeenCalled();
       const hookCtx = afterHook.mock.calls[0][0];
@@ -1061,7 +1071,7 @@ describe('Agent + Hooks Integration', () => {
         'glob', { pattern: '**/*.ts' }, '["a.ts","b.ts"]', 'Found TypeScript files'
       ));
 
-      await agent.chat('find TypeScript files');
+      await agent.dispatch('find TypeScript files');
 
       expect(beforeHook).toHaveBeenCalledTimes(1);
       expect(afterHook).toHaveBeenCalledTimes(1);
@@ -1090,7 +1100,7 @@ describe('Agent + Hooks Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 50, outputTokens: 25 }),
       });
 
-      await agent.chat('analyze codebase');
+      await agent.dispatch('analyze codebase');
 
       expect(beforeHook.mock.calls.length).toBeGreaterThanOrEqual(2);
       const toolNames = beforeHook.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).toolName);
@@ -1108,7 +1118,7 @@ describe('Agent + Hooks Integration', () => {
         'file', { action: 'write', path: '/output.txt', content: 'hello' }, 'written', 'Done'
       ));
 
-      await agent.chat('write file');
+      await agent.dispatch('write file');
 
       // tool:before context
       expect(beforeHook.mock.calls[0][0]).toHaveProperty('sessionId');

@@ -158,8 +158,8 @@ describe('ChatWsHandler', () => {
 
     it('should return threadId and broadcast agent.start when agent is ready', async () => {
       const { handler, ws, getSentMessages } = setup()
-      const mockChat = vi.fn().mockResolvedValue('response')
-      handler.setServer({ agent: { chat: mockChat } } as any)
+      const mockDispatch = vi.fn().mockResolvedValue({ text: 'response', success: true, duration: 0, tools: [] })
+      handler.setServer({ agent: { dispatch: mockDispatch } } as any)
 
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello', threadId: 'tid-1' }))
 
@@ -171,10 +171,10 @@ describe('ChatWsHandler', () => {
       expect(res.success).toBe(true)
       expect(res.result.threadId).toBe('tid-1')
 
-      expect(mockChat).toHaveBeenCalledWith('hello', expect.objectContaining({
+      expect(mockDispatch).toHaveBeenCalledWith('hello', expect.objectContaining({
         onReasoning: expect.any(Function),
         onText: expect.any(Function),
-        onToolCall: expect.any(Function),
+        onTool: expect.any(Function),
         onToolResult: expect.any(Function),
       }))
     })
@@ -186,10 +186,11 @@ describe('ChatWsHandler', () => {
       handler.handleConnection(ws1 as any)
       handler.handleConnection(ws2 as any)
 
-      const mockChat = vi.fn().mockImplementation(async (_prompt, opts) => {
+      const mockDispatch = vi.fn().mockImplementation(async (_prompt, opts) => {
         opts.onText?.('hello')
+        return { text: 'hello', success: true, duration: 0, tools: [] }
       })
-      handler.setServer({ agent: { chat: mockChat } } as any)
+      handler.setServer({ agent: { dispatch: mockDispatch } } as any)
 
       const messageHandler1 = vi.mocked(ws1.on).mock.calls.find(c => c[0] === 'message')?.[1]!
       messageHandler1({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-A' })) })

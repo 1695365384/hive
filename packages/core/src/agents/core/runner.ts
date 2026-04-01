@@ -118,9 +118,19 @@ export class AgentRunner {
   ): Promise<AgentResult> {
     console.log(`[agent] Executing ${config.type} agent: ${prompt.slice(0, 80)}${prompt.length > 80 ? '...' : ''}`)
     const preset = AGENT_PRESETS[config.type];
+
+    // Dynamically inject tool descriptions into system prompt
+    const baseSystem = options?.systemPrompt || config.prompt || preset?.system;
+    const toolDescs = this.toolRegistry.getToolDescriptions(config.type as ToolAgentType);
+    let system = baseSystem;
+    if (toolDescs.length > 0) {
+      const toolSection = '## Your Tools\n\n' + toolDescs.map(t => `- **${t.name}**: ${t.description}`).join('\n');
+      system = baseSystem ? baseSystem + '\n\n' + toolSection : toolSection;
+    }
+
     const runtimeConfig: RuntimeConfig = {
       prompt,
-      system: options?.systemPrompt || config.prompt || preset?.system,
+      system,
       messages: options?.messages,
       model: config.model || preset?.model,
       maxSteps: config.maxTurns || preset?.maxSteps || 10,

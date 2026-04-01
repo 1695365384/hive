@@ -107,6 +107,9 @@ export class PluginHandler extends WsDomainHandler {
     try {
       const result = await installPlugin(source)
 
+      // Installer writes config file directly — invalidate cache so plugin.list reads fresh data
+      this.ctx.invalidateConfig()
+
       if (!result.success) {
         return createErrorResponse(id, 'INTERNAL', result.error || 'Installation failed')
       }

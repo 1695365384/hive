@@ -10,7 +10,7 @@ import process from 'node:process';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getAgent } from './agents/index.js';
-import type { ThoroughnessLevel } from './agents/types.js';
+import type { ForceMode, DispatchOptions } from './agents/index.js';
 
 // ============================================
 // CLI utilities
@@ -57,7 +57,6 @@ type CliMode = 'chat' | 'explore' | 'plan' | 'general' | 'workflow';
 interface CliState {
   mode: CliMode;
   cwd: string;
-  thoroughness: ThoroughnessLevel;
   verbose: boolean;
 }
 
@@ -66,12 +65,21 @@ const agent = getAgent();
 const state: CliState = {
   mode: 'workflow',
   cwd: process.cwd(),
-  thoroughness: 'medium',
   verbose: true,
 };
 
 const VALID_MODES: readonly CliMode[] = ['chat', 'explore', 'plan', 'general', 'workflow'] as const;
-const VALID_THOROUGHNESS: readonly ThoroughnessLevel[] = ['quick', 'medium', 'very-thorough'] as const;
+
+/**
+ * 将 CLI mode 映射为 forceMode
+ */
+function modeToForceMode(mode: CliMode): ForceMode {
+  switch (mode) {
+    case 'explore': return 'explore';
+    case 'plan': return 'plan';
+    default: return undefined;
+  }
+}
 
 // ============================================
 // Display helpers
@@ -141,123 +149,82 @@ async function runWithCwd<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
 }
 
 // ============================================
-// Mode executors (one per CliMode)
+// Mode executor (unified dispatch)
 // ============================================
 
-async function executeChatMode(prompt: string): Promise<void> {
-  const result = await runWithCwd(state.cwd, () => agent.chat(prompt, { cwd: state.cwd }));
-  console.log(`\n\x1b[33mAssistant>\x1b[0m ${result}\n`);
-}
+async function executePrompt(prompt: string): Promise<void> {
+  const forceMode = modeToForceMode(state.mode);
+  const startTime = Date.now();
 
-async function executeExploreMode(prompt: string): Promise<void> {
-  logPhase('EXPLORE', `thoroughness: ${state.thoroughness}`);
-  const result = await runWithCwd(state.cwd, () => agent.explore(prompt, state.thoroughness));
-  console.log(`\n\x1b[33mAssistant (explore)>\x1b[0m ${result}\n`);
-}
+  if (forceMode) {
+    logPhase(forceMode.toUpperCase(), '执行任务...');
+  }
 
-async function executePlanMode(prompt: string): Promise<void> {
-  logPhase('PLAN', '研究代码库...');
-  const result = await runWithCwd(state.cwd, () => agent.plan(prompt));
-  console.log(`\n\x1b[33mAssistant (plan)>\x1b[0m ${result}\n`);
-}
-
-async function executeGeneralMode(prompt: string): Promise<void> {
-  logPhase('GENERAL', '执行任务...');
-  const result = await runWithCwd(state.cwd, () => agent.general(prompt));
-  console.log(`\n\x1b[33mAssistant (general)>\x1b[0m ${result}\n`);
-}
-
-async function executeWorkflowMode(prompt: string, startTime: number): Promise<void> {
-  console.log('');
   const toolCalls: string[] = [];
   let currentPhase = '';
 
-  const result = await runWithCwd(state.cwd, () =>
-    agent.runWorkflow(prompt, {
-      cwd: state.cwd,
-      onPhase: (phase, message) => {
-        currentPhase = phase;
-        logPhase(phase.toUpperCase(), message);
-      },
-      onTool: (tool) => {
-        toolCalls.push(tool);
-        if (state.verbose) {
-          const timestamp = new Date().toISOString().substring(11, 19);
-          console.log(`  \x1b[35m[${timestamp}][TOOL]\x1b[0m ${tool}`);
-        }
-      },
-      onText: (text) => {
-        if (currentPhase === 'execute') {
-          process.stdout.write(text);
-        }
-      },
-    }),
-  );
+  const options: DispatchOptions = {
+    forceMode,
+    onPhase: (phase, message) => {
+      currentPhase = phase;
+      logPhase(phase.toUpperCase(), message);
+    },
+    onTool: (tool) => {
+      toolCalls.push(tool);
+      if (state.verbose) {
+        const timestamp = new Date().toISOString().substring(11, 19);
+        console.log(`  \x1b[35m[${timestamp}][TOOL]\x1b[0m ${tool}`);
+      }
+    },
+    onText: (text) => {
+      if (state.mode === 'workflow' || state.mode === 'general') {
+        process.stdout.write(text);
+      }
+    },
+  };
+
+  const result = await runWithCwd(state.cwd, () => agent.dispatch(prompt, options));
 
   const duration = Date.now() - startTime;
 
-  console.log('\n');
-  console.log('\x1b[2m──────────────────────────────────────\x1b[0m');
-
-  if (!result.success) {
-    logError(`执行失败: ${result.error || '未知错误'}`);
+  // 简单模式只显示结果文本
+  if (state.mode === 'chat' || state.mode === 'explore' || state.mode === 'plan') {
+    console.log(`\n\x1b[33mAssistant${forceMode ? ` (${forceMode})` : ''}>\x1b[0m ${result.text}\n`);
   } else {
-    logSuccess('执行成功');
-  }
+    // workflow/general 模式显示摘要
+    console.log('\n');
+    console.log('\x1b[2m──────────────────────────────────────\x1b[0m');
 
-  console.log('\n\x1b[1m📊 执行摘要\x1b[0m');
-  console.log(`  工具调用: ${toolCalls.length} 次`);
-  console.log(`  耗时: ${(duration / 1000).toFixed(2)}s`);
-
-  if (toolCalls.length > 0 && state.verbose) {
-    console.log(`\n\x1b[1m🔧 工具调用详情\x1b[0m`);
-    const toolCounts: Record<string, number> = {};
-    for (const tool of toolCalls) {
-      toolCounts[tool] = (toolCounts[tool] || 0) + 1;
+    if (!result.success) {
+      logError(`执行失败: ${result.error || '未知错误'}`);
+    } else {
+      logSuccess('执行成功');
     }
-    for (const [tool, count] of Object.entries(toolCounts)) {
-      console.log(`  ${tool}: ${count} 次`);
+
+    console.log('\n\x1b[1m📊 执行摘要\x1b[0m');
+    console.log(`  工具调用: ${toolCalls.length} 次`);
+    console.log(`  耗时: ${(duration / 1000).toFixed(2)}s`);
+
+    if (result.cost) {
+      console.log(`  成本: $${result.cost.total.toFixed(6)}`);
     }
-  }
 
-  console.log('\x1b[2m──────────────────────────────────────\x1b[0m\n');
+    if (toolCalls.length > 0 && state.verbose) {
+      console.log(`\n\x1b[1m🔧 工具调用详情\x1b[0m`);
+      const toolCounts: Record<string, number> = {};
+      for (const tool of toolCalls) {
+        toolCounts[tool] = (toolCounts[tool] || 0) + 1;
+      }
+      for (const [tool, count] of Object.entries(toolCounts)) {
+        console.log(`  ${tool}: ${count} 次`);
+      }
+    }
 
-  if (result.text) {
-    console.log(`\x1b[33m📝 结果:\x1b[0m ${result.text.substring(0, 200)}${result.text.length > 200 ? '...' : ''}\n`);
-  }
-}
+    console.log('\x1b[2m──────────────────────────────────────\x1b[0m\n');
 
-// ============================================
-// executePrompt dispatcher
-// ============================================
-
-const MODE_EXECUTORS: Record<CliMode, (prompt: string, startTime: number) => Promise<void>> = {
-  chat: (prompt) => executeChatMode(prompt),
-  explore: (prompt) => executeExploreMode(prompt),
-  plan: (prompt) => executePlanMode(prompt),
-  general: (prompt) => executeGeneralMode(prompt),
-  workflow: (prompt, startTime) => executeWorkflowMode(prompt, startTime),
-};
-
-async function executePrompt(prompt: string): Promise<void> {
-  const trimmed = prompt.trim();
-  if (!trimmed) return;
-
-  const provider = agent.currentProvider;
-  logPhase('START', `任务: ${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}`);
-
-  if (provider) {
-    debug(`使用提供商: ${provider.name} (${provider.baseUrl})`);
-  }
-
-  const startTime = Date.now();
-
-  try {
-    await MODE_EXECUTORS[state.mode](trimmed, startTime);
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    logError(`执行失败: ${err.message}`, err);
-    debug('错误详情:', err);
+    if (result.text) {
+      console.log(`\x1b[33m📝 结果:\x1b[0m ${result.text.substring(0, 200)}${result.text.length > 200 ? '...' : ''}\n`);
+    }
   }
 }
 
@@ -337,17 +304,6 @@ async function cmdVerbose(args: string[]): Promise<boolean> {
   return true;
 }
 
-async function cmdThoroughness(args: string[]): Promise<boolean> {
-  const value = args[0] as ThoroughnessLevel | undefined;
-  if (!value || !VALID_THOROUGHNESS.includes(value)) {
-    console.log(`❌ thoroughness 无效，可选: ${VALID_THOROUGHNESS.join(' | ')}`);
-    return true;
-  }
-  state.thoroughness = value;
-  printState();
-  return true;
-}
-
 async function cmdCwd(args: string[]): Promise<boolean> {
   const nextCwd = args.join(' ').trim();
   if (!nextCwd) {
@@ -417,7 +373,6 @@ const COMMANDS: Record<string, CommandHandler> = {
   '/loop': cmdLoop,
   '/mode': cmdMode,
   '/verbose': cmdVerbose,
-  '/thoroughness': cmdThoroughness,
   '/cwd': cmdCwd,
   '/provider': cmdProvider,
   '/providers': cmdProviders,
@@ -467,7 +422,15 @@ async function main(): Promise<void> {
         continue;
       }
 
-      await executePrompt(trimmed);
+      logPhase('START', `任务: ${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}`);
+
+      try {
+        await executePrompt(trimmed);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        logError(`执行失败: ${err.message}`, err);
+        debug('错误详情:', err);
+      }
     }
   } finally {
     rl.close();

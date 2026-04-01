@@ -1,7 +1,7 @@
 /**
  * Builtin Agent 测试
  *
- * 测试内置 Agent 定义和 prompt 模板
+ * 测试内置 Agent 定义和 prompt 模板构建
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,9 +13,6 @@ import {
 } from '../../src/agents/core/agents.js';
 import {
   THOROUGHNESS_PROMPTS,
-  EXPLORE_AGENT_PROMPT,
-  PLAN_AGENT_PROMPT,
-  GENERAL_AGENT_PROMPT,
   buildExplorePrompt,
   buildPlanPrompt,
 } from '../../src/agents/prompts/prompts.js';
@@ -33,32 +30,26 @@ describe('Builtin Agents', () => {
     it('explore agent should have correct configuration', () => {
       const explore = CORE_AGENTS.explore;
       expect(explore.type).toBe('explore');
-      expect(explore.tools).toContain('Read');
-      expect(explore.tools).toContain('Glob');
-      expect(explore.tools).toContain('Grep');
+      expect(explore.tools).toContain('file');
+      expect(explore.tools).toContain('glob');
+      expect(explore.tools).toContain('grep');
     });
 
     it('plan agent should have correct configuration', () => {
       const plan = CORE_AGENTS.plan;
       expect(plan.type).toBe('plan');
-      expect(plan.tools).toContain('Read');
-      expect(plan.tools).toContain('Glob');
-      expect(plan.tools).toContain('Grep');
+      expect(plan.tools).toContain('file');
+      expect(plan.tools).toContain('glob');
+      expect(plan.tools).toContain('grep');
     });
 
     it('general agent should have all tools', () => {
       const general = CORE_AGENTS.general;
       expect(general.type).toBe('general');
-      expect(general.tools).toContain('Read');
-      expect(general.tools).toContain('Write');
-      expect(general.tools).toContain('Edit');
-    });
-
-    it('all core agents should have prompts', () => {
-      Object.values(CORE_AGENTS).forEach(agent => {
-        expect(agent.prompt).toBeDefined();
-        expect(agent.prompt!.length).toBeGreaterThan(50);
-      });
+      expect(general.tools).toContain('bash');
+      expect(general.tools).toContain('file');
+      expect(general.tools).toContain('ask-user');
+      expect(general.tools).toContain('send-file');
     });
   });
 
@@ -99,21 +90,6 @@ describe('Builtin Agents', () => {
       expect(THOROUGHNESS_PROMPTS.quick).toBeDefined();
       expect(THOROUGHNESS_PROMPTS.medium).toBeDefined();
       expect(THOROUGHNESS_PROMPTS['very-thorough']).toBeDefined();
-    });
-
-    it('EXPLORE_AGENT_PROMPT should be defined', () => {
-      expect(EXPLORE_AGENT_PROMPT).toBeDefined();
-      expect(EXPLORE_AGENT_PROMPT.length).toBeGreaterThan(100);
-    });
-
-    it('PLAN_AGENT_PROMPT should be defined', () => {
-      expect(PLAN_AGENT_PROMPT).toBeDefined();
-      expect(PLAN_AGENT_PROMPT.length).toBeGreaterThan(100);
-    });
-
-    it('GENERAL_AGENT_PROMPT should be defined', () => {
-      expect(GENERAL_AGENT_PROMPT).toBeDefined();
-      expect(GENERAL_AGENT_PROMPT.length).toBeGreaterThan(100);
     });
 
     it('buildExplorePrompt should include task', () => {

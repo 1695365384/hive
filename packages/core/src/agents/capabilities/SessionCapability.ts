@@ -13,11 +13,20 @@ import type {
   CreateMessageOptions,
   CompressionState,
 } from '../../session/types.js';
-import type { DispatchTraceEvent } from '../dispatch/types.js';
 import { SessionManager } from '../../session/SessionManager.js';
 import { DatabaseManager, createDatabase } from '../../storage/Database.js';
 import { SessionRepository, createSessionRepository } from '../../storage/SessionRepository.js';
 import type { WorkspaceManager } from '../../workspace/index.js';
+
+/**
+ * 分发追踪事件
+ */
+export interface DispatchTraceEvent {
+  timestamp: number;
+  type: 'dispatch.start' | 'dispatch.complete';
+  duration?: number;
+  error?: string;
+}
 
 /**
  * 会话能力配置

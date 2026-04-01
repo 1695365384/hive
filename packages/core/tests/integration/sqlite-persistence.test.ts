@@ -661,12 +661,12 @@ describe('WorkflowCapability + SessionCapability integration', () => {
     await sessionCap.loadSession('oc_groupA');
     const groupAMsgs = sessionCap.getMessages();
     expect(groupAMsgs.length).toBe(2);
-    expect(groupAMsgs.every(m => m.content.includes('群A'))).toBe(true);
+    expect(groupAMsgs.every((m: any) => m.content.includes('群A'))).toBe(true);
 
     await sessionCap.loadSession('oc_groupB');
     const groupBMsgs = sessionCap.getMessages();
     expect(groupBMsgs.length).toBe(2);
-    expect(groupBMsgs.every(m => m.content.includes('群B'))).toBe(true);
+    expect(groupBMsgs.every((m: any) => m.content.includes('群B'))).toBe(true);
 
     // 验证 SQLite 中有两条 session 记录
     const db = new Database(dbPath);

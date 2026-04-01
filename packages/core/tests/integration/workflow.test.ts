@@ -1,7 +1,8 @@
 /**
  * 工作流引擎集成测试
  *
- * 验证 WorkflowCapability 的自主循环执行能力。
+ * 验证 ExecutionCapability 的自主循环执行能力。
+ * 使用 dispatch() 作为统一入口。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,12 +13,12 @@ import {
   createMockProviderManagerModule,
 } from './integration-helpers.js';
 
-const { mockGenerateText, mockStreamText, getCallCount, resetCallCount } = createMockAI({
+const { mockStreamText, getCallCount, resetCallCount } = createMockAI({
   responses: [simpleTextResponse('Mock workflow response')],
 });
 
 vi.mock('ai', () => ({
-  generateText: mockGenerateText,
+  generateText: vi.fn(),
   streamText: mockStreamText,
   stepCountIs: vi.fn((n: number) => n),
   tool: vi.fn((config: Record<string, unknown>) => config),
@@ -48,17 +49,17 @@ describe('Workflow Engine', () => {
 
   // 5.2 基础 workflow 执行
   describe('Basic Workflow Execution', () => {
-    it('should run workflow and return WorkflowResult', async () => {
+    it('should run dispatch and return DispatchResult', async () => {
       mockStreamText.mockReturnValue(createStreamResponse('Workflow completed successfully'));
 
       const result = await withAgent(async (agent) => {
-        return agent.runWorkflow({ task: 'implement user auth' });
+        return agent.dispatch('implement user auth');
       });
 
       expect(result).toBeDefined();
       expect(typeof result).toBe('object');
-      // WorkflowResult should have text property
       expect('text' in result).toBe(true);
+      expect(result.text).toContain('Workflow completed successfully');
     });
   });
 
@@ -70,18 +71,18 @@ describe('Workflow Engine', () => {
 
       await withAgent(async (agent) => {
         agent.context.hookRegistry.on('workflow:phase', phaseHook);
-        await agent.runWorkflow({ task: 'test task' });
+        await agent.dispatch('test task');
       });
 
-      // workflow:phase hook 应该在 WorkflowCapability 中触发
+      // workflow:phase hook 应该在 ExecutionCapability 中触发
       expect(phaseHook).toHaveBeenCalled();
     });
   });
 
   // 5.4 workflow 中工具调用
   describe('Workflow Tool Calls', () => {
-    it('should handle tool calls within workflow', async () => {
-      // Workflow 使用 streamText，mock 一个包含工具调用的响应
+    it('should handle tool calls within dispatch', async () => {
+      // dispatch 使用 streamText，mock 一个包含工具调用的响应
       mockStreamText.mockReturnValueOnce({
         fullStream: (async function* () {
           yield { type: 'start' };
@@ -95,7 +96,7 @@ describe('Workflow Engine', () => {
       });
 
       const result = await withAgent(async (agent) => {
-        return agent.runWorkflow({ task: 'analyze codebase' });
+        return agent.dispatch('analyze codebase');
       });
 
       expect(result).toBeDefined();
@@ -108,7 +109,7 @@ describe('Workflow Engine', () => {
       mockStreamText.mockReturnValue(createStreamResponse('Step complete'));
 
       const result = await withAgent(async (agent) => {
-        return agent.runWorkflow({ task: 'test', maxTurns: 2 });
+        return agent.dispatch('test', { maxTurns: 2 });
       });
 
       expect(result).toBeDefined();

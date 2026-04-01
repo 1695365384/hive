@@ -98,6 +98,10 @@ export function createMockAgentRunner(): AgentRunner {
       tools: [],
       usage: { input: 100, output: 50 },
     })),
+    getToolRegistry: vi.fn(() => ({
+      getToolsForAgent: vi.fn(() => ({})),
+      getToolDescriptions: vi.fn(() => []),
+    })),
   } as unknown as AgentRunner;
 }
 

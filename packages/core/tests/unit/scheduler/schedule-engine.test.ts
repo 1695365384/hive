@@ -16,7 +16,7 @@ describe('ScheduleEngine', () => {
   let db: Database.Database;
   let repo: ScheduleRepository;
   let engine: IScheduleEngine;
-  let onTrigger: ReturnType<typeof vi.fn>;
+  let onTrigger: (ctx: any) => Promise<{ sessionId: string; success: boolean; error?: string }>;
 
   beforeEach(async () => {
     db = new Database(':memory:');

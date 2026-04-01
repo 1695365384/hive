@@ -7,7 +7,7 @@
  * - 便捷函数可调用
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 
 // ============================================
 // 1. 核心入口导出
@@ -41,26 +41,6 @@ describe('Core Agent Exports', () => {
   it('should export ask convenience function', () => {
     expect(core.ask).toBeDefined();
     expect(typeof core.ask).toBe('function');
-  });
-
-  it('should export explore convenience function', () => {
-    expect(core.explore).toBeDefined();
-    expect(typeof core.explore).toBe('function');
-  });
-
-  it('should export plan convenience function', () => {
-    expect(core.plan).toBeDefined();
-    expect(typeof core.plan).toBe('function');
-  });
-
-  it('should export general convenience function', () => {
-    expect(core.general).toBeDefined();
-    expect(typeof core.general).toBe('function');
-  });
-
-  it('should export runWorkflow convenience function', () => {
-    expect(core.runWorkflow).toBeDefined();
-    expect(typeof core.runWorkflow).toBe('function');
   });
 
   // 类型导出（type-only exports 在运行时不存在，但我们可以验证模块加载不报错）
@@ -281,8 +261,7 @@ describe('Agent Instance API', () => {
     await agent.initialize();
 
     const requiredMethods = [
-      'chat', 'explore', 'plan', 'general',
-      'runWorkflow', 'dispatch',
+      'dispatch',
       'listProviders', 'useProvider',
       'listSkills', 'getSkill', 'matchSkill',
       'createSession', 'loadSession', 'listSessions',
@@ -291,7 +270,7 @@ describe('Agent Instance API', () => {
     ];
 
     for (const method of requiredMethods) {
-      expect(typeof (agent as Record<string, unknown>)[method]).toBe(`function`);
+      expect(typeof (agent as unknown as Record<string, unknown>)[method]).toBe(`function`);
     }
 
     await agent.dispose();
@@ -334,26 +313,6 @@ describe('Convenience Functions', () => {
     // ask 内部会创建 Agent 并 chat，在 mock 环境下不应抛异常
     // 但如果没有配置 provider 可能会报错，所以只验证函数存在
     expect(typeof ask).toBe('function');
-  });
-
-  it('should call explore without throwing', async () => {
-    const { explore } = await import('../../src/index.js');
-    expect(typeof explore).toBe('function');
-  });
-
-  it('should call plan without throwing', async () => {
-    const { plan } = await import('../../src/index.js');
-    expect(typeof plan).toBe('function');
-  });
-
-  it('should call general without throwing', async () => {
-    const { general } = await import('../../src/index.js');
-    expect(typeof general).toBe('function');
-  });
-
-  it('should call runWorkflow without throwing', async () => {
-    const { runWorkflow } = await import('../../src/index.js');
-    expect(typeof runWorkflow).toBe('function');
   });
 });
 

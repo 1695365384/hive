@@ -64,7 +64,7 @@ describe('Full Conversation Chain', () => {
       });
 
       const result = await withAgent(async (agent) => {
-        return agent.chat('你好');
+        return (await agent.dispatch('你好')).text;
       });
 
       expect(result).toBe('你好！有什么可以帮你的？');
@@ -85,7 +85,7 @@ describe('Full Conversation Chain', () => {
       });
 
       const result = await withAgent(async (agent) => {
-        return agent.chat('Hello');
+        return (await agent.dispatch('Hello')).text;
       });
 
       expect(result).toBe('Hello!');
@@ -122,7 +122,7 @@ describe('Full Conversation Chain', () => {
       });
 
       const result = await withAgent(async (agent) => {
-        return agent.chat('读取 /tmp/test.ts 的内容');
+        return (await agent.dispatch('读取 /tmp/test.ts 的内容')).text;
       });
 
       expect(typeof result).toBe('string');
@@ -160,11 +160,11 @@ describe('Full Conversation Chain', () => {
       });
 
       await withAgent(async (agent) => {
-        const r1 = await agent.chat('第一轮消息');
-        expect(r1).toBe('第一轮回复');
+        const r1 = await agent.dispatch('第一轮消息');
+        expect(r1.text).toBe('第一轮回复');
 
-        const r2 = await agent.chat('第二轮消息');
-        expect(r2).toBe('第二轮回复');
+        const r2 = await agent.dispatch('第二轮消息');
+        expect(r2.text).toBe('第二轮回复');
 
         // 验证 streamText 被调用了两次
         expect(mockStreamText).toHaveBeenCalledTimes(2);
@@ -198,7 +198,7 @@ describe('Full Conversation Chain', () => {
         agent.context.hookRegistry.on('tool:before', beforeHook);
         agent.context.hookRegistry.on('tool:after', afterHook);
 
-        await agent.chat('读取文件');
+        await agent.dispatch('读取文件');
       });
 
       // tool:before 和 tool:after 应该在 ChatCapability.handleToolUse/handleToolResult 中触发
@@ -225,7 +225,7 @@ describe('Full Conversation Chain', () => {
       await withAgent(async (agent) => {
         // currentSession 在 initialize 时已由 session capability 创建
         // 或者可能在首次 chat 后
-        await agent.chat('hello');
+        await agent.dispatch('hello');
 
         // Agent 应该有 session capability 提供的 session
         expect(agent).toHaveProperty('currentSession');

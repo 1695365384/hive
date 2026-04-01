@@ -1,24 +1,19 @@
 /**
- * Web Fetch 工具 — URL 内容抓取并转为 Markdown
+ * Web Fetch 工具 — URL 内容抓取并提取纯文本
  *
  * 使用 AI SDK tool() + Zod schema 定义。
- * 依赖 cheerio（HTML 解析）+ turndown（HTML→Markdown）。
+ * 依赖 cheerio（HTML 解析）+ 纯文本提取。
  * 内置 SSRF 防护：仅允许 HTTPS，拒绝内网 IP。
  */
 
 import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import * as cheerio from 'cheerio';
-import TurndownService from 'turndown';
 import { truncateOutput } from './utils/output-safety.js';
 import { isAllowedUrl, isPrivateIP } from './utils/security.js';
+import { cleanAndCompress } from './search-engines/utils.js';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness, type RawTool } from '../harness/with-harness.js';
-
-const turndown = new TurndownService({
-  headingStyle: 'atx',
-  codeBlockStyle: 'fenced',
-});
 
 /** 需要移除的 HTML 噪音元素 */
 const NOISE_SELECTORS = [
@@ -27,6 +22,54 @@ const NOISE_SELECTORS = [
   '.cookie-banner', '.popup', '.modal', '.newsletter',
   '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]',
 ];
+
+/** 主要内容选择器（优先级） */
+const MAIN_CONTENT_SELECTORS = [
+  'article',
+  'main',
+  '[role="main"]',
+  '.article-content', '.post-content', '.entry-content',
+  '.content', '#content',
+];
+
+/**
+ * 用 cheerio 提取主要内容的纯文本
+ * 
+ * 优先尝试文章/主要内容标签，用 .text() 直接提取纯文本（无 HTML 标签）
+ */
+function extractMainContent(html: string): string {
+  const $ = cheerio.load(html);
+
+  // 移除噪音元素
+  for (const selector of NOISE_SELECTORS) {
+    $(selector).remove();
+  }
+
+  // 尝试查找主要内容区域
+  for (const selector of MAIN_CONTENT_SELECTORS) {
+    const content = $(selector);
+    if (content.length > 0 && content.text().trim().length > 100) {
+      return content.text();
+    }
+  }
+
+  // 降级：使用 body 纯文本
+  return $('body').text();
+}
+
+/**
+ * 压缩纯文本
+ * 
+ * - 多个空格/换行 → 单空格
+ * - 中文空格处理
+ * - 移除多余制表符
+ */
+function compressText(text: string): string {
+  return text
+    .replace(/\u3000+/g, ' ')        // 中文空格 → 单空格
+    .replace(/\s+/g, ' ')             // 多个空格/换行/制表符 → 单空格
+    .trim();
+}
 
 /** Web Fetch 工具输入 schema */
 const webFetchInputSchema = z.object({
@@ -43,7 +86,7 @@ export type WebFetchToolInput = z.infer<typeof webFetchInputSchema>;
  */
 export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
   return {
-    description: '获取指定 URL 的网页内容并转换为 Markdown 格式。自动去除导航、广告等噪音元素。适用于抓取文档页面、博客文章等。仅允许 HTTPS URL。',
+    description: '获取指定 URL 的网页内容（纯文本）。自动去除导航、广告等噪音元素，提取主要内容。适用于抓取文档页面、博客文章等。仅允许 HTTPS URL。',
     inputSchema: zodSchema(webFetchInputSchema),
     execute: async ({ url, maxChars }): Promise<ToolResult> => {
       try {
@@ -73,22 +116,18 @@ export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
         }
 
         const html = await response.text();
-        const $ = cheerio.load(html);
 
-        // 移除噪音元素
-        for (const selector of NOISE_SELECTORS) {
-          $(selector).remove();
-        }
+        // 用 cheerio 提取主要内容（纯文本）
+        const mainContent = extractMainContent(html);
 
-        // 转换为 Markdown
-        const bodyHtml = $('body').html() || $.html();
-        const markdown = turndown.turndown(bodyHtml);
+        // 压缩纯文本（移除多余空白）
+        const compressed = compressText(mainContent);
 
-        if (!markdown.trim()) {
+        if (!compressed.trim()) {
           return { ok: false, code: 'NOT_FOUND', error: '页面内容为空' };
         }
 
-        return { ok: true, code: 'OK', data: truncateOutput(markdown, maxChars) };
+        return { ok: true, code: 'OK', data: truncateOutput(compressed, maxChars) };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         const isNetwork = /timeout|ECONNREFUSED|ENOTFOUND/i.test(msg);

@@ -13,6 +13,15 @@ import { Agent, createAgent } from '../../src/agents/core/index.js';
 import type { Skill, SkillMatchResult } from '../../src/skills/index.js';
 import { streamText } from 'ai';
 
+// Mock ai module so streamText is a spy
+vi.mock('ai', () => ({
+  streamText: vi.fn(),
+  generateText: vi.fn(),
+  stepCountIs: vi.fn((n: number) => n),
+  tool: vi.fn((config: Record<string, unknown>) => config),
+  zodSchema: vi.fn((schema: unknown) => schema),
+}));
+
 // ============================================
 // Mock ProviderManager — 让 chat() 可以调用 LLM
 // ============================================
@@ -443,6 +452,7 @@ describe('Agent + Skill Integration', () => {
     beforeEach(async () => {
       agent = createAgent();
       await agent.initialize();
+      vi.clearAllMocks();
     });
 
     afterEach(async () => {
@@ -473,7 +483,7 @@ describe('Agent + Skill Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      await agent.chat('review this code');
+      await agent.dispatch('review this code');
 
       expect(streamText).toHaveBeenCalled();
       const callArgs = (streamText as any).mock.calls[0][0];
@@ -559,8 +569,8 @@ describe('Agent + Skill Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      const result = await agent.chat('analyze this code');
-      expect(result).toBe('Analysis done');
+      const result = await agent.dispatch('analyze this code');
+      expect(result.text).toBe('Analysis done');
     });
 
     it('should have skill available across multiple chat turns', async () => {
@@ -588,8 +598,8 @@ describe('Agent + Skill Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      const r1 = await agent.chat('first message');
-      expect(r1).toBe('First response');
+      const r1 = await agent.dispatch('first message');
+      expect(r1.text).toBe('First response');
 
       // 技能仍然可用
       expect(agent.getSkill('Debug Helper')).toBeDefined();
@@ -607,8 +617,8 @@ describe('Agent + Skill Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 20, outputTokens: 10 }),
       });
 
-      const r2 = await agent.chat('second message');
-      expect(r2).toBe('Second response');
+      const r2 = await agent.dispatch('second message');
+      expect(r2.text).toBe('Second response');
 
       // streamText 被调用了两次
       expect(streamText).toHaveBeenCalledTimes(2);

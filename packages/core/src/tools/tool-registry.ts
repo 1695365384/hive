@@ -87,6 +87,17 @@ export class ToolRegistry {
   }
 
   /**
+   * 获取指定 Agent 类型的工具描述列表（用于 prompt 注入）
+   */
+  getToolDescriptions(agentType: string): Array<{ name: string; description: string }> {
+    const tools = this.getToolsForAgent(agentType);
+    return Object.entries(tools).map(([name, tool]) => ({
+      name,
+      description: tool.description ?? '',
+    }));
+  }
+
+  /**
    * 获取指定 Agent 类型的工具集
    */
   getToolsForAgent(agentType: string): Record<string, Tool> {

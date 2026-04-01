@@ -18,10 +18,6 @@ export {
   getAgent,
   createAgent,
   ask,
-  explore,
-  plan,
-  general,
-  runWorkflow,
 } from './singleton.js';
 
 // ============================================
@@ -66,7 +62,6 @@ export { CapabilityRegistry } from './CapabilityRegistry.js';
 export type {
   AgentCapability,
   AgentContext as AgentContextInterface,
-  AgentRegistry as AgentRegistryInterface,
   AgentOptions,
   AgentInitOptions,
   AgentExecuteOptions,

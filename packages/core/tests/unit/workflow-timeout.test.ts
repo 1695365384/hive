@@ -1,7 +1,7 @@
 /**
- * 7.5 WorkflowCapability 超时保护集成测试
+ * ExecutionCapability 超时保护集成测试
  *
- * 验证工作流执行中的心跳启动和停止
+ * 验证执行中的心跳启动和停止
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -21,10 +21,10 @@ vi.mock('../../src/agents/runtime/LLMRuntime.js', () => {
   };
 });
 
-import { WorkflowCapability } from '../../src/agents/capabilities/WorkflowCapability.js';
+import { ExecutionCapability } from '../../src/agents/capabilities/ExecutionCapability.js';
 
-describe('WorkflowCapability 超时保护', () => {
-  let capability: WorkflowCapability;
+describe('ExecutionCapability 超时保护', () => {
+  let capability: ExecutionCapability;
   let context: AgentContext;
 
   const testProvider = createTestProviderConfig({
@@ -46,7 +46,7 @@ describe('WorkflowCapability 超时保护', () => {
       };
     });
 
-    capability = new WorkflowCapability();
+    capability = new ExecutionCapability();
     context = createMockAgentContext({
       activeProvider: testProvider,
       providers: [testProvider],
@@ -55,12 +55,13 @@ describe('WorkflowCapability 超时保护', () => {
       ...context.runner,
       getToolRegistry: vi.fn(() => ({
         getToolsForAgent: vi.fn(() => []),
+        getToolDescriptions: vi.fn(() => []),
       })),
     };
     capability.initialize(context);
   });
 
-  it('工作流执行时应启动心跳', async () => {
+  it('执行任务时应启动心跳', async () => {
     await capability.run('Test task');
 
     expect(context.timeoutCap.startHeartbeat).toHaveBeenCalledWith(
@@ -72,13 +73,13 @@ describe('WorkflowCapability 超时保护', () => {
     );
   });
 
-  it('工作流完成后应停止心跳', async () => {
+  it('执行完成后应停止心跳', async () => {
     await capability.run('Test task');
 
     expect(context.timeoutCap.stopHeartbeat).toHaveBeenCalled();
   });
 
-  it('工作流出错后应停止心跳（finally 保证）', async () => {
+  it('执行出错后应停止心跳（finally 保证）', async () => {
     mockRuntimeRun.mockRejectedValue(new Error('exec failed'));
 
     await capability.run('Test task');

@@ -15,7 +15,7 @@ import type {
 } from './types.js';
 import type { CreateMessageOptions } from './types.js';
 import type { ISessionRepository } from '../storage/SessionRepository.js';
-import type { DispatchTraceEvent } from '../agents/dispatch/types.js';
+import type { DispatchTraceEvent } from '../agents/capabilities/SessionCapability.js';
 import {
   CompressionService,
   createCompressionService,
