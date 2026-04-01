@@ -1,7 +1,7 @@
 /**
  * 内置 Agent 定义
  *
- * 核心三代理：Explore / Plan / General
+ * 核心三代理：Explore / Plan / Evaluator
  * 提示词内容统一在 templates/ 目录的 .md 文件中维护，不在此处硬编码。
  */
 
@@ -15,7 +15,7 @@ import type { AgentConfig } from './types.js';
 export const AGENT_NAMES = {
   EXPLORE: 'explore',
   PLAN: 'plan',
-  GENERAL: 'general',
+  EVALUATOR: 'evaluator',
 } as const;
 
 // ============================================
@@ -23,9 +23,9 @@ export const AGENT_NAMES = {
 // ============================================
 
 /**
- * Claude Code 核心三代理
+ * 核心三代理
  */
-export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = {
+export const CORE_AGENTS: Record<'explore' | 'plan' | 'evaluator', AgentConfig> = {
   explore: {
     type: 'explore',
     description: 'Fast agent optimized for searching and analyzing codebases.',
@@ -40,9 +40,9 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = 
     maxTurns: 10,
   },
 
-  general: {
-    type: 'general',
-    description: 'General-purpose agent capable of handling complex, multi-step tasks.',
+  evaluator: {
+    type: 'evaluator',
+    description: 'Evaluator agent for assessing results, detecting errors, and handling complex tasks.',
     tools: ['bash', 'file', 'glob', 'grep', 'web-search', 'web-fetch', 'ask-user', 'send-file'],
     maxTurns: 20,
   },

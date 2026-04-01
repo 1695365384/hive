@@ -7,7 +7,7 @@
 /**
  * Agent 类型
  */
-export type AgentType = 'explore' | 'plan' | 'general' | 'custom';
+export type AgentType = 'explore' | 'plan' | 'evaluator' | 'general' | 'custom';
 
 /**
  * Agent 配置

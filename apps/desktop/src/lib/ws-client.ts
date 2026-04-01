@@ -17,7 +17,8 @@ interface PendingRequest {
 
 type EventCallback = (data: any) => void
 
-const DEFAULT_WS_URL = 'ws://127.0.0.1:4450/ws/admin'
+const ADMIN_WS_URL = 'ws://127.0.0.1:4450/ws/admin'
+const CHAT_WS_URL = 'ws://127.0.0.1:4450/ws/chat'
 const REQUEST_TIMEOUT = 30_000
 const MAX_RECONNECT_DELAY = 30_000
 const INITIAL_RECONNECT_DELAY = 500
@@ -35,7 +36,7 @@ export class WsClient {
   private url: string
   private destroyed = false
 
-  constructor(url = DEFAULT_WS_URL, apiKey?: string) {
+  constructor(url = ADMIN_WS_URL, apiKey?: string) {
     this.url = apiKey ? `${url}?token=${encodeURIComponent(apiKey)}` : url
   }
 
@@ -88,6 +89,10 @@ export class WsClient {
       this.ws.close()
       this.ws = null
     }
+  }
+
+  get isDestroyed(): boolean {
+    return this.destroyed
   }
 
   /** 手动重试连接（从 failed 状态恢复） */
@@ -244,12 +249,21 @@ export class WsClient {
 // 单例
 // ============================================
 
-let client: WsClient | null = null
+let adminClient: WsClient | null = null
+let chatClient: WsClient | null = null
 
 export function getWsClient(): WsClient {
-  if (!client) {
-    client = new WsClient()
-    client.connect()
+  if (!adminClient || adminClient.isDestroyed) {
+    adminClient = new WsClient(ADMIN_WS_URL)
+    adminClient.connect()
   }
-  return client
+  return adminClient
+}
+
+export function getChatWsClient(): WsClient {
+  if (!chatClient || chatClient.isDestroyed) {
+    chatClient = new WsClient(CHAT_WS_URL)
+    chatClient.connect()
+  }
+  return chatClient
 }

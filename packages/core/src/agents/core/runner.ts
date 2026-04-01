@@ -230,7 +230,7 @@ export class AgentRunner {
       model: model || preset?.model,
       maxSteps,
       streaming: false,
-      tools: this.toolRegistry.getToolsForAgent((config.agentType || 'general') as ToolAgentType),
+      tools: this.toolRegistry.getToolsForAgent((config.agentType || 'evaluator') as ToolAgentType),
     });
 
     if (!result.success) {
@@ -330,10 +330,10 @@ export class AgentRunner {
   }
 
   /**
-   * 通用执行
+   * 评估执行
    */
-  async general(prompt: string): Promise<AgentResult> {
-    return this.execute('general', prompt);
+  async evaluator(prompt: string): Promise<AgentResult> {
+    return this.execute('evaluator', prompt);
   }
 
   /**
@@ -370,13 +370,13 @@ export class AgentRunner {
   }
 
   /**
-   * 快速通用 Task
+   * 快速评估 Task
    */
-  async generalTask(prompt: string): Promise<TaskResult> {
+  async evaluatorTask(prompt: string): Promise<TaskResult> {
     return this.runTask({
-      name: 'general-task',
+      name: 'evaluator-task',
       prompt,
-      agentType: 'general',
+      agentType: 'evaluator',
     });
   }
 }
