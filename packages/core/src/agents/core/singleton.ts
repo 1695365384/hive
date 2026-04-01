@@ -2,13 +2,8 @@
  * 全局 Agent 实例和便捷函数
  */
 
-import type {
-  AgentOptions,
-  AgentInitOptions,
-  WorkflowOptions,
-  WorkflowResult,
-  ThoroughnessLevel,
-} from './types.js';
+import type { AgentInitOptions } from './types.js';
+import type { DispatchOptions } from '../capabilities/ExecutionCapability.js';
 import { Agent } from './Agent.js';
 
 /** 全局 Agent 实例 */
@@ -28,26 +23,6 @@ export function createAgent(options: AgentInitOptions = {}): Agent {
 }
 
 /** 快速对话 */
-export async function ask(prompt: string, options?: AgentOptions): Promise<string> {
-  return getAgent().chat(prompt, options);
-}
-
-/** 快速探索 */
-export async function explore(prompt: string, thoroughness: ThoroughnessLevel = 'medium'): Promise<string> {
-  return getAgent().explore(prompt, thoroughness);
-}
-
-/** 快速计划 */
-export async function plan(prompt: string): Promise<string> {
-  return getAgent().plan(prompt);
-}
-
-/** 快速执行通用任务 */
-export async function general(prompt: string): Promise<string> {
-  return getAgent().general(prompt);
-}
-
-/** 快速执行工作流 */
-export async function runWorkflow(task: string, options?: WorkflowOptions): Promise<WorkflowResult> {
-  return getAgent().runWorkflow(task, options);
+export async function ask(prompt: string, options?: DispatchOptions): Promise<string> {
+  return (await getAgent().dispatch(prompt, options)).text;
 }

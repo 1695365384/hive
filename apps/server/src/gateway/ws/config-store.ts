@@ -60,6 +60,11 @@ export class ConfigStore {
     this.cache = config
   }
 
+  /** Invalidate cache so next load() reads from disk */
+  invalidate(): void {
+    this.cache = null
+  }
+
   sensitize(config: ServerConfig): ServerConfig {
     return {
       ...config,

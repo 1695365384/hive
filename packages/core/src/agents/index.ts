@@ -2,9 +2,11 @@
  * Agent 模块 - 唯一入口
  *
  * 所有 Agent 功能都通过主 Agent 访问：
- * - 对话功能
- * - 子 Agent（Explore, Plan, General 等）
- * - 工作流
+ * - 统一任务执行（dispatch）
+ * - 对话（chat — dispatch 的别名）
+ * - 提供商管理
+ * - 技能管理
+ * - 会话管理
  */
 
 // ============================================
@@ -17,10 +19,6 @@ export {
   getAgent,
   createAgent,
   ask,
-  explore,
-  plan,
-  general,
-  runWorkflow,
 
   // 内置 Agent
   CORE_AGENTS,
@@ -33,11 +31,7 @@ export {
   createAgentRunner,
 
   // 类型
-  type AgentOptions,
   type AgentInitOptions,
-  type AgentExecuteOptions,
-  type WorkflowOptions,
-  type WorkflowResult,
   type AgentConfig,
   type AgentResult,
   type ThoroughnessLevel,
@@ -54,31 +48,17 @@ export {
 export {
   ProviderCapability,
   SkillCapability,
-  ChatCapability,
-  SubAgentCapability,
-  WorkflowCapability,
+  ExecutionCapability,
   ScheduleCapability,
   createScheduleCapability,
 } from './capabilities/index.js';
 
-// ============================================
-// 智能分发
-// ============================================
-
-export {
-  Dispatcher,
-  classifyForDispatch,
-  regexClassify,
-} from './dispatch/index.js';
-
 export type {
-  DispatchClassification,
-  DispatchResult,
+  ForceMode,
   DispatchOptions,
-  DispatchTraceEventType,
+  DispatchResult,
   DispatchTraceEvent,
-  ClassifierProvider,
-} from './dispatch/index.js';
+} from './capabilities/index.js';
 
 // ============================================
 // Prompt 系统
@@ -90,20 +70,10 @@ export {
   getPromptTemplate,
   createPromptTemplate,
 
-  // Prompt 常量
+  // Prompt
   THOROUGHNESS_PROMPTS,
-  EXPLORE_AGENT_PROMPT,
-  PLAN_AGENT_PROMPT,
-  GENERAL_AGENT_PROMPT,
-
-  // 构建函数
   buildExplorePrompt,
   buildPlanPrompt,
-  buildIntelligentPrompt,
-
-  // 模板渲染
-  renderTemplate,
-  loadTemplate,
 
   // 类型
   type TemplateVariables,

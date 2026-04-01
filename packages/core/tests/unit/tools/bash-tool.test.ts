@@ -12,7 +12,8 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { exec } from 'node:child_process';
-const mockExec = vi.mocked(exec);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockExec = exec as any;
 
 describe('createBashTool', () => {
   beforeEach(() => {
@@ -112,7 +113,7 @@ describe('createBashTool', () => {
     it('should report timeout error', async () => {
       mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
         const err = new Error('Command timed out') as NodeJS.ErrnoException;
-        err.killed = true;
+        (err as any).killed = true;
         cb(err, '', '');
       });
       const tool = createBashTool({ allowed: true });
@@ -130,7 +131,7 @@ describe('createBashTool', () => {
       });
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'cat bigfile', timeout: 5000 }, {} as any);
-      expect(result.length).toBeLessThan(40000);
+      expect((result as string).length).toBeLessThan(40000);
       expect(result).toContain('[输出已截断');
     });
   });
@@ -197,7 +198,7 @@ describe('createRawBashTool', () => {
     it('should return ToolResult for TIMEOUT', async () => {
       mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
         const err = new Error('Command timed out') as NodeJS.ErrnoException;
-        err.killed = true;
+        (err as any).killed = true;
         cb(err, '', '');
       });
       const tool = createRawBashTool({ allowed: true });

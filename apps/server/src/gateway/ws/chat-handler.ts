@@ -218,14 +218,14 @@ export class ChatWsHandler extends EventEmitter {
 
     emit('agent.start', { threadId, agentType: 'general' })
 
-    await this.server!.agent.chat(prompt, {
+    await this.server!.agent.dispatch(prompt, {
       onReasoning: (text: string) => {
         emit('agent.reasoning', { threadId, text })
       },
       onText: (text: string) => {
         emit('agent.text-delta', { threadId, text })
       },
-      onToolCall: (toolName: string, input: unknown) => {
+      onTool: (toolName: string, input: unknown) => {
         const toolCallId = crypto.randomUUID()
         toolCallIdMap.set(toolName, toolCallId)
         emit('agent.tool-call', { threadId, toolCallId, toolName, args: input })

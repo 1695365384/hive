@@ -436,8 +436,7 @@ describe('SessionManager', () => {
 
       const trace = [
         { timestamp: Date.now(), type: 'dispatch.start' as const },
-        { timestamp: Date.now(), type: 'dispatch.route' as const, layer: 'chat' as const },
-        { timestamp: Date.now(), type: 'dispatch.complete' as const, layer: 'chat' as const, duration: 1234 },
+        { timestamp: Date.now(), type: 'dispatch.complete' as const, duration: 1234 },
       ];
 
       await manager.saveTrace(trace);
@@ -477,7 +476,7 @@ describe('SessionManager', () => {
 
       // Directly inject corrupted data via updateMetadata
       await manager.updateMetadata({
-        dispatch_traces: 'not-valid-json' as unknown as string,
+        dispatchTraces: 'not-valid-json' as unknown as string,
       });
 
       const traces = manager.getTraces();

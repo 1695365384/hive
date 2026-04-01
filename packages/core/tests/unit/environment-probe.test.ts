@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { probeEnvironment } from '../../src/environment/probe.js'
 import type { EnvironmentContext } from '../../src/environment/types.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const coreDir = resolve(__dirname, '../..')
 
 describe('probeEnvironment', () => {
   const originalShell = process.env.SHELL
@@ -80,15 +85,15 @@ describe('probeEnvironment', () => {
     expect(env.cwd).toBe(process.cwd())
   })
 
-  it('detects project type as typescript in this package (packages/core has tsconfig.json)', () => {
-    // When running tests, cwd is packages/core/ which has tsconfig.json
-    const env = probeEnvironment(originalCwd)
+  it('detects project type as typescript in packages/core (has tsconfig.json)', () => {
+    // coreDir always points to packages/core regardless of test runner cwd
+    const env = probeEnvironment(coreDir)
     expect(env.projectType).toBe('typescript')
   })
 
   it('detects package manager from lockfile (pnpm-workspace.yaml)', () => {
     // Monorepo root has pnpm-lock.yaml; cwd may be core/ which inherits pnpm
-    const env = probeEnvironment(originalCwd)
+    const env = probeEnvironment(coreDir)
     // packageManager is either pnpm (from lockfile or tools) or unknown
     expect(['pnpm', 'npm', 'yarn', 'unknown']).toContain(env.packageManager)
   })

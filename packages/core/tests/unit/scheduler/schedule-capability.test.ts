@@ -8,7 +8,8 @@ import { createDatabase } from '../../../src/storage/Database.js';
 import { MigrationRunner } from '../../../src/storage/MigrationRunner.js';
 import { ScheduleRepository } from '../../../src/storage/ScheduleRepository.js';
 import { ScheduleCapability } from '../../../src/agents/capabilities/ScheduleCapability.js';
-import type { IScheduleRepository, IScheduleEngine, AgentCapability } from '../../../src/scheduler/types.js';
+import type { IScheduleRepository, IScheduleEngine } from '../../../src/scheduler/types.js';
+import type { AgentCapability } from '../../../src/agents/core/types.js';
 // Import migrations to trigger registration
 import '../../../src/storage/migrations/index.js';
 

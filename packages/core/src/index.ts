@@ -3,17 +3,16 @@
  *
  * 核心设计：
  * - 主 Agent 作为唯一入口
- * - 管理子 Agent（Explore, Plan, General 等）
+ * - 统一任务分发（dispatch）
  * - 管理提供商（EnvSource + 内置预设）
- * - 执行工作流
  *
  * 架构：
  * ┌─────────────────────────────────────────┐
  * │            主 Agent (Agent)             │
- * │      唯一入口，管理所有功能               │
+ * │    唯一入口：dispatch() / chat()         │
  * ├─────────────────────────────────────────┤
- * │           子 Agent 系统                  │
- * │  Explore | Plan | General | Extended   │
+ * │       ExecutionCapability               │
+ * │  streamText + 全量工具 + subagent tools │
  * ├─────────────────────────────────────────┤
  * │           提供商管理                     │
  * │  EnvSource + 内置预设                   │
@@ -27,13 +26,11 @@
  *
  * // 方式 1: 创建实例
  * const agent = new Agent();
- * await agent.chat('你好');
- * await agent.explore('查找 API');
- * await agent.runWorkflow('添加功能');
+ * await agent.dispatch('你好');
+ * await agent.dispatch('添加功能', { forceMode: 'plan' });
  *
  * // 方式 2: 便捷函数
  * await ask('你好');
- * await explore('查找 API');
  * ```
  */
 
@@ -49,16 +46,24 @@ export {
 
   // 便捷函数
   ask,
-  explore,
-  plan,
-  general,
-  runWorkflow,
 
   // 类型
-  type AgentOptions,
   type AgentInitOptions,
-  type WorkflowOptions,
-  type WorkflowResult,
+} from './agents/index.js';
+
+// ============================================
+// 统一任务执行
+// ============================================
+
+export {
+  ExecutionCapability,
+} from './agents/index.js';
+
+export type {
+  ForceMode,
+  DispatchOptions,
+  DispatchResult,
+  DispatchTraceEvent,
 } from './agents/index.js';
 
 // ============================================
@@ -69,7 +74,6 @@ export {
   // 类型
   type AgentType,
   type AgentConfig,
-  type AgentExecuteOptions,
   type AgentResult,
   type ThoroughnessLevel,
 
@@ -90,9 +94,6 @@ export {
 
   // Prompt 模板
   THOROUGHNESS_PROMPTS,
-  EXPLORE_AGENT_PROMPT,
-  PLAN_AGENT_PROMPT,
-  GENERAL_AGENT_PROMPT,
   buildExplorePrompt,
   buildPlanPrompt,
 } from './agents/index.js';
@@ -297,25 +298,6 @@ export type {
 } from './agents/core/types.js';
 
 export { TimeoutError } from './agents/core/types.js';
-
-// ============================================
-// 智能分发（Dispatch）
-// ============================================
-
-export {
-  Dispatcher,
-  classifyForDispatch,
-  regexClassify,
-} from './agents/dispatch/index.js';
-
-export type {
-  DispatchClassification,
-  DispatchResult,
-  DispatchOptions,
-  DispatchTraceEventType,
-  DispatchTraceEvent,
-  ClassifierProvider,
-} from './agents/dispatch/index.js';
 
 // ============================================
 // 压缩系统

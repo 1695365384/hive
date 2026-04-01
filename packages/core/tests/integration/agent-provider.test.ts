@@ -13,6 +13,15 @@ import { Agent, createAgent } from '../../src/agents/core/index.js';
 import type { ProviderConfig } from '../../src/providers/types.js';
 import { streamText } from 'ai';
 
+// Mock ai module so streamText is a spy
+vi.mock('ai', () => ({
+  streamText: vi.fn(),
+  generateText: vi.fn(),
+  stepCountIs: vi.fn((n: number) => n),
+  tool: vi.fn((config: Record<string, unknown>) => config),
+  zodSchema: vi.fn((schema: unknown) => schema),
+}));
+
 // ============================================
 // Mock ProviderManager — 让 chat() 可以调用 LLM
 // ============================================
@@ -750,6 +759,7 @@ describe('Agent + Provider Integration', () => {
     beforeEach(async () => {
       agent = createAgent();
       await agent.initialize();
+      vi.clearAllMocks();
     });
 
     afterEach(async () => {
@@ -769,9 +779,9 @@ describe('Agent + Provider Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      const result = await agent.chat('hello');
+      const result = await agent.dispatch('hello');
 
-      expect(result).toBe('Hello from mock provider');
+      expect(result.text).toBe('Hello from mock provider');
       expect(streamText).toHaveBeenCalled();
     });
 
@@ -829,8 +839,8 @@ describe('Agent + Provider Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      const result = await agent.chat('test after switch');
-      expect(result).toBe('Response after switch');
+      const result = await agent.dispatch('test after switch');
+      expect(result.text).toBe('Response after switch');
       expect(streamText).toHaveBeenCalled();
     });
 
@@ -847,7 +857,7 @@ describe('Agent + Provider Integration', () => {
         totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
       });
 
-      await agent.chat('hello');
+      await agent.dispatch('hello');
 
       // streamText 应该被调用，且包含 model 参数
       const callArgs = (streamText as any).mock.calls[0][0];

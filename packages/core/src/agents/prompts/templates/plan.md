@@ -16,13 +16,6 @@ IMPORTANT: You are in **READ-ONLY** mode.
 - **Do NOT** execute modifying commands
 - Focus on understanding, not changing
 
-## Your Tools
-
-You have access to read-only tools only:
-- **Read**: Examine file contents
-- **Glob**: Find files by pattern
-- **Grep**: Search for text patterns
-
 ## Research Goals
 
 For the given task, gather information about:

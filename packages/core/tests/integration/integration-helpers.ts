@@ -40,7 +40,8 @@ export function createFakeModel(): Record<string, unknown> {
  * 在集成测试文件中配合 vi.mock 使用:
  *   vi.mock('../../src/providers/ProviderManager.js', () => createMockProviderManagerModule());
  */
-export function createMockProviderManagerModule() {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createMockProviderManagerModule(): Record<string, any> {
   const fakeModel = createFakeModel();
 
   const createMockInstance = () => ({
@@ -124,7 +125,8 @@ export interface MockAIConfig {
  * 返回可在 vi.mock('ai', ...) 中使用的 mock 函数。
  * 支持纯文本响应、工具调用响应、多轮对话序列。
  */
-export function createMockAI(config: MockAIConfig) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createMockAI(config: MockAIConfig): Record<string, any> {
   const { responses, delay = 0 } = config;
   let callIndex = 0;
 
@@ -287,7 +289,7 @@ export async function createTestAgent(): Promise<{ agent: Agent; dispose: () => 
  *
  * @example
  * const result = await withAgent(async (agent) => {
- *   return agent.chat('hello');
+ *   return (await agent.dispatch('hello')).text;
  * });
  */
 export async function withAgent<T>(callback: (agent: Agent) => Promise<T>): Promise<T> {

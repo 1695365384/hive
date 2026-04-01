@@ -154,7 +154,7 @@ export async function createTestSessionManager(options?: {
   autoSave?: boolean;
   enableCompression?: boolean;
 }) {
-  const { SessionManager } = await import('../src/session/SessionManager.js');
+  const { SessionManager } = await import('../../src/session/SessionManager.js');
   const repository = new MockSessionRepository();
 
   return {

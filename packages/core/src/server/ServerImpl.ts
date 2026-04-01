@@ -277,7 +277,7 @@ class ServerImpl implements Server {
       const engine = createScheduleEngine(scheduleRepo, async ({ schedule: task }) => {
         this.logger.info(`[scheduler] Executing schedule: ${task.name}`);
         try {
-          const result = await this.agent.chat(task.prompt, { sessionId: undefined });
+          const result = (await this.agent.dispatch(task.prompt, { chatId: undefined })).text;
           const sessionId = this.agent.context.hookRegistry.getSessionId();
           this.logger.info(`[scheduler] Schedule "${task.name}" completed, session: ${sessionId}`);
 

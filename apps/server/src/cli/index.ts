@@ -52,7 +52,7 @@ program
         }
 
         try {
-          const response = await ctx.agent.chat(trimmed)
+          const response = (await ctx.agent.dispatch(trimmed)).text
           console.log(`\nAgent: ${response}\n`)
         } catch (error) {
           console.error('Error:', error instanceof Error ? error.message : 'Unknown error')

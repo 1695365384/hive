@@ -141,7 +141,7 @@ if (providers.length > 0) {
           if (!ctx) return;
 
           try {
-            const response = await ctx.agent.chat('回复 OK');
+            const response = (await ctx.agent.dispatch('回复 OK')).text;
             expect(response).toBeDefined();
             console.log(`✅ ${provider.name} 响应正常`);
           } catch (error) {

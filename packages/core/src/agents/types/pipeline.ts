@@ -81,4 +81,6 @@ export interface PromptBuildContext {
   environmentContext?: EnvironmentContext;
   /** 定时任务摘要（可选，注入到 schedule awareness section） */
   scheduleSummary?: string;
+  /** 当前 Agent 可用工具描述（可选，动态注入到 prompt 中） */
+  toolDescriptions?: Array<{ name: string; description: string }>;
 }

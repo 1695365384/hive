@@ -71,9 +71,9 @@ describe('Agent 模块', () => {
       expect(exploreConfig).toBeDefined();
       expect(exploreConfig?.type).toBe('explore');
       expect(exploreConfig?.tools).toBeDefined();
-      expect(exploreConfig?.tools).toContain('Read');
-      expect(exploreConfig?.tools).toContain('Glob');
-      expect(exploreConfig?.tools).toContain('Grep');
+      expect(exploreConfig?.tools).toContain('file');
+      expect(exploreConfig?.tools).toContain('glob');
+      expect(exploreConfig?.tools).toContain('grep');
     });
   });
 
@@ -92,10 +92,7 @@ describe('Agent 模块', () => {
     it('should create Agent', () => {
       const agent = new Agent();
       expect(agent).toBeDefined();
-      expect(typeof agent.chat).toBe('function');
-      expect(typeof agent.explore).toBe('function');
-      expect(typeof agent.plan).toBe('function');
-      expect(typeof agent.general).toBe('function');
+      expect(typeof agent.dispatch).toBe('function');
       expect(typeof agent.useProvider).toBe('function');
     });
   });
