@@ -15,7 +15,7 @@ import type { ThoroughnessLevel } from '../types.js';
 export const THOROUGHNESS_PROMPTS: Record<ThoroughnessLevel, string> = {
   quick: 'Perform a quick search - focus on speed and most relevant results.',
   medium: 'Perform a balanced exploration - thorough but efficient.',
-  'very-thorough': 'Perform a comprehensive analysis - be exhaustive.',
+  'very-thorough': 'Perform a comprehensive analysis - be exhaustive and provide structured output (Relevant Files, Current Implementation, Dependencies, Patterns, Recommendations).',
 };
 
 // ============================================
@@ -35,8 +35,8 @@ export function buildExplorePrompt(task: string, thoroughness: ThoroughnessLevel
 
 /**
  * 构建计划 Prompt
+ * @deprecated Use buildExplorePrompt(task, 'very-thorough') instead
  */
 export function buildPlanPrompt(task: string): string {
-  const template = getPromptTemplate();
-  return template.render('plan', { task });
+  return buildExplorePrompt(task, 'very-thorough');
 }

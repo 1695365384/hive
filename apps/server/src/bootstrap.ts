@@ -13,7 +13,6 @@ import {
   type Server,
   type MessageBus,
   noopLogger,
-  probeEnvironment,
 } from '@bundy-lmw/hive-core'
 import type { Logger as PinoLogger } from 'pino'
 import { join } from 'path'
@@ -77,9 +76,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     : createLogger(config.logLevel)
   const plugins = await loadPlugins()
 
-  // Probe environment once at startup
-  const environmentContext = probeEnvironment()
-
   const server = createServer({
     config: {
       externalConfig: {
@@ -98,7 +94,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     plugins,
     dbPath: join(HIVE_HOME, 'hive.db'),
     logger,
-    environmentContext,
   })
 
   await server.start()

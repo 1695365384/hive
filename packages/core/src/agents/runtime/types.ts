@@ -124,7 +124,7 @@ export interface RuntimeResult {
 /**
  * Agent 预设配置
  *
- * 定义 explore / plan / general 等内置 Agent 的默认参数
+ * 定义 explore / plan / evaluator 等内置 Agent 的默认参数
  */
 export interface AgentPreset {
   /** 系统提示（可选，调用方通常通过 systemPrompt 传入） */

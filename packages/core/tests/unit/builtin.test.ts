@@ -19,11 +19,10 @@ import {
 
 describe('Builtin Agents', () => {
   describe('CORE_AGENTS', () => {
-    it('should have exactly 3 core agents', () => {
+    it('should have exactly 2 core agents', () => {
       const names = Object.keys(CORE_AGENTS);
-      expect(names).toHaveLength(3);
+      expect(names).toHaveLength(2);
       expect(names).toContain('explore');
-      expect(names).toContain('plan');
       expect(names).toContain('general');
     });
 
@@ -33,14 +32,11 @@ describe('Builtin Agents', () => {
       expect(explore.tools).toContain('file');
       expect(explore.tools).toContain('glob');
       expect(explore.tools).toContain('grep');
+      expect(explore.tools).toContain('env');
     });
 
-    it('plan agent should have correct configuration', () => {
-      const plan = CORE_AGENTS.plan;
-      expect(plan.type).toBe('plan');
-      expect(plan.tools).toContain('file');
-      expect(plan.tools).toContain('glob');
-      expect(plan.tools).toContain('grep');
+    it('explore agent should have maxTurns 10', () => {
+      expect(CORE_AGENTS.explore.maxTurns).toBe(10);
     });
 
     it('general agent should have all tools', () => {
@@ -50,19 +46,37 @@ describe('Builtin Agents', () => {
       expect(general.tools).toContain('file');
       expect(general.tools).toContain('ask-user');
       expect(general.tools).toContain('send-file');
+      expect(general.tools).toContain('env');
+    });
+
+    it('general agent should have maxTurns 30', () => {
+      expect(CORE_AGENTS.general.maxTurns).toBe(30);
     });
   });
 
   describe('BUILTIN_AGENTS', () => {
-    it('should contain all core agents', () => {
+    it('should contain core agents', () => {
       const names = Object.keys(BUILTIN_AGENTS);
       expect(names).toContain('explore');
-      expect(names).toContain('plan');
       expect(names).toContain('general');
     });
 
-    it('should have exactly 3 agents', () => {
-      expect(Object.keys(BUILTIN_AGENTS).length).toBe(3);
+    it('should have exactly 2 agents', () => {
+      expect(Object.keys(BUILTIN_AGENTS).length).toBe(2);
+    });
+  });
+
+  describe('Alias mapping', () => {
+    it('getAgentConfig("plan") returns explore config', () => {
+      const config = getAgentConfig('plan');
+      expect(config).toBeDefined();
+      expect(config?.type).toBe('explore');
+    });
+
+    it('getAgentConfig("evaluator") returns general config', () => {
+      const config = getAgentConfig('evaluator');
+      expect(config).toBeDefined();
+      expect(config?.type).toBe('general');
     });
   });
 
@@ -78,10 +92,10 @@ describe('Builtin Agents', () => {
       expect(config).toBeUndefined();
     });
 
-    it('getAllAgentNames should return all agent names', () => {
+    it('getAllAgentNames should return core agent names only', () => {
       const names = getAllAgentNames();
-      expect(names).toHaveLength(3);
-      expect(names).toEqual(expect.arrayContaining(['explore', 'plan', 'general']));
+      expect(names).toHaveLength(2);
+      expect(names).toEqual(['explore', 'general']);
     });
   });
 
@@ -105,9 +119,10 @@ describe('Builtin Agents', () => {
       expect(thoroughPrompt).toContain('comprehensive');
     });
 
-    it('buildPlanPrompt should include task', () => {
-      const prompt = buildPlanPrompt('Add authentication');
-      expect(prompt).toContain('Add authentication');
+    it('buildPlanPrompt should delegate to buildExplorePrompt with very-thorough', () => {
+      const planPrompt = buildPlanPrompt('Add authentication');
+      expect(planPrompt).toContain('Add authentication');
+      expect(planPrompt).toContain('comprehensive');
     });
   });
 });
