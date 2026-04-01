@@ -230,7 +230,7 @@ export class AgentRunner {
       model: model || preset?.model,
       maxSteps,
       streaming: false,
-      tools: this.toolRegistry.getToolsForAgent((config.agentType || 'evaluator') as ToolAgentType),
+      tools: this.toolRegistry.getToolsForAgent((config.agentType || 'general') as ToolAgentType),
     });
 
     if (!result.success) {
@@ -324,6 +324,7 @@ export class AgentRunner {
 
   /**
    * 计划研究
+   * @deprecated Use explore() with thoroughness='very-thorough' instead
    */
   async plan(prompt: string): Promise<AgentResult> {
     return this.execute('plan', buildPlanPrompt(prompt));
@@ -331,6 +332,7 @@ export class AgentRunner {
 
   /**
    * 评估执行
+   * @deprecated Use execute('general', prompt) instead
    */
   async evaluator(prompt: string): Promise<AgentResult> {
     return this.execute('evaluator', prompt);
@@ -360,6 +362,7 @@ export class AgentRunner {
 
   /**
    * 快速研究 Task
+   * @deprecated Use exploreTask() with thoroughness='very-thorough' instead
    */
   async planTask(prompt: string): Promise<TaskResult> {
     return this.runTask({
@@ -371,6 +374,7 @@ export class AgentRunner {
 
   /**
    * 快速评估 Task
+   * @deprecated Use runTask() with agentType='general' instead
    */
   async evaluatorTask(prompt: string): Promise<TaskResult> {
     return this.runTask({
