@@ -102,7 +102,7 @@ describe('Sub-Agent Collaboration', () => {
       mockStreamText.mockReturnValue(createStreamResponse('Task completed successfully'));
 
       const result = await withAgent(async (agent) => {
-        return agent.dispatch('create a new utility file');
+        return agent.dispatch('create a new utility file', { forceMode: 'general' });
       });
 
       expect(result).toBeDefined();
