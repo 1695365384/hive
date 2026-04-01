@@ -124,7 +124,6 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   // Configure handlers
   adminHandler.setServer(context.server)
   adminHandler.setHttpServer(server)
-  adminHandler.setPlugins(context.plugins)
   chatHandler.setServer(context.server)
 
   server.on('upgrade', (request, socket, head) => {

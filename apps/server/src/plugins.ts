@@ -20,15 +20,26 @@ import { PLUGINS_DIR } from './plugin-manager/constants.js'
 // 类型
 // ============================================
 
+/** 从 hive.id 提取插件标识，回退到从 package name 去掉 @bundy-lmw/hive-plugin- 前缀 */
+function extractPluginId(pkgJson: PluginPackageJson, dirName: string): string {
+  if (pkgJson.hive?.id) return pkgJson.hive.id
+  if (pkgJson.name) {
+    return pkgJson.name.replace(/^@bundy-lmw\/hive-plugin-/, '')
+  }
+  return dirName
+}
+
 interface PluginManifest {
   dir: string
   name: string
+  id: string
   entry: string
 }
 
 interface HivePluginDeclaration {
   plugin: boolean
   entry?: string
+  id?: string
 }
 
 interface PluginPackageJson {
@@ -84,6 +95,7 @@ function resolveManifest(pluginDir: string, dirName: string): PluginManifest | n
         return {
           dir: pluginDir,
           name: pkgJson.name ?? dirName,
+          id: extractPluginId(pkgJson, dirName),
           entry: resolve(pluginDir, entryFile),
         }
       }
@@ -144,6 +156,7 @@ function tryParsePkgJson(pkgJsonPath: string, pluginDir: string, dirName: string
     return {
       dir: pluginDir,
       name: pkgJson.name ?? dirName,
+      id: extractPluginId(pkgJson, dirName),
       entry: resolve(pkgDir, entryFile),
     }
   } catch (error) {
@@ -159,7 +172,7 @@ function tryParsePkgJson(pkgJsonPath: string, pluginDir: string, dirName: string
 /**
  * 从目录扫描结果加载插件
  *
- * 配置从 hive.config.json 读取，按插件 name 匹配。
+ * 配置从 hive.config.json 读取，按插件 hive.id 匹配。
  */
 async function loadFromDirectory(
   manifests: PluginManifest[],
@@ -178,7 +191,7 @@ async function loadFromDirectory(
         continue
       }
 
-      const config = pluginConfigs[manifest.name] ?? {}
+      const config = pluginConfigs[manifest.id] ?? {}
       const plugin = new PluginClass(config)
       plugins.push(plugin)
       console.log(`[plugins] Loaded (dir): ${manifest.name}`)
@@ -191,7 +204,7 @@ async function loadFromDirectory(
 }
 
 /**
- * 从 npm 包名动态加载插件
+ * 从 npm 包名动态加载插件（兜底路径，directory 优先已加载的不重复）
  */
 async function loadFromNpm(pluginConfigs: Record<string, Record<string, unknown>>): Promise<IPlugin[]> {
   const plugins: IPlugin[] = []
@@ -206,9 +219,9 @@ async function loadFromNpm(pluginConfigs: Record<string, Record<string, unknown>
         continue
       }
 
-      const plugin = new PluginClass(config)
+      const plugin = new PluginClass(config) as IPlugin
       plugins.push(plugin)
-      console.log(`[plugins] Loaded (npm): ${packageName}`)
+      console.log(`[plugins] Loaded (npm): ${packageName} (id: ${plugin.metadata.id})`)
     } catch (error) {
       console.error(`[plugins] Failed to load ${packageName}:`, error instanceof Error ? error.message : error)
     }
@@ -262,11 +275,11 @@ export async function loadPlugins(): Promise<IPlugin[]> {
   const manifests = scanPluginDir()
   const dirPlugins = await loadFromDirectory(manifests, pluginConfigs)
 
-  // 2. npm 动态 import（跳过已被目录加载的同名插件）
-  const dirNames = new Set(manifests.map(m => m.name))
+  // 2. npm 动态 import（跳过已被目录加载的同 id 插件）
+  const dirIds = new Set(manifests.map(m => m.id))
   const npmConfigs: Record<string, Record<string, unknown>> = {}
   for (const [name, config] of Object.entries(pluginConfigs)) {
-    if (!dirNames.has(name)) {
+    if (!dirIds.has(name)) {
       npmConfigs[name] = config
     }
   }
