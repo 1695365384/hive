@@ -174,6 +174,43 @@ export interface ConfigAfterUpdateHookContext {
 }
 
 // ============================================
+// Worker Hook 上下文（Coordinator + Worker 模式）
+// ============================================
+
+/**
+ * Worker Hook 上下文
+ *
+ * 所有 worker:* 事件共享此上下文类型。
+ * 不同事件通过不同的字段组合传递信息。
+ */
+export interface WorkerHookContext {
+  /** 会话 ID */
+  sessionId: string;
+  /** Worker 唯一标识 */
+  workerId: string;
+  /** Worker 类型 */
+  workerType?: string;
+  /** 任务描述 */
+  description?: string;
+  /** 工具名称（tool-call/tool-result） */
+  toolName?: string;
+  /** 工具输入（tool-call） */
+  input?: unknown;
+  /** 工具输出（tool-result） */
+  output?: unknown;
+  /** 文本内容（reasoning） */
+  text?: string;
+  /** 是否成功（complete） */
+  success?: boolean;
+  /** 错误信息 */
+  error?: string;
+  /** 执行时长（毫秒） */
+  duration?: number;
+  /** 时间戳 */
+  timestamp: Date;
+}
+
+// ============================================
 // Hook 类型映射
 // ============================================
 
@@ -218,6 +255,12 @@ export interface HookTypeMap {
   'agent:thinking': AgentThinkingHookContext;
   'task:progress': TaskProgressHookContext;
   'notification:push': NotificationPushHookContext;
+  // Worker 相关（Coordinator + Worker 模式）
+  'worker:start': WorkerHookContext;
+  'worker:tool-call': WorkerHookContext;
+  'worker:tool-result': WorkerHookContext;
+  'worker:reasoning': WorkerHookContext;
+  'worker:complete': WorkerHookContext;
 }
 
 /**

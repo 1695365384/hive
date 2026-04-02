@@ -11,8 +11,8 @@
  * │            主 Agent (Agent)             │
  * │    唯一入口：dispatch() / chat()         │
  * ├─────────────────────────────────────────┤
- * │       ExecutionCapability               │
- * │  streamText + 全量工具 + subagent tools │
+ * │     CoordinatorCapability               │
+ * │  Coordinator 模式 + Worker 委派       │
  * ├─────────────────────────────────────────┤
  * │           提供商管理                     │
  * │  EnvSource + 内置预设                   │
@@ -27,7 +27,6 @@
  * // 方式 1: 创建实例
  * const agent = new Agent();
  * await agent.dispatch('你好');
- * await agent.dispatch('添加功能', { forceMode: 'plan' });
  *
  * // 方式 2: 便捷函数
  * await ask('你好');
@@ -56,11 +55,10 @@ export {
 // ============================================
 
 export {
-  ExecutionCapability,
+  CoordinatorCapability,
 } from './agents/index.js';
 
 export type {
-  ForceMode,
   DispatchOptions,
   DispatchResult,
   DispatchTraceEvent,

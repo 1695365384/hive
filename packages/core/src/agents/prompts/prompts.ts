@@ -40,3 +40,11 @@ export function buildExplorePrompt(task: string, thoroughness: ThoroughnessLevel
 export function buildPlanPrompt(task: string): string {
   return buildExplorePrompt(task, 'very-thorough');
 }
+
+/**
+ * 构建 Plan Agent 系统提示（独立模板）
+ */
+export function buildPlanSystemPrompt(task: string): string {
+  const template = getPromptTemplate();
+  return template.render('plan', { task });
+}

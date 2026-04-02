@@ -15,14 +15,16 @@ import {
   THOROUGHNESS_PROMPTS,
   buildExplorePrompt,
   buildPlanPrompt,
+  buildPlanSystemPrompt,
 } from '../../src/agents/prompts/prompts.js';
 
 describe('Builtin Agents', () => {
   describe('CORE_AGENTS', () => {
-    it('should have exactly 2 core agents', () => {
+    it('should have exactly 3 core agents', () => {
       const names = Object.keys(CORE_AGENTS);
-      expect(names).toHaveLength(2);
+      expect(names).toHaveLength(3);
       expect(names).toContain('explore');
+      expect(names).toContain('plan');
       expect(names).toContain('general');
     });
 
@@ -37,6 +39,20 @@ describe('Builtin Agents', () => {
 
     it('explore agent should have maxTurns 10', () => {
       expect(CORE_AGENTS.explore.maxTurns).toBe(10);
+    });
+
+    it('plan agent should have read-only tools', () => {
+      const plan = CORE_AGENTS.plan;
+      expect(plan.type).toBe('plan');
+      expect(plan.tools).toContain('file');
+      expect(plan.tools).toContain('glob');
+      expect(plan.tools).toContain('grep');
+      expect(plan.tools).toContain('web-search');
+      expect(plan.tools).not.toContain('bash');
+    });
+
+    it('plan agent should have maxTurns 15', () => {
+      expect(CORE_AGENTS.plan.maxTurns).toBe(15);
     });
 
     it('general agent should have all tools', () => {
@@ -58,19 +74,20 @@ describe('Builtin Agents', () => {
     it('should contain core agents', () => {
       const names = Object.keys(BUILTIN_AGENTS);
       expect(names).toContain('explore');
+      expect(names).toContain('plan');
       expect(names).toContain('general');
     });
 
-    it('should have exactly 2 agents', () => {
-      expect(Object.keys(BUILTIN_AGENTS).length).toBe(2);
+    it('should have exactly 3 agents', () => {
+      expect(Object.keys(BUILTIN_AGENTS).length).toBe(3);
     });
   });
 
   describe('Alias mapping', () => {
-    it('getAgentConfig("plan") returns explore config', () => {
+    it('getAgentConfig("plan") returns plan config', () => {
       const config = getAgentConfig('plan');
       expect(config).toBeDefined();
-      expect(config?.type).toBe('explore');
+      expect(config?.type).toBe('plan');
     });
 
     it('getAgentConfig("evaluator") returns general config', () => {
@@ -94,8 +111,8 @@ describe('Builtin Agents', () => {
 
     it('getAllAgentNames should return core agent names only', () => {
       const names = getAllAgentNames();
-      expect(names).toHaveLength(2);
-      expect(names).toEqual(['explore', 'general']);
+      expect(names).toHaveLength(3);
+      expect(names).toEqual(['explore', 'plan', 'general']);
     });
   });
 
@@ -123,6 +140,11 @@ describe('Builtin Agents', () => {
       const planPrompt = buildPlanPrompt('Add authentication');
       expect(planPrompt).toContain('Add authentication');
       expect(planPrompt).toContain('comprehensive');
+    });
+
+    it('buildPlanSystemPrompt should use independent plan template', () => {
+      const prompt = buildPlanSystemPrompt('Design auth system');
+      expect(prompt).toContain('Design auth system');
     });
   });
 });

@@ -25,7 +25,7 @@ import { setEnvDbProvider } from './built-in/env-tool.js';
 import type { AgentType as CapabilityAgentType } from '../agents/types/capabilities.js';
 
 /** Agent types that have tool whitelists in the registry */
-export type AgentType = 'explore' | 'general';
+export type AgentType = 'explore' | 'plan' | 'general';
 
 /**
  * Agent 类型对应的工具白名单
@@ -37,6 +37,14 @@ export type AgentType = 'explore' | 'general';
  */
 const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () => Tool }>> = {
   explore: [
+    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
+    { name: 'glob', factory: () => createGlobTool() },
+    { name: 'grep', factory: () => createGrepTool() },
+    { name: 'web-search', factory: () => createWebSearchTool() },
+    { name: 'web-fetch', factory: () => createWebFetchTool() },
+    { name: 'env', factory: () => createEnvTool() },
+  ],
+  plan: [
     { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
     { name: 'glob', factory: () => createGlobTool() },
     { name: 'grep', factory: () => createGrepTool() },
@@ -59,7 +67,6 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
 
 /** Alias mapping for deprecated agent types */
 const AGENT_TYPE_ALIASES: Record<string, AgentType> = {
-  plan: 'explore',
   evaluator: 'general',
 };
 

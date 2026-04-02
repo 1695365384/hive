@@ -32,6 +32,7 @@ export type {
   AgentCompleteHookContext,
   ConfigBeforeUpdateHookContext,
   ConfigAfterUpdateHookContext,
+  WorkerHookContext,
   HookTypeMap,
   HookType,
   RegisteredHook,

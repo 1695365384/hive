@@ -111,6 +111,7 @@ export class DynamicPromptBuilder {
   private loadBaseTemplate(agentType: AgentType): string {
     const templateMap: Partial<Record<AgentType, string>> = {
       explore: 'explore',
+      plan: 'plan',
       general: 'intelligent',
     };
 

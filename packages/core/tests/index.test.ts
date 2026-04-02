@@ -52,15 +52,16 @@ describe('Agent 模块', () => {
     it('should have core agents', () => {
       const coreAgents = getAllAgentNames();
       expect(coreAgents).toContain('explore');
+      expect(coreAgents).toContain('plan');
       expect(coreAgents).toContain('general');
-      expect(coreAgents).toHaveLength(2);
+      expect(coreAgents).toHaveLength(3);
     });
   });
 
   describe('所有 Agent', () => {
     it('should have all agents', () => {
       const allAgents = getAllAgentNames();
-      expect(allAgents.length).toBeGreaterThanOrEqual(2);
+      expect(allAgents.length).toBeGreaterThanOrEqual(3);
     });
   });
 

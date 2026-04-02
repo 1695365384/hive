@@ -24,8 +24,10 @@ export type { SendFileCallback, SendFileToolInput } from './send-file-tool.js';
 export type { WebFetchToolInput } from './web-fetch-tool.js';
 export type { WebSearchToolInput } from './web-search-tool.js';
 
-// 子 Agent 工具
-export { createSubagentTool, createAllSubagentTools } from './subagent-tools.js';
+// Coordinator 工具
+export { createAgentTool } from './agent-tool.js';
+export { createTaskStopTool } from './task-stop-tool.js';
+export { createSendMessageTool } from './send-message-tool.js';
 
 // 环境查询工具
 export { createEnvTool, createRawEnvTool, envTool, setEnvDbProvider } from './env-tool.js';

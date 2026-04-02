@@ -35,6 +35,9 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
   explore: {
     maxSteps: 10,
   },
+  plan: {
+    maxSteps: 15,
+  },
   general: {
     maxSteps: 30,
   },
