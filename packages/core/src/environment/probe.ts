@@ -75,9 +75,33 @@ function detectMemory(): { totalGb: number } {
 }
 
 /**
+ * Detect timezone from Intl API (no external commands).
+ */
+function detectTimezone(): { name: string; utcOffset: string } {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const offset = new Date().getTimezoneOffset()
+  const sign = offset <= 0 ? '+' : '-'
+  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0')
+  const minutes = String(Math.abs(offset) % 60).padStart(2, '0')
+  return {
+    name: tz,
+    utcOffset: `UTC${sign}${hours}:${minutes}`,
+  }
+}
+
+/**
+ * Detect locale from environment variables.
+ */
+function detectLocale(): { system: string; language: string } {
+  const system = process.env.LC_ALL ?? process.env.LC_CTYPE ?? process.env.LANG ?? process.env.LANGUAGE ?? ''
+  const language = Intl.DateTimeFormat().resolvedOptions().locale
+  return { system, language }
+}
+
+/**
  * Probe basic system environment (Phase 1, synchronous, < 1ms).
  *
- * Uses only the Node.js `os` module. No external commands.
+ * Uses only the Node.js `os` module and Intl API. No external commands.
  * Results are injected into Agent system prompts.
  *
  * @param cwd - Working directory (defaults to process.cwd())
@@ -101,5 +125,7 @@ export function probeEnvironment(cwd?: string): EnvironmentContext {
     cpu: detectCpu(),
     memory: detectMemory(),
     cwd: cwd ?? process.cwd(),
+    timezone: detectTimezone(),
+    locale: detectLocale(),
   }
 }
