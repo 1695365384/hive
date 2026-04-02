@@ -7,19 +7,20 @@
 
 import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
+import os from 'node:os';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness, type RawTool } from '../harness/with-harness.js';
 
 /** Valid tool categories */
 const VALID_CATEGORIES = [
-  'runtime', 'pkgManager', 'buildTool', 'container', 'vcs', 'system', 'other',
+  'runtime', 'pkgManager', 'buildTool', 'container', 'vcs', 'system', 'native-app', 'other',
 ] as const;
 
 /** Env tool input schema */
 const envInputSchema = z.object({
-  query: z.string().optional().describe('Fuzzy search keyword, e.g. "python", "docker"'),
+  query: z.string().optional().describe('Fuzzy search keyword, e.g. "python", "docker", "notes"'),
   category: z.enum(VALID_CATEGORIES).optional()
-    .describe('Exact category name (runtime / pkgManager / buildTool / container / vcs / system / other)'),
+    .describe('Exact category name (runtime / pkgManager / buildTool / container / vcs / system / native-app / other)'),
 });
 
 export type EnvToolInput = z.infer<typeof envInputSchema>;
@@ -71,11 +72,64 @@ async function queryDb(
 }
 
 /**
+ * Query category summary from SQLite (overview mode).
+ * Returns category names and tool counts, ordered by count descending.
+ */
+async function queryOverview(
+  dbPath: string,
+): Promise<Array<{ category: string; count: number }> | null> {
+  const Database = (await import('better-sqlite3')).default;
+  const db = new Database(dbPath, { readonly: true });
+
+  try {
+    const count = db.prepare('SELECT COUNT(*) as cnt FROM env_tools').get() as { cnt: number };
+    if (count.cnt === 0) return null;
+
+    return db.prepare(
+      'SELECT category, COUNT(*) as count FROM env_tools GROUP BY category ORDER BY count DESC',
+    ).all() as Array<{ category: string; count: number }>;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Get platform-specific native app interaction hint.
+ * Teaches the agent the correct pattern (e.g., osascript) without hardcoding per-app commands.
+ */
+function getNativeAppPlatformHint(): string {
+  const platform = os.platform();
+  switch (platform) {
+    case 'darwin':
+      return [
+        'Interact with macOS apps via AppleScript through bash:',
+        '  osascript -e \'tell application "AppName" to <action>\'',
+        'Examples: `get name of every note`, `get body of note 1`, `count of notes`',
+        'Note: First call may be slow (app launch). Use timeout of 30s.',
+        'Do NOT access application databases or data files directly.',
+      ].join('\n');
+    case 'win32':
+      return [
+        'Interact with Windows apps via PowerShell through bash:',
+        '  powershell -Command "Start-Process AppName"',
+        'Do NOT access application databases or data files directly.',
+      ].join('\n');
+    case 'linux':
+      return [
+        'Interact with Linux apps via CLI or D-Bus through bash.',
+        'Do NOT access application databases or data files directly.',
+      ].join('\n');
+    default:
+      return '';
+  }
+}
+
+/**
  * Create env rawTool (execute → ToolResult)
  */
 export function createRawEnvTool(): RawTool<EnvToolInput> {
   return {
-    description: 'Query available tools and capabilities in the system environment. Supports fuzzy search by keyword or exact query by category. Returns tool name, category, version, and path. Categories: runtime, pkgManager, buildTool, container, vcs, system, other.',
+    description: 'Discover available tools, runtimes, native applications, and system capabilities. Call env() with no parameters for a category overview. Use env(query="keyword") or env(category="name") to find specific capabilities. Always call env() first when interacting with unfamiliar applications or services.',
     inputSchema: zodSchema(envInputSchema),
     execute: async ({ query, category }): Promise<ToolResult> => {
       const dbPath = dbProvider();
@@ -84,6 +138,22 @@ export function createRawEnvTool(): RawTool<EnvToolInput> {
       }
 
       try {
+        // Overview mode: no query and no category → return category summary
+        if (!query && !category) {
+          const overview = await queryOverview(dbPath);
+          if (overview === null) {
+            return { ok: true, code: 'OK', data: 'Environment probing not yet complete, please try again later.' };
+          }
+
+          const lines = overview.map(
+            row => `- **${row.category}** (${row.count} tools)`,
+          );
+          lines.push('');
+          lines.push('Use `env(category="<name>")` to list tools in a specific category.');
+          lines.push('Use `env(query="<keyword>")` to search by keyword.');
+          return { ok: true, code: 'OK', data: lines.join('\n') };
+        }
+
         const results = await queryDb(dbPath, query, category);
 
         if (results === null) {
@@ -106,11 +176,26 @@ export function createRawEnvTool(): RawTool<EnvToolInput> {
         }
 
         const lines: string[] = [];
+
         for (const [cat, items] of grouped) {
           lines.push(`### ${cat}`);
+
+          // For native-app, prepend platform-specific interaction hint
+          if (cat === 'native-app') {
+            const hint = getNativeAppPlatformHint();
+            if (hint) {
+              lines.push(hint);
+            }
+          }
+
+          const isNativeApp = cat === 'native-app';
           for (const item of items) {
             const version = item.version ? ` ${item.version}` : '';
-            lines.push(`- **${item.name}**${version} (${item.path})`);
+            if (isNativeApp) {
+              lines.push(`- **${item.name}**${version} — access: \`${item.path}\``);
+            } else {
+              lines.push(`- **${item.name}**${version} (${item.path})`);
+            }
           }
           lines.push('');
         }

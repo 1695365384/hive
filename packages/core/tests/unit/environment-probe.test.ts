@@ -19,6 +19,8 @@ describe('probeEnvironment', () => {
     expect(env).toHaveProperty('cpu')
     expect(env).toHaveProperty('memory')
     expect(env).toHaveProperty('cwd')
+    expect(env).toHaveProperty('timezone')
+    expect(env).toHaveProperty('locale')
 
     expect(env.os).toHaveProperty('platform')
     expect(env.os).toHaveProperty('arch')
@@ -28,6 +30,25 @@ describe('probeEnvironment', () => {
     expect(env.cpu).toHaveProperty('model')
     expect(env.cpu).toHaveProperty('cores')
     expect(env.memory).toHaveProperty('totalGb')
+  })
+
+  it('detects timezone', () => {
+    const env = probeEnvironment()
+
+    expect(env.timezone).toHaveProperty('name')
+    expect(env.timezone).toHaveProperty('utcOffset')
+    expect(typeof env.timezone.name).toBe('string')
+    expect(env.timezone.name.length).toBeGreaterThan(0)
+    expect(env.timezone.utcOffset).toMatch(/^UTC[+-]\d{2}:\d{2}$/)
+  })
+
+  it('detects locale', () => {
+    const env = probeEnvironment()
+
+    expect(env.locale).toHaveProperty('system')
+    expect(env.locale).toHaveProperty('language')
+    expect(typeof env.locale.language).toBe('string')
+    expect(env.locale.language.length).toBeGreaterThan(0)
   })
 
   it('detects OS platform and arch', () => {

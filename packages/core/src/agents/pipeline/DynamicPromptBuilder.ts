@@ -134,18 +134,48 @@ export class DynamicPromptBuilder {
    * Format environment context into a markdown section
    */
   private formatEnvironment(env: EnvironmentContext): string {
-    return [
+    const now = new Date();
+    const currentDateTime = now.toLocaleString('en-US', {
+      timeZone: env.timezone.name,
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const lines: string[] = [
       '## Environment',
       '',
-      `- **OS**: ${env.os.displayName} (${env.os.platform}/${env.os.arch})`,
-      `- **Shell**: ${env.shell}`,
-      `- **Node.js**: ${env.node.version}`,
-      `- **CPU**: ${env.cpu.model}, ${env.cpu.cores} cores`,
-      `- **Memory**: ${env.memory.totalGb} GB`,
-      `- **Working Directory**: ${env.cwd}`,
+      `- Current Time: ${currentDateTime} (${env.timezone.utcOffset})`,
+      `- OS: ${env.os.displayName} (${env.os.platform}/${env.os.arch})`,
+      `- Shell: ${env.shell}`,
+      `- Node.js: ${env.node.version}`,
+      `- CPU: ${env.cpu.model}, ${env.cpu.cores} cores`,
+      `- Memory: ${env.memory.totalGb} GB`,
+      `- Timezone: ${env.timezone.name}`,
+      `- Locale: ${env.locale.language}`,
+      `- Working Directory: ${env.cwd}`,
+    ];
+
+    if (env.categorySummary) {
+      lines.push(
+        '',
+        `- Discovered Capabilities: ${env.categorySummary}`,
+      );
+    }
+
+    lines.push(
       '',
-      'Use the `env` tool to check available tools, runtimes, and system capabilities.',
-    ].join('\n');
+      'Use `env()` for a category overview, `env(category="name")` or `env(query="keyword")` to find specific tools.',
+      'Always call env() before interacting with unfamiliar applications or services.',
+      'Interact with native applications through their scripting interface (e.g., osascript on macOS), never by accessing their databases or data files directly.',
+    );
+
+    return lines.join('\n');
   }
 
   /**
