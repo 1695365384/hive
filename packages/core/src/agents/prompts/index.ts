@@ -17,7 +17,6 @@ export {
 export {
   THOROUGHNESS_PROMPTS,
   buildExplorePrompt,
-  buildPlanPrompt,
 } from './prompts.js';
 
 // 模板索引和热重载

@@ -72,7 +72,6 @@ export {
   // Prompt
   THOROUGHNESS_PROMPTS,
   buildExplorePrompt,
-  buildPlanPrompt,
 
   // 类型
   type TemplateVariables,

@@ -93,7 +93,6 @@ export {
   // Prompt 模板
   THOROUGHNESS_PROMPTS,
   buildExplorePrompt,
-  buildPlanPrompt,
 } from './agents/index.js';
 
 // ============================================
@@ -346,7 +345,6 @@ export {
   type WorkspaceConfig,
   type WorkspacePaths,
   type WorkspaceInitConfig,
-  type SessionGroup,
   type SessionConfig as WorkspaceSessionConfig,
   type StorageConfig,
   type Preferences,
@@ -355,7 +353,6 @@ export {
   DEFAULT_WORKSPACE_DIR,
   DEFAULT_WORKSPACE_NAME,
   WORKSPACE_VERSION,
-  DEFAULT_SESSION_GROUPS,
 
   // 管理器
   WorkspaceManager,

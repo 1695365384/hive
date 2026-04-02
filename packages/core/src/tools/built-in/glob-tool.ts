@@ -12,7 +12,8 @@ import { z } from 'zod';
 import { isPathAllowed } from './utils/security.js';
 import { truncateOutput } from './utils/output-safety.js';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 /** 最大递归深度 */
 const MAX_DEPTH = 20;
@@ -91,11 +92,7 @@ const globInputSchema = z.object({
 
 export type GlobToolInput = z.infer<typeof globInputSchema>;
 
-/**
- * 创建 Glob rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawGlobTool(): RawTool<GlobToolInput> {
   return {
     description: 'Search file paths by name pattern. Supports * (match any chars) and ** (match directory levels). Returns matching file paths.',
@@ -150,7 +147,7 @@ export function createRawGlobTool(): RawTool<GlobToolInput> {
 /**
  * 创建 Glob 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawGlobTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createGlobTool(): Tool<GlobToolInput, string> {
   return withHarness(createRawGlobTool(), { toolName: 'glob-tool' });

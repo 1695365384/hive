@@ -103,12 +103,4 @@ describe('Prompt Template Exports', () => {
     expect(prompt).toContain('Test task');
   });
 
-  it('should export buildPlanPrompt', async () => {
-    const { buildPlanPrompt } = await import('../../src/agents/index.js');
-    expect(buildPlanPrompt).toBeDefined();
-    expect(typeof buildPlanPrompt).toBe('function');
-
-    const prompt = buildPlanPrompt('Test plan');
-    expect(prompt).toContain('Test plan');
-  });
 });

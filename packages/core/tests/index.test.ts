@@ -83,7 +83,6 @@ describe('Agent 模块', () => {
       expect(runner).toBeDefined();
       expect(typeof runner.execute).toBe('function');
       expect(typeof runner.explore).toBe('function');
-      expect(typeof runner.plan).toBe('function'); // deprecated alias
     });
   });
 

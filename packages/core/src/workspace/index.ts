@@ -10,7 +10,6 @@ export type {
   WorkspaceConfig,
   WorkspacePaths,
   WorkspaceInitConfig,
-  SessionGroup,
   SessionConfig,
   StorageConfig,
   Preferences,
@@ -21,7 +20,6 @@ export {
   DEFAULT_WORKSPACE_DIR,
   DEFAULT_WORKSPACE_NAME,
   WORKSPACE_VERSION,
-  DEFAULT_SESSION_GROUPS,
 } from './types.js';
 
 // 管理器
