@@ -12,6 +12,17 @@ import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
 import { isDangerousCommand, isCommandAllowed } from './utils/security.js';
+
+/** Pattern for direct access to macOS app data containers (covers ~ and absolute paths) */
+const APP_DATA_DIR_PATTERN = /(?:~|\/Users\/[^/]+)\/Library\/(?:Group\s+)?Containers\//;
+
+/**
+ * Check if a command tries to directly access application data directories.
+ * These are typically protected by macOS and should be accessed via scripting interfaces.
+ */
+function isAppDataAccess(command: string): boolean {
+  return APP_DATA_DIR_PATTERN.test(command);
+}
 import type { ToolResult } from '../harness/types.js';
 import { withHarness, type RawTool } from '../harness/with-harness.js';
 
@@ -44,6 +55,15 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
           ok: false,
           code: 'PERMISSION',
           error: 'Current agent does not have permission to execute shell commands',
+        };
+      }
+
+      // 应用数据目录拦截 — 引导使用脚本接口而非直接读数据库
+      if (isAppDataAccess(command)) {
+        return {
+          ok: false,
+          code: 'APP_DATA_BLOCKED',
+          error: 'Direct access to application data directories is not reliable. macOS protects these paths and the data format may change between versions. Use env(category="native-app") to discover the correct scripting interface (e.g., osascript) for interacting with native applications.',
         };
       }
 

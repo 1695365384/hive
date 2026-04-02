@@ -42,6 +42,9 @@ export function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeThreadIdRef = useRef<string | null>(null);
+  const activeToolStartRef = useRef<number | null>(null);
+  const [activeToolTime, setActiveToolTime] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -49,6 +52,35 @@ export function ChatPage() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Elapsed time timer for active tool calls
+  const [timerActive, setTimerActive] = useState(false);
+
+  useEffect(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (timerActive && activeToolStartRef.current) {
+      const update = () => {
+        if (activeToolStartRef.current) {
+          setActiveToolTime(Math.floor((Date.now() - activeToolStartRef.current) / 1000));
+        }
+      };
+      update();
+      timerRef.current = setInterval(update, 1000);
+    } else {
+      setActiveToolTime(null);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [timerActive]);
 
   // Listen to WS events
   useEffect(() => {
@@ -63,16 +95,25 @@ export function ChatPage() {
       }),
       onEvent("agent.tool-call", (data: { threadId: string; toolCallId: string; toolName: string; args: unknown }) => {
         if (data.threadId !== activeThreadIdRef.current) return;
+        activeToolStartRef.current = Date.now();
+        setTimerActive(true);
         appendPart({ type: "tool-call", toolCallId: data.toolCallId, toolName: data.toolName, args: data.args });
       }),
       onEvent("agent.tool-result", (data: { threadId: string; toolCallId: string; toolName: string; result: unknown; isError?: boolean }) => {
         if (data.threadId !== activeThreadIdRef.current) return;
+        activeToolStartRef.current = null;
+        setTimerActive(false);
         updateToolResult(data.toolCallId, data.result, data.isError);
       }),
-      onEvent("agent.complete", (data: { threadId?: string }) => {
+      onEvent("agent.complete", (data: { threadId?: string; cancelled?: boolean }) => {
         if (data.threadId && data.threadId !== activeThreadIdRef.current) return;
         setIsRunning(false);
         activeThreadIdRef.current = null;
+        activeToolStartRef.current = null;
+        setTimerActive(false);
+        if (data.cancelled) {
+          appendPart({ type: "text", text: "\n\n*Execution cancelled*" });
+        }
       }),
     ];
     return () => unsubs.forEach((fn) => fn());
@@ -123,6 +164,16 @@ export function ChatPage() {
       })
     );
   }, []);
+
+  const handleCancel = useCallback(async () => {
+    const threadId = activeThreadIdRef.current;
+    if (!threadId) return;
+    try {
+      await request("chat.cancel", { threadId });
+    } catch {
+      // Ignore cancel errors — agent.complete event will reset state
+    }
+  }, [request]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -191,7 +242,7 @@ export function ChatPage() {
         ) : (
           <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} isLast={msg === messages[messages.length - 1]} isRunning={isRunning && msg === messages[messages.length - 1]} />
+              <MessageBubble key={msg.id} message={msg} isLast={msg === messages[messages.length - 1]} isRunning={isRunning && msg === messages[messages.length - 1]} activeToolTime={activeToolTime} />
             ))}
             {isRunning && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1].content.length === 0 && (
               <div className="flex items-center gap-2 px-1 py-2">
@@ -200,6 +251,9 @@ export function ChatPage() {
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce [animation-delay:150ms]" />
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce [animation-delay:300ms]" />
                 </div>
+                {activeToolTime !== null && activeToolTime > 2 && (
+                  <span className="text-[11px] text-stone-600 tabular-nums">{activeToolTime}s</span>
+                )}
               </div>
             )}
           </div>
@@ -231,7 +285,7 @@ export function ChatPage() {
               disabled={isRunning}
             />
             <button
-              onClick={isRunning ? undefined : handleSend}
+              onClick={isRunning ? handleCancel : handleSend}
               disabled={!input.trim() && !isRunning}
               className={`shrink-0 p-2 rounded-xl transition-all duration-200 ${
                 isRunning
@@ -305,7 +359,7 @@ function EmptyState() {
 // Message Bubble
 // ============================================
 
-function MessageBubble({ message, isLast, isRunning }: { message: ChatMessage; isLast: boolean; isRunning: boolean }) {
+function MessageBubble({ message, isLast, isRunning, activeToolTime }: { message: ChatMessage; isLast: boolean; isRunning: boolean; activeToolTime: number | null }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -342,7 +396,7 @@ function MessageBubble({ message, isLast, isRunning }: { message: ChatMessage; i
 
         <div className="space-y-3">
           {message.content.map((part, idx) => (
-            <ContentPartRenderer key={idx} part={part} />
+            <ContentPartRenderer key={idx} part={part} activeToolTime={isLast && isRunning ? activeToolTime : null} />
           ))}
           {/* Streaming cursor */}
           {isRunning && isLast && message.content.length > 0 && message.content[message.content.length - 1].type === "text" && (
@@ -358,14 +412,14 @@ function MessageBubble({ message, isLast, isRunning }: { message: ChatMessage; i
 // Content Part Renderer
 // ============================================
 
-function ContentPartRenderer({ part }: { part: ContentPart }) {
+function ContentPartRenderer({ part, activeToolTime }: { part: ContentPart; activeToolTime: number | null }) {
   switch (part.type) {
     case "reasoning":
       return <ReasoningBlock text={part.text} />;
     case "text":
       return <TextBlock text={part.text} />;
     case "tool-call":
-      return <ToolCallBlock toolCallId={part.toolCallId} toolName={part.toolName} args={part.args} result={part.result} isError={part.isError} />;
+      return <ToolCallBlock toolCallId={part.toolCallId} toolName={part.toolName} args={part.args} result={part.result} isError={part.isError} elapsedSeconds={activeToolTime} />;
   }
 }
 
@@ -442,12 +496,14 @@ function ToolCallBlock({
   args,
   result,
   isError,
+  elapsedSeconds,
 }: {
   toolCallId: string;
   toolName: string;
   args: unknown;
   result?: unknown;
   isError?: boolean;
+  elapsedSeconds?: number | null;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -465,7 +521,14 @@ function ToolCallBlock({
 
   const statusText = result !== undefined
     ? isError ? "failed" : "done"
-    : "running";
+    : elapsedSeconds != null && elapsedSeconds > 0
+      ? `${elapsedSeconds}s`
+      : "running";
+
+  // Capture final elapsed time when result arrives
+  const finalElapsed = result !== undefined && elapsedSeconds != null && elapsedSeconds > 0
+    ? `${elapsedSeconds}s`
+    : null;
 
   // Format args for display
   const argsDisplay = typeof args === "object" && args !== null
@@ -489,6 +552,7 @@ function ToolCallBlock({
         <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[10px] uppercase tracking-wider">
           {statusIcon}
           {statusText}
+          {finalElapsed && <span className="text-stone-600 normal-case">{finalElapsed}</span>}
         </span>
         {isOpen ? <ChevronDown className="w-3 h-3 shrink-0 opacity-40" /> : <ChevronRight className="w-3 h-3 shrink-0 opacity-40" />}
       </button>

@@ -12,6 +12,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { categorizeTool, type ToolCategory } from './tool-categories.js'
+import { scanNativeApps } from './native-app-scanner.js'
 
 /** Maximum number of PATH directories to scan */
 const MAX_PATH_DIRS = 50
@@ -241,8 +242,12 @@ export async function scanEnvironment(dbPath: string): Promise<void> {
   const db = new Database(dbPath)
 
   try {
-    const tools = await scanPath()
-    writeToDb(db, tools)
+    // Run PATH scan and native app detection concurrently
+    const [pathTools, nativeApps] = await Promise.all([
+      scanPath(),
+      scanNativeApps(),
+    ])
+    writeToDb(db, [...pathTools, ...nativeApps])
   } finally {
     db.close()
   }
