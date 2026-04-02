@@ -116,7 +116,7 @@ describe('scanPath (integration)', () => {
       expect(tool).toHaveProperty('path')
       expect(typeof tool.name).toBe('string')
       expect(typeof tool.path).toBe('string')
-      expect(['runtime', 'pkgManager', 'buildTool', 'container', 'vcs', 'system', 'other'])
+      expect(['runtime', 'pkgManager', 'buildTool', 'container', 'vcs', 'system', 'native-app', 'other'])
         .toContain(tool.category)
     }
   })

@@ -82,6 +82,7 @@ class ServerImpl implements Server {
   private heartbeatScheduler: HeartbeatScheduler | null = null;
   private started = false;
   private dbManager: ReturnType<typeof createDatabase> | undefined;
+  private activeAbortControllers: Map<string, AbortController> = new Map();
 
   /** WorkspaceManager — 由 createServer() 创建，在 start() 中初始化 */
   _workspaceManager: WorkspaceManager | undefined;
@@ -154,6 +155,7 @@ class ServerImpl implements Server {
 
     // 订阅消息处理器
     this.subscribeMessageHandler();
+    this.subscribeAbortHandler();
     this.subscribeScheduleHandlers();
 
     // 订阅 message:response 推送到 channel
@@ -357,23 +359,28 @@ class ServerImpl implements Server {
       const channelMessage = message.payload as ChannelMessage;
       this.logger.info(`[server] Message received, dispatching to agent: ${channelMessage.content.slice(0, 50)}`);
 
-      const sessionId = channelMessage.metadata?.sessionId as string | undefined;
       const channelId = channelMessage.metadata?.channelId as string | undefined;
-      if (sessionId && channelId && channelMessage.to?.id) {
-        this.channelContext.setSession(sessionId, channelId, channelMessage.to.id);
+      const recipientId = channelMessage.to?.id ?? crypto.randomUUID();
+
+      // Session key = channelId:recipientId — 隔离不同通道的会话
+      // Note: when channelId is absent, sessionKey falls back to recipientId alone.
+      // This means two channelId-less sources with the same recipientId would share
+      // session history. Acceptable since all current channels always provide channelId.
+      const sessionKey = channelId ? `${channelId}:${recipientId}` : recipientId;
+
+      // 注册 session → channel 映射（用于 schedule notify 等场景路由）
+      if (channelId && channelMessage.to?.id) {
+        this.channelContext.setSession(sessionKey, channelId, channelMessage.to.id);
       }
 
       const replyType = channelMessage.type === 'card' ? 'card' : 'markdown';
 
       // 注入 send_file 回调，让 Agent 能通过工具发送文件到当前会话
-      if (channelId && channelMessage.to?.id) {
+      if (channelId && this.channelContext.get(channelId)) {
         const sendChannelId = channelId;
-        const sendChatId = channelMessage.to.id;
+        const sendChatId = recipientId;
         setSendFileCallback(async (filePath: string) => {
-          const channel = this.channelContext.get(sendChannelId);
-          if (!channel) {
-            return { success: false, error: `Channel not found: ${sendChannelId}` };
-          }
+          const channel = this.channelContext.get(sendChannelId)!;
           if (!channel.capabilities.sendFile) {
             return { success: false, error: `Channel ${sendChannelId} does not support file sending` };
           }
@@ -387,45 +394,92 @@ class ServerImpl implements Server {
       }
 
       try {
-        const result = await this.agent.dispatch(channelMessage.content, {
-          chatId: channelMessage.to?.id,
-          onPhase: (phase, message) => {
-            this.logger.info(`[agent] [${phase}] ${message}`);
-          },
-          onTool: (tool, input) => {
-            const summary = formatToolInput(tool, input);
-            this.logger.info(`[agent] [tool] ${tool} ${summary}`);
-          },
-          onToolResult: (tool, output) => {
-            const summary = formatToolResult(tool, output);
-            this.logger.info(`[agent] [tool-result] ${tool} → ${summary}`);
-          },
-        });
+        const abortController = new AbortController();
+        this.activeAbortControllers.set(sessionKey, abortController);
 
-        const replyText = result.text
-          || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`);
+        // Notify streaming subscribers that execution has started
+        this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'start' });
 
-        this.logger.info(`[agent] completed (${result.duration}ms)`);
-        this.logger.info(`[agent] [response] ${replyText}`);
+        try {
+          const result = await this.agent.dispatch(channelMessage.content, {
+            chatId: sessionKey,
+            abortSignal: abortController.signal,
+            onPhase: (phase, message) => {
+              this.logger.info(`[agent] [${phase}] ${message}`);
+            },
+            onReasoning: (text) => {
+              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'reasoning', text });
+            },
+            onText: (text) => {
+              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'text-delta', text });
+            },
+            onTool: (tool, input) => {
+              const summary = formatToolInput(tool, input);
+              this.logger.info(`[agent] [tool] ${tool} ${summary}`);
+              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'tool-call', tool, input });
+            },
+            onToolResult: (tool, output) => {
+              const summary = formatToolResult(tool, output);
+              this.logger.info(`[agent] [tool-result] ${tool} → ${summary}`);
+              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'tool-result', tool, output });
+            },
+          });
 
-        this.bus.publish('message:response', {
-          channelId: channelMessage.metadata?.channelId,
-          chatId: channelMessage.to?.id,
-          replyTo: channelMessage.id,
-          content: replyText,
-          type: replyType,
-        });
+          const replyText = result.text
+            || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`);
 
-        this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
+          this.logger.info(`[agent] completed (${result.duration}ms)`);
+          this.logger.info(`[agent] [response] ${replyText}`);
+
+          this.bus.publish('message:response', {
+            channelId: channelMessage.metadata?.channelId,
+            chatId: channelMessage.to?.id,
+            replyTo: channelMessage.id,
+            content: replyText,
+            type: replyType,
+          });
+
+          // Notify streaming subscribers of completion
+          this.bus.publish('agent:streaming', {
+            sessionId: sessionKey,
+            type: 'complete',
+            success: !abortController.signal.aborted,
+          });
+
+          this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
+        } finally {
+          this.activeAbortControllers.delete(sessionKey);
+        }
       } catch (error) {
         this.logger.error(`[server] Agent workflow failed:`, error);
+        const errorMsg = error instanceof Error ? error.message : '未知错误';
+
         this.bus.publish('message:response', {
           channelId: channelMessage.metadata?.channelId,
           chatId: channelMessage.to?.id,
           replyTo: channelMessage.id,
-          content: `处理失败：${error instanceof Error ? error.message : '未知错误'}`,
+          content: `处理失败：${errorMsg}`,
           type: replyType,
         });
+
+        // Notify streaming subscribers of error
+        this.bus.publish('agent:streaming', {
+          sessionId: sessionKey,
+          type: 'complete',
+          success: false,
+          error: errorMsg,
+        });
+      }
+    });
+  }
+
+  private subscribeAbortHandler(): void {
+    this.bus.subscribe('agent:abort', async (message: { payload: unknown }) => {
+      const { sessionId } = message.payload as { sessionId: string };
+      const controller = this.activeAbortControllers.get(sessionId);
+      if (controller) {
+        controller.abort();
+        this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
       }
     });
   }
@@ -506,9 +560,44 @@ export function createServer(options: ServerOptions): Server {
 
   // 阶段 2: 异步全量 PATH 扫描，存入 SQLite（不阻塞启动）
   if (dbPath) {
-    scanEnvironment(dbPath).catch((err: unknown) => {
-      logger.warn(`[server] Phase 2 environment scan failed: ${err instanceof Error ? err.message : err}`);
-    });
+    scanEnvironment(dbPath)
+      .then(async () => {
+        // Phase 2 完成后，读取 category 摘要注入 environmentContext
+        // native-app 类别附带示例应用名，帮助 agent 映射用户查询
+        try {
+          // Note: dynamic import is cached by Node.js — this is not a redundant load
+          const Database = (await import('better-sqlite3')).default;
+          const db = new Database(dbPath, { readonly: true });
+          try {
+            const rows = db.prepare(
+              'SELECT category, COUNT(*) as count FROM env_tools GROUP BY category ORDER BY count DESC',
+            ).all() as Array<{ category: string; count: number }>;
+
+            // 获取 native-app 的示例应用名
+            const nativeAppNames = db.prepare(
+              'SELECT name FROM env_tools WHERE category = ? ORDER BY name LIMIT 8',
+            ).all('native-app') as Array<{ name: string }>;
+
+            if (rows.length > 0) {
+              const parts = rows.map(r => {
+                if (r.category === 'native-app' && nativeAppNames.length > 0) {
+                  const examples = nativeAppNames.map(n => n.name).join(', ');
+                  return `${r.category} (${r.count}: ${examples})`;
+                }
+                return `${r.category} (${r.count})`;
+              });
+              environmentContext.categorySummary = parts.join(', ');
+            }
+          } finally {
+            db.close();
+          }
+        } catch (err) {
+          logger.warn(`[server] Failed to read category summary: ${err instanceof Error ? err.message : err}`);
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn(`[server] Phase 2 environment scan failed: ${err instanceof Error ? err.message : err}`);
+      });
   }
 
   const agent = createAgent({

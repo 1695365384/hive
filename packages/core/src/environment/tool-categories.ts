@@ -13,6 +13,7 @@ export type ToolCategory =
   | 'container'
   | 'vcs'
   | 'system'
+  | 'native-app'
   | 'other'
 
 /**
@@ -161,3 +162,4 @@ export function getCategoryDictionary(
   const platformDict = TOOL_CATEGORIES[platform] ?? {};
   return { ...TOOL_CATEGORIES.common, ...platformDict };
 }
+

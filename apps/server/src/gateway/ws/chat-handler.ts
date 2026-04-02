@@ -1,10 +1,12 @@
 /**
- * ChatWsHandler — 独立 /ws/chat 端点
+ * ChatWsHandler — /ws/chat 端点
  *
- * 管理 Agent 对话的完整生命周期：
- * - chat.send 请求处理（fire-and-forget）
- * - threadId → WebSocket 定向推送
- * - Agent Hook 订阅（日志分发）
+ * 职责：WebSocket ↔ MessageBus 桥接
+ * - chat.send → bus.publish('message:received') → ServerImpl 统一分发
+ * - bus.subscribe('agent:streaming') → WS event 转发
+ * - chat.cancel → bus.publish('agent:abort')
+ *
+ * 所有 Agent 调度逻辑集中在 ServerImpl，本类只做协议转换。
  */
 
 import { EventEmitter } from 'node:events'
@@ -35,6 +37,9 @@ export class ChatWsHandler extends EventEmitter {
   private server: Server | null = null
   private hiveLogger: HiveLogger | null = null
   private hookIds: string[] = []
+  private busSubIds: string[] = []
+  /** Track toolCallId per threadId for tool-call/tool-result matching */
+  private toolCallIdMaps: Map<string, Map<string, string>> = new Map()
 
   constructor(hiveLogger: HiveLogger | null) {
     super()
@@ -48,10 +53,11 @@ export class ChatWsHandler extends EventEmitter {
   setServer(server: Server): void {
     this.server = server
     this.subscribeAgentHooks()
+    this.subscribeStreamingEvents()
   }
 
   // ============================================
-  // Agent Hook 订阅
+  // Agent Hook 订阅（日志推送到 admin WS）
   // ============================================
 
   private subscribeAgentHooks(): void {
@@ -104,6 +110,85 @@ export class ChatWsHandler extends EventEmitter {
   }
 
   // ============================================
+  // Bus 流式事件订阅
+  // ============================================
+
+  private subscribeStreamingEvents(): void {
+    if (!this.server) return
+    const bus = this.server.bus
+
+    this.busSubIds.push(bus.subscribe('agent:streaming', (message: { payload: any }) => {
+      const { sessionId, type, ...data } = message.payload
+      this.forwardStreamingEvent(sessionId, type, data)
+    }))
+  }
+
+  private unsubscribeStreamingEvents(): void {
+    if (!this.server) return
+    for (const id of this.busSubIds) {
+      this.server.bus.unsubscribe(id)
+    }
+    this.busSubIds = []
+  }
+
+  /** 将 bus 流式事件映射为 WS 事件并定向发送 */
+  private forwardStreamingEvent(sessionId: string, type: string, data: any): void {
+    // sessionId 格式: "channelId:recipientId" → 提取 recipientId 作为 threadId
+    const threadId = sessionId.includes(':') ? sessionId.slice(sessionId.indexOf(':') + 1) : sessionId
+    const ws = this.threadClientMap.get(threadId)
+    if (!ws || ws.readyState !== ws.OPEN) return
+
+    switch (type) {
+      case 'start':
+        ws.send(JSON.stringify(createEvent('agent.start', { threadId, agentType: 'general' })))
+        break
+
+      case 'reasoning':
+        ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: data.text })))
+        break
+
+      case 'text-delta':
+        ws.send(JSON.stringify(createEvent('agent.text-delta', { threadId, text: data.text })))
+        break
+
+      case 'tool-call': {
+        const toolCallId = crypto.randomUUID()
+        let callMap = this.toolCallIdMaps.get(threadId)
+        if (!callMap) {
+          callMap = new Map()
+          this.toolCallIdMaps.set(threadId, callMap)
+        }
+        callMap.set(data.tool, toolCallId)
+        ws.send(JSON.stringify(createEvent('agent.tool-call', {
+          threadId, toolCallId, toolName: data.tool, args: data.input,
+        })))
+        break
+      }
+
+      case 'tool-result': {
+        const resultMap = this.toolCallIdMaps.get(threadId)
+        const toolCallId = resultMap?.get(data.tool) ?? crypto.randomUUID()
+        ws.send(JSON.stringify(createEvent('agent.tool-result', {
+          threadId, toolCallId, toolName: data.tool, result: data.output,
+        })))
+        break
+      }
+
+      case 'complete':
+        ws.send(JSON.stringify(createEvent('agent.complete', {
+          threadId,
+          success: data.success,
+          cancelled: data.cancelled,
+          error: data.error,
+        })))
+        // Only clean up toolCallIdMaps; threadClientMap is cleaned on WS disconnect
+        // to allow the same threadId to be reused for follow-up messages
+        this.toolCallIdMaps.delete(threadId)
+        break
+    }
+  }
+
+  // ============================================
   // 连接管理
   // ============================================
 
@@ -126,6 +211,7 @@ export class ChatWsHandler extends EventEmitter {
     ws.on('close', () => {
       for (const tid of client.threadIds) {
         this.threadClientMap.delete(tid)
+        this.toolCallIdMaps.delete(tid)
       }
       this.clients.delete(client)
     })
@@ -133,6 +219,7 @@ export class ChatWsHandler extends EventEmitter {
     ws.on('error', () => {
       for (const tid of client.threadIds) {
         this.threadClientMap.delete(tid)
+        this.toolCallIdMaps.delete(tid)
       }
       this.clients.delete(client)
     })
@@ -140,11 +227,13 @@ export class ChatWsHandler extends EventEmitter {
 
   async closeAll(): Promise<void> {
     this.unsubscribeAgentHooks()
+    this.unsubscribeStreamingEvents()
     for (const client of this.clients) {
       client.ws.close()
     }
     this.clients.clear()
     this.threadClientMap.clear()
+    this.toolCallIdMaps.clear()
   }
 
   // ============================================
@@ -163,11 +252,14 @@ export class ChatWsHandler extends EventEmitter {
   }
 
   private async handleRequest(req: WsRequest, client: ChatClient): Promise<WsResponse> {
-    if (req.method !== 'chat.send') {
-      return createErrorResponse(req.id, 'NOT_FOUND', `Unknown method: ${req.method}`)
+    switch (req.method) {
+      case 'chat.send':
+        return this.handleChatSend(req.params, req.id, client.ws)
+      case 'chat.cancel':
+        return this.handleChatCancel(req.params, req.id)
+      default:
+        return createErrorResponse(req.id, 'NOT_FOUND', `Unknown method: ${req.method}`)
     }
-
-    return this.handleChatSend(req.params, req.id, client.ws)
   }
 
   // ============================================
@@ -185,94 +277,51 @@ export class ChatWsHandler extends EventEmitter {
       return createErrorResponse(id, 'AGENT_NOT_READY', 'Server not initialized')
     }
 
-    const agent = this.server.agent
-    if (!agent) {
-      return createErrorResponse(id, 'AGENT_NOT_READY', 'Agent not initialized')
-    }
-
     const tid = threadId || crypto.randomUUID()
 
-    // 记录 threadId → client 映射
+    // 记录 threadId → client 映射（用于后续流式事件路由）
     if (ws) {
       this.threadClientMap.set(tid, ws)
       const client = this.findClientByWs(ws)
       if (client) client.threadIds.add(tid)
     }
 
-    // 异步执行 Agent chat（fire-and-forget）
-    this.runAgentChat(prompt, tid).catch((err) => {
-      console.error(`[chat.send] Agent execution failed: ${err.message}`)
-      this.sendEventToThread(tid, 'agent.complete', { threadId: tid, success: false, error: err.message })
+    // 发布到 bus — ServerImpl.subscribeMessageHandler 统一处理
+    this.server.bus.publish('message:received', {
+      id: crypto.randomUUID(),
+      content: prompt,
+      type: 'text',
+      from: { id: 'desktop-user', type: 'user' },
+      to: { id: tid, type: 'user' },
+      timestamp: Date.now(),
+      metadata: {
+        channelId: 'ws-chat',
+      },
     })
 
     return createSuccessResponse(id, { threadId: tid })
   }
 
-  /** 异步执行 Agent chat 并流式推送事件 */
-  private async runAgentChat(prompt: string, threadId: string): Promise<void> {
-    const toolCallIdMap = new Map<string, string>()
+  private async handleChatCancel(params: unknown, id: string): Promise<WsResponse> {
+    const { threadId } = params as { threadId?: string }
 
-    const emit = (event: string, data: unknown) => {
-      this.sendEventToThread(threadId, event, data)
+    if (!threadId) {
+      return createErrorResponse(id, 'VALIDATION', 'threadId is required')
     }
 
-    emit('agent.start', { threadId, agentType: 'general' })
+    // 通过 bus 通知 ServerImpl 中止执行（sessionKey 格式: channelId:threadId）
+    this.server?.bus.publish('agent:abort', { sessionId: `ws-chat:${threadId}` })
 
-    await this.server!.agent.dispatch(prompt, {
-      onReasoning: (text: string) => {
-        emit('agent.reasoning', { threadId, text })
-      },
-      onText: (text: string) => {
-        emit('agent.text-delta', { threadId, text })
-      },
-      onTool: (toolName: string, input: unknown) => {
-        const toolCallId = crypto.randomUUID()
-        toolCallIdMap.set(toolName, toolCallId)
-        emit('agent.tool-call', { threadId, toolCallId, toolName, args: input })
-      },
-      onToolResult: (toolName: string, output: unknown) => {
-        const toolCallId = toolCallIdMap.get(toolName) ?? crypto.randomUUID()
-        emit('agent.tool-result', { threadId, toolCallId, toolName, result: output })
-      },
-    })
-
-    emit('agent.complete', { threadId, success: true })
-
-    // Clean up thread mapping
-    this.threadClientMap.delete(threadId)
-    const client = this.findClientByThreadId(threadId)
-    if (client) client.threadIds.delete(threadId)
+    return createSuccessResponse(id, { threadId, cancelled: true })
   }
 
   // ============================================
-  // 事件推送
+  // 日志推送
   // ============================================
-
-  /** 定向发送事件到指定 threadId 对应的客户端 */
-  private sendEventToThread(threadId: string, event: string, data: unknown): void {
-    const targetWs = this.threadClientMap.get(threadId)
-    if (targetWs && targetWs.readyState === targetWs.OPEN) {
-      targetWs.send(JSON.stringify(createEvent(event, data)))
-    } else {
-      // Fallback: broadcast
-      this.broadcastEvent(event, data)
-    }
-  }
 
   /** Push a log entry to connected chat clients — called by main.ts subscriber */
   pushLog(entry: import('./data-types.js').LogEntry): void {
     this.broadcastLog(entry)
-  }
-
-  /** 广播事件到所有连接的客户端 */
-  private broadcastEvent(event: string, data: unknown): void {
-    const msg = createEvent(event, data)
-    const payload = JSON.stringify(msg)
-    for (const client of this.clients) {
-      if (client.ws.readyState === client.ws.OPEN) {
-        client.ws.send(payload)
-      }
-    }
   }
 
   /** 推送日志到所有客户端 */
