@@ -6,11 +6,15 @@
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { serveStatic } from 'hono/deno'
 import type { Context } from 'hono'
 import type { HiveContext } from '../bootstrap.js'
 import type { IChannel, IWebhookHandler } from '@bundy-lmw/hive-core'
 import type { HiveLogger } from '../logging/hive-logger.js'
 import { createAuthMiddleware } from './auth.js'
+import { randomUUID } from 'node:crypto'
+import { mkdir } from 'node:fs/promises'
+import path from 'node:path'
 
 /** Maximum message length (100KB) */
 const MAX_MESSAGE_LENGTH = 100_000
@@ -72,6 +76,89 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
   // Health check (no auth required)
   app.get('/health', (c) => {
     return c.json({ status: 'ok', timestamp: new Date().toISOString() })
+  })
+
+  // ============================================
+  // File Upload & Serve
+  // ============================================
+
+  const TEMP_DIR = path.join(process.env.HIVE_HOME || path.join(process.env.HOME!, '.hive'), 'cache', 'temp')
+  const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
+  // Ensure temp dir exists
+  mkdir(TEMP_DIR, { recursive: true }).catch(() => {})
+
+  /** POST /api/upload — multipart file upload */
+  app.post('/api/upload', async (c) => {
+    try {
+      const body = await c.req.parseBody()
+      const file = body['file']
+
+      if (!file || !(file instanceof File)) {
+        return c.json({ error: 'No file provided' }, 400)
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        return c.json({ error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)` }, 413)
+      }
+
+      // Sanitize filename: remove path separators and special chars
+      const safeName = path.basename(file.name).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+      const savedName = `${randomUUID()}_${safeName}`
+      const savedPath = path.join(TEMP_DIR, savedName)
+
+      const buffer = Buffer.from(await file.arrayBuffer())
+      const { writeFile } = await import('node:fs/promises')
+      await writeFile(savedPath, buffer)
+
+      const isImage = file.type.startsWith('image/')
+
+      return c.json({
+        name: safeName,
+        savedName,
+        path: savedPath,
+        size: file.size,
+        mimeType: file.type,
+        type: isImage ? 'image' : 'file',
+        src: `/files/${savedName}`,
+      })
+    } catch (error) {
+      return c.json({ error: 'Upload failed' }, 500)
+    }
+  })
+
+  // GET /files/:name — serve uploaded files (for image preview etc.)
+  app.get('/files/:name', async (c) => {
+    const name = c.req.param('name')
+    // Prevent path traversal
+    if (name.includes('..') || name.includes('/') || name.includes('\\')) {
+      return c.json({ error: 'Invalid filename' }, 400)
+    }
+    const filePath = path.join(TEMP_DIR, name)
+    const { stat, readFile } = await import('node:fs/promises')
+    try {
+      const stats = await stat(filePath)
+      const data = await readFile(filePath)
+      const ext = path.extname(name).toLowerCase()
+      const mimeMap: Record<string, string> = {
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+        '.pdf': 'application/pdf', '.json': 'application/json',
+        '.txt': 'text/plain', '.html': 'text/html', '.css': 'text/css',
+        '.js': 'text/javascript', '.ts': 'text/typescript',
+        '.xml': 'application/xml', '.csv': 'text/csv',
+      }
+      const mimeType = mimeMap[ext] || 'application/octet-stream'
+      return new Response(data, {
+        headers: {
+          'Content-Type': mimeType,
+          'Content-Length': String(stats.size),
+          'Cache-Control': 'public, max-age=3600',
+        },
+      })
+    } catch {
+      return c.json({ error: 'File not found' }, 404)
+    }
   })
 
   // Chat endpoint

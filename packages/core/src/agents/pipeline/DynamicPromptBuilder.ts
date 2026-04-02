@@ -171,8 +171,7 @@ export class DynamicPromptBuilder {
 
     lines.push(
       '',
-      'Use `env()` for a category overview, `env(category="name")` or `env(query="keyword")` to find specific tools.',
-      'Always call env() before interacting with unfamiliar applications or services.',
+      'Use `env(category="name")` or `env(query="keyword")` to look up specific tools not listed above.',
       'Interact with native applications through their scripting interface (e.g., osascript on macOS), never by accessing their databases or data files directly.',
     );
 

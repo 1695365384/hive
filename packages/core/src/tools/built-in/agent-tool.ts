@@ -14,7 +14,6 @@ import { randomUUID } from 'node:crypto';
 import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentExecuteOptions } from '../../agents/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
-import { truncateOutput } from './utils/output-safety.js';
 
 // ============================================
 // Schema
@@ -155,7 +154,11 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           return `Worker error (${input.type}): ${result.error}`;
         }
 
-        return truncateOutput(accumulatedText || 'Worker returned no output', MAX_WORKER_RESULT_LENGTH);
+        // 返回简洁状态，防止 coordinator 回显 worker 输出
+        // 详细执行过程已通过 worker 事件实时展示在 UI 中
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        const lineCount = accumulatedText.split('\n').filter(l => l.trim()).length;
+        return `[Worker ${input.type} completed in ${duration}s — ${lineCount} lines output]`;
       } catch (error) {
         taskManager.unregister(workerId);
 

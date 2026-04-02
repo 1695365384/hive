@@ -40,6 +40,8 @@ export class ChatWsHandler extends EventEmitter {
   private busSubIds: string[] = []
   /** Track toolCallId per threadId for tool-call/tool-result matching */
   private toolCallIdMaps: Map<string, Map<string, string>> = new Map()
+  /** Per-threadId sequence counters for deduplication */
+  private seqCounters: Map<string, number> = new Map()
 
   constructor(hiveLogger: HiveLogger | null) {
     super()
@@ -121,6 +123,36 @@ export class ChatWsHandler extends EventEmitter {
       const { sessionId, type, ...data } = message.payload
       this.forwardStreamingEvent(sessionId, type, data)
     }))
+
+    // File/image events from Agent (via DesktopWSChannel)
+    this.busSubIds.push(bus.subscribe('agent:file', async (message: { payload: any }) => {
+      const { sessionId, filePath } = message.payload
+      const tid = sessionId.includes(':') ? sessionId.slice(sessionId.indexOf(':') + 1) : sessionId
+      const ws = this.threadClientMap.get(tid)
+      if (!ws || ws.readyState !== ws.OPEN) return
+
+      try {
+        const fs = await import('node:fs/promises')
+        const nodePath = await import('node:path')
+        const stat = await fs.stat(filePath).catch(() => null)
+        if (!stat) return
+
+        const fileName = nodePath.basename(filePath)
+        const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(fileName)
+
+        ws.send(JSON.stringify(createEvent('agent.file', {
+          threadId: tid,
+          name: fileName,
+          path: filePath,
+          size: stat.size,
+          mimeType: isImage ? `image/${fileName.split('.').pop()}` : 'application/octet-stream',
+          type: isImage ? 'image' : 'file',
+          src: `/files/${fileName}`,
+        })))
+      } catch (err) {
+        console.warn('[chat-handler] agent:file error:', err)
+      }
+    }))
   }
 
   private unsubscribeStreamingEvents(): void {
@@ -131,6 +163,13 @@ export class ChatWsHandler extends EventEmitter {
     this.busSubIds = []
   }
 
+  /** 递增并返回 threadId 对应的序号 */
+  private nextSeq(threadId: string): number {
+    const seq = (this.seqCounters.get(threadId) ?? 0) + 1
+    this.seqCounters.set(threadId, seq)
+    return seq
+  }
+
   /** 将 bus 流式事件映射为 WS 事件并定向发送 */
   private forwardStreamingEvent(sessionId: string, type: string, data: any): void {
     // sessionId 格式: "channelId:recipientId" → 提取 recipientId 作为 threadId
@@ -138,17 +177,20 @@ export class ChatWsHandler extends EventEmitter {
     const ws = this.threadClientMap.get(threadId)
     if (!ws || ws.readyState !== ws.OPEN) return
 
+
     switch (type) {
       case 'start':
+        // 重置序号计数器
+        this.seqCounters.set(threadId, 0)
         ws.send(JSON.stringify(createEvent('agent.start', { threadId, agentType: 'general' })))
         break
 
       case 'reasoning':
-        ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: data.text })))
+        ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: data.text, seq: this.nextSeq(threadId) })))
         break
 
       case 'text-delta':
-        ws.send(JSON.stringify(createEvent('agent.text-delta', { threadId, text: data.text })))
+        ws.send(JSON.stringify(createEvent('agent.text-delta', { threadId, text: data.text, seq: this.nextSeq(threadId) })))
         break
 
       case 'tool-call': {
@@ -196,6 +238,7 @@ export class ChatWsHandler extends EventEmitter {
         // Only clean up toolCallIdMaps; threadClientMap is cleaned on WS disconnect
         // to allow the same threadId to be reused for follow-up messages
         this.toolCallIdMaps.delete(threadId)
+        this.seqCounters.delete(threadId)
         break
     }
   }
@@ -246,6 +289,7 @@ export class ChatWsHandler extends EventEmitter {
     this.clients.clear()
     this.threadClientMap.clear()
     this.toolCallIdMaps.clear()
+    this.seqCounters.clear()
   }
 
   // ============================================
@@ -279,10 +323,28 @@ export class ChatWsHandler extends EventEmitter {
   // ============================================
 
   private async handleChatSend(params: unknown, id: string, ws?: WebSocket): Promise<WsResponse> {
-    const { prompt, threadId } = params as { prompt?: string; threadId?: string }
+    const { prompt, threadId, attachments } = params as {
+      prompt?: string;
+      threadId?: string;
+      attachments?: Array<{ type: string; path: string; name: string; size: number; mimeType: string }>;
+    };
 
-    if (!prompt || typeof prompt !== 'string') {
-      return createErrorResponse(id, 'VALIDATION', 'prompt is required and must be a string')
+    // Build content: prompt + file references
+    let content = prompt || '';
+    if (attachments && attachments.length > 0) {
+      const fileRefs = attachments
+        .map(a => {
+          const sizeStr = a.size >= 1024 * 1024
+            ? `${(a.size / 1024 / 1024).toFixed(1)}MB`
+            : `${(a.size / 1024).toFixed(1)}KB`;
+          return `[File: ${a.name} (${sizeStr})] ${a.path}`;
+        })
+        .join('\n');
+      content = content ? `${fileRefs}\n\n${content}` : fileRefs;
+    }
+
+    if (!content) {
+      return createErrorResponse(id, 'VALIDATION', 'prompt or attachments is required')
     }
 
     if (!this.server) {
@@ -301,7 +363,7 @@ export class ChatWsHandler extends EventEmitter {
     // 发布到 bus — ServerImpl.subscribeMessageHandler 统一处理
     this.server.bus.publish('message:received', {
       id: crypto.randomUUID(),
-      content: prompt,
+      content,
       type: 'text',
       from: { id: 'desktop-user', type: 'user' },
       to: { id: tid, type: 'user' },

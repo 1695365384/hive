@@ -319,7 +319,7 @@ describe('DynamicPromptBuilder', () => {
       expect(prompt).toContain('Linux (linux/x64)');
     });
 
-    it('should include methodology guidance to call env() before unfamiliar tasks', () => {
+    it('should include on-demand env() guidance instead of always-call', () => {
       const context: PromptBuildContext = {
         task: 'Test',
         priorResults: [],
@@ -328,7 +328,8 @@ describe('DynamicPromptBuilder', () => {
       };
 
       const prompt = builder.buildPrompt(context);
-      expect(prompt).toContain('Always call env() before interacting with unfamiliar applications');
+      expect(prompt).toContain('look up specific tools not listed above');
+      expect(prompt).not.toContain('Always call env()');
     });
 
     it('should warn against direct database access for native apps', () => {
@@ -353,10 +354,10 @@ describe('DynamicPromptBuilder', () => {
       };
 
       const prompt = builder.buildPrompt(context);
-      // The guidance should teach "how to think", not "what exists"
+      // The guidance should teach "how to use", not "what exists"
       // It should mention env() but not list specific categories
       const envSection = prompt.slice(prompt.indexOf('## Environment'));
-      expect(envSection).toContain('env()');
+      expect(envSection).toContain('env(category="name")');
       // Should NOT contain hardcoded category lists
       expect(envSection).not.toContain('runtime, pkgManager, buildTool');
       expect(envSection).not.toContain('native-app');
