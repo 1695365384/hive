@@ -227,6 +227,8 @@ describe('DynamicPromptBuilder', () => {
       cpu: { model: 'Apple M1', cores: 8 },
       memory: { totalGb: 16 },
       cwd: '/Users/test/project',
+      timezone: { name: 'Asia/Shanghai', utcOffset: 'UTC+08:00' },
+      locale: { system: 'zh_CN.UTF-8', language: 'zh-CN' },
     };
 
     it('should include Environment section when environmentContext is provided', () => {
@@ -246,6 +248,20 @@ describe('DynamicPromptBuilder', () => {
       expect(prompt).toContain('8 cores');
       expect(prompt).toContain('16 GB');
       expect(prompt).toContain('/Users/test/project');
+    });
+
+    it('should include timezone and locale', () => {
+      const context: PromptBuildContext = {
+        task: 'Fix the auth bug',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: mockEnv,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('Asia/Shanghai');
+      expect(prompt).toContain('UTC+08:00');
+      expect(prompt).toContain('zh-CN');
     });
 
     it('should not include Environment section when environmentContext is omitted', () => {
@@ -301,6 +317,81 @@ describe('DynamicPromptBuilder', () => {
 
       const prompt = builder.buildPrompt(context);
       expect(prompt).toContain('Linux (linux/x64)');
+    });
+
+    it('should include methodology guidance to call env() before unfamiliar tasks', () => {
+      const context: PromptBuildContext = {
+        task: 'Test',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: mockEnv,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('Always call env() before interacting with unfamiliar applications');
+    });
+
+    it('should warn against direct database access for native apps', () => {
+      const context: PromptBuildContext = {
+        task: 'Test',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: mockEnv,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('scripting interface');
+      expect(prompt).toContain('never by accessing their databases');
+    });
+
+    it('should not hardcode category names in guidance', () => {
+      const context: PromptBuildContext = {
+        task: 'Test',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: mockEnv,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      // The guidance should teach "how to think", not "what exists"
+      // It should mention env() but not list specific categories
+      const envSection = prompt.slice(prompt.indexOf('## Environment'));
+      expect(envSection).toContain('env()');
+      // Should NOT contain hardcoded category lists
+      expect(envSection).not.toContain('runtime, pkgManager, buildTool');
+      expect(envSection).not.toContain('native-app');
+    });
+
+    it('should display category summary when available', () => {
+      const envWithSummary: EnvironmentContext = {
+        ...mockEnv,
+        categorySummary: 'runtime (5), native-app (42), system (8), pkgManager (3)',
+      };
+
+      const context: PromptBuildContext = {
+        task: 'Test',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: envWithSummary,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('Discovered Capabilities');
+      expect(prompt).toContain('runtime (5)');
+      expect(prompt).toContain('native-app (42)');
+      expect(prompt).toContain('system (8)');
+    });
+
+    it('should not show Discovered Capabilities when no summary', () => {
+      const context: PromptBuildContext = {
+        task: 'Test',
+        priorResults: [],
+        agentType: 'general',
+        environmentContext: mockEnv,
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).not.toContain('Discovered Capabilities');
     });
   });
 

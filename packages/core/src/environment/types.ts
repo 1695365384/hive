@@ -38,4 +38,24 @@ export interface EnvironmentContext {
   }
   /** Current working directory */
   cwd: string
+  /** Timezone information */
+  timezone: {
+    /** IANA timezone name, e.g. 'Asia/Shanghai' */
+    name: string
+    /** UTC offset string, e.g. 'UTC+8' */
+    utcOffset: string
+  }
+  /** Locale information */
+  locale: {
+    /** System locale, e.g. 'zh-CN' */
+    system: string
+    /** Current language, e.g. 'zh-CN' or 'en-US' */
+    language: string
+  }
+  /**
+   * Category summary from Phase 2 scan.
+   * Populated after scanEnvironment() completes.
+   * Format: "runtime (5), native-app (42), system (8), ..."
+   */
+  categorySummary?: string
 }

@@ -20,7 +20,7 @@
     "cli": "node dist/cli/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sea:build":"sh scripts/bundle.sh"
+    "sea:build":"npm run build && sh scripts/bundle.sh"
   },
   "dependencies": {
     "@bundy-lmw/hive-core": "workspace:*",
