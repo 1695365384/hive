@@ -14,6 +14,7 @@ import {
 import {
   THOROUGHNESS_PROMPTS,
   buildExplorePrompt,
+  buildPlanPrompt,
   buildPlanSystemPrompt,
 } from '../../src/agents/prompts/prompts.js';
 
@@ -88,6 +89,12 @@ describe('Builtin Agents', () => {
       expect(config).toBeDefined();
       expect(config?.type).toBe('plan');
     });
+
+    it('getAgentConfig("evaluator") returns general config', () => {
+      const config = getAgentConfig('evaluator');
+      expect(config).toBeDefined();
+      expect(config?.type).toBe('general');
+    });
   });
 
   describe('Helper functions', () => {
@@ -127,6 +134,12 @@ describe('Builtin Agents', () => {
 
       expect(quickPrompt).toContain('quick');
       expect(thoroughPrompt).toContain('comprehensive');
+    });
+
+    it('buildPlanPrompt should delegate to buildExplorePrompt with very-thorough', () => {
+      const planPrompt = buildPlanPrompt('Add authentication');
+      expect(planPrompt).toContain('Add authentication');
+      expect(planPrompt).toContain('comprehensive');
     });
 
     it('buildPlanSystemPrompt should use independent plan template', () => {

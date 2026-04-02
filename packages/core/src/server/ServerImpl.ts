@@ -402,6 +402,7 @@ class ServerImpl implements Server {
 
         workerHookIds.push(
           this.agent.context.hookRegistry.on('worker:start', (ctx: any) => {
+            this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} started${ctx.description ? `: ${ctx.description}` : ''}`);
             this.bus.publish('agent:streaming', {
               sessionId: sessionKey,
               type: 'worker-start',
@@ -456,6 +457,8 @@ class ServerImpl implements Server {
 
         workerHookIds.push(
           this.agent.context.hookRegistry.on('worker:complete', (ctx: any) => {
+            const status = ctx.success ? 'completed' : 'failed';
+            this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} ${status} (${ctx.duration}ms)${ctx.error ? ` — ${ctx.error}` : ''}`);
             this.bus.publish('agent:streaming', {
               sessionId: sessionKey,
               type: 'worker-complete',
@@ -497,7 +500,9 @@ class ServerImpl implements Server {
             },
           });
 
-          const replyText = result.text
+          // 优先使用 finalText（最后一次工具调用后的文本），避免非桌面端收到叙述文本
+          const replyText = (result as any).finalText
+            || result.text
             || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`);
 
           this.logger.info(`[agent] completed (${result.duration}ms)`);

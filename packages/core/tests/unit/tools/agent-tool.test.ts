@@ -198,7 +198,7 @@ describe('AgentTool', () => {
   });
 
   describe('result handling', () => {
-    it('should return accumulated text from onText callback on success', async () => {
+    it('should return status with line count from onText callback on success', async () => {
       (context.runner.executeStreaming as any).mockImplementationOnce(async (_name, _prompt, callbacks) => {
         callbacks.onText?.('Hello ');
         callbacks.onText?.('World');
@@ -212,10 +212,10 @@ describe('AgentTool', () => {
         {} as any,
       );
 
-      expect(result).toContain('Hello World');
+      expect(result).toMatch(/^\[Worker explore completed in \d+\.\d+s — 1 lines output\]$/);
     });
 
-    it('should return fallback when worker returns empty text', async () => {
+    it('should return status with 0 lines when worker returns empty text', async () => {
       (context.runner.executeStreaming as any).mockResolvedValueOnce({
         text: '',
         success: true,
@@ -229,7 +229,7 @@ describe('AgentTool', () => {
         {} as any,
       );
 
-      expect(result).toBe('Worker returned no output');
+      expect(result).toMatch(/^\[Worker explore completed in \d+\.\d+s — 0 lines output\]$/);
     });
 
     it('should return error message when worker fails', async () => {

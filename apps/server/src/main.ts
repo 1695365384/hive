@@ -126,6 +126,10 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   adminHandler.setHttpServer(server)
   chatHandler.setServer(context.server)
 
+  // Register Desktop WS channel so send-file tool works for desktop clients
+  const { DesktopWSChannel } = await import('./channels/desktop-ws-channel.js')
+  context.server.registerChannel(new DesktopWSChannel(context.bus))
+
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
     if (url.pathname === '/ws/admin') {

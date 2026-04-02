@@ -1,5 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useChatWsClient } from "../hooks/use-chat-ws-client";
+import { useFileUpload } from "../hooks/use-file-upload";
+import { FilePreviewList } from "../components/FilePreview";
+import { ImagePreview } from "../components/ImagePreview";
 import {
   Send,
   Square,
@@ -7,12 +10,13 @@ import {
   ChevronRight,
   Loader2,
   Bot,
-  Wrench,
   Brain,
+  Paperclip,
   Sparkles,
   Cpu,
   CheckCircle2,
   XCircle,
+  FileText,
 } from "lucide-react";
 
 // ============================================
@@ -31,7 +35,15 @@ type ContentPart =
   | { type: "reasoning"; text: string }
   | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
   | { type: "worker-start"; workerId: string; workerType: string; description?: string }
-  | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number };
+  | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }
+  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
+
+type GroupedContent =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
+  | { type: "worker"; workerId: string; workerType: string; description?: string; children: GroupedContent[]; status: "running" | "completed" | "failed"; duration?: number; error?: string }
+  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
 
 // ============================================
 // Chat Page
@@ -39,10 +51,12 @@ type ContentPart =
 
 export function ChatPage() {
   const { request, onEvent } = useChatWsClient();
+  const { pendingFiles, uploading, addFiles, removeFile, clearFiles } = useFileUpload();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -50,6 +64,8 @@ export function ChatPage() {
   const activeToolStartRef = useRef<number | null>(null);
   const [activeToolTime, setActiveToolTime] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTextSeqRef = useRef(0);
+  const lastReasoningSeqRef = useRef(0);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -57,6 +73,16 @@ export function ChatPage() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Lightbox event listener (for GroupedContentRenderer which has no direct state access)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const src = (e as CustomEvent<string>).detail;
+      if (typeof src === 'string') setLightboxSrc(src);
+    };
+    window.addEventListener('open-lightbox', handler);
+    return () => window.removeEventListener('open-lightbox', handler);
+  }, []);
 
   // Elapsed time timer for active tool calls
   const [timerActive, setTimerActive] = useState(false);
@@ -87,51 +113,7 @@ export function ChatPage() {
     };
   }, [timerActive]);
 
-  // Listen to WS events
-  useEffect(() => {
-    const unsubs = [
-      onEvent("agent.reasoning", (data: { threadId: string; text: string }) => {
-        if (data.threadId !== activeThreadIdRef.current) return;
-        appendPart({ type: "reasoning", text: data.text });
-      }),
-      onEvent("agent.text-delta", (data: { threadId: string; text: string }) => {
-        if (data.threadId !== activeThreadIdRef.current) return;
-        appendPart({ type: "text", text: data.text });
-      }),
-      onEvent("agent.worker-start", (data: { threadId: string; workerId: string; workerType: string; description?: string }) => {
-        if (data.threadId !== activeThreadIdRef.current) return;
-        appendPart({ type: "worker-start", workerId: data.workerId, workerType: data.workerType, description: data.description });
-      }),
-      onEvent("agent.worker-complete", (data: { threadId: string; workerId: string; success: boolean; error?: string; duration?: number }) => {
-        if (data.threadId !== activeThreadIdRef.current) return;
-        appendPart({ type: "worker-complete", workerId: data.workerId, success: data.success, error: data.error, duration: data.duration });
-      }),
-      onEvent("agent.tool-call", (data: { threadId: string; toolCallId: string; toolName: string; args: unknown; workerId?: string; workerType?: string }) => {
-        if (data.threadId !== activeThreadIdRef.current) return;
-        activeToolStartRef.current = Date.now();
-        setTimerActive(true);
-        appendPart({ type: "tool-call", toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, workerId: data.workerId });
-      }),
-      onEvent("agent.tool-result", (data: { threadId: string; toolCallId: string; toolName: string; result: unknown; isError?: boolean; workerId?: string; workerType?: string }) => {
-        if (data.threadId !== activeThreadIdRef.current) return;
-        activeToolStartRef.current = null;
-        setTimerActive(false);
-        updateToolResult(data.toolCallId, data.result, data.isError);
-      }),
-      onEvent("agent.complete", (data: { threadId?: string; cancelled?: boolean }) => {
-        if (data.threadId && data.threadId !== activeThreadIdRef.current) return;
-        setIsRunning(false);
-        activeThreadIdRef.current = null;
-        activeToolStartRef.current = null;
-        setTimerActive(false);
-        if (data.cancelled) {
-          appendPart({ type: "text", text: "\n\n*Execution cancelled*" });
-        }
-      }),
-    ];
-    return () => unsubs.forEach((fn) => fn());
-  }, [onEvent]);
-
+  // Message mutation helpers (stable references, no deps)
   const appendPart = useCallback((part: ContentPart) => {
     setMessages((prev) => {
       if (prev.length === 0) return prev;
@@ -178,6 +160,77 @@ export function ChatPage() {
     );
   }, []);
 
+  // Stable WS event handlers — useCallback ensures dedup in WsClient Set
+  // across React.StrictMode double-mount cycles
+  const handleReasoning = useCallback((data: { threadId: string; text: string; seq: number }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    if (data.seq <= lastReasoningSeqRef.current) return;
+    lastReasoningSeqRef.current = data.seq;
+    appendPart({ type: "reasoning", text: data.text });
+  }, [appendPart]);
+
+  const handleTextDelta = useCallback((data: { threadId: string; text: string; seq: number }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    if (data.seq !== undefined && data.seq <= lastTextSeqRef.current) return;
+    if (data.seq !== undefined) lastTextSeqRef.current = data.seq;
+    appendPart({ type: "text", text: data.text });
+  }, [appendPart]);
+
+  const handleWorkerStart = useCallback((data: { threadId: string; workerId: string; workerType: string; description?: string }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    appendPart({ type: "worker-start", workerId: data.workerId, workerType: data.workerType, description: data.description });
+  }, [appendPart]);
+
+  const handleWorkerComplete = useCallback((data: { threadId: string; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    appendPart({ type: "worker-complete", workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration });
+  }, [appendPart]);
+
+  const handleToolCall = useCallback((data: { threadId: string; toolCallId: string; toolName: string; args: unknown; workerId?: string; workerType?: string }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    activeToolStartRef.current = Date.now();
+    setTimerActive(true);
+    appendPart({ type: "tool-call", toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, workerId: data.workerId });
+  }, [appendPart]);
+
+  const handleToolResult = useCallback((data: { threadId: string; toolCallId: string; toolName: string; result: unknown; isError?: boolean; workerId?: string; workerType?: string }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    activeToolStartRef.current = null;
+    setTimerActive(false);
+    updateToolResult(data.toolCallId, data.result, data.isError);
+  }, [updateToolResult]);
+
+  const handleComplete = useCallback((data: { threadId?: string; cancelled?: boolean }) => {
+    if (data.threadId && data.threadId !== activeThreadIdRef.current) return;
+    setIsRunning(false);
+    activeThreadIdRef.current = null;
+    activeToolStartRef.current = null;
+    setTimerActive(false);
+    if (data.cancelled) {
+      appendPart({ type: "text", text: "\n\n*Execution cancelled*" });
+    }
+  }, [appendPart]);
+
+  const handleFile = useCallback((data: { threadId: string; name: string; path: string; size: number; mimeType: string; type: string; src?: string }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    appendPart({ type: "file-attachment", name: data.name, size: data.size, mimeType: data.mimeType, path: data.path, src: data.src });
+  }, [appendPart]);
+
+  // Listen to WS events
+  useEffect(() => {
+    const unsubs = [
+      onEvent("agent.reasoning", handleReasoning),
+      onEvent("agent.text-delta", handleTextDelta),
+      onEvent("agent.worker-start", handleWorkerStart),
+      onEvent("agent.worker-complete", handleWorkerComplete),
+      onEvent("agent.tool-call", handleToolCall),
+      onEvent("agent.tool-result", handleToolResult),
+      onEvent("agent.complete", handleComplete),
+      onEvent("agent.file", handleFile),
+    ];
+    return () => unsubs.forEach((fn) => fn());
+  }, [onEvent, handleReasoning, handleTextDelta, handleWorkerStart, handleWorkerComplete, handleToolCall, handleToolResult, handleComplete, handleFile]);
+
   const handleCancel = useCallback(async () => {
     const threadId = activeThreadIdRef.current;
     if (!threadId) return;
@@ -190,21 +243,30 @@ export function ChatPage() {
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || isRunning) return;
+    if ((!text && pendingFiles.length === 0) || isRunning) return;
 
     setError(null);
     const threadId = crypto.randomUUID();
     activeThreadIdRef.current = threadId;
+    lastTextSeqRef.current = 0;
+    lastReasoningSeqRef.current = 0;
 
-    // Add user message
+    // Build user message content
+    const userContent: ContentPart[] = [];
+    for (const f of pendingFiles) {
+      userContent.push({ type: "file-attachment", name: f.name, size: f.size, mimeType: f.mimeType, path: f.path, src: f.src });
+    }
+    if (text) {
+      userContent.push({ type: "text", text });
+    }
+
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: [{ type: "text", text }],
+      content: userContent,
       createdAt: Date.now(),
     };
 
-    // Add empty assistant message
     const assistantMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -214,20 +276,21 @@ export function ChatPage() {
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput("");
+    clearFiles();
     setIsRunning(true);
 
-    // Reset textarea height
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
     }
 
     try {
-      await request("chat.send", { prompt: text, threadId });
+      const attachments = pendingFiles.map(f => ({ type: f.type, path: f.path, name: f.name, size: f.size, mimeType: f.mimeType }));
+      await request("chat.send", { prompt: text || undefined, threadId, attachments: attachments.length > 0 ? attachments : undefined });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send");
       setIsRunning(false);
     }
-  }, [input, isRunning, request]);
+  }, [input, pendingFiles, isRunning, request, clearFiles]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -238,11 +301,37 @@ export function ChatPage() {
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    // Auto-resize
     const el = e.target;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   };
+
+  const handleFileSelect = useCallback(async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: true,
+        title: "Select files",
+      });
+      if (selected && selected.length > 0) {
+        addFiles(selected as unknown as File[]);
+      }
+    } catch {
+      // dialog not available in web preview
+    }
+  }, [addFiles]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.files.length > 0) {
+      addFiles(e.dataTransfer.files);
+    }
+  }, [addFiles]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
 
   const isEmpty = messages.length === 0;
 
@@ -255,7 +344,7 @@ export function ChatPage() {
         ) : (
           <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} isLast={msg === messages[messages.length - 1]} isRunning={isRunning && msg === messages[messages.length - 1]} activeToolTime={activeToolTime} />
+              <MessageBubble key={msg.id} message={msg} isLast={msg === messages[messages.length - 1]} isRunning={isRunning && msg === messages[messages.length - 1]} activeToolTime={activeToolTime} onOpenImage={setLightboxSrc} />
             ))}
             {isRunning && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1].content.length === 0 && (
               <div className="flex items-center gap-2 px-1 py-2">
@@ -286,7 +375,24 @@ export function ChatPage() {
       {/* Input Area */}
       <div className="shrink-0 border-t border-stone-800/60">
         <div className="max-w-3xl mx-auto px-4 py-4">
-          <div className="relative flex items-end gap-2 bg-stone-900/80 border border-stone-800 rounded-2xl px-4 py-3 focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20 transition-all duration-200">
+          {/* File previews */}
+          {pendingFiles.length > 0 && (
+            <div className="mb-2">
+              <FilePreviewList files={pendingFiles} onRemove={removeFile} />
+            </div>
+          )}
+          <div
+            className="relative flex items-end gap-2 bg-stone-900/80 border border-stone-800 rounded-2xl px-3 py-2.5 focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20 transition-all duration-200"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+          >
+            <button
+              onClick={handleFileSelect}
+              className="shrink-0 self-center p-1 rounded-lg text-stone-500 hover:text-stone-300 hover:bg-stone-800 transition-colors"
+              title="Attach files"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
             <textarea
               ref={inputRef}
               value={input}
@@ -294,12 +400,12 @@ export function ChatPage() {
               onKeyDown={handleKeyDown}
               placeholder="Ask Hive anything..."
               rows={1}
-              className="flex-1 bg-transparent text-stone-100 placeholder-stone-600 text-sm resize-none outline-none leading-relaxed max-h-[200px]"
-              disabled={isRunning}
+              className="flex-1 bg-transparent text-stone-100 placeholder-stone-600 text-sm resize-none outline-none leading-relaxed max-h-[200px] py-0.5"
+              disabled={isRunning || uploading}
             />
             <button
               onClick={isRunning ? handleCancel : handleSend}
-              disabled={!input.trim() && !isRunning}
+              disabled={!isRunning && (!input.trim() && pendingFiles.length === 0) || uploading}
               className={`shrink-0 p-2 rounded-xl transition-all duration-200 ${
                 isRunning
                   ? "bg-amber-500/20 text-amber-400"
@@ -320,8 +426,55 @@ export function ChatPage() {
           </p>
         </div>
       </div>
+
+      {/* Image Lightbox */}
+      {lightboxSrc && <ImagePreview src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   );
+}
+
+// ============================================
+// Content Grouping — flat ContentPart[] → nested GroupedContent[]
+// ============================================
+
+function groupContentParts(parts: ContentPart[]): GroupedContent[] {
+  const result: GroupedContent[] = [];
+  const activeWorkers = new Map<string, GroupedContent & { type: "worker" }>();
+
+  for (const part of parts) {
+    if (part.type === "worker-start") {
+      const group: GroupedContent & { type: "worker" } = {
+        type: "worker",
+        workerId: part.workerId,
+        workerType: part.workerType,
+        description: part.description,
+        children: [],
+        status: "running",
+      };
+      activeWorkers.set(part.workerId, group);
+      result.push(group);
+    } else if (part.type === "worker-complete") {
+      const group = activeWorkers.get(part.workerId);
+      if (group) {
+        group.status = part.success ? "completed" : "failed";
+        group.duration = part.duration;
+        group.error = part.error;
+        activeWorkers.delete(part.workerId);
+      }
+    } else if (part.type === "tool-call" || part.type === "reasoning") {
+      const wid = "workerId" in part ? (part as { workerId?: string }).workerId : undefined;
+      const group = wid ? activeWorkers.get(wid) : undefined;
+      if (group) {
+        group.children.push(part as GroupedContent);
+      } else {
+        result.push(part as GroupedContent);
+      }
+    } else {
+      result.push(part as GroupedContent);
+    }
+  }
+
+  return result;
 }
 
 // ============================================
@@ -372,7 +525,7 @@ function EmptyState() {
 // Message Bubble
 // ============================================
 
-function MessageBubble({ message, isLast, isRunning, activeToolTime }: { message: ChatMessage; isLast: boolean; isRunning: boolean; activeToolTime: number | null }) {
+function MessageBubble({ message, isLast, isRunning, activeToolTime, onOpenImage }: { message: ChatMessage; isLast: boolean; isRunning: boolean; activeToolTime: number | null; onOpenImage: (src: string) => void }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -384,9 +537,38 @@ function MessageBubble({ message, isLast, isRunning, activeToolTime }: { message
             <span className="text-[11px] font-medium text-stone-500">You</span>
           </div>
           <div className="px-4 py-2.5 rounded-2xl rounded-tr-md bg-stone-800/80 border border-stone-700/50">
-            <p className="text-sm text-stone-200 whitespace-pre-wrap leading-relaxed">
-              {(message.content[0] as { type: "text"; text: string })?.text}
-            </p>
+            {message.content.map((part, idx) => {
+              if (part.type === "file-attachment") {
+                const isImage = part.mimeType?.startsWith("image/");
+                return isImage ? (
+                  <img
+                    key={idx}
+                    src={`http://127.0.0.1:4450${part.src}`}
+                    alt={part.name}
+                    className="max-w-[200px] max-h-[150px] rounded-lg mb-1 object-cover cursor-pointer"
+                    onClick={() => onOpenImage(`http://127.0.0.1:4450${part.src}`)}
+                  />
+                ) : (
+                  <a
+                    key={idx}
+                    href={`http://127.0.0.1:4450${part.src}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs mb-1 text-amber-400/80 hover:text-amber-300 transition-colors"
+                  >
+                    <FileText className="w-3 h-3 shrink-0" />
+                    <span>{part.name}</span>
+                    <span className="text-stone-600">{part.size >= 1024 ? `${(part.size / 1024).toFixed(1)}KB` : `${part.size}B`}</span>
+                  </a>
+                );
+              }
+              return null;
+            })}
+            {message.content.some(p => p.type === "text") && (
+              <p className="text-sm text-stone-200 whitespace-pre-wrap leading-relaxed">
+                {(message.content.find(p => p.type === "text") as { type: "text"; text: string })?.text}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -408,8 +590,8 @@ function MessageBubble({ message, isLast, isRunning, activeToolTime }: { message
         </div>
 
         <div className="space-y-3">
-          {message.content.map((part, idx) => (
-            <ContentPartRenderer key={idx} part={part} activeToolTime={isLast && isRunning ? activeToolTime : null} />
+          {groupContentParts(message.content).map((part, idx) => (
+            <GroupedContentRenderer key={idx} part={part} activeToolTime={isLast && isRunning ? activeToolTime : null} />
           ))}
           {/* Streaming cursor */}
           {isRunning && isLast && message.content.length > 0 && message.content[message.content.length - 1].type === "text" && (
@@ -422,10 +604,10 @@ function MessageBubble({ message, isLast, isRunning, activeToolTime }: { message
 }
 
 // ============================================
-// Content Part Renderer
+// Grouped Content Renderer (recursive)
 // ============================================
 
-function ContentPartRenderer({ part, activeToolTime }: { part: ContentPart; activeToolTime: number | null }) {
+function GroupedContentRenderer({ part, activeToolTime }: { part: GroupedContent; activeToolTime: number | null }) {
   switch (part.type) {
     case "reasoning":
       return <ReasoningBlock text={part.text} />;
@@ -433,10 +615,30 @@ function ContentPartRenderer({ part, activeToolTime }: { part: ContentPart; acti
       return <TextBlock text={part.text} />;
     case "tool-call":
       return <ToolCallBlock toolCallId={part.toolCallId} toolName={part.toolName} args={part.args} result={part.result} isError={part.isError} elapsedSeconds={activeToolTime} workerId={part.workerId} />;
-    case "worker-start":
-      return <WorkerStartBlock workerId={part.workerId} workerType={part.workerType} description={part.description} />;
-    case "worker-complete":
-      return <WorkerCompleteBlock workerId={part.workerId} success={part.success} error={part.error} duration={part.duration} />;
+    case "worker":
+      return <WorkerBlock workerType={part.workerType} description={part.description} children={part.children} status={part.status} duration={part.duration} error={part.error} />;
+    case "file-attachment": {
+      const isImage = part.mimeType?.startsWith("image/");
+      return isImage ? (
+        <img
+          src={`http://127.0.0.1:4450${part.src}`}
+          alt={part.name}
+          className="max-w-[300px] max-h-[200px] rounded-lg object-cover cursor-pointer"
+          onClick={() => window.dispatchEvent(new CustomEvent('open-lightbox', { detail: `http://127.0.0.1:4450${part.src}` }))}
+        />
+      ) : (
+        <a
+          href={`http://127.0.0.1:4450${part.src}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-amber-400/80 hover:text-amber-300 transition-colors"
+        >
+          <FileText className="w-3 h-3 shrink-0" />
+          <span>{part.name}</span>
+          <span className="text-stone-600">{part.size >= 1024 ? `${(part.size / 1024).toFixed(1)}KB` : `${part.size}B`}</span>
+        </a>
+      );
+    }
   }
 }
 
@@ -457,10 +659,18 @@ function TextBlock({ text }: { text: string }) {
     const codeProcessed = boldProcessed.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-stone-800 text-amber-400/90 text-[13px] font-mono">$1</code>');
     // Links
     const linkProcessed = codeProcessed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-amber-400/80 hover:text-amber-300 underline underline-offset-2">$1</a>');
+    // File paths: [File: name.ext (size)] /path/to/file → extract filename for /files/ route
+    const fileProcessed = linkProcessed.replace(
+      /\[File: ([^\]]+)\] (\/[^\s<]+)/g,
+      (_, name, fullPath) => {
+        const fileName = fullPath.split("/").pop() || fullPath;
+        return `<a href="http://127.0.0.1:4450/files/${fileName}" class="text-amber-400/80 hover:text-amber-300 underline underline-offset-2">[File: ${name}] ${fileName}</a>`;
+      }
+    );
 
     return (
       <span key={i}>
-        <span dangerouslySetInnerHTML={{ __html: linkProcessed }} />
+        <span dangerouslySetInnerHTML={{ __html: fileProcessed }} />
         {i < text.split("\n").length - 1 && <br />}
       </span>
     );
@@ -505,17 +715,10 @@ function ReasoningBlock({ text }: { text: string }) {
 }
 
 // ============================================
-// Tool Call Block
+// Tool Call Block (compact single-line)
 // ============================================
 
-function ToolCallBlock({
-  toolName,
-  args,
-  result,
-  isError,
-  elapsedSeconds,
-  workerId,
-}: {
+type ToolCallBlockProps = {
   toolCallId: string;
   toolName: string;
   args: unknown;
@@ -523,77 +726,67 @@ function ToolCallBlock({
   isError?: boolean;
   elapsedSeconds?: number | null;
   workerId?: string;
-}) {
+};
+
+function ToolCallBlock({ toolName, args, result, isError, elapsedSeconds }: ToolCallBlockProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const isDone = result !== undefined;
+  const isRunning = !isDone;
 
-  const statusColor = result !== undefined
-    ? isError
-      ? "text-red-400 bg-red-400/10 border-red-400/20"
-      : "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
-    : "text-amber-400 bg-amber-400/10 border-amber-400/20";
+  const dotColor = isDone
+    ? isError ? "bg-red-400" : "bg-emerald-400"
+    : "bg-amber-400";
 
-  const statusIcon = result !== undefined
-    ? isError
-      ? <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-      : <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-    : <Loader2 className="w-3 h-3 animate-spin" />;
+  // Format first arg value for compact display
+  const argsPreview = useMemo(() => {
+    if (typeof args !== "object" || args === null) return String(args ?? "");
+    const entries = Object.entries(args as Record<string, unknown>)
+      .filter(([key]) => key !== "type" && key !== "id");
+    if (entries.length === 0) return "";
+    const [key, val] = entries[0];
+    const valStr = typeof val === "string" && val.length > 50 ? val.slice(0, 50) + "..." : String(val);
+    return `${key}=${valStr}`;
+  }, [args]);
 
-  const statusText = result !== undefined
-    ? isError ? "failed" : "done"
-    : elapsedSeconds != null && elapsedSeconds > 0
-      ? `${elapsedSeconds}s`
-      : "running";
-
-  // Capture final elapsed time when result arrives
-  const finalElapsed = result !== undefined && elapsedSeconds != null && elapsedSeconds > 0
-    ? `${elapsedSeconds}s`
-    : null;
-
-  // Format args for display
-  const argsDisplay = typeof args === "object" && args !== null
-    ? Object.entries(args as Record<string, unknown>)
-        .filter(([key]) => key !== "type" && key !== "id")
-        .map(([key, val]) => `${key}: ${typeof val === "string" && val.length > 60 ? val.slice(0, 60) + "..." : String(val)}`)
-        .join(", ")
-    : String(args ?? "");
+  const timeText = isRunning
+    ? elapsedSeconds != null && elapsedSeconds > 0 ? `${elapsedSeconds}s` : ""
+    : elapsedSeconds != null && elapsedSeconds > 0 ? `${elapsedSeconds}s` : "";
 
   return (
-    <div className={`rounded-xl border overflow-hidden ${statusColor} transition-colors duration-300`}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 w-full px-3 py-2 text-left hover:bg-white/[0.02] transition-colors"
-      >
-        <Wrench className="w-3.5 h-3.5 shrink-0 opacity-70" />
-        <span className="text-xs font-mono font-medium">{toolName}</span>
-        {argsDisplay && (
-          <span className="text-[11px] opacity-50 truncate font-mono">{argsDisplay}</span>
-        )}
-        <span className="ml-auto flex items-center gap-1.5 shrink-0 text-[10px] uppercase tracking-wider">
-          {statusIcon}
-          {statusText}
-          {finalElapsed && <span className="text-stone-600 normal-case">{finalElapsed}</span>}
-        </span>
-        {isOpen ? <ChevronDown className="w-3 h-3 shrink-0 opacity-40" /> : <ChevronRight className="w-3 h-3 shrink-0 opacity-40" />}
-      </button>
+    <div className="group flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/[0.02] cursor-pointer transition-colors"
+      onClick={() => setIsOpen(!isOpen)}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isRunning ? "animate-pulse" : ""}`} />
+      <span className="text-[11px] font-mono text-stone-400">{toolName}</span>
+      {argsPreview && (
+        <span className="text-[10px] text-stone-600 truncate font-mono">{argsPreview}</span>
+      )}
+      {timeText && (
+        <span className="text-[10px] text-stone-600 ml-auto shrink-0 tabular-nums">{timeText}</span>
+      )}
+      {isDone && isError && (
+        <span className="text-[10px] text-red-400 shrink-0">failed</span>
+      )}
+      {isOpen ? <ChevronDown className="w-2.5 h-2.5 shrink-0 opacity-30" /> : null}
 
       {isOpen && (
-        <div className="px-3 pb-3 border-t border-inherit/20">
-          {/* Args */}
-          <div className="mt-2">
-            <p className="text-[10px] uppercase tracking-wider opacity-40 mb-1">Input</p>
-            <pre className="text-[11px] font-mono opacity-70 whitespace-pre-wrap break-all bg-black/20 rounded-lg p-2.5 max-h-40 overflow-auto">
-              {typeof args === "string" ? args : JSON.stringify(args, null, 2)}
-            </pre>
-          </div>
-          {/* Result */}
-          {result !== undefined && (
-            <div className="mt-2">
-              <p className="text-[10px] uppercase tracking-wider opacity-40 mb-1">Output</p>
-              <pre className="text-[11px] font-mono opacity-70 whitespace-pre-wrap break-all bg-black/20 rounded-lg p-2.5 max-h-40 overflow-auto">
-                {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+        <div className="absolute left-4 right-4 mt-1 z-10 rounded-lg border border-stone-700/60 bg-stone-900 shadow-xl">
+          <div className="p-2.5 space-y-2">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-stone-600 mb-1">Input</p>
+              <pre className="text-[11px] font-mono text-stone-400 whitespace-pre-wrap break-all max-h-40 overflow-auto">
+                {typeof args === "string" ? args : JSON.stringify(args, null, 2)}
               </pre>
             </div>
-          )}
+            {result !== undefined && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-stone-600 mb-1">Output</p>
+                <pre className="text-[11px] font-mono text-stone-400 whitespace-pre-wrap break-all max-h-40 overflow-auto">
+                  {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -615,64 +808,82 @@ function getWorkerColor(workerType: string) {
 }
 
 // ============================================
-// Worker Start Block
+// Worker Block (unified: start + children + complete)
 // ============================================
 
-function WorkerStartBlock({ workerType, description }: { workerId: string; workerType: string; description?: string }) {
+function WorkerBlock({ workerType, description, children, status, duration, error }: {
+  workerType: string;
+  description?: string;
+  children: GroupedContent[];
+  status: "running" | "completed" | "failed";
+  duration?: number;
+  error?: string;
+}) {
   const color = getWorkerColor(workerType);
-  const [isOpen, setIsOpen] = useState(true);
+  const isRunning = status === "running";
+  // Default open while running, closed when completed
+  const [isOpen, setIsOpen] = useState(isRunning);
+
+  const toolCount = children.filter(c => c.type === "tool-call").length;
+  const timeStr = duration != null ? `${(duration / 1000).toFixed(1)}s` : "";
 
   return (
-    <div className={`rounded-xl border ${color.border} ${color.bg} overflow-hidden`}>
+    <div className={`rounded-lg border ${color.border} ${color.bg} overflow-hidden`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-white/[0.02] transition-colors`}
+        className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-left hover:bg-white/[0.02] transition-colors"
       >
-        <Cpu className={`w-3.5 h-3.5 shrink-0 ${color.text}`} />
-        <span className={`text-xs font-medium ${color.text} uppercase tracking-wider`}>
+        <Cpu className={`w-3 h-3 shrink-0 ${color.text}`} />
+        <span className={`text-[11px] font-medium ${color.text} uppercase tracking-wider`}>
           {workerType}
         </span>
         {description && (
-          <span className="text-[11px] text-stone-500 truncate">{description}</span>
+          <span className="text-[10px] text-stone-500 truncate">{description}</span>
         )}
-        <Loader2 className="w-3 h-3 animate-spin text-stone-500 ml-auto shrink-0" />
-        {isOpen ? <ChevronDown className="w-3 h-3 shrink-0 opacity-40" /> : <ChevronRight className="w-3 h-3 shrink-0 opacity-40" />}
+        <span className="ml-auto flex items-center gap-1.5 shrink-0">
+          {isRunning ? (
+            <Loader2 className="w-2.5 h-2.5 animate-spin text-stone-500" />
+          ) : status === "completed" ? (
+            <CheckCircle2 className={`w-2.5 h-2.5 ${color.text}`} />
+          ) : (
+            <XCircle className="w-2.5 h-2.5 text-red-400" />
+          )}
+          {!isRunning && toolCount > 0 && (
+            <span className="text-[10px] text-stone-600">{toolCount} tools</span>
+          )}
+          {!isRunning && timeStr && (
+            <span className="text-[10px] text-stone-600 tabular-nums">{timeStr}</span>
+          )}
+          {isRunning && (
+            <span className="text-[10px] text-stone-500">Running...</span>
+          )}
+        </span>
+        {isOpen ? <ChevronDown className="w-2.5 h-2.5 shrink-0 opacity-30" /> : <ChevronRight className="w-2.5 h-2.5 shrink-0 opacity-30" />}
       </button>
-      {isOpen && (
-        <div className={`px-3 pb-2 border-t ${color.border}`}>
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${color.dot} animate-pulse`} />
-            <span className="text-[11px] text-stone-500">Running...</span>
+
+      {isOpen && children.length > 0 && (
+        <div className={`border-t ${color.border}`}>
+          <div className="px-2 py-1">
+            {children.map((child, idx) => (
+              <GroupedContentRenderer key={idx} part={child} activeToolTime={null} />
+            ))}
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-// ============================================
-// Worker Complete Block
-// ============================================
-
-function WorkerCompleteBlock({ workerType, success, error, duration }: { workerId: string; workerType: string; success: boolean; error?: string; duration?: number }) {
-  const color = getWorkerColor(workerType);
-
-  return (
-    <div className={`rounded-lg border ${color.border} ${color.bg} px-3 py-1.5 flex items-center gap-2`}>
-      {success ? (
-        <CheckCircle2 className={`w-3.5 h-3.5 ${color.text} shrink-0`} />
-      ) : (
-        <XCircle2 className="w-3.5 h-3.5 text-red-400 shrink-0" />
+      {isOpen && isRunning && children.length === 0 && (
+        <div className={`px-2.5 pb-1.5 border-t ${color.border}`}>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className={`w-1 h-1 rounded-full ${color.dot} animate-pulse`} />
+            <span className="text-[10px] text-stone-500">Waiting...</span>
+          </div>
+        </div>
       )}
-      <span className={`text-xs font-medium ${color.text} uppercase tracking-wider`}>
-        {workerType}
-      </span>
-      <span className="text-[11px] text-stone-500">
-        {success ? "completed" : "failed"}
-        {duration != null && ` in ${(duration / 1000).toFixed(1)}s`}
-      </span>
+
       {error && (
-        <span className="text-[11px] text-red-400 truncate ml-auto">{error}</span>
+        <div className="px-2.5 py-1 border-t border-red-500/20 bg-red-500/5">
+          <span className="text-[10px] text-red-400">{error}</span>
+        </div>
       )}
     </div>
   );

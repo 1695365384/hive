@@ -68,8 +68,10 @@ export interface DispatchOptions {
  * 统一分发结果
  */
 export interface DispatchResult {
-  /** 最终文本输出 */
+  /** 最终文本输出（完整） */
   text: string;
+  /** 最后一次工具调用后的文本（用于 channel 回复，不含叙述） */
+  finalText?: string;
   /** 是否成功 */
   success: boolean;
   /** 总耗时（毫秒） */
@@ -174,6 +176,7 @@ export class CoordinatorCapability implements AgentCapability {
 
         // NOTE: Intentional mutable accumulator for streaming
         let result = '';
+        let lastToolResultIndex = -1; // 最后一次工具结果后的文本起始位置（用于提取 finalText）
 
         const baseMessages = historyMessages.length > 0
           ? [...historyMessages.map(m => ({ role: m.role as string, content: m.content as string })), { role: 'user' as const, content: task }]
@@ -203,6 +206,8 @@ export class CoordinatorCapability implements AgentCapability {
             options?.onTool?.(toolName, input);
           },
           onToolResult: (toolName: string, output: unknown) => {
+            // 记录最后工具结果位置，用于提取 finalText
+            lastToolResultIndex = result.length;
             this.emitToolAfter(sessionId, toolName, output).catch(
               (err) => this.context.hookRegistry.emit('notification:push', {
                 sessionId, type: 'warning', title: 'Hook Error',
@@ -214,6 +219,11 @@ export class CoordinatorCapability implements AgentCapability {
             this.context.timeoutCap.updateActivity();
           },
         });
+
+        // 提取最后一次工具调用后的文本（用于 channel 回复，不含叙述）
+        const finalText = lastToolResultIndex >= 0 && result.length > lastToolResultIndex
+          ? result.slice(lastToolResultIndex).trim()
+          : result.trim();
 
         const duration = Date.now() - startTime;
         const success = runtimeResult.success;
@@ -238,6 +248,7 @@ export class CoordinatorCapability implements AgentCapability {
 
         return {
           text: result,
+          finalText,
           tools: runtimeResult.tools,
           success,
           error: runtimeResult.error,
