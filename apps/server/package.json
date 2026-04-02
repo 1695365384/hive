@@ -1,6 +1,6 @@
 {
   "name": "@bundy-lmw/hive-server",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
@@ -20,7 +20,7 @@
     "cli": "node dist/cli/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sea:build":"npm run build && sh scripts/bundle.sh"
+    "sea:build": "npm run build && sh scripts/bundle.sh"
   },
   "dependencies": {
     "@bundy-lmw/hive-core": "workspace:*",
