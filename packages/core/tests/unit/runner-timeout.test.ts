@@ -28,7 +28,6 @@ vi.mock('../../src/agents/prompts/prompts.js', () => ({
   PLAN_AGENT_PROMPT: 'You are a planning agent.',
   GENERAL_AGENT_PROMPT: 'You are a general-purpose agent.',
   buildExplorePrompt: vi.fn((task: string) => `Explore: ${task}`),
-  buildPlanPrompt: vi.fn((task: string) => `Plan: ${task}`),
 }));
 
 // Mock ProviderManager

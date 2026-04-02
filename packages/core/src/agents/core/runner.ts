@@ -11,7 +11,7 @@ import type { AgentConfig, AgentExecuteOptions, AgentResult, ThoroughnessLevel }
 import type { RuntimeConfig, RuntimeResult } from '../runtime/types.js';
 import { LLMRuntime, AGENT_PRESETS } from '../runtime/LLMRuntime.js';
 import { getAgentConfig } from './agents.js';
-import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
+import { buildExplorePrompt } from '../prompts/prompts.js';
 import { ToolRegistry, type AgentType as ToolAgentType } from '../../tools/tool-registry.js';
 
 // ============================================
@@ -403,22 +403,6 @@ export class AgentRunner {
   }
 
   /**
-   * 计划研究
-   * @deprecated Use explore() with thoroughness='very-thorough' instead
-   */
-  async plan(prompt: string): Promise<AgentResult> {
-    return this.execute('plan', buildPlanPrompt(prompt));
-  }
-
-  /**
-   * 评估执行
-   * @deprecated Use execute('general', prompt) instead
-   */
-  async evaluator(prompt: string): Promise<AgentResult> {
-    return this.execute('evaluator', prompt);
-  }
-
-  /**
    * 快速执行单个 Task
    */
   async quickTask(prompt: string, options?: Partial<TaskConfig>): Promise<TaskResult> {
@@ -440,29 +424,6 @@ export class AgentRunner {
     });
   }
 
-  /**
-   * 快速研究 Task
-   * @deprecated Use exploreTask() with thoroughness='very-thorough' instead
-   */
-  async planTask(prompt: string): Promise<TaskResult> {
-    return this.runTask({
-      name: 'plan-task',
-      prompt: `Research the codebase for planning:\n\n${prompt}`,
-      agentType: 'plan',
-    });
-  }
-
-  /**
-   * 快速评估 Task
-   * @deprecated Use runTask() with agentType='general' instead
-   */
-  async evaluatorTask(prompt: string): Promise<TaskResult> {
-    return this.runTask({
-      name: 'evaluator-task',
-      prompt,
-      agentType: 'evaluator',
-    });
-  }
 }
 
 // ============================================

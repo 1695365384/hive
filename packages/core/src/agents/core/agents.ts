@@ -16,8 +16,6 @@ export const AGENT_NAMES = {
   EXPLORE: 'explore',
   PLAN: 'plan',
   GENERAL: 'general',
-  /** @deprecated Use GENERAL instead */
-  EVALUATOR: 'evaluator',
 } as const;
 
 // ============================================
@@ -58,25 +56,14 @@ export const BUILTIN_AGENTS: Record<string, AgentConfig> = {
 };
 
 // ============================================
-// 别名映射
-// ============================================
-
-const ALIAS_MAP: Record<string, string> = {
-  evaluator: 'general',
-};
-
-// ============================================
 // 辅助函数
 // ============================================
 
 /**
  * 获取 Agent 配置
- *
- * 支持 'evaluator' → 'general' 别名。
  */
 export function getAgentConfig(name: string): AgentConfig | undefined {
-  const resolved = ALIAS_MAP[name] ?? name;
-  return BUILTIN_AGENTS[resolved];
+  return BUILTIN_AGENTS[name];
 }
 
 /**
