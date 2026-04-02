@@ -160,7 +160,7 @@ export class ChatWsHandler extends EventEmitter {
         }
         callMap.set(data.tool, toolCallId)
         ws.send(JSON.stringify(createEvent('agent.tool-call', {
-          threadId, toolCallId, toolName: data.tool, args: data.input,
+          threadId, toolCallId, toolName: data.tool, args: data.input, workerId: data.workerId, workerType: data.workerType,
         })))
         break
       }
@@ -169,10 +169,22 @@ export class ChatWsHandler extends EventEmitter {
         const resultMap = this.toolCallIdMaps.get(threadId)
         const toolCallId = resultMap?.get(data.tool) ?? crypto.randomUUID()
         ws.send(JSON.stringify(createEvent('agent.tool-result', {
-          threadId, toolCallId, toolName: data.tool, result: data.output,
+          threadId, toolCallId, toolName: data.tool, result: data.output, workerId: data.workerId, workerType: data.workerType,
         })))
         break
       }
+
+      case 'worker-start':
+        ws.send(JSON.stringify(createEvent('agent.worker-start', {
+          threadId, workerId: data.workerId, workerType: data.workerType, description: data.description,
+        })))
+        break
+
+      case 'worker-complete':
+        ws.send(JSON.stringify(createEvent('agent.worker-complete', {
+          threadId, workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration,
+        })))
+        break
 
       case 'complete':
         ws.send(JSON.stringify(createEvent('agent.complete', {

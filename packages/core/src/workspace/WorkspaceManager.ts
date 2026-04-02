@@ -1,25 +1,22 @@
 /**
  * 工作空间管理器
  *
- * 统一管理所有本地化数据：会话、配置、记忆等
+ * 统一管理所有本地化数据：会话、配置等
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
 import { safeJsonParse } from '../utils/safe-json-parse.js';
 import {
   DEFAULT_WORKSPACE_DIR,
   DEFAULT_WORKSPACE_NAME,
   WORKSPACE_VERSION,
-  DEFAULT_SESSION_GROUPS,
 } from './index.js';
 import type {
   WorkspaceMetadata,
   WorkspaceConfig,
   WorkspacePaths,
   WorkspaceInitConfig,
-  SessionGroup,
   Preferences,
   SessionConfig,
   StorageConfig,
@@ -34,7 +31,6 @@ export class WorkspaceManager {
   private rootPath: string;
   private metadata: WorkspaceMetadata | null = null;
   private config: WorkspaceConfig;
-  private currentGroup: string = 'default';
   private initialized: boolean = false;
 
   constructor(config?: WorkspaceInitConfig) {
@@ -71,14 +67,11 @@ export class WorkspaceManager {
       createdAt: new Date(),
       lastAccessedAt: new Date(),
       version: WORKSPACE_VERSION,
-      sessionGroups: [...DEFAULT_SESSION_GROUPS],
-      defaultSessionGroup: 'default',
     };
 
     // 保存元数据
     await this.saveMetadata();
 
-    this.currentGroup = 'default';
     this.initialized = true;
   }
 
@@ -101,11 +94,6 @@ export class WorkspaceManager {
     this.metadata = {
       name: parsedMetadata.name ?? DEFAULT_WORKSPACE_NAME,
       version: parsedMetadata.version ?? WORKSPACE_VERSION,
-      defaultSessionGroup: parsedMetadata.defaultSessionGroup ?? 'default',
-      sessionGroups: (parsedMetadata.sessionGroups ?? DEFAULT_SESSION_GROUPS).map((g: SessionGroup) => ({
-        ...g,
-        createdAt: new Date(g.createdAt),
-      })),
       createdAt: new Date(parsedMetadata.createdAt ?? Date.now()),
       lastAccessedAt: new Date(parsedMetadata.lastAccessedAt ?? Date.now()),
     };
@@ -120,7 +108,6 @@ export class WorkspaceManager {
     if (this.metadata) {
       this.metadata.lastAccessedAt = new Date();
       await this.saveMetadata();
-      this.currentGroup = this.metadata.defaultSessionGroup;
     }
     this.initialized = true;
   }
@@ -171,9 +158,6 @@ export class WorkspaceManager {
       configFile: path.join(this.rootPath, 'config.json'),
       metadataFile: path.join(this.rootPath, 'workspace.json'),
       providersFile: path.join(this.rootPath, 'providers.json'),
-      sessionsDir: path.join(this.rootPath, 'sessions'),
-      memoryDir: path.join(this.rootPath, 'memory'),
-      logsDir: path.join(this.rootPath, 'logs'),
       cacheDir: path.join(this.rootPath, 'cache'),
       modelsDevCacheFile: path.join(this.rootPath, 'cache', 'models-dev.json'),
       modelsDevDbFile: path.join(this.rootPath, 'models-dev.db'),
@@ -213,182 +197,6 @@ export class WorkspaceManager {
   async updatePreferences(updates: Preferences): Promise<void> {
     this.config.preferences = { ...this.config.preferences, ...updates };
     await this.saveConfig();
-  }
-
-  // ============================================
-  // 会话组管理
-  // ============================================
-
-  /**
-   * 获取当前会话组
-   * @deprecated Sessions are stored in SQLite, session groups are no longer used
-   */
-  getCurrentGroup(): string {
-    return this.currentGroup;
-  }
-
-  /**
-   * 设置当前会话组
-   * @deprecated Sessions are stored in SQLite, session groups are no longer used
-   */
-  async setCurrentGroup(name: string): Promise<void> {
-    if (!this.metadata) {
-      throw new Error('Workspace not initialized');
-    }
-
-    const group = this.metadata.sessionGroups.find(g => g.name === name);
-    if (!group) {
-      throw new Error(`Session group "${name}" not found`);
-    }
-
-    this.currentGroup = name;
-  }
-
-  /**
-   * 获取所有会话组
-   * @deprecated Sessions are stored in SQLite, session groups are no longer used
-   */
-  getSessionGroups(): SessionGroup[] {
-    return this.metadata?.sessionGroups ?? [];
-  }
-
-  /**
-   * 创建会话组
-   * @deprecated Sessions are stored in SQLite, session groups are no longer used
-   */
-  async createSessionGroup(name: string, description?: string): Promise<SessionGroup> {
-    if (!this.metadata) {
-      throw new Error('Workspace not initialized');
-    }
-
-    // 检查是否已存在
-    if (this.metadata.sessionGroups.some(g => g.name === name)) {
-      throw new Error(`Session group "${name}" already exists`);
-    }
-
-    const group: SessionGroup = {
-      name,
-      description,
-      createdAt: new Date(),
-    };
-
-    this.metadata.sessionGroups.push(group);
-
-    // 创建目录
-    const groupPath = path.join(this.getPaths().sessionsDir, name);
-    if (!fs.existsSync(groupPath)) {
-      await fs.promises.mkdir(groupPath, { recursive: true });
-    }
-
-    await this.saveMetadata();
-    return group;
-  }
-
-  /**
-   * 删除会话组
-   * @deprecated Sessions are stored in SQLite, session groups are no longer used
-   */
-  async deleteSessionGroup(name: string): Promise<boolean> {
-    if (!this.metadata) {
-      throw new Error('Workspace not initialized');
-    }
-
-    // 不能删除默认组
-    if (name === 'default' || name === 'archive') {
-      throw new Error('Cannot delete default session groups');
-    }
-
-    const index = this.metadata.sessionGroups.findIndex(g => g.name === name);
-    if (index === -1) {
-      return false;
-    }
-
-    // 删除组目录
-    const groupPath = path.join(this.getPaths().sessionsDir, name);
-    if (fs.existsSync(groupPath)) {
-      await fs.promises.rm(groupPath, { recursive: true });
-    }
-
-    this.metadata.sessionGroups.splice(index, 1);
-
-    // 如果当前组被删除，切换到默认组
-    if (this.currentGroup === name) {
-      this.currentGroup = 'default';
-    }
-
-    await this.saveMetadata();
-    return true;
-  }
-
-  /**
-   * 重命名会话组
-   * @deprecated Sessions are stored in SQLite, session groups are no longer used
-   */
-  async renameSessionGroup(oldName: string, newName: string): Promise<boolean> {
-    if (!this.metadata) {
-      throw new Error('Workspace not initialized');
-    }
-
-    // 不能重命名默认组
-    if (oldName === 'default' || oldName === 'archive') {
-      throw new Error('Cannot rename default session groups');
-    }
-
-    const group = this.metadata.sessionGroups.find(g => g.name === oldName);
-    if (!group) {
-      return false;
-    }
-
-    // 检查新名称是否已存在
-    if (this.metadata.sessionGroups.some(g => g.name === newName)) {
-      throw new Error(`Session group "${newName}" already exists`);
-    }
-
-    // 重命名目录
-    const oldPath = path.join(this.getPaths().sessionsDir, oldName);
-    const newPath = path.join(this.getPaths().sessionsDir, newName);
-    if (fs.existsSync(oldPath)) {
-      await fs.promises.rename(oldPath, newPath);
-    }
-
-    group.name = newName;
-
-    // 更新当前组
-    if (this.currentGroup === oldName) {
-      this.currentGroup = newName;
-    }
-
-    await this.saveMetadata();
-    return true;
-  }
-
-  // ============================================
-  // 路径获取
-  // ============================================
-
-  /**
-   * 获取会话存储路径（按组）
-   * @deprecated Sessions are stored in SQLite
-   */
-  getSessionsPath(group?: string): string {
-    const groupName = group ?? this.currentGroup;
-    return path.join(this.getPaths().sessionsDir, groupName);
-  }
-
-  /**
-   * 获取记忆文件路径
-   * @deprecated Memory feature not implemented
-   */
-  getMemoryPath(): string {
-    return path.join(this.getPaths().memoryDir, 'facts.json');
-  }
-
-  /**
-   * 获取日志文件路径
-   * @deprecated Logs managed by file-logger
-   */
-  getLogPath(): string {
-    return path.join(this.getPaths().logsDir, 'agent.log');
   }
 
   /**

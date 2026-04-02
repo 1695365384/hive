@@ -13,7 +13,8 @@ import { truncateOutput } from './utils/output-safety.js';
 import { isAllowedUrl, isPrivateIP } from './utils/security.js';
 import { cleanAndCompress } from './search-engines/utils.js';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 /** 需要移除的 HTML 噪音元素 */
 const NOISE_SELECTORS = [
@@ -79,11 +80,7 @@ const webFetchInputSchema = z.object({
 
 export type WebFetchToolInput = z.infer<typeof webFetchInputSchema>;
 
-/**
- * 创建 Web Fetch rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
   return {
     description: 'Fetch web page content (plain text) from a URL. Automatically strips navigation, ads, and noise to extract main content. Use for documentation pages, blog articles, etc. HTTPS only.',
@@ -143,7 +140,7 @@ export function createRawWebFetchTool(): RawTool<WebFetchToolInput> {
 /**
  * 创建 Web Fetch 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawWebFetchTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createWebFetchTool(): Tool<WebFetchToolInput, string> {
   return withHarness(createRawWebFetchTool(), { maxRetries: 2, baseDelay: 500, toolName: 'web-fetch-tool' });

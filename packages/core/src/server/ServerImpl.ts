@@ -397,6 +397,78 @@ class ServerImpl implements Server {
         const abortController = new AbortController();
         this.activeAbortControllers.set(sessionKey, abortController);
 
+        // 订阅 Worker 事件并转发到 bus（Coordinator + Worker 模式）
+        const workerHookIds: string[] = [];
+
+        workerHookIds.push(
+          this.agent.context.hookRegistry.on('worker:start', (ctx: any) => {
+            this.bus.publish('agent:streaming', {
+              sessionId: sessionKey,
+              type: 'worker-start',
+              workerId: ctx.workerId,
+              workerType: ctx.workerType,
+              description: ctx.description,
+            });
+            return { proceed: true };
+          }),
+        );
+
+        workerHookIds.push(
+          this.agent.context.hookRegistry.on('worker:tool-call', (ctx: any) => {
+            this.logger.info(`[agent] [worker:${ctx.workerId}] [tool] ${ctx.toolName}`);
+            this.bus.publish('agent:streaming', {
+              sessionId: sessionKey,
+              type: 'tool-call',
+              workerId: ctx.workerId,
+              workerType: ctx.workerType,
+              tool: ctx.toolName,
+              input: ctx.input,
+            });
+            return { proceed: true };
+          }),
+        );
+
+        workerHookIds.push(
+          this.agent.context.hookRegistry.on('worker:tool-result', (ctx: any) => {
+            this.bus.publish('agent:streaming', {
+              sessionId: sessionKey,
+              type: 'tool-result',
+              workerId: ctx.workerId,
+              workerType: ctx.workerType,
+              tool: ctx.toolName,
+              output: ctx.output,
+            });
+            return { proceed: true };
+          }),
+        );
+
+        workerHookIds.push(
+          this.agent.context.hookRegistry.on('worker:reasoning', (ctx: any) => {
+            this.bus.publish('agent:streaming', {
+              sessionId: sessionKey,
+              type: 'reasoning',
+              workerId: ctx.workerId,
+              text: ctx.text,
+            });
+            return { proceed: true };
+          }),
+        );
+
+        workerHookIds.push(
+          this.agent.context.hookRegistry.on('worker:complete', (ctx: any) => {
+            this.bus.publish('agent:streaming', {
+              sessionId: sessionKey,
+              type: 'worker-complete',
+              workerId: ctx.workerId,
+              workerType: ctx.workerType,
+              success: ctx.success,
+              error: ctx.error,
+              duration: ctx.duration,
+            });
+            return { proceed: true };
+          }),
+        );
+
         // Notify streaming subscribers that execution has started
         this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'start' });
 
@@ -448,6 +520,10 @@ class ServerImpl implements Server {
 
           this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
         } finally {
+          // 清理 Worker 事件订阅
+          for (const hookId of workerHookIds) {
+            this.agent.context.hookRegistry.off(hookId);
+          }
           this.activeAbortControllers.delete(sessionKey);
         }
       } catch (error) {
@@ -479,6 +555,8 @@ class ServerImpl implements Server {
       const controller = this.activeAbortControllers.get(sessionId);
       if (controller) {
         controller.abort();
+        // 同时中止所有活跃 Worker
+        this.agent.taskManager.abortAll();
         this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
       }
     });

@@ -3,7 +3,7 @@
  */
 
 import type { AgentInitOptions } from './types.js';
-import type { DispatchOptions } from '../capabilities/ExecutionCapability.js';
+import type { DispatchOptions } from '../capabilities/CoordinatorCapability.js';
 import { Agent } from './Agent.js';
 
 /** 全局 Agent 实例 */

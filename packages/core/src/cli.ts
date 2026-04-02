@@ -10,7 +10,7 @@ import process from 'node:process';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getAgent } from './agents/index.js';
-import type { ForceMode, DispatchOptions } from './agents/index.js';
+import type { DispatchOptions } from './agents/index.js';
 
 // ============================================
 // CLI utilities
@@ -71,13 +71,14 @@ const state: CliState = {
 const VALID_MODES: readonly CliMode[] = ['chat', 'explore', 'plan', 'general', 'workflow'] as const;
 
 /**
- * 将 CLI mode 映射为 forceMode
+ * 将 CLI mode 映射为显示标签
  */
-function modeToForceMode(mode: CliMode): ForceMode {
+function modeToLabel(mode: CliMode): string {
   switch (mode) {
-    case 'explore': return 'explore';
-    case 'plan': return 'plan';
-    default: return undefined;
+    case 'explore': return 'EXPLORE';
+    case 'plan': return 'PLAN';
+    case 'general': return 'GENERAL';
+    default: return 'WORKFLOW';
   }
 }
 
@@ -153,18 +154,12 @@ async function runWithCwd<T>(cwd: string, fn: () => Promise<T>): Promise<T> {
 // ============================================
 
 async function executePrompt(prompt: string): Promise<void> {
-  const forceMode = modeToForceMode(state.mode);
   const startTime = Date.now();
-
-  if (forceMode) {
-    logPhase(forceMode.toUpperCase(), '执行任务...');
-  }
 
   const toolCalls: string[] = [];
   let currentPhase = '';
 
   const options: DispatchOptions = {
-    forceMode,
     onPhase: (phase, message) => {
       currentPhase = phase;
       logPhase(phase.toUpperCase(), message);
@@ -189,7 +184,7 @@ async function executePrompt(prompt: string): Promise<void> {
 
   // 简单模式只显示结果文本
   if (state.mode === 'chat' || state.mode === 'explore' || state.mode === 'plan') {
-    console.log(`\n\x1b[33mAssistant${forceMode ? ` (${forceMode})` : ''}>\x1b[0m ${result.text}\n`);
+    console.log(`\n\x1b[33mAssistant (${modeToLabel(state.mode)})>\x1b[0m ${result.text}\n`);
   } else {
     // workflow/general 模式显示摘要
     console.log('\n');

@@ -10,12 +10,13 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { tool, zodSchema, type Tool } from 'ai';
+import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
 import { isSensitiveFile, isPathAllowed } from './utils/security.js';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 /** 文件操作命令 */
 const FILE_COMMANDS = ['view', 'create', 'str_replace', 'insert'] as const;
@@ -69,11 +70,7 @@ type InsertInput = z.infer<typeof insertSchema>;
 
 export type FileToolInput = ViewInput | CreateInput | StrReplaceInput | InsertInput;
 
-/**
- * 创建 File rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolInput> {
   const allowed = options?.allowedCommands ?? FILE_COMMANDS;
   const allowedSet = new Set(allowed);
@@ -154,7 +151,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
 /**
  * 创建 File 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawFileTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createFileTool(options?: FileToolOptions): Tool<FileToolInput, string> {
   return withHarness(createRawFileTool(options), { toolName: 'file-tool' });

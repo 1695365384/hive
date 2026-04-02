@@ -6,14 +6,8 @@
 
 /**
  * Agent 类型
- *
- * 'plan' 和 'evaluator' 已废弃，分别映射到 'explore' 和 'general'。
  */
-export type AgentType = 'explore' | 'general' | 'custom';
-/** @deprecated Use 'explore' instead */
-export type LegacyAgentType = 'plan' | 'evaluator';
-/** @deprecated Full union including legacy types */
-export type AnyAgentType = AgentType | LegacyAgentType;
+export type AgentType = 'explore' | 'plan' | 'general' | 'custom';
 
 /**
  * Agent 配置

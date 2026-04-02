@@ -1,5 +1,5 @@
 /**
- * ExecutionCapability 超时保护集成测试
+ * CoordinatorCapability 超时保护集成测试
  *
  * 验证执行中的心跳启动和停止
  */
@@ -21,10 +21,10 @@ vi.mock('../../src/agents/runtime/LLMRuntime.js', () => {
   };
 });
 
-import { ExecutionCapability } from '../../src/agents/capabilities/ExecutionCapability.js';
+import { CoordinatorCapability } from '../../src/agents/capabilities/CoordinatorCapability.js';
 
-describe('ExecutionCapability 超时保护', () => {
-  let capability: ExecutionCapability;
+describe('CoordinatorCapability 超时保护', () => {
+  let capability: CoordinatorCapability;
   let context: AgentContext;
 
   const testProvider = createTestProviderConfig({
@@ -46,18 +46,11 @@ describe('ExecutionCapability 超时保护', () => {
       };
     });
 
-    capability = new ExecutionCapability();
+    capability = new CoordinatorCapability();
     context = createMockAgentContext({
       activeProvider: testProvider,
       providers: [testProvider],
     });
-    (context as any).runner = {
-      ...context.runner,
-      getToolRegistry: vi.fn(() => ({
-        getToolsForAgent: vi.fn(() => []),
-        getToolDescriptions: vi.fn(() => []),
-      })),
-    };
     capability.initialize(context);
   });
 
@@ -118,7 +111,7 @@ describe('ExecutionCapability 超时保护', () => {
       config.onText?.('Done');
       return {
         text: 'Done',
-        tools: ['bash'],
+        tools: ['agent'],
         success: true,
         usage: { promptTokens: 50, completionTokens: 10 },
         steps: [],
