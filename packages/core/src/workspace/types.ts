@@ -5,30 +5,6 @@
  */
 
 // ============================================
-// 会话组
-// ============================================
-
-/**
- * 会话组
- */
-export interface SessionGroup {
-  /** 组名称 */
-  name: string;
-  /** 组描述 */
-  description?: string;
-  /** 创建时间 */
-  createdAt: Date;
-}
-
-/**
- * 默认会话组
- */
-export const DEFAULT_SESSION_GROUPS: SessionGroup[] = [
-  { name: 'default', description: '默认会话', createdAt: new Date() },
-  { name: 'archive', description: '归档会话', createdAt: new Date() },
-];
-
-// ============================================
 // 工作空间元数据
 // ============================================
 
@@ -44,10 +20,6 @@ export interface WorkspaceMetadata {
   lastAccessedAt: Date;
   /** 工作空间版本 */
   version: string;
-  /** 会话组列表 */
-  sessionGroups: SessionGroup[];
-  /** 默认会话组 */
-  defaultSessionGroup: string;
 }
 
 // ============================================
@@ -118,12 +90,6 @@ export interface WorkspacePaths {
   metadataFile: string;
   /** 提供商配置文件 */
   providersFile: string;
-  /** @deprecated Sessions are stored in SQLite */
-  sessionsDir: string;
-  /** @deprecated Memory feature not implemented */
-  memoryDir: string;
-  /** @deprecated Logs managed by file-logger */
-  logsDir: string;
   /** 缓存目录 */
   cacheDir: string;
   /** models.dev 缓存文件 */

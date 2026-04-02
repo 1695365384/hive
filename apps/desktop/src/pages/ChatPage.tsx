@@ -10,6 +10,9 @@ import {
   Wrench,
   Brain,
   Sparkles,
+  Cpu,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 // ============================================
@@ -26,7 +29,9 @@ interface ChatMessage {
 type ContentPart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean };
+  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
+  | { type: "worker-start"; workerId: string; workerType: string; description?: string }
+  | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number };
 
 // ============================================
 // Chat Page
@@ -93,13 +98,21 @@ export function ChatPage() {
         if (data.threadId !== activeThreadIdRef.current) return;
         appendPart({ type: "text", text: data.text });
       }),
-      onEvent("agent.tool-call", (data: { threadId: string; toolCallId: string; toolName: string; args: unknown }) => {
+      onEvent("agent.worker-start", (data: { threadId: string; workerId: string; workerType: string; description?: string }) => {
+        if (data.threadId !== activeThreadIdRef.current) return;
+        appendPart({ type: "worker-start", workerId: data.workerId, workerType: data.workerType, description: data.description });
+      }),
+      onEvent("agent.worker-complete", (data: { threadId: string; workerId: string; success: boolean; error?: string; duration?: number }) => {
+        if (data.threadId !== activeThreadIdRef.current) return;
+        appendPart({ type: "worker-complete", workerId: data.workerId, success: data.success, error: data.error, duration: data.duration });
+      }),
+      onEvent("agent.tool-call", (data: { threadId: string; toolCallId: string; toolName: string; args: unknown; workerId?: string; workerType?: string }) => {
         if (data.threadId !== activeThreadIdRef.current) return;
         activeToolStartRef.current = Date.now();
         setTimerActive(true);
-        appendPart({ type: "tool-call", toolCallId: data.toolCallId, toolName: data.toolName, args: data.args });
+        appendPart({ type: "tool-call", toolCallId: data.toolCallId, toolName: data.toolName, args: data.args, workerId: data.workerId });
       }),
-      onEvent("agent.tool-result", (data: { threadId: string; toolCallId: string; toolName: string; result: unknown; isError?: boolean }) => {
+      onEvent("agent.tool-result", (data: { threadId: string; toolCallId: string; toolName: string; result: unknown; isError?: boolean; workerId?: string; workerType?: string }) => {
         if (data.threadId !== activeThreadIdRef.current) return;
         activeToolStartRef.current = null;
         setTimerActive(false);
@@ -419,7 +432,11 @@ function ContentPartRenderer({ part, activeToolTime }: { part: ContentPart; acti
     case "text":
       return <TextBlock text={part.text} />;
     case "tool-call":
-      return <ToolCallBlock toolCallId={part.toolCallId} toolName={part.toolName} args={part.args} result={part.result} isError={part.isError} elapsedSeconds={activeToolTime} />;
+      return <ToolCallBlock toolCallId={part.toolCallId} toolName={part.toolName} args={part.args} result={part.result} isError={part.isError} elapsedSeconds={activeToolTime} workerId={part.workerId} />;
+    case "worker-start":
+      return <WorkerStartBlock workerId={part.workerId} workerType={part.workerType} description={part.description} />;
+    case "worker-complete":
+      return <WorkerCompleteBlock workerId={part.workerId} success={part.success} error={part.error} duration={part.duration} />;
   }
 }
 
@@ -497,6 +514,7 @@ function ToolCallBlock({
   result,
   isError,
   elapsedSeconds,
+  workerId,
 }: {
   toolCallId: string;
   toolName: string;
@@ -504,6 +522,7 @@ function ToolCallBlock({
   result?: unknown;
   isError?: boolean;
   elapsedSeconds?: number | null;
+  workerId?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -576,6 +595,84 @@ function ToolCallBlock({
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Worker Type Colors
+// ============================================
+
+const WORKER_COLORS: Record<string, { border: string; bg: string; text: string; dot: string }> = {
+  explore: { border: "border-blue-500/30", bg: "bg-blue-500/5", text: "text-blue-400", dot: "bg-blue-400" },
+  plan: { border: "border-purple-500/30", bg: "bg-purple-500/5", text: "text-purple-400", dot: "bg-purple-400" },
+  general: { border: "border-emerald-500/30", bg: "bg-emerald-500/5", text: "text-emerald-400", dot: "bg-emerald-400" },
+};
+
+function getWorkerColor(workerType: string) {
+  return WORKER_COLORS[workerType] ?? WORKER_COLORS.general;
+}
+
+// ============================================
+// Worker Start Block
+// ============================================
+
+function WorkerStartBlock({ workerType, description }: { workerId: string; workerType: string; description?: string }) {
+  const color = getWorkerColor(workerType);
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <div className={`rounded-xl border ${color.border} ${color.bg} overflow-hidden`}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-white/[0.02] transition-colors`}
+      >
+        <Cpu className={`w-3.5 h-3.5 shrink-0 ${color.text}`} />
+        <span className={`text-xs font-medium ${color.text} uppercase tracking-wider`}>
+          {workerType}
+        </span>
+        {description && (
+          <span className="text-[11px] text-stone-500 truncate">{description}</span>
+        )}
+        <Loader2 className="w-3 h-3 animate-spin text-stone-500 ml-auto shrink-0" />
+        {isOpen ? <ChevronDown className="w-3 h-3 shrink-0 opacity-40" /> : <ChevronRight className="w-3 h-3 shrink-0 opacity-40" />}
+      </button>
+      {isOpen && (
+        <div className={`px-3 pb-2 border-t ${color.border}`}>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${color.dot} animate-pulse`} />
+            <span className="text-[11px] text-stone-500">Running...</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Worker Complete Block
+// ============================================
+
+function WorkerCompleteBlock({ workerType, success, error, duration }: { workerId: string; workerType: string; success: boolean; error?: string; duration?: number }) {
+  const color = getWorkerColor(workerType);
+
+  return (
+    <div className={`rounded-lg border ${color.border} ${color.bg} px-3 py-1.5 flex items-center gap-2`}>
+      {success ? (
+        <CheckCircle2 className={`w-3.5 h-3.5 ${color.text} shrink-0`} />
+      ) : (
+        <XCircle2 className="w-3.5 h-3.5 text-red-400 shrink-0" />
+      )}
+      <span className={`text-xs font-medium ${color.text} uppercase tracking-wider`}>
+        {workerType}
+      </span>
+      <span className="text-[11px] text-stone-500">
+        {success ? "completed" : "failed"}
+        {duration != null && ` in ${(duration / 1000).toFixed(1)}s`}
+      </span>
+      {error && (
+        <span className="text-[11px] text-red-400 truncate ml-auto">{error}</span>
       )}
     </div>
   );

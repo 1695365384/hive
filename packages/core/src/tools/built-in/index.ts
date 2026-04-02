@@ -6,29 +6,31 @@
  */
 
 // 工具工厂
-export { createBashTool, createRawBashTool, bashTool } from './bash-tool.js';
+export { createBashTool, bashTool } from './bash-tool.js';
 export type { BashToolOptions } from './bash-tool.js';
 
-export { createFileTool, createRawFileTool, fileTool, fileToolReadOnly } from './file-tool.js';
+export { createFileTool, fileTool, fileToolReadOnly } from './file-tool.js';
 export type { FileToolOptions } from './file-tool.js';
 
-export { createGlobTool, createRawGlobTool, globTool } from './glob-tool.js';
-export { createGrepTool, createRawGrepTool, grepTool } from './grep-tool.js';
-export { createWebSearchTool, createRawWebSearchTool, webSearchTool } from './web-search-tool.js';
-export { createWebFetchTool, createRawWebFetchTool, webFetchTool } from './web-fetch-tool.js';
-export { createAskUserTool, createRawAskUserTool, askUserTool, setAskUserCallback } from './ask-user-tool.js';
+export { createGlobTool, globTool } from './glob-tool.js';
+export { createGrepTool, grepTool } from './grep-tool.js';
+export { createWebSearchTool, webSearchTool } from './web-search-tool.js';
+export { createWebFetchTool, webFetchTool } from './web-fetch-tool.js';
+export { createAskUserTool, askUserTool, setAskUserCallback } from './ask-user-tool.js';
 export type { AskUserCallback, AskUserToolInput } from './ask-user-tool.js';
 
-export { createSendFileTool, createRawSendFileTool, sendFileTool, setSendFileCallback } from './send-file-tool.js';
+export { createSendFileTool, sendFileTool, setSendFileCallback } from './send-file-tool.js';
 export type { SendFileCallback, SendFileToolInput } from './send-file-tool.js';
 export type { WebFetchToolInput } from './web-fetch-tool.js';
 export type { WebSearchToolInput } from './web-search-tool.js';
 
-// 子 Agent 工具
-export { createSubagentTool, createAllSubagentTools } from './subagent-tools.js';
+// Coordinator 工具
+export { createAgentTool } from './agent-tool.js';
+export { createTaskStopTool } from './task-stop-tool.js';
+export { createSendMessageTool } from './send-message-tool.js';
 
 // 环境查询工具
-export { createEnvTool, createRawEnvTool, envTool, setEnvDbProvider } from './env-tool.js';
+export { createEnvTool, envTool, setEnvDbProvider } from './env-tool.js';
 export type { EnvToolInput } from './env-tool.js';
 
 // 工具基础设施

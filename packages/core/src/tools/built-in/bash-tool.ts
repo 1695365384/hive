@@ -8,7 +8,7 @@
  */
 
 import { exec } from 'node:child_process';
-import { tool, zodSchema, type Tool } from 'ai';
+import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
 import { isDangerousCommand, isCommandAllowed } from './utils/security.js';
@@ -24,7 +24,8 @@ function isAppDataAccess(command: string): boolean {
   return APP_DATA_DIR_PATTERN.test(command);
 }
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 export interface BashToolOptions {
   /** 是否允许执行命令（用于 Agent 权限控制） */
@@ -39,11 +40,7 @@ const bashInputSchema = z.object({
 
 export type BashToolInput = z.infer<typeof bashInputSchema>;
 
-/**
- * 创建 Bash rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolInput> {
   return {
     description: 'Execute commands in a shell. For running scripts, git operations, building projects, etc. Returns merged stdout and stderr output.',
@@ -150,7 +147,7 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
 /**
  * 创建 Bash 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawBashTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createBashTool(options?: BashToolOptions): Tool<BashToolInput, string> {
   return withHarness(createRawBashTool(options), { toolName: 'bash-tool' });

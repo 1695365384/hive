@@ -32,6 +32,7 @@ export type {
   AgentCompleteHookContext,
   ConfigBeforeUpdateHookContext,
   ConfigAfterUpdateHookContext,
+  WorkerHookContext,
   HookTypeMap,
   HookType,
   RegisteredHook,
@@ -57,9 +58,3 @@ export type {
   NotificationType,
   NotificationPushHookContext,
 } from './types/monitoring.js';
-
-// 安全相关类型（预留扩展）
-// export type { ... } from './types/security.js';
-
-// 限流相关类型（预留扩展）
-// export type { ... } from './types/rate-limiter.js';

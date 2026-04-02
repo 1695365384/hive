@@ -1,7 +1,7 @@
 /**
  * 内置 Agent 定义
  *
- * 核心两代理：Explore（只读）/ General（全量）
+ * 核心三代理：Explore（只读）/ Plan（深度分析）/ General（全量）
  * 提示词内容统一在 templates/ 目录的 .md 文件中维护，不在此处硬编码。
  */
 
@@ -14,11 +14,8 @@ import type { AgentConfig } from './types.js';
 /** 内置 Agent 名称 */
 export const AGENT_NAMES = {
   EXPLORE: 'explore',
-  GENERAL: 'general',
-  /** @deprecated Use EXPLORE instead */
   PLAN: 'plan',
-  /** @deprecated Use GENERAL instead */
-  EVALUATOR: 'evaluator',
+  GENERAL: 'general',
 } as const;
 
 // ============================================
@@ -26,14 +23,21 @@ export const AGENT_NAMES = {
 // ============================================
 
 /**
- * 核心两代理
+ * 核心三代理
  */
-export const CORE_AGENTS: Record<'explore' | 'general', AgentConfig> = {
+export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = {
   explore: {
     type: 'explore',
     description: 'Read-only agent for searching, analyzing codebases, and deep research.',
     tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
     maxTurns: 10,
+  },
+
+  plan: {
+    type: 'plan',
+    description: 'Deep analysis agent for architecture decisions, dependency tracing, and implementation planning.',
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
+    maxTurns: 15,
   },
 
   general: {
@@ -45,19 +49,10 @@ export const CORE_AGENTS: Record<'explore' | 'general', AgentConfig> = {
 };
 
 /**
- * 所有内置 Agent（= 核心两代理）
+ * 所有内置 Agent（= 核心三代理）
  */
 export const BUILTIN_AGENTS: Record<string, AgentConfig> = {
   ...CORE_AGENTS,
-};
-
-// ============================================
-// 别名映射
-// ============================================
-
-const ALIAS_MAP: Record<string, string> = {
-  plan: 'explore',
-  evaluator: 'general',
 };
 
 // ============================================
@@ -66,12 +61,9 @@ const ALIAS_MAP: Record<string, string> = {
 
 /**
  * 获取 Agent 配置
- *
- * 支持 'plan' → 'explore'、'evaluator' → 'general' 别名。
  */
 export function getAgentConfig(name: string): AgentConfig | undefined {
-  const resolved = ALIAS_MAP[name] ?? name;
-  return BUILTIN_AGENTS[resolved];
+  return BUILTIN_AGENTS[name];
 }
 
 /**

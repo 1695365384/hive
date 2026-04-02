@@ -145,11 +145,6 @@ describe('AgentRunner', () => {
       expect(result.success).toBe(true);
     });
 
-    it('plan should call execute with plan agent (aliased to explore)', async () => {
-      const result = await runner.plan('Research task');
-      expect(result).toBeDefined();
-      expect(result.success).toBe(true);
-    });
   });
 });
 

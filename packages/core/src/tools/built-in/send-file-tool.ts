@@ -11,7 +11,8 @@ import fs from 'fs';
 import path from 'path';
 import { isPathAllowed, isSensitiveFile } from './utils/security.js';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 /** 发送文件回调函数类型 */
 export type SendFileCallback = (filePath: string) => Promise<{ success: boolean; error?: string }>;
@@ -37,11 +38,7 @@ const sendFileInputSchema = z.object({
 
 export type SendFileToolInput = z.infer<typeof sendFileInputSchema>;
 
-/**
- * 创建 Send File rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawSendFileTool(): RawTool<SendFileToolInput> {
   return {
     description: 'Send a local file to the current session user. Supports files and images. IMPORTANT: The file path MUST be within the working directory. Files outside the working directory will be rejected. If you need to send an external file, copy it into the working directory first using bash. Use cases: user requests to send a file, share a generated report, forward a downloaded resource.',
@@ -108,7 +105,7 @@ export function createRawSendFileTool(): RawTool<SendFileToolInput> {
 /**
  * 创建 Send File 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawSendFileTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createSendFileTool(): Tool<SendFileToolInput, string> {
   return withHarness(createRawSendFileTool(), { maxRetries: 2, baseDelay: 500, toolName: 'send-file-tool' });

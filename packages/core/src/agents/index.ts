@@ -48,13 +48,12 @@ export {
 export {
   ProviderCapability,
   SkillCapability,
-  ExecutionCapability,
+  CoordinatorCapability,
   ScheduleCapability,
   createScheduleCapability,
 } from './capabilities/index.js';
 
 export type {
-  ForceMode,
   DispatchOptions,
   DispatchResult,
   DispatchTraceEvent,
@@ -73,7 +72,6 @@ export {
   // Prompt
   THOROUGHNESS_PROMPTS,
   buildExplorePrompt,
-  buildPlanPrompt,
 
   // 类型
   type TemplateVariables,

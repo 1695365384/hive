@@ -10,7 +10,8 @@ import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 import { SEARCH_ENGINES, type SearchEngineName } from './search-engines/index.js';
 
 /** 最大返回结果数 */
@@ -28,11 +29,7 @@ const webSearchInputSchema = z.object({
 
 export type WebSearchToolInput = z.infer<typeof webSearchInputSchema>;
 
-/**
- * 创建 Web Search rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
   return {
     description: 'Search the web for latest information. Supports DuckDuckGo Lite (international), Baidu (Chinese), Bing. No API key required. Returns titles, URLs, and snippets (plain text, HTML stripped). For full page content, use web-fetch tool.',
@@ -92,7 +89,7 @@ export function createRawWebSearchTool(): RawTool<WebSearchToolInput> {
 /**
  * 创建 Web Search 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawWebSearchTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createWebSearchTool(): Tool<WebSearchToolInput, string> {
   return withHarness(createRawWebSearchTool(), { maxRetries: 2, baseDelay: 500, toolName: 'web-search-tool' });

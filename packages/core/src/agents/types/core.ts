@@ -27,6 +27,10 @@ export interface AgentExecuteOptions {
   messages?: Array<Record<string, unknown>>;
   /** 自定义系统提示（覆盖 Agent 默认 prompt） */
   systemPrompt?: string;
+  /** 覆盖 Agent 默认模型（仅本次调用） */
+  model?: string;
+  /** 覆盖 Agent 默认最大轮次（仅本次调用） */
+  maxTurns?: number;
   /** 回调：文本输出 */
   onText?: (text: string) => void;
   /** 回调：工具使用 */

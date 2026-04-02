@@ -98,6 +98,12 @@ export function createMockAgentRunner(): AgentRunner {
       tools: [],
       usage: { input: 100, output: 50 },
     })),
+    executeStreaming: vi.fn(async () => ({
+      text: 'Mock streaming result',
+      success: true,
+      tools: [],
+      usage: { input: 100, output: 50 },
+    })),
     getToolRegistry: vi.fn(() => ({
       getToolsForAgent: vi.fn(() => ({})),
       getToolDescriptions: vi.fn(() => []),

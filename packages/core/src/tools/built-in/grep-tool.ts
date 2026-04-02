@@ -12,7 +12,8 @@ import { z } from 'zod';
 import { isPathAllowed } from './utils/security.js';
 import { truncateOutput } from './utils/output-safety.js';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 /** 最大递归深度 */
 const MAX_DEPTH = 20;
@@ -81,11 +82,7 @@ async function collectFiles(dir: string, depth: number): Promise<string[]> {
   return files;
 }
 
-/**
- * 创建 Grep rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawGrepTool(): RawTool<GrepToolInput> {
   return {
     description: 'Search file contents using regex. Returns matching file paths, line numbers, and matched lines.',
@@ -158,7 +155,7 @@ export function createRawGrepTool(): RawTool<GrepToolInput> {
 /**
  * 创建 Grep 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawGrepTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createGrepTool(): Tool<GrepToolInput, string> {
   return withHarness(createRawGrepTool(), { toolName: 'grep-tool' });

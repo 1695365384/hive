@@ -8,7 +8,8 @@
 import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 /** 用户提问回调函数类型 */
 export type AskUserCallback = (question: string, options?: Array<{ label: string; description?: string }>) => Promise<string>;
@@ -36,11 +37,7 @@ const askUserInputSchema = z.object({
 
 export type AskUserToolInput = z.infer<typeof askUserInputSchema>;
 
-/**
- * 创建 Ask User rawTool（execute → ToolResult）
- *
- * 供 withHarness 包装使用，也供单元测试直接验证 ToolResult。
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawAskUserTool(): RawTool<AskUserToolInput> {
   return {
     description: 'Ask the user a question to get clarification or let them make a choice. Use when you need user input to proceed.',
@@ -64,7 +61,7 @@ export function createRawAskUserTool(): RawTool<AskUserToolInput> {
 /**
  * 创建 Ask User 工具（AI SDK 兼容，execute → string）
  *
- * 内部使用 createRawAskUserTool + withHarness 包装。
+ * 内部使用 withHarness 包装 rawTool 逻辑。
  */
 export function createAskUserTool(): Tool<AskUserToolInput, string> {
   return withHarness(createRawAskUserTool(), { toolName: 'ask-user-tool' });

@@ -11,8 +11,11 @@ import type { AgentConfig, AgentExecuteOptions, AgentResult, ThoroughnessLevel }
 import type { RuntimeConfig, RuntimeResult } from '../runtime/types.js';
 import { LLMRuntime, AGENT_PRESETS } from '../runtime/LLMRuntime.js';
 import { getAgentConfig } from './agents.js';
-import { buildExplorePrompt, buildPlanPrompt } from '../prompts/prompts.js';
+import { buildExplorePrompt } from '../prompts/prompts.js';
 import { ToolRegistry, type AgentType as ToolAgentType } from '../../tools/tool-registry.js';
+import { createDynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
+import type { AgentType } from '../types/capabilities.js';
+import type { EnvironmentContext } from '../../environment/types.js';
 
 // ============================================
 // Task 类型定义
@@ -72,6 +75,7 @@ export interface ParallelTaskConfig extends Omit<TaskConfig, 'name'> {
 export class AgentRunner {
   private runtime: LLMRuntime;
   private toolRegistry: ToolRegistry;
+  private _environmentContext?: EnvironmentContext;
 
   constructor(providerManager?: ProviderManager) {
     if (providerManager) {
@@ -81,6 +85,15 @@ export class AgentRunner {
     }
     this.toolRegistry = new ToolRegistry();
     this.toolRegistry.registerBuiltInTools();
+  }
+
+  /** 注入环境上下文（fork 模型：Worker 继承父 Agent 的环境知识） */
+  setEnvironmentContext(env: EnvironmentContext): void {
+    this._environmentContext = env;
+  }
+
+  getEnvironmentContext(): EnvironmentContext | undefined {
+    return this._environmentContext;
   }
 
   // ============================================
@@ -109,6 +122,91 @@ export class AgentRunner {
   }
 
   /**
+   * 以流式模式执行 Agent（Worker 使用）
+   *
+   * 与 execute() 的区别：使用 streaming: true，通过回调透传事件。
+   * 返回最终文本结果，事件通过 callbacks 实时推送。
+   */
+  async executeStreaming(
+    agentName: string,
+    prompt: string,
+    callbacks: {
+      onText?: (text: string) => void;
+      onToolCall?: (toolName: string, input?: unknown) => void;
+      onToolResult?: (toolName: string, output?: unknown) => void;
+      onReasoning?: (text: string) => void;
+    },
+    options?: AgentExecuteOptions,
+  ): Promise<AgentResult> {
+    const agentConfig = getAgentConfig(agentName);
+    if (!agentConfig) {
+      return {
+        text: '',
+        tools: [],
+        success: false,
+        error: `Unknown agent: ${agentName}`,
+      };
+    }
+
+    const preset = AGENT_PRESETS[agentConfig.type];
+
+    // Build system prompt: fork 模型 — 继承父 Agent 的环境知识
+    let system = options?.systemPrompt;
+    if (!system) {
+      const builder = createDynamicPromptBuilder();
+      const toolDescs = this.toolRegistry.getToolDescriptions(agentConfig.type as ToolAgentType);
+      system = builder.buildPrompt({
+        task: '',
+        priorResults: [],
+        agentType: agentConfig.type as AgentType,
+        environmentContext: this._environmentContext,
+        toolDescriptions: toolDescs,
+      });
+    }
+
+    const runtimeConfig: RuntimeConfig = {
+      prompt,
+      system,
+      messages: options?.messages,
+      model: options?.model || agentConfig.model || preset?.model,
+      maxSteps: options?.maxTurns || agentConfig.maxTurns || preset?.maxSteps || 10,
+      streaming: true,
+      tools: this.toolRegistry.getToolsForAgent(agentConfig.type as ToolAgentType),
+      onText: callbacks.onText,
+      onToolCall: callbacks.onToolCall,
+    };
+
+    if (options?.timeout) {
+      const controller = new AbortController();
+      runtimeConfig.abortSignal = controller.signal;
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`Worker timed out after ${options.timeout}ms`));
+        }, options.timeout);
+      });
+
+      try {
+        const result = await Promise.race([
+          this.runtime.run(runtimeConfig),
+          timeoutPromise,
+        ]);
+        return this.mapToAgentResult(result);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        return { text: '', tools: [], success: false, error: err.message };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    }
+
+    const result = await this.runtime.run(runtimeConfig);
+    return this.mapToAgentResult(result);
+  }
+
+  /**
    * 使用配置执行 Agent
    */
   private async executeWithConfig(
@@ -132,8 +230,8 @@ export class AgentRunner {
       prompt,
       system,
       messages: options?.messages,
-      model: config.model || preset?.model,
-      maxSteps: config.maxTurns || preset?.maxSteps || 10,
+      model: options?.model || config.model || preset?.model,
+      maxSteps: options?.maxTurns || config.maxTurns || preset?.maxSteps || 10,
       streaming: false,
       tools: this.toolRegistry.getToolsForAgent(config.type as ToolAgentType),
       onText: options?.onText,
@@ -323,22 +421,6 @@ export class AgentRunner {
   }
 
   /**
-   * 计划研究
-   * @deprecated Use explore() with thoroughness='very-thorough' instead
-   */
-  async plan(prompt: string): Promise<AgentResult> {
-    return this.execute('plan', buildPlanPrompt(prompt));
-  }
-
-  /**
-   * 评估执行
-   * @deprecated Use execute('general', prompt) instead
-   */
-  async evaluator(prompt: string): Promise<AgentResult> {
-    return this.execute('evaluator', prompt);
-  }
-
-  /**
    * 快速执行单个 Task
    */
   async quickTask(prompt: string, options?: Partial<TaskConfig>): Promise<TaskResult> {
@@ -360,29 +442,6 @@ export class AgentRunner {
     });
   }
 
-  /**
-   * 快速研究 Task
-   * @deprecated Use exploreTask() with thoroughness='very-thorough' instead
-   */
-  async planTask(prompt: string): Promise<TaskResult> {
-    return this.runTask({
-      name: 'plan-task',
-      prompt: `Research the codebase for planning:\n\n${prompt}`,
-      agentType: 'plan',
-    });
-  }
-
-  /**
-   * 快速评估 Task
-   * @deprecated Use runTask() with agentType='general' instead
-   */
-  async evaluatorTask(prompt: string): Promise<TaskResult> {
-    return this.runTask({
-      name: 'evaluator-task',
-      prompt,
-      agentType: 'evaluator',
-    });
-  }
 }
 
 // ============================================

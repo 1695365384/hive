@@ -11,7 +11,6 @@ import {
   createWorkspaceManager,
   DEFAULT_WORKSPACE_DIR,
   WORKSPACE_VERSION,
-  DEFAULT_SESSION_GROUPS,
 } from '../../src/workspace/index.js';
 
 // 测试用临时目录
@@ -52,8 +51,6 @@ describe('WorkspaceManager', () => {
       const metadata = manager.getMetadata();
       expect(metadata).not.toBeNull();
       expect(metadata!.version).toBe(WORKSPACE_VERSION);
-      expect(metadata!.sessionGroups).toHaveLength(2);
-      expect(metadata!.defaultSessionGroup).toBe('default');
     });
 
     it('如果工作空间已存在，应该加载而不是重新创建', async () => {
@@ -127,142 +124,7 @@ describe('WorkspaceManager', () => {
       expect(paths.configFile).toBe(path.join(TEST_WORKSPACE_DIR, 'config.json'));
       expect(paths.metadataFile).toBe(path.join(TEST_WORKSPACE_DIR, 'workspace.json'));
       expect(paths.providersFile).toBe(path.join(TEST_WORKSPACE_DIR, 'providers.json'));
-      expect(paths.sessionsDir).toBe(path.join(TEST_WORKSPACE_DIR, 'sessions'));
-      expect(paths.memoryDir).toBe(path.join(TEST_WORKSPACE_DIR, 'memory'));
-      expect(paths.logsDir).toBe(path.join(TEST_WORKSPACE_DIR, 'logs'));
-    });
-  });
-
-  // @deprecated Session groups are no longer used — sessions are stored in SQLite
-  describe.skip('Session Groups', () => {
-    beforeEach(async () => {
-      await manager.initialize();
-    });
-
-    it('应该返回默认会话组', () => {
-      const groups = manager.getSessionGroups();
-      expect(groups).toHaveLength(2);
-      expect(groups.map(g => g.name)).toContain('default');
-      expect(groups.map(g => g.name)).toContain('archive');
-    });
-
-    it('应该创建新的会话组', async () => {
-      const group = await manager.createSessionGroup('custom', '自定义组');
-
-      expect(group.name).toBe('custom');
-      expect(group.description).toBe('自定义组');
-
-      const groups = manager.getSessionGroups();
-      expect(groups).toHaveLength(3);
-      expect(groups.map(g => g.name)).toContain('custom');
-    });
-
-    it('不应该创建重复的会话组', async () => {
-      await expect(manager.createSessionGroup('default')).rejects.toThrow('already exists');
-    });
-
-    it('应该删除会话组', async () => {
-      await manager.createSessionGroup('to-delete');
-
-      const deleted = await manager.deleteSessionGroup('to-delete');
-      expect(deleted).toBe(true);
-
-      const groups = manager.getSessionGroups();
-      expect(groups.map(g => g.name)).not.toContain('to-delete');
-    });
-
-    it('不应该删除默认会话组', async () => {
-      await expect(manager.deleteSessionGroup('default')).rejects.toThrow('Cannot delete default');
-      await expect(manager.deleteSessionGroup('archive')).rejects.toThrow('Cannot delete default');
-    });
-
-    it('删除不存在的组应该返回 false', async () => {
-      const deleted = await manager.deleteSessionGroup('non-existent');
-      expect(deleted).toBe(false);
-    });
-
-    it('应该切换当前会话组', async () => {
-      await manager.createSessionGroup('test-group');
-      await manager.setCurrentGroup('test-group');
-
-      expect(manager.getCurrentGroup()).toBe('test-group');
-      expect(manager.getSessionsPath()).toBe(path.join(TEST_WORKSPACE_DIR, 'sessions', 'test-group'));
-    });
-
-    it('切换到不存在的组应该抛出错误', async () => {
-      await expect(manager.setCurrentGroup('non-existent')).rejects.toThrow('not found');
-    });
-
-    it('应该重命名会话组', async () => {
-      await manager.createSessionGroup('old-name');
-      const renamed = await manager.renameSessionGroup('old-name', 'new-name');
-
-      expect(renamed).toBe(true);
-
-      const groups = manager.getSessionGroups();
-      expect(groups.map(g => g.name)).toContain('new-name');
-      expect(groups.map(g => g.name)).not.toContain('old-name');
-    });
-
-    it('不应该重命名默认会话组', async () => {
-      await expect(manager.renameSessionGroup('default', 'new-default')).rejects.toThrow('Cannot rename default');
-      await expect(manager.renameSessionGroup('archive', 'new-archive')).rejects.toThrow('Cannot rename default');
-    });
-
-    it('重命名不存在的组应该返回 false', async () => {
-      const renamed = await manager.renameSessionGroup('non-existent', 'new-name');
-      expect(renamed).toBe(false);
-    });
-
-    it('重命名到已存在的名称应该抛出错误', async () => {
-      await manager.createSessionGroup('group-a');
-      await manager.createSessionGroup('group-b');
-
-      await expect(manager.renameSessionGroup('group-a', 'group-b')).rejects.toThrow('already exists');
-    });
-
-    it('重命名后当前组应该更新', async () => {
-      await manager.createSessionGroup('current-group');
-      await manager.setCurrentGroup('current-group');
-      expect(manager.getCurrentGroup()).toBe('current-group');
-
-      await manager.renameSessionGroup('current-group', 'renamed-group');
-      expect(manager.getCurrentGroup()).toBe('renamed-group');
-    });
-
-    it('删除当前组后应该切换到默认组', async () => {
-      // 创建并设置为当前组
-      await manager.createSessionGroup('current-to-delete');
-      await manager.setCurrentGroup('current-to-delete');
-      expect(manager.getCurrentGroup()).toBe('current-to-delete');
-
-      // 删除当前组
-      await manager.deleteSessionGroup('current-to-delete');
-
-      // 应该自动切换到默认组
-      expect(manager.getCurrentGroup()).toBe('default');
-    });
-
-    it('未初始化时删除会话组应该抛出错误', async () => {
-      const uninitializedManager = createWorkspaceManager({ path: TEST_WORKSPACE_DIR + '-uninit' });
-
-      await expect(uninitializedManager.deleteSessionGroup('some-group')).rejects.toThrow('Workspace not initialized');
-
-      // 清理
-      if (fs.existsSync(TEST_WORKSPACE_DIR + '-uninit')) {
-        fs.rmSync(TEST_WORKSPACE_DIR + '-uninit', { recursive: true });
-      }
-    });
-
-    it('未初始化时重命名会话组应该抛出错误', async () => {
-      const uninitializedManager = createWorkspaceManager({ path: TEST_WORKSPACE_DIR + '-uninit-rename' });
-
-      await expect(uninitializedManager.renameSessionGroup('old-name', 'new-name')).rejects.toThrow('Workspace not initialized');
-
-      // 清理
-      if (fs.existsSync(TEST_WORKSPACE_DIR + '-uninit-rename')) {
-        fs.rmSync(TEST_WORKSPACE_DIR + '-uninit-rename', { recursive: true });
-      }
+      expect(paths.cacheDir).toBe(path.join(TEST_WORKSPACE_DIR, 'cache'));
     });
   });
 
@@ -293,34 +155,9 @@ describe('WorkspaceManager', () => {
     });
   });
 
-  // @deprecated Sessions are stored in SQLite
-  describe.skip('getSessionsPath', () => {
-    beforeEach(async () => {
-      await manager.initialize();
-    });
-
-    it('应该返回当前组的会话路径', () => {
-      expect(manager.getSessionsPath()).toBe(path.join(TEST_WORKSPACE_DIR, 'sessions', 'default'));
-    });
-
-    it('应该返回指定组的会话路径', () => {
-      expect(manager.getSessionsPath('archive')).toBe(path.join(TEST_WORKSPACE_DIR, 'sessions', 'archive'));
-    });
-  });
-
   describe('Path Methods', () => {
     beforeEach(async () => {
       await manager.initialize();
-    });
-
-    // @deprecated Memory feature not implemented
-    it.skip('应该返回记忆文件路径', () => {
-      expect(manager.getMemoryPath()).toBe(path.join(TEST_WORKSPACE_DIR, 'memory', 'facts.json'));
-    });
-
-    // @deprecated Logs managed by file-logger
-    it.skip('应该返回日志文件路径', () => {
-      expect(manager.getLogPath()).toBe(path.join(TEST_WORKSPACE_DIR, 'logs', 'agent.log'));
     });
 
     it('应该返回提供商配置路径', () => {

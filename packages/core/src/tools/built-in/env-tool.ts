@@ -9,7 +9,8 @@ import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import os from 'node:os';
 import type { ToolResult } from '../harness/types.js';
-import { withHarness, type RawTool } from '../harness/with-harness.js';
+import { withHarness } from '../harness/with-harness.js';
+import type { RawTool } from '../harness/with-harness.js';
 
 /** Valid tool categories */
 const VALID_CATEGORIES = [
@@ -124,9 +125,7 @@ function getNativeAppPlatformHint(): string {
   }
 }
 
-/**
- * Create env rawTool (execute → ToolResult)
- */
+/** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawEnvTool(): RawTool<EnvToolInput> {
   return {
     description: 'Discover available tools, runtimes, native applications, and system capabilities. Call env() with no parameters for a category overview. Use env(query="keyword") or env(category="name") to find specific capabilities. Always call env() first when interacting with unfamiliar applications or services.',
