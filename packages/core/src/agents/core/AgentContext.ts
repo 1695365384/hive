@@ -53,9 +53,6 @@ export class AgentContextImpl implements AgentContext {
 
     this.providerManager = new ProviderManager({ externalConfig });
     this.runner = new AgentRunner(this.providerManager);
-    if (environmentContext) {
-      this.runner.setEnvironmentContext(environmentContext);
-    }
     this.skillRegistry = createSkillRegistry(skillConfig);
     this.agentRegistry = new AgentRegistryImpl();
     this.hookRegistry = new HookRegistry();
