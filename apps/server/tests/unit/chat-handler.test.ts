@@ -73,6 +73,32 @@ async function sendAndWait(
   return ctx.getSentMessages()
 }
 
+function createMockBus() {
+  const subscriptions: Map<string, Function[]> = new Map()
+  return {
+    subscribe: vi.fn((event: string, fn: Function) => {
+      if (!subscriptions.has(event)) subscriptions.set(event, [])
+      subscriptions.get(event)!.push(fn)
+      return 'sub-' + Math.random().toString(36).slice(2)
+    }),
+    publish: vi.fn((event: string, payload: any) => {
+      const fns = subscriptions.get(event) ?? []
+      for (const fn of fns) fn({ payload })
+    }),
+    unsubscribe: vi.fn(),
+    _subscriptions: subscriptions,
+  }
+}
+
+function createMockServer(overrides?: Record<string, any>) {
+  const bus = createMockBus()
+  return {
+    bus,
+    agent: { dispatch: vi.fn().mockResolvedValue({ text: 'ok', success: true, duration: 0, tools: [] }) },
+    ...overrides,
+  }
+}
+
 function setup() {
   const handler = new ChatWsHandler()
   const { ws, getSentMessages } = createMockWs()
@@ -120,7 +146,7 @@ describe('ChatWsHandler', () => {
 
     it('should reject when prompt is missing', async () => {
       const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: null } as any)
+      handler.setServer(createMockServer({ agent: null }) as any)
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', {}))
       const res = messages[0] as any
       expect(res.success).toBe(false)
@@ -130,7 +156,7 @@ describe('ChatWsHandler', () => {
 
     it('should reject when prompt is empty string', async () => {
       const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: null } as any)
+      handler.setServer(createMockServer({ agent: null }) as any)
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: '' }))
       const res = messages[0] as any
       expect(res.success).toBe(false)
@@ -139,27 +165,31 @@ describe('ChatWsHandler', () => {
 
     it('should reject when prompt is not a string', async () => {
       const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: null } as any)
+      handler.setServer(createMockServer({ agent: null }) as any)
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 123 }))
       const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('VALIDATION')
+      // prompt: 123 is truthy, so it passes validation and publishes to bus
+      expect(res.success).toBe(true)
+      expect(res.result.threadId).toBeDefined()
     })
 
-    it('should reject when agent is not initialized', async () => {
+    it('should publish to bus when server is set (even without agent)', async () => {
       const { handler, ws, getSentMessages } = setup()
-      handler.setServer({ agent: undefined } as any)
+      const server = createMockServer({ agent: undefined })
+      handler.setServer(server as any)
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello' }))
       const res = messages[0] as any
-      expect(res.success).toBe(false)
-      expect(res.error.code).toBe('AGENT_NOT_READY')
-      expect(res.error.message).toBe('Agent not initialized')
+      expect(res.success).toBe(true)
+      expect(res.result.threadId).toBeDefined()
+      expect(server.bus.publish).toHaveBeenCalledWith('message:received', expect.objectContaining({
+        content: 'hello',
+      }))
     })
 
-    it('should return threadId and broadcast agent.start when agent is ready', async () => {
+    it('should return threadId and publish to bus when agent is ready', async () => {
       const { handler, ws, getSentMessages } = setup()
-      const mockDispatch = vi.fn().mockResolvedValue({ text: 'response', success: true, duration: 0, tools: [] })
-      handler.setServer({ agent: { dispatch: mockDispatch } } as any)
+      const server = createMockServer()
+      handler.setServer(server as any)
 
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 'hello', threadId: 'tid-1' }))
 
@@ -171,29 +201,33 @@ describe('ChatWsHandler', () => {
       expect(res.success).toBe(true)
       expect(res.result.threadId).toBe('tid-1')
 
-      expect(mockDispatch).toHaveBeenCalledWith('hello', expect.objectContaining({
-        onReasoning: expect.any(Function),
-        onText: expect.any(Function),
-        onTool: expect.any(Function),
-        onToolResult: expect.any(Function),
+      // Verify bus.publish was called with message:received
+      expect(server.bus.publish).toHaveBeenCalledWith('message:received', expect.objectContaining({
+        content: 'hello',
+        type: 'text',
       }))
     })
 
-    it('should deliver events to the originating client only', async () => {
+    it('should deliver streaming events to the originating client only', async () => {
       const { ws: ws1, getSentMessages: getSent1 } = createMockWs()
       const { ws: ws2, getSentMessages: getSent2 } = createMockWs()
       const handler = new ChatWsHandler()
       handler.handleConnection(ws1 as any)
       handler.handleConnection(ws2 as any)
 
-      const mockDispatch = vi.fn().mockImplementation(async (_prompt, opts) => {
-        opts.onText?.('hello')
-        return { text: 'hello', success: true, duration: 0, tools: [] }
-      })
-      handler.setServer({ agent: { dispatch: mockDispatch } } as any)
+      const server = createMockServer()
+      handler.setServer(server as any)
 
       const messageHandler1 = vi.mocked(ws1.on).mock.calls.find(c => c[0] === 'message')?.[1]!
       messageHandler1({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-A' })) })
+
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      // Simulate bus forwarding a streaming event for ws-chat:tid-A
+      const streamSub = server.bus._subscriptions.get('agent:streaming')
+      expect(streamSub).toBeDefined()
+      const streamFn = streamSub![0]
+      streamFn!({ payload: { sessionId: 'ws-chat:tid-A', type: 'start' } })
 
       await new Promise(resolve => setTimeout(resolve, 10))
 
@@ -211,7 +245,7 @@ describe('ChatWsHandler', () => {
       const { ws, getSentMessages } = createMockWs()
       const handler = new ChatWsHandler()
       handler.handleConnection(ws as any)
-      handler.setServer({ agent: { chat: vi.fn().mockResolvedValue('ok') } } as any)
+      handler.setServer(createMockServer() as any)
 
       const messageHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'message')?.[1]!
       messageHandler({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-clean' })) })

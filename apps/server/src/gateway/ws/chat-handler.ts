@@ -116,7 +116,7 @@ export class ChatWsHandler extends EventEmitter {
   // ============================================
 
   private subscribeStreamingEvents(): void {
-    if (!this.server) return
+    if (!this.server?.bus) return
     const bus = this.server.bus
 
     this.busSubIds.push(bus.subscribe('agent:streaming', (message: { payload: any }) => {
@@ -361,7 +361,7 @@ export class ChatWsHandler extends EventEmitter {
     }
 
     // 发布到 bus — ServerImpl.subscribeMessageHandler 统一处理
-    this.server.bus.publish('message:received', {
+    this.server?.bus?.publish('message:received', {
       id: crypto.randomUUID(),
       content,
       type: 'text',
@@ -384,7 +384,7 @@ export class ChatWsHandler extends EventEmitter {
     }
 
     // 通过 bus 通知 ServerImpl 中止执行（sessionKey 格式: channelId:threadId）
-    this.server?.bus.publish('agent:abort', { sessionId: `ws-chat:${threadId}` })
+    this.server?.bus?.publish('agent:abort', { sessionId: `ws-chat:${threadId}` })
 
     return createSuccessResponse(id, { threadId, cancelled: true })
   }
