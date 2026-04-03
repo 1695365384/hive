@@ -161,16 +161,6 @@ export interface IChannel {
 // 插件上下文
 // ============================================
 
-/**
- * 消息总线接口
- */
-export interface IMessageBus {
-  subscribe(topic: string, handler: (message: unknown) => void | Promise<void>): string
-  unsubscribe(id: string): void
-  publish(topic: string, message: unknown): Promise<string>
-  emit(event: string, data: unknown): void
-}
-
 // Import ILogger for local use and re-export
 import { type ILogger, noopLogger } from '../types/logger.js'
 export { type ILogger, noopLogger }
@@ -226,9 +216,12 @@ export interface IPlugin {
   /**
    * 初始化插件
    *
-   * 在此阶段进行配置验证和资源准备。
+   * @param messageHandler - 回调函数，用于将通道消息发送到 Server
+   * @param logger - Logger 实例
+   * @param registerChannel - 注册通道的回调
+   * @param context - 可选的插件运行时上下文
    */
-  initialize(messageBus: IMessageBus, logger: ILogger, registerChannel: (channel: IChannel) => void, context?: PluginContext): Promise<void>
+  initialize(messageHandler: (message: ChannelMessage) => void, logger: ILogger, registerChannel: (channel: IChannel) => void, context?: PluginContext): Promise<void>
 
   /**
    * 激活插件

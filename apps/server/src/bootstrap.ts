@@ -11,7 +11,6 @@ import {
   type IPlugin,
   type ILogger,
   type Server,
-  type MessageBus,
   noopLogger,
 } from '@bundy-lmw/hive-core'
 import type { Logger as PinoLogger } from 'pino'
@@ -21,8 +20,6 @@ import { loadPlugins } from './plugins.js'
 import { HIVE_HOME } from './config.js'
 
 export interface HiveContext {
-  /** Message bus for event-driven communication */
-  bus: MessageBus
   /** Main agent instance */
   agent: Agent
   /** Server configuration */
@@ -99,7 +96,6 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
   await server.start()
 
   return {
-    bus: server.bus,
     agent: server.agent,
     config,
     plugins,

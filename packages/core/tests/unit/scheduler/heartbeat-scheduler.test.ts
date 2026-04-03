@@ -15,21 +15,12 @@ function createMockAgent() {
   } as unknown as any;
 }
 
-function createMockBus() {
-  return {
-    publish: vi.fn(),
-    subscribe: vi.fn(),
-  } as unknown as any;
-}
-
 describe('HeartbeatScheduler', () => {
   let agent: ReturnType<typeof createMockAgent>;
-  let bus: ReturnType<typeof createMockBus>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     agent = createMockAgent();
-    bus = createMockBus();
   });
 
   afterEach(() => {
@@ -40,7 +31,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 60000 },
-      bus,
     });
 
     scheduler.start();
@@ -53,7 +43,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 60000 },
-      bus,
     });
 
     scheduler.start();
@@ -65,7 +54,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 60000 },
-      bus,
     });
 
     expect(scheduler.isRunning()).toBe(false);
@@ -76,7 +64,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 30000 }, // < 1min, uses setInterval
-      bus,
     });
 
     scheduler.start();
@@ -92,7 +79,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 60000 },
-      bus,
     });
 
     const tickPromise = scheduler.tick();
@@ -106,22 +92,18 @@ describe('HeartbeatScheduler', () => {
     scheduler.stop();
   });
 
-  it('tick() 成功时应发布 heartbeat:tick 事件', async () => {
+  it('tick() 成功时应记录日志', async () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 60000 },
-      bus,
     });
 
     await scheduler.tick();
 
-    expect(bus.publish).toHaveBeenCalledWith('heartbeat:tick', expect.objectContaining({
-      isOk: true,
-      hasAlert: false,
-    }));
+    expect(agent.runHeartbeatOnce).toHaveBeenCalledTimes(1);
   });
 
-  it('tick() 检测到 alert 时应发布 hasAlert: true', async () => {
+  it('tick() 检测到 alert 时应记录日志', async () => {
     agent.runHeartbeatOnce.mockResolvedValue({
       isOk: false,
       hasAlert: true,
@@ -131,34 +113,24 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 60000 },
-      bus,
     });
 
     await scheduler.tick();
 
-    expect(bus.publish).toHaveBeenCalledWith('heartbeat:tick', expect.objectContaining({
-      isOk: false,
-      hasAlert: true,
-      content: 'Build is failing',
-    }));
+    expect(agent.runHeartbeatOnce).toHaveBeenCalledTimes(1);
   });
 
-  it('tick() 失败时应发布包含 error 的事件', async () => {
+  it('tick() 失败时应记录错误日志', async () => {
     agent.runHeartbeatOnce.mockRejectedValue(new Error('LLM unavailable'));
 
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 60000 },
-      bus,
     });
 
     await scheduler.tick();
 
-    expect(bus.publish).toHaveBeenCalledWith('heartbeat:tick', expect.objectContaining({
-      isOk: false,
-      hasAlert: true,
-      error: true,
-    }));
+    expect(agent.runHeartbeatOnce).toHaveBeenCalledTimes(1);
   });
 
   it('tick() 应传递 model 和 prompt 配置', async () => {
@@ -169,7 +141,6 @@ describe('HeartbeatScheduler', () => {
         model: 'claude-haiku-4-5-20251001',
         prompt: 'Custom check prompt',
       },
-      bus,
     });
 
     await scheduler.tick();
@@ -184,7 +155,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 30000 }, // < 1min, uses setInterval
-      bus,
     });
 
     scheduler.start();
@@ -200,7 +170,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 30000 },
-      bus,
     });
 
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
@@ -216,7 +185,6 @@ describe('HeartbeatScheduler', () => {
     const scheduler = new HeartbeatScheduler({
       agent,
       config: { intervalMs: 300000 },
-      bus,
     });
 
     scheduler.start();

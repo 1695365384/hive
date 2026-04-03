@@ -218,7 +218,7 @@ export class PluginHandler extends WsDomainHandler {
       // Swap 模式：先创建新实例，成功后再销毁旧实例
       const newPlugin = await this.createPluginInstance(pluginId, entry, config, server)
       await newPlugin.initialize(
-        server.bus,
+        (msg) => server.handleMessage(msg),
         server.logger,
         (channel) => server.registerChannel(channel),
       )
