@@ -8,7 +8,7 @@
 import { createProviderManager } from '../../providers/ProviderManager.js';
 import type { ProviderManager } from '../../providers/ProviderManager.js';
 import type { AgentConfig, AgentExecuteOptions, AgentResult, ThoroughnessLevel } from './types.js';
-import type { RuntimeConfig, RuntimeResult } from '../runtime/types.js';
+import type { RuntimeConfig, RuntimeResult, StreamEvent } from '../runtime/types.js';
 import { LLMRuntime, AGENT_PRESETS } from '../runtime/LLMRuntime.js';
 import { getAgentConfig } from './agents.js';
 import { buildExplorePrompt } from '../prompts/prompts.js';
@@ -111,7 +111,8 @@ export class AgentRunner {
   /**
    * 以流式模式执行 Agent（Worker 使用）
    *
-   * 与 execute() 的区别：使用 streaming: true，通过回调透传事件。
+   * 与 execute() 的区别：使用 runtime.stream() 的 async generator 模式，
+   * 通过 StreamEvent 回调透传中间事件。
    * 返回最终文本结果，事件通过 callbacks 实时推送。
    */
   async executeStreaming(
@@ -152,39 +153,35 @@ export class AgentRunner {
       messages: options?.messages,
       model: options?.model || agentConfig.model || preset?.model,
       maxSteps: options?.maxTurns || agentConfig.maxTurns || preset?.maxSteps || 10,
-      streaming: true,
       tools: this.toolRegistry.getToolsForAgent(agentConfig.type as ToolAgentType),
-      onText: callbacks.onText,
-      onToolCall: callbacks.onToolCall,
     };
 
-    if (options?.timeout) {
-      const controller = new AbortController();
-      runtimeConfig.abortSignal = controller.signal;
-
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          reject(new Error(`Worker timed out after ${options.timeout}ms`));
-        }, options.timeout);
-      });
-
-      try {
-        const result = await Promise.race([
-          this.runtime.run(runtimeConfig),
-          timeoutPromise,
-        ]);
-        return this.mapToAgentResult(result);
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        return { text: '', tools: [], success: false, error: err.message };
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
-      }
+    if (options?.abortSignal) {
+      runtimeConfig.abortSignal = options.abortSignal;
     }
 
-    const result = await this.runtime.run(runtimeConfig);
+    return this.consumeStream(runtimeConfig, callbacks);
+  }
+
+  /**
+   * 消费 runtime.stream() 的事件并返回最终结果
+   */
+  private async consumeStream(
+    runtimeConfig: RuntimeConfig,
+    callbacks: {
+      onText?: (text: string) => void;
+      onToolCall?: (toolName: string, input?: unknown) => void;
+      onToolResult?: (toolName: string, output?: unknown) => void;
+      onReasoning?: (text: string) => void;
+    },
+  ): Promise<AgentResult> {
+    const { events, result: resultPromise } = this.runtime.stream(runtimeConfig);
+
+    for await (const event of events) {
+      this.dispatchCallback(event, callbacks);
+    }
+
+    const result = await resultPromise;
     return this.mapToAgentResult(result);
   }
 
@@ -214,15 +211,14 @@ export class AgentRunner {
       messages: options?.messages,
       model: options?.model || config.model || preset?.model,
       maxSteps: options?.maxTurns || config.maxTurns || preset?.maxSteps || 10,
-      streaming: false,
       tools: this.toolRegistry.getToolsForAgent(config.type as ToolAgentType),
-      onText: options?.onText,
-      onToolCall: options?.onTool,
     };
 
     if (options?.timeout) {
       const controller = new AbortController();
-      runtimeConfig.abortSignal = controller.signal;
+      const signals: AbortSignal[] = [controller.signal];
+      if (options?.abortSignal) signals.push(options.abortSignal);
+      runtimeConfig.abortSignal = AbortSignal.any(signals);
 
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -277,6 +273,36 @@ export class AgentRunner {
     };
   }
 
+  /**
+   * 将 StreamEvent 分发到对应的回调
+   */
+  private dispatchCallback(
+    event: StreamEvent,
+    callbacks: {
+      onText?: (text: string) => void;
+      onToolCall?: (toolName: string, input?: unknown) => void;
+      onToolResult?: (toolName: string, output?: unknown) => void;
+      onReasoning?: (text: string) => void;
+    },
+  ): void {
+    switch (event.type) {
+      case 'text-delta':
+        callbacks.onText?.(event.text);
+        break;
+      case 'tool-call':
+        callbacks.onToolCall?.(event.toolName, event.input);
+        break;
+      case 'tool-result':
+        callbacks.onToolResult?.(event.toolName, event.output);
+        break;
+      case 'reasoning':
+        callbacks.onReasoning?.(event.text);
+        break;
+      case 'step-finish':
+        break;
+    }
+  }
+
   // ============================================
   // Task 执行
   // ============================================
@@ -309,7 +335,6 @@ export class AgentRunner {
       system: systemPrompt || preset?.system,
       model: model || preset?.model,
       maxSteps,
-      streaming: false,
       tools: this.toolRegistry.getToolsForAgent((config.agentType || 'general') as ToolAgentType),
     });
 

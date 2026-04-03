@@ -41,6 +41,8 @@ export interface StepResult {
 
 /**
  * LLM Runtime 运行配置
+ *
+ * 纯配置接口，不含回调。流式事件通过 stream() 的 yield 返回。
  */
 export interface RuntimeConfig {
   // ── 模型 ──
@@ -65,23 +67,9 @@ export interface RuntimeConfig {
   /** 最大执行步数（含工具调用，默认 10） */
   maxSteps?: number;
 
-  // ── 执行模式 ──
-  /** 是否流式输出（默认 false） */
-  streaming?: boolean;
+  // ── 执行控制 ──
   /** 取消信号 */
   abortSignal?: AbortSignal;
-
-  // ── 回调 ──
-  /** 文本增量回调（流式模式） */
-  onText?: (text: string) => void;
-  /** 工具调用回调 */
-  onToolCall?: (toolName: string, input: unknown) => void;
-  /** 工具结果回调 */
-  onToolResult?: (toolName: string, result: unknown) => void;
-  /** 步骤完成回调 */
-  onStepFinish?: (step: StepResult) => void;
-  /** 推理/思考回调 */
-  onReasoning?: (text: string) => void;
 }
 
 // ============================================
@@ -115,6 +103,36 @@ export interface RuntimeResult {
     maxOutputTokens: number;
     supportsTools: boolean;
   };
+}
+
+// ============================================
+// 流式事件（async generator 模式）
+// ============================================
+
+/**
+ * 流式事件联合类型
+ *
+ * LLMRuntime.stream() yield 的事件类型。
+ * - text-delta / reasoning / tool-call / tool-result / step-finish: 中间事件
+ */
+export type StreamEvent =
+  | { type: 'text-delta'; text: string }
+  | { type: 'tool-call'; toolName: string; input: unknown }
+  | { type: 'tool-result'; toolName: string; output: unknown }
+  | { type: 'reasoning'; text: string }
+  | { type: 'step-finish'; step: StepResult };
+
+/**
+ * stream() 方法返回值
+ *
+ * 包含事件生成器和结果 Promise。
+ * 消费方用 for await 迭代 events，await result 获取最终结果。
+ */
+export interface StreamHandle {
+  /** 事件生成器，yield 中间事件 */
+  events: AsyncGenerator<StreamEvent>;
+  /** 结果 Promise，在所有事件 yield 完成后 resolve 为 RuntimeResult */
+  result: Promise<RuntimeResult>;
 }
 
 // ============================================
