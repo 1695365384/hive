@@ -97,9 +97,12 @@ export class TaskManager {
     const task = this.tasks.get(id);
     if (!task) return false;
     // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
-    try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch {}
-    // 兜底：强制杀线程
-    task.worker?.terminate();
+    try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch { /* worker already terminated */ }
+    // 兜底：强制杀线程（延迟 50ms 让 abort 消息有机会被处理）
+    const worker = task.worker;
+    const timer = setTimeout(() => { worker?.terminate(); }, 50);
+    // 如果 worker 提前退出，清理定时器
+    worker?.once('exit', () => clearTimeout(timer));
     task.abortController.abort();
     this.tasks.delete(id);
     return true;
@@ -133,13 +136,19 @@ export class TaskManager {
    * 再调用 terminate() 作为兜底。
    */
   abortAll(): void {
+    const timers: ReturnType<typeof setTimeout>[] = [];
     for (const task of this.tasks.values()) {
       // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
-      try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch {}
-      // 兜底：强制杀线程
-      task.worker?.terminate();
+      try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch { /* worker already terminated */ }
+      // 兜底：延迟 terminate 让 abort 消息有机会被处理
+      const worker = task.worker;
+      const timer = setTimeout(() => { worker?.terminate(); }, 50);
+      worker?.once('exit', () => clearTimeout(timer));
+      timers.push(timer);
       task.abortController.abort();
     }
+    // 清理所有定时器（防止内存泄漏）
+    setTimeout(() => { for (const t of timers) clearTimeout(t); }, 200);
     this.tasks.clear();
   }
 

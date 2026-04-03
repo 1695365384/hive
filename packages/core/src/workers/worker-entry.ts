@@ -102,7 +102,10 @@ async function handleExecute(msg: Extract<WorkerInboundMessage, { type: 'execute
     post({ type: 'complete', result, duration: Date.now() - startTime });
   } catch (error) {
     // AbortError 不当作错误上报，直接返回 aborted 状态
-    if (workerAbortController?.signal.aborted) {
+    const isAbort = error instanceof DOMException
+      ? error.name === 'AbortError'
+      : (error instanceof Error && error.name === 'AbortError');
+    if (workerAbortController?.signal.aborted && isAbort) {
       post({ type: 'complete', result: { text: '', tools: [], success: false, error: 'Aborted' } satisfies AgentResult, duration: Date.now() - startTime });
       return;
     }

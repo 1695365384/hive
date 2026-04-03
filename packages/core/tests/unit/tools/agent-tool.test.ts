@@ -66,6 +66,11 @@ vi.mock('node:worker_threads', () => {
       }
     }
 
+    once(event: string, handler: Function) {
+      // Mock: same as on() for testing purposes
+      this.on(event, handler);
+    }
+
     _simulateMessage(msg: WorkerEventMessage) {
       const handler = this.onMessageHandlers.get('message');
       if (handler) handler(msg);
@@ -300,6 +305,8 @@ describe('AgentTool', () => {
 
       const result = await executePromise;
       expect(result).toContain('Worker aborted');
+      // terminate is delayed 50ms to allow abort message processing
+      await new Promise(resolve => setTimeout(resolve, 100));
       expect(worker._terminated).toBe(true);
     });
 
@@ -326,7 +333,8 @@ describe('AgentTool', () => {
       );
       expect(abortMessages.length).toBeGreaterThanOrEqual(1);
       expect(abortMessages[0][0]).toEqual({ type: 'abort' });
-      // terminate should still be called as fallback
+      // terminate is delayed 50ms — wait and verify fallback
+      await new Promise(resolve => setTimeout(resolve, 100));
       expect(worker._terminated).toBe(true);
     });
 
@@ -349,6 +357,8 @@ describe('AgentTool', () => {
       const results = await Promise.allSettled([p1, p2]);
 
       expect(mockWorkerInstances.length).toBe(2);
+      // terminate is delayed 50ms — wait for fallback
+      await new Promise(resolve => setTimeout(resolve, 100));
       for (const worker of mockWorkerInstances) {
         expect(worker._terminated).toBe(true);
       }

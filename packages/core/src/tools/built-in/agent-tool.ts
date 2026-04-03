@@ -3,7 +3,8 @@
  *
  * Coordinator 通过 AgentTool 异步 spawn Worker（Explore/Plan/General）。
  * Worker 在独立线程（worker_threads）中执行，事件通过 parentPort 实时透传。
- * 取消时直接 worker.terminate() 杀线程，OS 层面立即终止所有操作。
+ * 取消时先发送 abort 消息让 Worker 优雅终止（AI SDK 取消 LLM 请求），
+ * 再 worker.terminate() 强制杀线程兜底。
  *
  * 防递归：Worker 工具来自 ToolRegistry（不含 agent 工具），天然无法再 spawn。
  */
