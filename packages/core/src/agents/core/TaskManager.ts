@@ -6,6 +6,7 @@
  */
 
 import { type Worker as WorkerThread } from 'node:worker_threads';
+import type { WorkerInboundMessage } from '../../workers/worker-entry.js';
 
 // ============================================
 // 类型
@@ -87,11 +88,17 @@ export class TaskManager {
   /**
    * 中止指定 Worker
    *
+   * 先发送 abort 消息让 Worker 优雅终止（取消 LLM 请求），
+   * 再调用 terminate() 作为兜底。
+   *
    * @returns 是否成功中止（false = 不存在或已完成）
    */
   abort(id: string): boolean {
     const task = this.tasks.get(id);
     if (!task) return false;
+    // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
+    try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch {}
+    // 兜底：强制杀线程
     task.worker?.terminate();
     task.abortController.abort();
     this.tasks.delete(id);
@@ -121,9 +128,15 @@ export class TaskManager {
 
   /**
    * 中止所有活跃 Worker
+   *
+   * 先发送 abort 消息让每个 Worker 优雅终止，
+   * 再调用 terminate() 作为兜底。
    */
   abortAll(): void {
     for (const task of this.tasks.values()) {
+      // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
+      try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch {}
+      // 兜底：强制杀线程
       task.worker?.terminate();
       task.abortController.abort();
     }

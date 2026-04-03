@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
-import type { WorkerEventMessage } from '../../workers/worker-entry.js';
+import type { WorkerEventMessage, WorkerInboundMessage } from '../../workers/worker-entry.js';
 import type { ExternalConfig } from '../../providers/types.js';
 
 // ============================================
@@ -234,10 +234,15 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         }).catch(() => {});
       };
 
-      // Abort promise：信号触发时立即 resolve
+      // Abort promise：信号触发时立即 resolve，同时向 Worker 发送 abort 消息
       const abortPromise = new Promise<true>((resolve) => {
-        if (isAborted()) { resolve(true); return; }
-        const handler = () => resolve(true);
+        const triggerAbort = () => {
+          // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
+          try { worker.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch {}
+          resolve(true);
+        };
+        if (isAborted()) { triggerAbort(); return; }
+        const handler = () => triggerAbort();
         abortController.signal.addEventListener('abort', handler, { once: true });
       });
 

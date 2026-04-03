@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createMockAgentContext } from '../../mocks/agent-context.mock.js';
 import { TaskManager } from '../../../src/agents/core/TaskManager.js';
 import type { AgentResult } from '../../../src/agents/core/types.js';
-import type { WorkerEventMessage } from '../../../src/workers/worker-entry.js';
+import type { WorkerEventMessage, WorkerInboundMessage } from '../../../src/workers/worker-entry.js';
 
 // Mock ai module
 vi.mock('ai', () => ({
@@ -300,6 +300,33 @@ describe('AgentTool', () => {
 
       const result = await executePromise;
       expect(result).toContain('Worker aborted');
+      expect(worker._terminated).toBe(true);
+    });
+
+    it('should send abort message to worker before terminate', async () => {
+      const tool = createAgentTool(context, taskManager);
+
+      const executePromise = tool.execute!(
+        { prompt: 'test', type: 'explore' },
+        {} as any,
+      );
+
+      const worker = mockWorkerInstances[0]!;
+      worker._disableAutoRespond();
+
+      // Abort via TaskManager
+      taskManager.abort(taskManager.getActiveTasks()[0].id);
+
+      await executePromise;
+
+      // Verify abort message was sent to worker
+      const postMessageCalls = vi.mocked(worker.postMessage).mock.calls;
+      const abortMessages = postMessageCalls.filter(
+        c => (c[0] as WorkerInboundMessage).type === 'abort',
+      );
+      expect(abortMessages.length).toBeGreaterThanOrEqual(1);
+      expect(abortMessages[0][0]).toEqual({ type: 'abort' });
+      // terminate should still be called as fallback
       expect(worker._terminated).toBe(true);
     });
 
