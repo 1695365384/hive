@@ -5,7 +5,10 @@
  * 接收主线程的执行指令，独立创建 ProviderManager + AgentRunner，
  * 执行 LLM 调用并通过 parentPort 回传事件。
  *
- * 取消机制：主线程调用 worker.terminate() 直接杀线程，无需 abort 信号穿透。
+ * 取消机制：
+ * 1. 主线程发送 { type: 'abort' } 消息 → Worker 内部 AbortController 触发
+ * 2. AbortSignal 传入 runner.executeStreaming() → AI SDK 优雅取消 LLM 请求
+ * 3. worker.terminate() 作为兜底（超时未响应时强制杀线程）
  */
 
 import { parentPort, workerData } from 'node:worker_threads';
@@ -18,15 +21,17 @@ import type { AgentResult } from '../agents/core/types.js';
 // ============================================
 
 /** 主线程 → Worker 的消息 */
-export interface WorkerExecuteMessage {
-  type: 'execute';
-  payload: {
-    agentType: string;
-    prompt: string;
-    model?: string;
-    maxTurns?: number;
-  };
-}
+export type WorkerInboundMessage =
+  | {
+      type: 'execute';
+      payload: {
+        agentType: string;
+        prompt: string;
+        model?: string;
+        maxTurns?: number;
+      };
+    }
+  | { type: 'abort' };
 
 /** 通过 workerData 传递的初始化数据 */
 export interface WorkerInitData {
@@ -50,11 +55,15 @@ function post(msg: WorkerEventMessage): void {
   parentPort?.postMessage(msg);
 }
 
-async function handleMessage(msg: WorkerExecuteMessage): Promise<void> {
-  if (msg.type !== 'execute') return;
+// Worker 内部 AbortController，由主线程的 abort 消息触发
+let workerAbortController: AbortController | null = null;
 
+async function handleExecute(msg: Extract<WorkerInboundMessage, { type: 'execute' }>): Promise<void> {
   const { agentType, prompt, model, maxTurns } = msg.payload;
   const startTime = Date.now();
+
+  // 创建 AbortController，主线程可通过 abort 消息触发
+  workerAbortController = new AbortController();
 
   try {
     // 使用主线程传入的外部配置创建 ProviderManager（继承 hive.config.json 配置）
@@ -68,6 +77,7 @@ async function handleMessage(msg: WorkerExecuteMessage): Promise<void> {
     const opts: Record<string, unknown> = {};
     if (model) opts.model = model;
     if (maxTurns) opts.maxTurns = maxTurns;
+    opts.abortSignal = workerAbortController.signal;
 
     const result = await runner.executeStreaming(
       agentType,
@@ -91,18 +101,36 @@ async function handleMessage(msg: WorkerExecuteMessage): Promise<void> {
 
     post({ type: 'complete', result, duration: Date.now() - startTime });
   } catch (error) {
+    // AbortError 不当作错误上报，直接返回 aborted 状态
+    const isAbort = error instanceof DOMException
+      ? error.name === 'AbortError'
+      : (error instanceof Error && error.name === 'AbortError');
+    if (workerAbortController?.signal.aborted && isAbort) {
+      post({ type: 'complete', result: { text: '', tools: [], success: false, error: 'Aborted' } satisfies AgentResult, duration: Date.now() - startTime });
+      return;
+    }
     const errorMsg = error instanceof Error ? error.message : String(error);
     post({ type: 'error', error: errorMsg, duration: Date.now() - startTime });
+  } finally {
+    workerAbortController = null;
   }
 }
 
 // 监听主线程消息
-parentPort?.on('message', (msg: WorkerExecuteMessage) => {
-  handleMessage(msg).catch((error) => {
-    post({
-      type: 'error',
-      error: error instanceof Error ? error.message : String(error),
-      duration: 0,
+parentPort?.on('message', (msg: WorkerInboundMessage) => {
+  if (msg.type === 'abort') {
+    // 优雅终止：触发 AbortSignal → AI SDK 取消 LLM 请求
+    workerAbortController?.abort();
+    return;
+  }
+
+  if (msg.type === 'execute') {
+    handleExecute(msg).catch((error) => {
+      post({
+        type: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        duration: 0,
+      });
     });
-  });
+  }
 });

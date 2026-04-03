@@ -3,7 +3,8 @@
  *
  * Coordinator 通过 AgentTool 异步 spawn Worker（Explore/Plan/General）。
  * Worker 在独立线程（worker_threads）中执行，事件通过 parentPort 实时透传。
- * 取消时直接 worker.terminate() 杀线程，OS 层面立即终止所有操作。
+ * 取消时先发送 abort 消息让 Worker 优雅终止（AI SDK 取消 LLM 请求），
+ * 再 worker.terminate() 强制杀线程兜底。
  *
  * 防递归：Worker 工具来自 ToolRegistry（不含 agent 工具），天然无法再 spawn。
  */
@@ -12,10 +13,13 @@ import { Worker } from 'node:worker_threads';
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
-import type { WorkerEventMessage } from '../../workers/worker-entry.js';
+import type { WorkerEventMessage, WorkerInboundMessage } from '../../workers/worker-entry.js';
 import type { ExternalConfig } from '../../providers/types.js';
 
 // ============================================
@@ -141,9 +145,26 @@ function buildWorkerResultSummary(input: {
 }
 
 /**
- * Worker 线程入口文件 URL
+ * Worker 线程入口文件路径
+ *
+ * Bundle 模式：import.meta.url 指向 main.js（bundle 根），worker 在 bundle/workers/
+ * Dev 模式：import.meta.url 指向 agent-tool.js，worker 在 dist/workers/
  */
-const WORKER_ENTRY_URL = new URL('../../workers/worker-entry.js', import.meta.url);
+let _cachedWorkerPath: string | undefined;
+
+function resolveWorkerEntryPath(): string {
+  if (_cachedWorkerPath) return _cachedWorkerPath;
+  const baseDir = path.dirname(fileURLToPath(import.meta.url));
+  // Bundle: main.js is at root, workers/ is a sibling directory
+  const bundlePath = path.join(baseDir, 'workers', 'worker-entry.js');
+  if (existsSync(bundlePath)) {
+    _cachedWorkerPath = bundlePath;
+  } else {
+    // Dev: agent-tool.js is at dist/tools/built-in/, worker at dist/workers/
+    _cachedWorkerPath = fileURLToPath(new URL('../../workers/worker-entry.js', import.meta.url));
+  }
+  return _cachedWorkerPath;
+}
 
 /**
  * 创建 AgentTool
@@ -195,7 +216,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       };
 
       // 启动 Worker 线程（通过 workerData 传递 Provider 配置）
-      const worker = new Worker(WORKER_ENTRY_URL, {
+      const worker = new Worker(resolveWorkerEntryPath(), {
         workerData: { externalConfig },
       });
       taskManager.setWorker(workerId, worker);
@@ -234,10 +255,15 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         }).catch(() => {});
       };
 
-      // Abort promise：信号触发时立即 resolve
+      // Abort promise：信号触发时立即 resolve，同时向 Worker 发送 abort 消息
       const abortPromise = new Promise<true>((resolve) => {
-        if (isAborted()) { resolve(true); return; }
-        const handler = () => resolve(true);
+        const triggerAbort = () => {
+          // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
+          try { worker.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch {}
+          resolve(true);
+        };
+        if (isAborted()) { triggerAbort(); return; }
+        const handler = () => triggerAbort();
         abortController.signal.addEventListener('abort', handler, { once: true });
       });
 

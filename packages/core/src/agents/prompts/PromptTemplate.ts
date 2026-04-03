@@ -11,28 +11,15 @@
  * - templates/schedule-awareness.md - 定时任务感知模板
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-// ES 模块中获取 __dirname
-// 兼容 SEA 环境：import.meta.url 在 CJS bundle 中可能为空，回退到 process.argv[1]
-function getTemplatesDir(): string {
-  try {
-    const metaUrl = import.meta.url;
-    if (metaUrl && metaUrl !== 'undefined') {
-      const __filename = fileURLToPath(metaUrl);
-      return path.join(path.dirname(__filename), 'templates');
-    }
-  } catch { /* fallback below */ }
+// ESM dev: use import.meta.url; CJS bundle: __dirname is provided by Node.js
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-  // SEA / CJS fallback: 从 main script 所在目录向上查找
-  const mainDir = path.dirname(process.argv[1]);
-  return path.join(mainDir, 'agents', 'prompts', 'templates');
-}
-
-// 模板目录
-export const TEMPLATES_DIR = getTemplatesDir();
+// 模板目录（标准 ESM 路径解析）
+export const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
 /**
  * 模板变量类型
@@ -52,21 +39,21 @@ export class PromptTemplate {
    * @returns 模板内容
    */
   load(name: string): string {
-    // 检查缓存
     if (this.cache.has(name)) {
       return this.cache.get(name)!;
     }
 
-    // 从文件加载
     const filePath = path.join(TEMPLATES_DIR, `${name}.md`);
 
-    if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      this.cache.set(name, content);
-      return content;
+    let content: string;
+    try {
+      content = readFileSync(filePath, 'utf-8');
+    } catch {
+      throw new Error(`Prompt template not found: ${name}`);
     }
 
-    throw new Error(`Prompt template not found: ${name}`);
+    this.cache.set(name, content);
+    return content;
   }
 
   /**
@@ -108,8 +95,7 @@ export class PromptTemplate {
    * 检查模板文件是否存在
    */
   hasTemplateFile(name: string): boolean {
-    const filePath = path.join(TEMPLATES_DIR, `${name}.md`);
-    return fs.existsSync(filePath);
+    return existsSync(path.join(TEMPLATES_DIR, `${name}.md`));
   }
 }
 
