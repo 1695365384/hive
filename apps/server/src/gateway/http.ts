@@ -187,12 +187,7 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
       // Add user message
       session.messages.push({ role: 'user', content: message })
 
-      // Emit message received event
-      ctx.bus?.emit('message:received', {
-        content: message,
-        sessionId: sid,
-        timestamp: Date.now(),
-      })
+      // Log message received (was bus emit — no subscribers)
 
       // Send to agent (dispatch for smart routing)
       const result = await ctx.agent.dispatch(message)
@@ -201,12 +196,7 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
       // Add assistant message
       session.messages.push({ role: 'assistant', content: response })
 
-      // Emit message sent event
-      ctx.bus?.emit('message:sent', {
-        content: response,
-        sessionId: sid,
-        timestamp: Date.now(),
-      })
+      // Log message sent (was bus emit — no subscribers)
 
       return c.json({
         response,

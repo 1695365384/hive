@@ -73,34 +73,19 @@ async function sendAndWait(
   return ctx.getSentMessages()
 }
 
-function createMockBus() {
-  const subscriptions: Map<string, Function[]> = new Map()
-  return {
-    subscribe: vi.fn((event: string, fn: Function) => {
-      if (!subscriptions.has(event)) subscriptions.set(event, [])
-      subscriptions.get(event)!.push(fn)
-      return 'sub-' + Math.random().toString(36).slice(2)
-    }),
-    publish: vi.fn((event: string, payload: any) => {
-      const fns = subscriptions.get(event) ?? []
-      for (const fn of fns) fn({ payload })
-    }),
-    unsubscribe: vi.fn(),
-    _subscriptions: subscriptions,
-  }
-}
-
 function createMockServer(overrides?: Record<string, any>) {
-  const bus = createMockBus()
   return {
-    bus,
+    handleMessage: vi.fn(),
+    abort: vi.fn(),
+    onStreamingEvent: vi.fn(() => vi.fn()),
+    onFileEvent: vi.fn(() => vi.fn()),
     agent: { dispatch: vi.fn().mockResolvedValue({ text: 'ok', success: true, duration: 0, tools: [] }) },
     ...overrides,
   }
 }
 
 function setup() {
-  const handler = new ChatWsHandler()
+  const handler = new ChatWsHandler(null)
   const { ws, getSentMessages } = createMockWs()
   handler.handleConnection(ws as any)
   return { handler, ws, getSentMessages }
@@ -168,12 +153,12 @@ describe('ChatWsHandler', () => {
       handler.setServer(createMockServer({ agent: null }) as any)
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('chat.send', { prompt: 123 }))
       const res = messages[0] as any
-      // prompt: 123 is truthy, so it passes validation and publishes to bus
+      // prompt: 123 is truthy, so it passes validation and calls handleMessage
       expect(res.success).toBe(true)
       expect(res.result.threadId).toBeDefined()
     })
 
-    it('should publish to bus when server is set (even without agent)', async () => {
+    it('should call server.handleMessage when server is set', async () => {
       const { handler, ws, getSentMessages } = setup()
       const server = createMockServer({ agent: undefined })
       handler.setServer(server as any)
@@ -181,12 +166,12 @@ describe('ChatWsHandler', () => {
       const res = messages[0] as any
       expect(res.success).toBe(true)
       expect(res.result.threadId).toBeDefined()
-      expect(server.bus.publish).toHaveBeenCalledWith('message:received', expect.objectContaining({
+      expect(server.handleMessage).toHaveBeenCalledWith(expect.objectContaining({
         content: 'hello',
       }))
     })
 
-    it('should return threadId and publish to bus when agent is ready', async () => {
+    it('should return threadId and call server.handleMessage when agent is ready', async () => {
       const { handler, ws, getSentMessages } = setup()
       const server = createMockServer()
       handler.setServer(server as any)
@@ -201,8 +186,8 @@ describe('ChatWsHandler', () => {
       expect(res.success).toBe(true)
       expect(res.result.threadId).toBe('tid-1')
 
-      // Verify bus.publish was called with message:received
-      expect(server.bus.publish).toHaveBeenCalledWith('message:received', expect.objectContaining({
+      // Verify server.handleMessage was called with expected content
+      expect(server.handleMessage).toHaveBeenCalledWith(expect.objectContaining({
         content: 'hello',
         type: 'text',
       }))
@@ -211,11 +196,17 @@ describe('ChatWsHandler', () => {
     it('should deliver streaming events to the originating client only', async () => {
       const { ws: ws1, getSentMessages: getSent1 } = createMockWs()
       const { ws: ws2, getSentMessages: getSent2 } = createMockWs()
-      const handler = new ChatWsHandler()
+      const handler = new ChatWsHandler(null)
       handler.handleConnection(ws1 as any)
       handler.handleConnection(ws2 as any)
 
-      const server = createMockServer()
+      let streamingHandler: any = null
+      const server = createMockServer({
+        onStreamingEvent: vi.fn((fn: any) => {
+          streamingHandler = fn
+          return vi.fn()
+        }),
+      })
       handler.setServer(server as any)
 
       const messageHandler1 = vi.mocked(ws1.on).mock.calls.find(c => c[0] === 'message')?.[1]!
@@ -223,11 +214,9 @@ describe('ChatWsHandler', () => {
 
       await new Promise(resolve => setTimeout(resolve, 10))
 
-      // Simulate bus forwarding a streaming event for ws-chat:tid-A
-      const streamSub = server.bus._subscriptions.get('agent:streaming')
-      expect(streamSub).toBeDefined()
-      const streamFn = streamSub![0]
-      streamFn!({ payload: { sessionId: 'ws-chat:tid-A', type: 'start' } })
+      // Simulate server forwarding a streaming event for ws-chat:tid-A
+      expect(streamingHandler).toBeDefined()
+      streamingHandler!({ sessionId: 'ws-chat:tid-A', type: 'start' })
 
       await new Promise(resolve => setTimeout(resolve, 10))
 
@@ -243,7 +232,7 @@ describe('ChatWsHandler', () => {
 
     it('should clean up thread mapping on client disconnect', () => {
       const { ws, getSentMessages } = createMockWs()
-      const handler = new ChatWsHandler()
+      const handler = new ChatWsHandler(null)
       handler.handleConnection(ws as any)
       handler.setServer(createMockServer() as any)
 
@@ -268,7 +257,7 @@ describe('ChatWsHandler', () => {
     it('should close all clients', () => {
       const { ws: ws1 } = createMockWs()
       const { ws: ws2 } = createMockWs()
-      const handler = new ChatWsHandler()
+      const handler = new ChatWsHandler(null)
       handler.handleConnection(ws1 as any)
       handler.handleConnection(ws2 as any)
 

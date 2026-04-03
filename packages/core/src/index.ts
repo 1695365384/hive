@@ -448,7 +448,6 @@ export {
   type IWebhookHandler,
 
   // 插件上下文
-  type IMessageBus,
 
   // 插件接口
   type PluginMetadata,
@@ -470,22 +469,16 @@ export {
 } from './types/logger.js';
 
 // ============================================
-// 消息总线
+// 流式事件与回调
 // ============================================
 
-export {
-  MessageBus,
-} from './bus/index.js';
-
 export type {
-  BusMessage,
-  Subscription,
-  RequestContext,
-  Middleware,
-  MessageBusOptions,
-  MessageBusEvents,
-  BusEventType,
-} from './bus/index.js';
+  StreamingEventUnion,
+  StreamingHandler,
+  FileEvent,
+  FileHandler,
+  MessageHandler,
+} from './server/types.js';
 
 // ============================================
 // 环境探测

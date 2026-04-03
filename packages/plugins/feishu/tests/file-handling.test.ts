@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { IMessageBus, ILogger } from '@bundy-lmw/hive-core'
+import type { ILogger } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK
 const {
@@ -110,7 +110,7 @@ const { FeishuChannel } = await import('../src/channel.js')
 
 describe('FeishuChannel File Handling', () => {
   let channel: InstanceType<typeof FeishuChannel>
-  let mockMessageBus: IMessageBus
+  let mockMessageHandler: ReturnType<typeof vi.fn>
   let mockLogger: ILogger
 
   const testConfig = {
@@ -121,12 +121,7 @@ describe('FeishuChannel File Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    mockMessageBus = {
-      emit: vi.fn(),
-      subscribe: vi.fn().mockReturnValue('sub_file'),
-      unsubscribe: vi.fn(),
-      publish: vi.fn().mockResolvedValue(undefined),
-    }
+    mockMessageHandler = vi.fn()
 
     mockLogger = {
       debug: vi.fn(),
@@ -135,7 +130,7 @@ describe('FeishuChannel File Handling', () => {
       error: vi.fn(),
     }
 
-    channel = new FeishuChannel(testConfig, mockMessageBus, mockLogger, '/tmp/test-workspace')
+    channel = new FeishuChannel(testConfig, mockMessageHandler, mockLogger, '/tmp/test-workspace')
   })
 
   // ============================
@@ -271,8 +266,7 @@ describe('FeishuChannel File Handling', () => {
         path: { file_key: 'fk_download' },
       })
       expect(mockWriteFile).toHaveBeenCalled()
-      expect(mockMessageBus.publish).toHaveBeenCalledWith(
-        'channel:feishu:cli_test_file:message:received',
+      expect(mockMessageHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'file',
         }),
@@ -299,7 +293,7 @@ describe('FeishuChannel File Handling', () => {
 
       expect(mockLogger.error).toHaveBeenCalled()
       // 消息仍应发布（降级处理）
-      expect(mockMessageBus.publish).toHaveBeenCalled()
+      expect(mockMessageHandler).toHaveBeenCalled()
     })
   })
 
@@ -393,8 +387,7 @@ describe('FeishuChannel File Handling', () => {
       await (channel as unknown as { handleWSMessageEvent: (data: unknown) => Promise<void> }).handleWSMessageEvent(eventData)
 
       expect(mockFileGet).toHaveBeenCalled()
-      expect(mockMessageBus.publish).toHaveBeenCalledWith(
-        'channel:feishu:cli_test_file:message:received',
+      expect(mockMessageHandler).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'file' }),
       )
     })
@@ -439,8 +432,7 @@ describe('FeishuChannel File Handling', () => {
 
       expect(mockFileGet).not.toHaveBeenCalled()
       expect(mockImageGet).not.toHaveBeenCalled()
-      expect(mockMessageBus.publish).toHaveBeenCalledWith(
-        'channel:feishu:cli_test_file:message:received',
+      expect(mockMessageHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'text',
           content: 'hello world',

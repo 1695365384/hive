@@ -21,7 +21,6 @@ export {
   type IWebhookHandler,
 
   // 插件上下文
-  type IMessageBus,
   type ILogger,
   noopLogger,
 

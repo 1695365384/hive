@@ -1,7 +1,7 @@
 /**
  * Server 实现
  *
- * 将 Agent、数据库、定时任务引擎、插件、Channel 注册表、消息总线订阅、心跳调度
+ * 将 Agent、数据库、定时任务引擎、插件、Channel 注册表、流式事件回调、心跳调度
  * 收拢到一个统一的 Server 实例中。
  */
 
@@ -22,11 +22,18 @@ import {
   type ScheduleEngine,
   type WorkspaceManager,
 } from '../index.js';
-import { MessageBus } from '../bus/MessageBus.js';
 import { noopLogger } from '../types/logger.js';
 import { ChannelContext } from './ChannelContext.js';
 import { setSendFileCallback } from '../tools/built-in/send-file-tool.js';
-import type { Server, ServerOptions, ServerHeartbeatConfig } from './types.js';
+import type {
+  Server,
+  ServerOptions,
+  ServerHeartbeatConfig,
+  StreamingEventUnion,
+  StreamingHandler,
+  FileEvent,
+  FileHandler,
+} from './types.js';
 
 // ============================================
 // 工具日志格式化
@@ -73,7 +80,6 @@ function truncate(str: string, max: number): string {
 
 class ServerImpl implements Server {
   readonly agent: Agent;
-  readonly bus: MessageBus;
   readonly logger: ILogger;
 
   private channelContext: ChannelContext;
@@ -83,21 +89,25 @@ class ServerImpl implements Server {
   private started = false;
   private dbManager: ReturnType<typeof createDatabase> | undefined;
   private activeAbortControllers: Map<string, AbortController> = new Map();
+  private streamingHandlers: Set<StreamingHandler> = new Set();
+  private fileHandlers: Set<FileHandler> = new Set();
 
   /** WorkspaceManager — 由 createServer() 创建，在 start() 中初始化 */
   _workspaceManager: WorkspaceManager | undefined;
 
   constructor(
     agent: Agent,
-    bus: MessageBus,
     logger: ILogger,
     channelContext: ChannelContext,
   ) {
     this.agent = agent;
-    this.bus = bus;
     this.logger = logger;
     this.channelContext = channelContext;
   }
+
+  // ============================================
+  // Server 接口实现
+  // ============================================
 
   getChannel(id: string): IChannel | undefined {
     return this.channelContext.get(id);
@@ -106,6 +116,41 @@ class ServerImpl implements Server {
   registerChannel(channel: IChannel): void {
     this.channelContext.register(channel);
   }
+
+  handleMessage(message: ChannelMessage): void {
+    this.dispatchToAgent(message).catch((error) => {
+      this.logger.error('[server] handleMessage failed:', error);
+    });
+  }
+
+  abort(sessionId: string): void {
+    const controller = this.activeAbortControllers.get(sessionId);
+    if (controller) {
+      controller.abort();
+      this.agent.taskManager.abortAll();
+      this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
+    }
+  }
+
+  onStreamingEvent(handler: StreamingHandler): () => void {
+    this.streamingHandlers.add(handler);
+    return () => this.streamingHandlers.delete(handler);
+  }
+
+  onFileEvent(handler: FileHandler): () => void {
+    this.fileHandlers.add(handler);
+    return () => this.fileHandlers.delete(handler);
+  }
+
+  emitFileEvent(event: FileEvent): void {
+    for (const handler of this.fileHandlers) {
+      try { handler(event); } catch (e) { this.logger.error('[server] FileHandler error:', e); }
+    }
+  }
+
+  // ============================================
+  // 生命周期
+  // ============================================
 
   async start(): Promise<void> {
     if (this.started) return;
@@ -126,12 +171,11 @@ class ServerImpl implements Server {
     for (const plugin of this.plugins) {
       try {
         await plugin.initialize(
-          this.bus,
+          (msg) => this.handleMessage(msg),
           this.logger,
           (channel: IChannel) => {
             this.logger.info(`[server] Channel registered: ${channel.id}`);
             this.channelContext.register(channel);
-            this.bus.emit(`channel:registered`, channel);
           },
           this._workspaceManager
             ? { workspaceDir: this._workspaceManager.getRootPath() }
@@ -152,37 +196,6 @@ class ServerImpl implements Server {
     if (this._heartbeatConfig) {
       this.startHeartbeat();
     }
-
-    // 订阅消息处理器
-    this.subscribeMessageHandler();
-    this.subscribeAbortHandler();
-    this.subscribeScheduleHandlers();
-
-    // 订阅 message:response 推送到 channel
-    this.bus.subscribe('message:response', async (event: { payload: unknown }) => {
-      const { channelId, chatId, content, type, filePath } = event.payload as {
-        channelId?: string;
-        chatId?: string;
-        content: string;
-        type?: string;
-        filePath?: string;
-      };
-
-      if (!channelId || !chatId) return;
-
-      const channel = this.channelContext.get(channelId);
-      if (!channel) {
-        this.logger.debug(`[message:response] No channel found for ${channelId}, skipping`);
-        return;
-      }
-
-      try {
-        await channel.send({ to: chatId, content, type: (type || 'markdown') as 'text' | 'markdown', filePath });
-        this.logger.info(`[message:response] Pushed to channel ${channelId} chat ${chatId}`);
-      } catch (error) {
-        this.logger.error(`[message:response] Failed to push to channel ${channelId}:`, error);
-      }
-    });
 
     // 激活插件
     for (const plugin of this.plugins) {
@@ -247,9 +260,9 @@ class ServerImpl implements Server {
       }
     }
 
-    // 释放 MessageBus 所有订阅
-    this.bus.clear();
-    this.logger.info('[server] MessageBus cleared');
+    // 清理回调
+    this.streamingHandlers.clear();
+    this.fileHandlers.clear();
 
     this.logger.info('[server] Stopped.');
   }
@@ -282,6 +295,189 @@ class ServerImpl implements Server {
     this._scheduleEngineConfig = options.config.scheduleEngine;
   }
 
+  // ============================================
+  // 流式事件发射
+  // ============================================
+
+  private emitStreaming(event: StreamingEventUnion): void {
+    for (const handler of this.streamingHandlers) {
+      try { handler(event); } catch (e) { this.logger.error('[server] StreamingHandler error:', e); }
+    }
+  }
+
+  // ============================================
+  // Channel 消息推送
+  // ============================================
+
+  private async pushToChannel(
+    channelId: string | undefined,
+    chatId: string | undefined,
+    content: string,
+    type: string,
+    filePath?: string,
+  ): Promise<void> {
+    if (!channelId || !chatId) return;
+
+    const channel = this.channelContext.get(channelId);
+    if (!channel) {
+      this.logger.debug(`[message:response] No channel found for ${channelId}, skipping`);
+      return;
+    }
+
+    try {
+      await channel.send({ to: chatId, content, type: (type || 'markdown') as 'text' | 'markdown', filePath });
+      this.logger.info(`[message:response] Pushed to channel ${channelId} chat ${chatId}`);
+    } catch (error) {
+      this.logger.error(`[message:response] Failed to push to channel ${channelId}:`, error);
+    }
+  }
+
+  // ============================================
+  // 消息分发（原 subscribeMessageHandler）
+  // ============================================
+
+  private async dispatchToAgent(channelMessage: ChannelMessage): Promise<void> {
+    this.logger.info(`[server] Message received, dispatching to agent: ${channelMessage.content.slice(0, 50)}`);
+
+    const channelId = channelMessage.metadata?.channelId as string | undefined;
+    const recipientId = channelMessage.to?.id ?? crypto.randomUUID();
+
+    // Session key = channelId:recipientId — 隔离不同通道的会话
+    const sessionKey = channelId ? `${channelId}:${recipientId}` : recipientId;
+
+    // 注册 session → channel 映射
+    if (channelId && channelMessage.to?.id) {
+      this.channelContext.setSession(sessionKey, channelId, channelMessage.to.id);
+    }
+
+    const replyType = channelMessage.type === 'card' ? 'card' : 'markdown';
+
+    // 注入 send_file 回调
+    if (channelId && this.channelContext.get(channelId)) {
+      const sendChannelId = channelId;
+      const sendChatId = recipientId;
+      setSendFileCallback(async (filePath: string) => {
+        const channel = this.channelContext.get(sendChannelId)!;
+        if (!channel.capabilities.sendFile) {
+          return { success: false, error: `Channel ${sendChannelId} does not support file sending` };
+        }
+        try {
+          const result = await channel.send({ to: sendChatId, content: '', filePath, type: 'file' });
+          return { success: result.success, error: result.error };
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      });
+    }
+
+    try {
+      const abortController = new AbortController();
+      this.activeAbortControllers.set(sessionKey, abortController);
+
+      // 订阅 Worker 事件并转发到流式回调
+      const workerHookIds: string[] = [];
+
+      workerHookIds.push(
+        this.agent.context.hookRegistry.on('worker:start', (ctx: any) => {
+          this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} started${ctx.description ? `: ${ctx.description}` : ''}`);
+          this.emitStreaming({ sessionId: sessionKey, type: 'worker-start', workerId: ctx.workerId, workerType: ctx.workerType, description: ctx.description });
+          return { proceed: true };
+        }),
+      );
+
+      workerHookIds.push(
+        this.agent.context.hookRegistry.on('worker:tool-call', (ctx: any) => {
+          this.logger.info(`[agent] [worker:${ctx.workerId}] [tool] ${ctx.toolName}`);
+          this.emitStreaming({ sessionId: sessionKey, type: 'tool-call', workerId: ctx.workerId, workerType: ctx.workerType, tool: ctx.toolName, input: ctx.input });
+          return { proceed: true };
+        }),
+      );
+
+      workerHookIds.push(
+        this.agent.context.hookRegistry.on('worker:tool-result', (ctx: any) => {
+          this.emitStreaming({ sessionId: sessionKey, type: 'tool-result', workerId: ctx.workerId, workerType: ctx.workerType, tool: ctx.toolName, output: ctx.output });
+          return { proceed: true };
+        }),
+      );
+
+      workerHookIds.push(
+        this.agent.context.hookRegistry.on('worker:reasoning', (ctx: any) => {
+          this.emitStreaming({ sessionId: sessionKey, type: 'reasoning', text: ctx.text });
+          return { proceed: true };
+        }),
+      );
+
+      workerHookIds.push(
+        this.agent.context.hookRegistry.on('worker:complete', (ctx: any) => {
+          const status = ctx.success ? 'completed' : 'failed';
+          this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} ${status} (${ctx.duration}ms)${ctx.error ? ` — ${ctx.error}` : ''}`);
+          this.emitStreaming({ sessionId: sessionKey, type: 'worker-complete', workerId: ctx.workerId, workerType: ctx.workerType, success: ctx.success, error: ctx.error, duration: ctx.duration });
+          return { proceed: true };
+        }),
+      );
+
+      // Notify streaming subscribers that execution has started
+      this.emitStreaming({ sessionId: sessionKey, type: 'start' });
+
+      try {
+        const result = await this.agent.dispatch(channelMessage.content, {
+          chatId: sessionKey,
+          abortSignal: abortController.signal,
+          onPhase: (phase, message) => {
+            this.logger.info(`[agent] [${phase}] ${message}`);
+          },
+          onReasoning: (text) => {
+            this.emitStreaming({ sessionId: sessionKey, type: 'reasoning', text });
+          },
+          onText: (text) => {
+            this.emitStreaming({ sessionId: sessionKey, type: 'text-delta', text });
+          },
+          onTool: (tool, input) => {
+            const summary = formatToolInput(tool, input);
+            this.logger.info(`[agent] [tool] ${tool} ${summary}`);
+            this.emitStreaming({ sessionId: sessionKey, type: 'tool-call', tool, input });
+          },
+          onToolResult: (tool, output) => {
+            const summary = formatToolResult(tool, output);
+            this.logger.info(`[agent] [tool-result] ${tool} → ${summary}`);
+            this.emitStreaming({ sessionId: sessionKey, type: 'tool-result', tool, output });
+          },
+        });
+
+        // 优先使用 finalText（最后一次工具调用后的文本）
+        const replyText = (result as any).finalText
+          || result.text
+          || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`);
+
+        this.logger.info(`[agent] completed (${result.duration}ms)`);
+        this.logger.info(`[agent] [response] ${replyText}`);
+
+        await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, replyText, replyType);
+
+        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: !abortController.signal.aborted, cancelled: abortController.signal.aborted });
+
+        this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
+      } finally {
+        for (const hookId of workerHookIds) {
+          this.agent.context.hookRegistry.off(hookId);
+        }
+        this.activeAbortControllers.delete(sessionKey);
+      }
+    } catch (error) {
+      this.logger.error(`[server] Agent workflow failed:`, error);
+      const errorMsg = error instanceof Error ? error.message : '未知错误';
+
+      await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, `处理失败：${errorMsg}`, replyType);
+
+      const isAborted = error instanceof DOMException && error.name === 'AbortError';
+      this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: false, cancelled: isAborted, error: errorMsg });
+    }
+  }
+
+  // ============================================
+  // ScheduleEngine（修复死代码：直接调用替代 bus.emit）
+  // ============================================
+
   private async initScheduleEngine(): Promise<void> {
     try {
       const { resolve } = await import('path');
@@ -295,10 +491,9 @@ class ServerImpl implements Server {
         this.logger.info(`[scheduler] Executing schedule: ${task.name}`);
         try {
           const result = (await this.agent.dispatch(task.prompt, { chatId: undefined })).text;
-          const sessionId = this.agent.context.hookRegistry.getSessionId();
-          this.logger.info(`[scheduler] Schedule "${task.name}" completed, session: ${sessionId}`);
+          this.logger.info(`[scheduler] Schedule "${task.name}" completed`);
 
-          this.bus.emit('schedule:completed', {
+          this.handleScheduleCompleted({
             scheduleId: task.id,
             result,
             status: 'success',
@@ -307,12 +502,12 @@ class ServerImpl implements Server {
             scheduleName: task.name,
           });
 
-          return { sessionId, success: true };
+          return { sessionId: '', success: true };
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
           this.logger.error(`[scheduler] Schedule "${task.name}" failed: ${msg}`);
 
-          this.bus.emit('schedule:completed', {
+          this.handleScheduleCompleted({
             scheduleId: task.id,
             result: undefined,
             status: 'failed',
@@ -327,7 +522,6 @@ class ServerImpl implements Server {
         onCircuitBreak: this._scheduleEngineConfig?.onCircuitBreak
           ? (event) => {
               this.logger.warn(`[schedule:circuit-break] Task "${event.name}" paused after ${event.consecutiveErrors} consecutive failures`);
-              this.bus.emit('schedule:circuit-break', event);
               this._scheduleEngineConfig!.onCircuitBreak!(event);
             }
           : undefined,
@@ -343,277 +537,48 @@ class ServerImpl implements Server {
     }
   }
 
+  /** 处理定时任务完成通知（原 subscribeScheduleHandlers 逻辑） */
+  private handleScheduleCompleted(payload: {
+    scheduleId: string;
+    result?: string;
+    status: 'success' | 'failed';
+    consecutiveErrors: number;
+    notifyConfig?: { mode: string; channel?: string; to?: string; bestEffort?: boolean };
+    scheduleName: string;
+  }): void {
+    if (!payload.notifyConfig || payload.notifyConfig.mode === 'none') return;
+    if (payload.notifyConfig.mode !== 'announce') return;
+
+    const target = this.channelContext.resolveNotifyTarget(payload.notifyConfig, payload.scheduleId);
+
+    if (!target) {
+      if (payload.notifyConfig.bestEffort) {
+        this.logger.info(`[schedule:notify] Target not found, bestEffort skip: ${payload.scheduleName}`);
+        return;
+      }
+      this.logger.warn(`[schedule:notify] Target not found for: ${payload.scheduleName}`);
+      return;
+    }
+
+    const statusEmoji = payload.status === 'success' ? '✅' : '❌';
+    const content = `${statusEmoji} 定时任务「${payload.scheduleName}」执行${payload.status === 'success' ? '成功' : '失败'}\n${payload.result ? `\n${payload.result}` : ''}`;
+
+    this.pushToChannel(target.channelId, target.chatId, content, 'markdown').catch(() => {});
+    this.logger.info(`[schedule:notify] Pushed result to ${target.channelId}/${target.chatId}: ${payload.scheduleName}`);
+  }
+
+  // ============================================
+  // Heartbeat
+  // ============================================
+
   private startHeartbeat(): void {
     const config = this._heartbeatConfig!;
     this.heartbeatScheduler = new HeartbeatScheduler({
       agent: this.agent,
       config: { intervalMs: config.intervalMs, model: config.model, prompt: config.prompt },
-      bus: this.bus,
       logger: this.logger,
     });
     this.heartbeatScheduler.start();
-  }
-
-  private subscribeMessageHandler(): void {
-    this.bus.subscribe('message:received', async (message: { payload: unknown }) => {
-      const channelMessage = message.payload as ChannelMessage;
-      this.logger.info(`[server] Message received, dispatching to agent: ${channelMessage.content.slice(0, 50)}`);
-
-      const channelId = channelMessage.metadata?.channelId as string | undefined;
-      const recipientId = channelMessage.to?.id ?? crypto.randomUUID();
-
-      // Session key = channelId:recipientId — 隔离不同通道的会话
-      // Note: when channelId is absent, sessionKey falls back to recipientId alone.
-      // This means two channelId-less sources with the same recipientId would share
-      // session history. Acceptable since all current channels always provide channelId.
-      const sessionKey = channelId ? `${channelId}:${recipientId}` : recipientId;
-
-      // 注册 session → channel 映射（用于 schedule notify 等场景路由）
-      if (channelId && channelMessage.to?.id) {
-        this.channelContext.setSession(sessionKey, channelId, channelMessage.to.id);
-      }
-
-      const replyType = channelMessage.type === 'card' ? 'card' : 'markdown';
-
-      // 注入 send_file 回调，让 Agent 能通过工具发送文件到当前会话
-      if (channelId && this.channelContext.get(channelId)) {
-        const sendChannelId = channelId;
-        const sendChatId = recipientId;
-        setSendFileCallback(async (filePath: string) => {
-          const channel = this.channelContext.get(sendChannelId)!;
-          if (!channel.capabilities.sendFile) {
-            return { success: false, error: `Channel ${sendChannelId} does not support file sending` };
-          }
-          try {
-            const result = await channel.send({ to: sendChatId, content: '', filePath, type: 'file' });
-            return { success: result.success, error: result.error };
-          } catch (error) {
-            return { success: false, error: error instanceof Error ? error.message : String(error) };
-          }
-        });
-      }
-
-      try {
-        const abortController = new AbortController();
-        this.activeAbortControllers.set(sessionKey, abortController);
-
-        // 订阅 Worker 事件并转发到 bus（Coordinator + Worker 模式）
-        const workerHookIds: string[] = [];
-
-        workerHookIds.push(
-          this.agent.context.hookRegistry.on('worker:start', (ctx: any) => {
-            this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} started${ctx.description ? `: ${ctx.description}` : ''}`);
-            this.bus.publish('agent:streaming', {
-              sessionId: sessionKey,
-              type: 'worker-start',
-              workerId: ctx.workerId,
-              workerType: ctx.workerType,
-              description: ctx.description,
-            });
-            return { proceed: true };
-          }),
-        );
-
-        workerHookIds.push(
-          this.agent.context.hookRegistry.on('worker:tool-call', (ctx: any) => {
-            this.logger.info(`[agent] [worker:${ctx.workerId}] [tool] ${ctx.toolName}`);
-            this.bus.publish('agent:streaming', {
-              sessionId: sessionKey,
-              type: 'tool-call',
-              workerId: ctx.workerId,
-              workerType: ctx.workerType,
-              tool: ctx.toolName,
-              input: ctx.input,
-            });
-            return { proceed: true };
-          }),
-        );
-
-        workerHookIds.push(
-          this.agent.context.hookRegistry.on('worker:tool-result', (ctx: any) => {
-            this.bus.publish('agent:streaming', {
-              sessionId: sessionKey,
-              type: 'tool-result',
-              workerId: ctx.workerId,
-              workerType: ctx.workerType,
-              tool: ctx.toolName,
-              output: ctx.output,
-            });
-            return { proceed: true };
-          }),
-        );
-
-        workerHookIds.push(
-          this.agent.context.hookRegistry.on('worker:reasoning', (ctx: any) => {
-            this.bus.publish('agent:streaming', {
-              sessionId: sessionKey,
-              type: 'reasoning',
-              workerId: ctx.workerId,
-              text: ctx.text,
-            });
-            return { proceed: true };
-          }),
-        );
-
-        workerHookIds.push(
-          this.agent.context.hookRegistry.on('worker:complete', (ctx: any) => {
-            const status = ctx.success ? 'completed' : 'failed';
-            this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} ${status} (${ctx.duration}ms)${ctx.error ? ` — ${ctx.error}` : ''}`);
-            this.bus.publish('agent:streaming', {
-              sessionId: sessionKey,
-              type: 'worker-complete',
-              workerId: ctx.workerId,
-              workerType: ctx.workerType,
-              success: ctx.success,
-              error: ctx.error,
-              duration: ctx.duration,
-            });
-            return { proceed: true };
-          }),
-        );
-
-        // Notify streaming subscribers that execution has started
-        this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'start' });
-
-        try {
-          const result = await this.agent.dispatch(channelMessage.content, {
-            chatId: sessionKey,
-            abortSignal: abortController.signal,
-            onPhase: (phase, message) => {
-              this.logger.info(`[agent] [${phase}] ${message}`);
-            },
-            onReasoning: (text) => {
-              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'reasoning', text });
-            },
-            onText: (text) => {
-              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'text-delta', text });
-            },
-            onTool: (tool, input) => {
-              const summary = formatToolInput(tool, input);
-              this.logger.info(`[agent] [tool] ${tool} ${summary}`);
-              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'tool-call', tool, input });
-            },
-            onToolResult: (tool, output) => {
-              const summary = formatToolResult(tool, output);
-              this.logger.info(`[agent] [tool-result] ${tool} → ${summary}`);
-              this.bus.publish('agent:streaming', { sessionId: sessionKey, type: 'tool-result', tool, output });
-            },
-          });
-
-          // 优先使用 finalText（最后一次工具调用后的文本），避免非桌面端收到叙述文本
-          const replyText = (result as any).finalText
-            || result.text
-            || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`);
-
-          this.logger.info(`[agent] completed (${result.duration}ms)`);
-          this.logger.info(`[agent] [response] ${replyText}`);
-
-          this.bus.publish('message:response', {
-            channelId: channelMessage.metadata?.channelId,
-            chatId: channelMessage.to?.id,
-            replyTo: channelMessage.id,
-            content: replyText,
-            type: replyType,
-          });
-
-          // Notify streaming subscribers of completion
-          this.bus.publish('agent:streaming', {
-            sessionId: sessionKey,
-            type: 'complete',
-            success: !abortController.signal.aborted,
-          });
-
-          this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
-        } finally {
-          // 清理 Worker 事件订阅
-          for (const hookId of workerHookIds) {
-            this.agent.context.hookRegistry.off(hookId);
-          }
-          this.activeAbortControllers.delete(sessionKey);
-        }
-      } catch (error) {
-        this.logger.error(`[server] Agent workflow failed:`, error);
-        const errorMsg = error instanceof Error ? error.message : '未知错误';
-
-        this.bus.publish('message:response', {
-          channelId: channelMessage.metadata?.channelId,
-          chatId: channelMessage.to?.id,
-          replyTo: channelMessage.id,
-          content: `处理失败：${errorMsg}`,
-          type: replyType,
-        });
-
-        // Notify streaming subscribers of error
-        this.bus.publish('agent:streaming', {
-          sessionId: sessionKey,
-          type: 'complete',
-          success: false,
-          error: errorMsg,
-        });
-      }
-    });
-  }
-
-  private subscribeAbortHandler(): void {
-    this.bus.subscribe('agent:abort', async (message: { payload: unknown }) => {
-      const { sessionId } = message.payload as { sessionId: string };
-      const controller = this.activeAbortControllers.get(sessionId);
-      if (controller) {
-        controller.abort();
-        // 同时中止所有活跃 Worker
-        this.agent.taskManager.abortAll();
-        this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
-      }
-    });
-  }
-
-  private subscribeScheduleHandlers(): void {
-    this.bus.subscribe('schedule:completed', async (event: { payload: unknown }) => {
-      const payload = event.payload as {
-        scheduleId: string;
-        result?: string;
-        status: 'success' | 'failed';
-        consecutiveErrors: number;
-        notifyConfig?: { mode: string; channel?: string; to?: string; bestEffort?: boolean };
-        scheduleName: string;
-      };
-
-      if (!payload.notifyConfig || payload.notifyConfig.mode === 'none') return;
-      if (payload.notifyConfig.mode !== 'announce') return;
-
-      const target = this.channelContext.resolveNotifyTarget(payload.notifyConfig, payload.scheduleId);
-
-      if (!target) {
-        if (payload.notifyConfig.bestEffort) {
-          this.logger.info(`[schedule:notify] Target not found, bestEffort skip: ${payload.scheduleName}`);
-          return;
-        }
-        this.logger.warn(`[schedule:notify] Target not found for: ${payload.scheduleName}`);
-        return;
-      }
-
-      const statusEmoji = payload.status === 'success' ? '✅' : '❌';
-      const content = `${statusEmoji} 定时任务「${payload.scheduleName}」执行${payload.status === 'success' ? '成功' : '失败'}\n${payload.result ? `\n${payload.result}` : ''}`;
-
-      this.bus.publish('message:response', {
-        channelId: target.channelId,
-        chatId: target.chatId,
-        content,
-        type: 'markdown',
-      });
-
-      this.logger.info(`[schedule:notify] Pushed result to ${target.channelId}/${target.chatId}: ${payload.scheduleName}`);
-    });
-
-    this.bus.subscribe('schedule:circuit-break', async (event: { payload: unknown }) => {
-      const payload = event.payload as {
-        scheduleId: string;
-        name: string;
-        consecutiveErrors: number;
-      };
-
-      this.logger.warn(`[schedule:circuit-break] Task "${payload.name}" paused after ${payload.consecutiveErrors} consecutive failures`);
-    });
   }
 }
 
@@ -624,12 +589,11 @@ class ServerImpl implements Server {
 /**
  * 创建 Server 实例
  *
- * 统一的入口，将 Agent、数据库、定时任务引擎、插件、Channel、消息总线、心跳
+ * 统一的入口，将 Agent、数据库、定时任务引擎、插件、Channel、心跳
  * 收拢到一个 Server 实例中。调用 `start()` 启动，`stop()` 停止。
  */
 export function createServer(options: ServerOptions): Server {
   const logger = options.logger ?? noopLogger;
-  const bus = options.bus ?? new MessageBus();
   const channelContext = new ChannelContext();
 
   // 创建 WorkspaceManager 并在 start() 时初始化
@@ -645,10 +609,7 @@ export function createServer(options: ServerOptions): Server {
   if (dbPath) {
     scanEnvironment(dbPath)
       .then(async () => {
-        // Phase 2 完成后，读取 category 摘要注入 environmentContext
-        // native-app 类别附带示例应用名，帮助 agent 映射用户查询
         try {
-          // Note: dynamic import is cached by Node.js — this is not a redundant load
           const Database = (await import('better-sqlite3')).default;
           const db = new Database(dbPath, { readonly: true });
           try {
@@ -656,7 +617,6 @@ export function createServer(options: ServerOptions): Server {
               'SELECT category, COUNT(*) as count FROM env_tools GROUP BY category ORDER BY count DESC',
             ).all() as Array<{ category: string; count: number }>;
 
-            // 获取 native-app 的示例应用名
             const nativeAppNames = db.prepare(
               'SELECT name FROM env_tools WHERE category = ? ORDER BY name LIMIT 8',
             ).all('native-app') as Array<{ name: string }>;
@@ -695,7 +655,7 @@ export function createServer(options: ServerOptions): Server {
     agent.context.runner.getToolRegistry().setEnvDbProvider(() => dbPath);
   }
 
-  const server = new ServerImpl(agent, bus, logger, channelContext);
+  const server = new ServerImpl(agent, logger, channelContext);
   server.setOptions(options);
   server._workspaceManager = workspaceManager;
   return server;

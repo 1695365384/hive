@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FeishuChannel } from '../src/channel.js'
-import type { IMessageBus, ILogger } from '@bundy-lmw/hive-core'
+import type { ILogger } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK - use vi.hoisted for proper hoisting
 const { mockCreate, mockReply } = vi.hoisted(() => {
@@ -49,7 +49,7 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
 
 describe('FeishuChannel', () => {
   let channel: FeishuChannel
-  let mockMessageBus: IMessageBus
+  let mockMessageHandler: ReturnType<typeof vi.fn>
   let mockLogger: ILogger
 
   const testConfig = {
@@ -59,12 +59,7 @@ describe('FeishuChannel', () => {
   }
 
   beforeEach(() => {
-    mockMessageBus = {
-      emit: vi.fn(),
-      subscribe: vi.fn().mockReturnValue('sub_123'),
-      unsubscribe: vi.fn(),
-      publish: vi.fn(),
-    }
+    mockMessageHandler = vi.fn()
 
     mockLogger = {
       debug: vi.fn(),
@@ -73,7 +68,7 @@ describe('FeishuChannel', () => {
       error: vi.fn(),
     }
 
-    channel = new FeishuChannel(testConfig, mockMessageBus, mockLogger)
+    channel = new FeishuChannel(testConfig, mockMessageHandler, mockLogger)
   })
 
   afterEach(() => {
@@ -215,7 +210,7 @@ describe('FeishuChannel', () => {
       )
 
       expect(result).toEqual({ code: 0, msg: 'success' })
-      expect(mockMessageBus.publish).toHaveBeenCalled()
+      expect(mockMessageHandler).toHaveBeenCalled()
     })
 
     it('should ignore non-message events', async () => {

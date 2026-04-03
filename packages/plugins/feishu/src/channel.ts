@@ -14,7 +14,7 @@ import type {
   ChannelCapabilities,
   ChannelSendOptions,
   ChannelSendResult,
-  IMessageBus,
+  MessageHandler,
   ILogger,
   ChannelMessage,
 } from '@bundy-lmw/hive-core'
@@ -59,18 +59,18 @@ export class FeishuChannel implements IFeishuChannel {
   private wsClient: lark.WSClient
   /** 事件分发器 */
   private dispatcher: lark.EventDispatcher
-  private messageBus: IMessageBus
+  private messageHandler: MessageHandler
   private logger: ILogger
   private config: FeishuAppConfig
   /** 文件接收存储目录 */
   private readonly receivedDir: string
 
-  constructor(config: FeishuAppConfig, messageBus: IMessageBus, logger: ILogger, workspaceDir?: string | null) {
+  constructor(config: FeishuAppConfig, messageHandler: MessageHandler, logger: ILogger, workspaceDir?: string | null) {
     this.appId = config.appId
     this.id = `feishu:${config.appId}`
     this.name = `Feishu Channel (${config.appId.slice(0, 8)})`
     this.config = config
-    this.messageBus = messageBus
+    this.messageHandler = messageHandler
     this.logger = logger
 
     // HTTP API 客户端（发消息用）
@@ -278,7 +278,7 @@ export class FeishuChannel implements IFeishuChannel {
         `[FeishuChannel] [WS] Received message from ${message.from.id}: ${message.content.slice(0, 50)}`
       )
 
-      this.messageBus.publish(`channel:${this.id}:message:received`, message)
+      this.messageHandler(message)
     }
   }
 
@@ -349,7 +349,7 @@ export class FeishuChannel implements IFeishuChannel {
         `[FeishuChannel] [Webhook] Received message from ${message.from.id}: ${message.content.slice(0, 50)}`
       )
 
-      this.messageBus.publish(`channel:${this.id}:message:received`, message)
+      this.messageHandler(message)
     }
   }
 
