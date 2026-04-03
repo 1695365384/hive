@@ -1,12 +1,41 @@
 /**
  * Token 计数器
  *
- * 提供基于字符估算的 Token 计数功能
+ * 提供 CJK 感知的 Token 计数功能。
+ *
+ * 为什么需要 CJK 感知：
+ *   - 英文/代码：约 4 个字符 = 1 token（chars / 4）
+ *   - 中日韩字符：约 1 个字符 = 1~1.5 tokens（比英文密度更高）
+ *   - 混合文本：按字符类型分段估算，精度远优于统一除以 4
  */
 
 import type { Message } from '../session/types.js';
 import type { TokenCounter, TokenCounterConfig, CompressionConfig } from './types.js';
 import { DEFAULT_TOKEN_COUNTER_CONFIG } from './types.js';
+
+// CJK Unicode 区间（基础 + 扩展 A/B + 兼容）
+const CJK_REGEX = /[\u2E80-\u2EFF\u2F00-\u2FDF\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\u3100-\u312F\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA48F\uF900-\uFAFF\uFE30-\uFE4F]/g;
+
+/**
+ * CJK 感知的 Token 数估算
+ *
+ * 策略：
+ *   1. 统计文本中 CJK 字符数量
+ *   2. CJK 字符按 1 char = 1.3 tokens 计算（保守估计）
+ *   3. 非 CJK 字符按 4 chars = 1 token 计算
+ *   4. 叠加安全系数
+ */
+function estimateTokensCJKAware(text: string, safetyFactor: number): number {
+  if (!text) return 0;
+
+  const cjkMatches = text.match(CJK_REGEX);
+  const cjkCount = cjkMatches ? cjkMatches.length : 0;
+  const nonCjkCount = text.length - cjkCount;
+
+  // CJK: ~1.3 tokens/char; 非 CJK (含 ASCII + 空格): ~0.25 tokens/char (= chars/4)
+  const rawTokens = cjkCount * 1.3 + nonCjkCount * 0.25;
+  return Math.ceil(rawTokens * safetyFactor);
+}
 
 /**
  * Token 计数器实现
@@ -22,18 +51,13 @@ export class SimpleTokenCounter implements TokenCounter {
   }
 
   /**
-   * 计算文本的 Token 数
+   * 计算文本的 Token 数（CJK 感知）
    */
   count(text: string): number {
     if (!text) {
       return 0;
     }
-
-    // 基本估算：字符数 / 每 Token 字符数
-    const baseEstimate = Math.ceil(text.length / this.charsPerToken);
-
-    // 应用安全系数
-    return Math.ceil(baseEstimate * this.safetyFactor);
+    return estimateTokensCJKAware(text, this.safetyFactor);
   }
 
   /**

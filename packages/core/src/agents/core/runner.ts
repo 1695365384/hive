@@ -16,6 +16,99 @@ import { getPromptTemplate } from '../prompts/PromptTemplate.js';
 import { ToolRegistry, type AgentType as ToolAgentType } from '../../tools/tool-registry.js';
 
 // ============================================
+// Timeout + AbortSignal 工具函数
+// ============================================
+
+/**
+ * 将超时时间和外部 AbortSignal 合并，统一处理取消逻辑。
+ *
+ * 返回一个组合后的 AbortSignal 和清理函数，调用方须在 finally 块中调用 cleanup()
+ * 以防止计时器泄漏。
+ *
+ * @param timeout   可选超时时间（毫秒），未提供时只合并信号
+ * @param external  可选外部 AbortSignal（如父 Agent 传入）
+ * @returns         { signal, cleanup }
+ */
+export function buildAbortSignal(
+  timeout?: number,
+  external?: AbortSignal,
+): { signal: AbortSignal | undefined; cleanup: () => void } {
+  const controllers: AbortController[] = [];
+  const timers: ReturnType<typeof setTimeout>[] = [];
+
+  if (!timeout && !external) {
+    return { signal: undefined, cleanup: () => {} };
+  }
+
+  const signals: AbortSignal[] = [];
+
+  if (external) {
+    signals.push(external);
+  }
+
+  if (timeout) {
+    const controller = new AbortController();
+    controllers.push(controller);
+    const timer = setTimeout(() => {
+      controller.abort(new Error(`Sub-agent timed out after ${timeout}ms`));
+    }, timeout);
+    timers.push(timer);
+    signals.push(controller.signal);
+  }
+
+  const signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+  const cleanup = () => {
+    for (const t of timers) clearTimeout(t);
+  };
+
+  return { signal, cleanup };
+}
+
+/**
+ * 使用统一超时逻辑执行异步函数，超时或外部中止时返回错误结果。
+ *
+ * 当 timeout 有值时，使用 Promise.race 竞争——确保超时 Promise 能抢先 resolve，
+ * 即使底层操作（如 mock runtime）不检查 AbortSignal。
+ */
+export async function withAbortAndTimeout<T extends AgentResult>(
+  fn: (signal: AbortSignal | undefined) => Promise<T>,
+  options: { timeout?: number; abortSignal?: AbortSignal; onError?: (err: Error) => void },
+  errorFactory: (msg: string) => T,
+): Promise<T> {
+  const { signal, cleanup } = buildAbortSignal(options.timeout, options.abortSignal);
+  try {
+    if (options.timeout) {
+      // Race between the operation and a timeout rejection
+      const timeoutController = new AbortController();
+      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutTimer = setTimeout(() => {
+          timeoutController.abort();
+          reject(new Error(`Sub-agent timed out after ${options.timeout}ms`));
+        }, options.timeout);
+      });
+      try {
+        const result = await Promise.race([fn(signal), timeoutPromise]);
+        return result;
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        options.onError?.(err);
+        return errorFactory(err.message);
+      } finally {
+        if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+      }
+    }
+    return await fn(signal);
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    options.onError?.(err);
+    return errorFactory(err.message);
+  } finally {
+    cleanup();
+  }
+}
+
+// ============================================
 // Task 类型定义
 // ============================================
 
@@ -182,43 +275,14 @@ export class AgentRunner {
       tools: this.toolRegistry.getToolsForAgent(agentConfig.type as ToolAgentType),
     };
 
-    // 支持 timeout + abortSignal 联动
-    if (options?.timeout) {
-      const controller = new AbortController();
-      const signals: AbortSignal[] = [controller.signal];
-      if (options?.abortSignal) signals.push(options.abortSignal);
-      runtimeConfig.abortSignal = AbortSignal.any(signals);
-
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          reject(new Error(`Sub-agent timed out after ${options.timeout}ms`));
-        }, options.timeout);
-      });
-
-      try {
-        const result = await Promise.race([
-          this.consumeStream(runtimeConfig, callbacks),
-          timeoutPromise,
-        ]);
-        return result;
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        if (options?.onError) {
-          options.onError(err);
-        }
-        return { text: '', tools: [], success: false, error: err.message };
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
-      }
-    }
-
-    if (options?.abortSignal) {
-      runtimeConfig.abortSignal = options.abortSignal;
-    }
-
-    return this.consumeStream(runtimeConfig, callbacks);
+    return withAbortAndTimeout(
+      (signal) => {
+        runtimeConfig.abortSignal = signal;
+        return this.consumeStream(runtimeConfig, callbacks);
+      },
+      { timeout: options?.timeout, abortSignal: options?.abortSignal, onError: options?.onError },
+      (msg) => ({ text: '', tools: [], success: false, error: msg }),
+    );
   }
 
   /**
@@ -282,48 +346,22 @@ export class AgentRunner {
       tools: this.toolRegistry.getToolsForAgent(config.type as ToolAgentType),
     };
 
-    if (options?.timeout) {
-      const controller = new AbortController();
-      const signals: AbortSignal[] = [controller.signal];
-      if (options?.abortSignal) signals.push(options.abortSignal);
-      runtimeConfig.abortSignal = AbortSignal.any(signals);
-
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          reject(new Error(`Sub-agent timed out after ${options.timeout}ms`));
-        }, options.timeout);
-      });
-
-      try {
-        const result = await Promise.race([
-          this.runtime.run(runtimeConfig),
-          timeoutPromise,
-        ]);
+    return withAbortAndTimeout(
+      async (signal) => {
+        runtimeConfig.abortSignal = signal;
+        const result = await this.runtime.run(runtimeConfig);
         if (!result.success) {
-          console.error(`[agent] ${config.type} agent failed: ${result.error}`)
+          console.error(`[agent] ${config.type} agent failed: ${result.error}`);
           options?.onError?.(new Error(result.error));
         }
         return this.mapToAgentResult(result);
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        console.error(`[agent] ${config.type} agent error: ${err.message}`)
-        if (options?.onError) {
-          options.onError(err);
-        }
-        return { text: '', tools: [], success: false, error: err.message };
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
-      }
-    }
-
-    const result = await this.runtime.run(runtimeConfig);
-    if (!result.success && options?.onError) {
-      console.error(`[agent] ${config.type} agent failed: ${result.error}`)
-      options.onError(new Error(result.error));
-    }
-    return this.mapToAgentResult(result);
+      },
+      { timeout: options?.timeout, abortSignal: options?.abortSignal, onError: (err) => {
+        console.error(`[agent] ${config.type} agent error: ${err.message}`);
+        options?.onError?.(err);
+      }},
+      (msg) => ({ text: '', tools: [], success: false, error: msg }),
+    );
   }
 
   /**
