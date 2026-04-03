@@ -25,7 +25,7 @@ const grepInputSchema = z.object({
   pattern: z.string().describe('Regex search pattern'),
   path: z.string().optional().describe('Directory to search in, defaults to working directory'),
   glob: z.string().optional().describe('File type filter, e.g. "*.ts", "*.tsx". Defaults to all files'),
-  maxResults: z.number().max(1000).optional().describe('Max number of results to return, default 50'),
+  maxResults: z.number().max(1000).optional().describe('Max number of results to return, default 200'),
   caseInsensitive: z.boolean().optional().describe('Case insensitive search, default false'),
 });
 
@@ -85,10 +85,10 @@ async function collectFiles(dir: string, depth: number): Promise<string[]> {
 /** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawGrepTool(): RawTool<GrepToolInput> {
   return {
-    description: 'Search file contents using regex. Returns matching file paths, line numbers, and matched lines.',
+    description: 'Search file contents using regex. Returns matching file paths, line numbers, and matched lines. Use maxResults to control output size (default 200). Increase only when broader coverage is needed.',
     inputSchema: zodSchema(grepInputSchema),
     execute: async ({ pattern, path: searchPath, glob: globFilter, maxResults, caseInsensitive }): Promise<ToolResult> => {
-      const max = maxResults ?? 50;
+      const max = maxResults ?? 200;
       const dir = resolve(searchPath || process.cwd());
 
       // 路径约束检查

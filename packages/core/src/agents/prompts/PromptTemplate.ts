@@ -8,7 +8,6 @@
  * - templates/explore.md            - Explore Agent 主模板（plan 已合并）
  * - templates/intelligent.md        - General Agent 主模板
  * - templates/compact.md            - 上下文压缩模板
- * - templates/schedule-awareness.md - 定时任务感知模板
  */
 
 import * as path from 'path';

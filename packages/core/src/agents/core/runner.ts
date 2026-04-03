@@ -12,6 +12,7 @@ import type { RuntimeConfig, RuntimeResult, StreamEvent } from '../runtime/types
 import { LLMRuntime, AGENT_PRESETS } from '../runtime/LLMRuntime.js';
 import { getAgentConfig } from './agents.js';
 import { buildExplorePrompt } from '../prompts/prompts.js';
+import { getPromptTemplate } from '../prompts/PromptTemplate.js';
 import { ToolRegistry, type AgentType as ToolAgentType } from '../../tools/tool-registry.js';
 
 // ============================================
@@ -138,8 +139,33 @@ export class AgentRunner {
 
     const preset = AGENT_PRESETS[agentConfig.type];
 
+    // Resolve system prompt: options > agentConfig > preset > template fallback
+    let baseSystem = options?.systemPrompt || agentConfig.prompt || preset?.system;
+    if (!baseSystem) {
+      const templateName = agentConfig.type === 'general' ? 'intelligent' : agentConfig.type;
+      try {
+        const isChinese = /[\u4e00-\u9fa5]/.test(prompt);
+        const languageInstruction = isChinese
+          ? '【重要】你必须用中文回复，与用户的语言保持一致。'
+          : "CRITICAL: You must respond in English, matching the user's language.";
+        const workerContext = [
+          '\n## Worker Context',
+          'You are being called as a sub-agent. Execute the task immediately — do NOT narrate your reasoning.',
+          'Call the relevant tool as your first action. No preamble like "Let me..." or "I will..."',
+          'Your output will be relayed to the user — provide complete, well-formatted results.',
+          'Do NOT add greetings, pleasantries, or "how can I help" messages.',
+        ].join('\n');
+        baseSystem = getPromptTemplate().render(templateName, {
+          task: prompt,
+          languageInstruction,
+          workerContext,
+        });
+      } catch {
+        // Template not found — continue without system prompt
+      }
+    }
+
     // Dynamically inject tool descriptions into system prompt
-    const baseSystem = options?.systemPrompt || agentConfig.prompt || preset?.system;
     const toolDescs = this.toolRegistry.getToolDescriptions(agentConfig.type as ToolAgentType);
     let system = baseSystem;
     if (toolDescs.length > 0) {
@@ -228,8 +254,18 @@ export class AgentRunner {
     console.log(`[agent] Executing ${config.type} agent: ${prompt.slice(0, 80)}${prompt.length > 80 ? '...' : ''}`)
     const preset = AGENT_PRESETS[config.type];
 
+    // Resolve system prompt: options > config > preset > template fallback
+    let baseSystem = options?.systemPrompt || config.prompt || preset?.system;
+    if (!baseSystem) {
+      const templateName = config.type === 'general' ? 'intelligent' : config.type;
+      try {
+        baseSystem = getPromptTemplate().render(templateName, { task: prompt });
+      } catch {
+        // Template not found — continue without system prompt
+      }
+    }
+
     // Dynamically inject tool descriptions into system prompt
-    const baseSystem = options?.systemPrompt || config.prompt || preset?.system;
     const toolDescs = this.toolRegistry.getToolDescriptions(config.type as ToolAgentType);
     let system = baseSystem;
     if (toolDescs.length > 0) {

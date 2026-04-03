@@ -25,6 +25,19 @@ Return a valid JSON object with exactly these fields:
 }
 ```
 
+## Field Mapping Guide
+
+- "Overview" or "Problem Statement" → `summary`
+- File paths from anywhere in the output → `keyFiles`
+- Factual discoveries, patterns, issues → `findings`
+- Next steps, action items, suggestions → `suggestions`
+
+## Phase-Specific Focus
+
+- **explore**: Prioritize preserving file paths and structural discoveries. Findings should focus on "what exists".
+- **plan**: Prioritize preserving implementation steps and dependency chains. Findings should focus on "how to do it".
+- **general**: Prioritize preserving what was changed and verification results. Findings should focus on "what was done".
+
 ## Rules
 
 1. **Preserve ALL file paths** mentioned in the raw output in `keyFiles`

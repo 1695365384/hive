@@ -32,7 +32,7 @@ interface ChatMessage {
 
 type ContentPart =
   | { type: "text"; text: string }
-  | { type: "reasoning"; text: string }
+  | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
   | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
   | { type: "worker-start"; workerId: string; workerType: string; description?: string }
   | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }
@@ -40,7 +40,7 @@ type ContentPart =
 
 type GroupedContent =
   | { type: "text"; text: string }
-  | { type: "reasoning"; text: string }
+  | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
   | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
   | { type: "worker"; workerId: string; workerType: string; description?: string; children: GroupedContent[]; status: "running" | "completed" | "failed"; duration?: number; error?: string }
   | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
@@ -162,11 +162,11 @@ export function ChatPage() {
 
   // Stable WS event handlers — useCallback ensures dedup in WsClient Set
   // across React.StrictMode double-mount cycles
-  const handleReasoning = useCallback((data: { threadId: string; text: string; seq: number }) => {
+  const handleReasoning = useCallback((data: { threadId: string; text: string; seq: number; workerId?: string; workerType?: string }) => {
     if (data.threadId !== activeThreadIdRef.current) return;
     if (data.seq <= lastReasoningSeqRef.current) return;
     lastReasoningSeqRef.current = data.seq;
-    appendPart({ type: "reasoning", text: data.text });
+    appendPart({ type: "reasoning", text: data.text, workerId: data.workerId, workerType: data.workerType });
   }, [appendPart]);
 
   const handleTextDelta = useCallback((data: { threadId: string; text: string; seq: number }) => {
@@ -461,7 +461,7 @@ function groupContentParts(parts: ContentPart[]): GroupedContent[] {
         group.error = part.error;
         activeWorkers.delete(part.workerId);
       }
-    } else if (part.type === "tool-call" || part.type === "reasoning") {
+    } else if (part.type === "tool-call") {
       const wid = "workerId" in part ? (part as { workerId?: string }).workerId : undefined;
       const group = wid ? activeWorkers.get(wid) : undefined;
       if (group) {
@@ -469,12 +469,40 @@ function groupContentParts(parts: ContentPart[]): GroupedContent[] {
       } else {
         result.push(part as GroupedContent);
       }
+    } else if (part.type === "reasoning") {
+      // Only show reasoning inside Worker blocks (has workerId).
+      // Coordinator-level reasoning is hidden — it adds no value for users.
+      const wid = "workerId" in part ? (part as { workerId?: string }).workerId : undefined;
+      if (wid) {
+        const group = activeWorkers.get(wid);
+        if (group) {
+          group.children.push(part as GroupedContent);
+        }
+      }
+      // else: silently drop Coordinator reasoning
     } else {
       result.push(part as GroupedContent);
     }
   }
 
-  return result;
+  // Merge consecutive reasoning blocks (LLM reasoning interrupted by tool events)
+  const mergeReasoning = (items: GroupedContent[]): GroupedContent[] => {
+    const merged: GroupedContent[] = [];
+    for (const item of items) {
+      const last = merged[merged.length - 1];
+      if (item.type === "reasoning" && last?.type === "reasoning") {
+        (last as { text: string }).text += (item as { text: string }).text;
+      } else if (item.type === "worker") {
+        const worker = item as GroupedContent & { type: "worker"; children: GroupedContent[] };
+        merged.push({ ...worker, children: mergeReasoning(worker.children) });
+      } else {
+        merged.push(item);
+      }
+    }
+    return merged;
+  };
+
+  return mergeReasoning(result);
 }
 
 // ============================================
@@ -686,30 +714,19 @@ function TextBlock({ text }: { text: string }) {
 }
 
 // ============================================
-// Reasoning Block (Collapsible)
+// Reasoning Block (compact inline)
 // ============================================
 
 function ReasoningBlock({ text }: { text: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-
   if (!text) return null;
 
+  // Truncate for inline display
+  const preview = text.length > 80 ? text.slice(0, 80) + "..." : text;
+
   return (
-    <div className="group">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-1 py-0.5 text-[11px] text-stone-500 hover:text-stone-400 transition-colors w-full"
-      >
-        {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        <Brain className="w-3 h-3 text-amber-500/60" />
-        <span>Thinking</span>
-        <span className="text-stone-700">· {text.length} chars</span>
-      </button>
-      {isOpen && (
-        <div className="mt-1 ml-5 pl-3 border-l border-amber-500/15">
-          <p className="text-xs text-stone-500 whitespace-pre-wrap leading-relaxed font-mono">{text}</p>
-        </div>
-      )}
+    <div className="flex items-center gap-1.5 px-1 py-0.5 text-[11px] text-stone-600">
+      <Brain className="w-3 h-3 text-amber-500/40 shrink-0" />
+      <span className="truncate italic">{preview}</span>
     </div>
   );
 }
@@ -821,8 +838,8 @@ function WorkerBlock({ workerType, description, children, status, duration, erro
 }) {
   const color = getWorkerColor(workerType);
   const isRunning = status === "running";
-  // Default open while running, closed when completed
-  const [isOpen, setIsOpen] = useState(isRunning);
+  // Always collapsed — user clicks to expand if they want details
+  const [isOpen, setIsOpen] = useState(false);
 
   const toolCount = children.filter(c => c.type === "tool-call").length;
   const timeStr = duration != null ? `${(duration / 1000).toFixed(1)}s` : "";

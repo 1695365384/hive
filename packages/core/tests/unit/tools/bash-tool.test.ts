@@ -125,14 +125,15 @@ describe('createBashTool', () => {
 
   describe('output truncation', () => {
     it('should truncate long output', async () => {
-      const longOutput = 'x'.repeat(40000);
+      const longOutput = 'x'.repeat(50000);
       mockExec.mockImplementation((cmd: string, opts: any, cb: any) => {
         cb(null, longOutput, '');
       });
       const tool = createBashTool({ allowed: true });
       const result = await tool.execute!({ command: 'cat bigfile', timeout: 5000 }, {} as any);
-      expect((result as string).length).toBeLessThan(40000);
+      expect((result as string).length).toBeLessThan(longOutput.length);
       expect(result).toContain('[Output truncated');
+      expect(result).toContain('50000 characters total');
     });
   });
 

@@ -87,7 +87,7 @@ function matchGlobPart(name: string, pattern: string): boolean {
 const globInputSchema = z.object({
   pattern: z.string().describe('Glob pattern, e.g. "**/*.ts", "src/**/*.py"'),
   path: z.string().optional().describe('Root directory to search in, defaults to working directory'),
-  maxResults: z.number().max(1000).optional().describe('Max number of results to return, default 100'),
+  maxResults: z.number().max(1000).optional().describe('Max number of results to return, default 500'),
 });
 
 export type GlobToolInput = z.infer<typeof globInputSchema>;
@@ -95,10 +95,10 @@ export type GlobToolInput = z.infer<typeof globInputSchema>;
 /** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawGlobTool(): RawTool<GlobToolInput> {
   return {
-    description: 'Search file paths by name pattern. Supports * (match any chars) and ** (match directory levels). Returns matching file paths.',
+    description: 'Search file paths by name pattern. Supports * (match any chars) and ** (match directory levels). Returns matching file paths. Use maxResults to control output size (default 500). Narrow the pattern first for broad searches.',
     inputSchema: zodSchema(globInputSchema),
     execute: async ({ pattern, path: searchPath, maxResults }): Promise<ToolResult> => {
-      const max = maxResults ?? 100;
+      const max = maxResults ?? 500;
       const dir = resolve(searchPath || process.cwd());
 
       // 路径约束检查

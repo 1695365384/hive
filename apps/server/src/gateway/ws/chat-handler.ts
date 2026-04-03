@@ -101,6 +101,23 @@ export class ChatWsHandler extends EventEmitter {
     this.hookIds.push(registry.on('timeout:api', observe((ctx: any) => {
       logger?.error({ source: 'agent' }, `API timeout after ${ctx.timeout}ms (attempt ${ctx.attempt}/${ctx.maxAttempts})`)
     })))
+
+    this.hookIds.push(registry.on('worker:start', observe((ctx: any) => {
+      logger?.info({ source: 'agent' }, `[worker:${ctx.workerId?.slice(0, 8)}] start type=${ctx.workerType} desc=${ctx.description ?? '-'}`)
+    })))
+
+    this.hookIds.push(registry.on('worker:complete', observe((ctx: any) => {
+      const status = ctx.success ? 'SUCCESS' : `FAILED${ctx.error ? ': ' + ctx.error : ''}`
+      logger?.info({ source: 'agent' }, `[worker:${ctx.workerId?.slice(0, 8)}] complete ${status} (${ctx.duration}ms)`)
+    })))
+
+    this.hookIds.push(registry.on('worker:tool-call', observe((ctx: any) => {
+      logger?.debug({ source: 'agent' }, `[worker:${ctx.workerId?.slice(0, 8)}] tool-call ${ctx.toolName}`)
+    })))
+
+    this.hookIds.push(registry.on('worker:tool-result', observe((ctx: any) => {
+      logger?.debug({ source: 'agent' }, `[worker:${ctx.workerId?.slice(0, 8)}] tool-result ${ctx.toolName}`)
+    })))
   }
 
   private unsubscribeAgentHooks(): void {
@@ -181,7 +198,7 @@ export class ChatWsHandler extends EventEmitter {
         break
 
       case 'reasoning':
-        ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: data.text, seq: this.nextSeq(threadId) })))
+        ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: data.text, seq: this.nextSeq(threadId), workerId: data.workerId, workerType: data.workerType })))
         break
 
       case 'text-delta':

@@ -103,7 +103,7 @@ export class CoordinatorCapability implements AgentCapability {
   private coordinatorTools: Record<string, Tool> = {};
   private taskManager = new TaskManager();
 
-  private static readonly DEFAULT_MAX_TURNS = 30;
+  private static readonly DEFAULT_MAX_TURNS = 15;
 
   initialize(context: AgentContext): void {
     this.context = context;
@@ -222,7 +222,7 @@ export class CoordinatorCapability implements AgentCapability {
               this.context.timeoutCap.updateActivity();
               break;
             case 'reasoning':
-              options?.onReasoning?.(event.text);
+              // Coordinator 的思考不发给前端 — 用户只需看到 Worker 的思考
               break;
           }
         }

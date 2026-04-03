@@ -114,15 +114,6 @@ if [ -d "$TEMPLATES_SRC" ]; then
 fi
 echo "[bundle] Templates: $TEMPLATE_COUNT .md files copied to templates/"
 
-# Copy worker-entry.js (to bundle root — agent-tool resolves via __dirname + '/workers/')
-mkdir -p "$OUT_DIR/workers"
-if [ -f "$CORE_DIST/workers/worker-entry.js" ]; then
-  cp "$CORE_DIST/workers/worker-entry.js" "$OUT_DIR/workers/worker-entry.js"
-  echo "[bundle] Worker entry: workers/worker-entry.js"
-else
-  echo "[bundle] WARNING: worker-entry.js not found at $CORE_DIST/workers/worker-entry.js"
-fi
-
 # =============================================
 # Step 4: Download Node.js binary
 # =============================================

@@ -5,15 +5,12 @@
  * 被 CoordinatorCapability 和 AgentTool 共享使用。
  */
 
-import { type Worker as WorkerThread } from 'node:worker_threads';
-import type { WorkerInboundMessage } from '../../workers/worker-entry.js';
-
 // ============================================
 // 类型
 // ============================================
 
 /** Worker 任务类型 */
-export type WorkerType = 'explore' | 'plan' | 'general';
+export type WorkerType = 'explore' | 'plan' | 'general' | 'schedule';
 
 /** 活跃的 Worker 任务 */
 export interface WorkerTask {
@@ -25,8 +22,6 @@ export interface WorkerTask {
   description?: string;
   /** 中止控制器 */
   abortController: AbortController;
-  /** Worker 线程引用 */
-  worker?: WorkerThread;
   /** 启动时间戳 */
   startedAt: number;
 }
@@ -65,44 +60,22 @@ export class TaskManager {
   }
 
   /**
-   * 设置 Worker 线程引用
-   */
-  setWorker(id: string, worker: WorkerThread): void {
-    const task = this.tasks.get(id);
-    if (task) {
-      task.worker = worker;
-    }
-  }
-
-  /**
    * 注销 Worker（正常完成时调用）
    */
   unregister(id: string): void {
-    const task = this.tasks.get(id);
-    if (task) {
-      task.worker?.terminate();
-    }
     this.tasks.delete(id);
   }
 
   /**
    * 中止指定 Worker
    *
-   * 先发送 abort 消息让 Worker 优雅终止（取消 LLM 请求），
-   * 再调用 terminate() 作为兜底。
+   * 通过 AbortController 取消 LLM 请求。
    *
    * @returns 是否成功中止（false = 不存在或已完成）
    */
   abort(id: string): boolean {
     const task = this.tasks.get(id);
     if (!task) return false;
-    // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
-    try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch { /* worker already terminated */ }
-    // 兜底：强制杀线程（延迟 50ms 让 abort 消息有机会被处理）
-    const worker = task.worker;
-    const timer = setTimeout(() => { worker?.terminate(); }, 50);
-    // 如果 worker 提前退出，清理定时器
-    worker?.once('exit', () => clearTimeout(timer));
     task.abortController.abort();
     this.tasks.delete(id);
     return true;
@@ -131,24 +104,11 @@ export class TaskManager {
 
   /**
    * 中止所有活跃 Worker
-   *
-   * 先发送 abort 消息让每个 Worker 优雅终止，
-   * 再调用 terminate() 作为兜底。
    */
   abortAll(): void {
-    const timers: ReturnType<typeof setTimeout>[] = [];
     for (const task of this.tasks.values()) {
-      // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
-      try { task.worker?.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch { /* worker already terminated */ }
-      // 兜底：延迟 terminate 让 abort 消息有机会被处理
-      const worker = task.worker;
-      const timer = setTimeout(() => { worker?.terminate(); }, 50);
-      worker?.once('exit', () => clearTimeout(timer));
-      timers.push(timer);
       task.abortController.abort();
     }
-    // 清理所有定时器（防止内存泄漏）
-    setTimeout(() => { for (const t of timers) clearTimeout(t); }, 200);
     this.tasks.clear();
   }
 

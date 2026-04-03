@@ -153,7 +153,7 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
       expect(mockRuntimeStream).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: 'Implement a feature',
-          maxSteps: 30,
+          maxSteps: 15,
         }),
       );
     });

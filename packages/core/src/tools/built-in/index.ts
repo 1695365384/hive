@@ -33,6 +33,9 @@ export { createSendMessageTool } from './send-message-tool.js';
 export { createEnvTool, envTool, setEnvDbProvider } from './env-tool.js';
 export type { EnvToolInput } from './env-tool.js';
 
+// Schedule 工具
+export { createScheduleTool } from './schedule-tools.js';
+
 // 工具基础设施
 export { truncateOutput } from './utils/output-safety.js';
 export { isDangerousCommand, isSensitiveFile } from './utils/security.js';
