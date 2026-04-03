@@ -7,9 +7,9 @@
     "build": "pnpm -r build",
     "test": "pnpm -r --filter './packages/*' --filter './apps/*' --reporter=default test || true",
     "test:e2e": "pnpm --filter @bundy-lmw/hive-core test:e2e",
-    "publish:core": "pnpm --filter @bundy-lmw/hive-core build && pnpm --filter @bundy-lmw/hive-core exec npm version patch --no-git-tag-version && pnpm publish --access public --no-git-checks",
-    "publish:feishu": "pnpm --filter @bundy-lmw/hive-plugin-feishu build && pnpm --filter @bundy-lmw/hive-plugin-feishu exec npm version patch --no-git-tag-version && pnpm publish --access public --no-git-checks",
-    "publish:server": "pnpm --filter @bundy-lmw/hive-server build && pnpm --filter @bundy-lmw/hive-server exec npm version patch --no-git-tag-version && pnpm publish --access public --no-git-checks",
+    "publish:core": "pnpm --filter @bundy-lmw/hive-core build && pnpm --filter @bundy-lmw/hive-core exec npm version patch --no-git-tag-version && pnpm --filter @bundy-lmw/hive-core publish --access public --no-git-checks",
+    "publish:feishu": "pnpm --filter @bundy-lmw/hive-plugin-feishu build && pnpm --filter @bundy-lmw/hive-plugin-feishu exec npm version patch --no-git-tag-version && pnpm --filter @bundy-lmw/hive-plugin-feishu publish --access public --no-git-checks",
+    "publish:server": "pnpm --filter @bundy-lmw/hive-server build && pnpm --filter @bundy-lmw/hive-server exec npm version patch --no-git-tag-version && pnpm --filter @bundy-lmw/hive-server publish --access public --no-git-checks",
     "publish:all": "pnpm publish:core && pnpm publish:server && pnpm publish:feishu",
     "dev": "pnpm --filter @bundy-lmw/hive-core build && pnpm --filter @bundy-lmw/hive-server build && cd apps/desktop && pnpm dev",
     "clean": "rm -rf packages/core/dist apps/server/dist apps/desktop/dist node_modules/.cache node-compile-cache"
