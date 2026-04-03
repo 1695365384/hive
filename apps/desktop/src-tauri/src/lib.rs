@@ -50,7 +50,7 @@ struct ServerState {
     server_pid: AtomicU32,
     entry: String,
     project_root: String,
-    /// App resources path (set at runtime via tauri path API, used for SEA binary).
+    /// App resources path (set at runtime via tauri path API, used for Node.js sidecar).
     /// std::sync::Mutex is intentional: lock scope is small, never held across .await.
     resource_root: std::sync::Mutex<Option<String>>,
     status: tokio::sync::watch::Sender<ServerStatus>,
@@ -152,13 +152,29 @@ async fn spawn_server(state: &ServerState, force: bool) -> Result<(), String> {
     }
 
     // Resolve server binary:
-    // - Bundled app (SEA): directly execute hive-server binary, cwd = bundle dir (for node_modules/)
+    // - Bundled app: use bundled Node.js binary to run main.js, cwd = bundle/server dir
     // - Dev mode: use system node to run entry script
     let spawn_info = {
         let res_root = state.resource_root.lock().unwrap();
         if let Some(ref res_root) = *res_root {
-            let sea_bin = format!("{}/server/hive-server", res_root);
-            (sea_bin, Vec::<&str>::new(), res_root.clone())
+            let server_dir = format!("{}/server", res_root);
+            // Node.js binary name: node-{os}-{arch}
+            // e.g. node-darwin-arm64, node-linux-x64
+            #[cfg(target_os = "macos")]
+            let node_bin = if cfg!(target_arch = "aarch64") {
+                format!("{}/node-darwin-arm64", server_dir)
+            } else {
+                format!("{}/node-darwin-x64", server_dir)
+            };
+            #[cfg(target_os = "linux")]
+            let node_bin = if cfg!(target_arch = "x86_64") {
+                format!("{}/node-linux-x64", server_dir)
+            } else {
+                format!("{}/node-linux-arm64", server_dir)
+            };
+            #[cfg(target_os = "windows")]
+            let node_bin = format!("{}/node-win-x64.exe", server_dir);
+            (node_bin, vec!["main.js"], server_dir.clone())
         } else {
             (
                 "node".to_string(),
