@@ -186,7 +186,7 @@ describe('ChatWsHandler', () => {
       expect(res.success).toBe(true)
       expect(res.result.threadId).toBe('tid-1')
 
-      // Verify handleMessage was called with message:received
+      // Verify server.handleMessage was called with expected content
       expect(server.handleMessage).toHaveBeenCalledWith(expect.objectContaining({
         content: 'hello',
         type: 'text',
