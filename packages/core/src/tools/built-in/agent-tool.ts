@@ -1,26 +1,21 @@
 /**
- * AgentTool — 派生 Worker 子代理
+ * AgentTool — 进程内异步生成器调用子代理
  *
- * Coordinator 通过 AgentTool 异步 spawn Worker（Explore/Plan/General）。
- * Worker 在独立线程（worker_threads）中执行，事件通过 parentPort 实时透传。
- * 取消时先发送 abort 消息让 Worker 优雅终止（AI SDK 取消 LLM 请求），
- * 再 worker.terminate() 强制杀线程兜底。
+ * Coordinator 通过 AgentTool 在当前进程内异步调用子代理（Explore/Plan/General）。
+ * 直接使用 AgentRunner.executeStreaming() 执行，无需子进程和 IPC 通信。
  *
- * 防递归：Worker 工具来自 ToolRegistry（不含 agent 工具），天然无法再 spawn。
+ * 防递归：子代理的工具来自 ToolRegistry 的类型白名单（不含 agent 工具），天然无法再派生。
  */
 
-import { Worker } from 'node:worker_threads';
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
-import type { WorkerEventMessage, WorkerInboundMessage } from '../../workers/worker-entry.js';
-import type { ExternalConfig } from '../../providers/types.js';
+import type { ScheduleCapability } from '../../agents/capabilities/ScheduleCapability.js';
+import { createAgentRunner } from '../../agents/core/runner.js';
+import { createScheduleTool } from './schedule-tools.js';
 
 // ============================================
 // Schema
@@ -29,8 +24,8 @@ import type { ExternalConfig } from '../../providers/types.js';
 const INPUT_SCHEMA = zodSchema(
   z.object({
     prompt: z.string().describe('The task to delegate to the Worker'),
-    type: z.enum(['explore', 'plan', 'general']).describe(
-      'Worker type: "explore" for read-only research, "plan" for deep analysis, "general" for full-access execution',
+    type: z.enum(['explore', 'plan', 'general', 'schedule']).describe(
+      'Worker type: "explore" for read-only research, "plan" for deep analysis, "general" for full-access execution, "schedule" for scheduled task management',
     ),
     model: z.string().optional().describe('Override model for this Worker'),
     maxTurns: z.number().int().min(1).max(50).optional().describe('Override max turns'),
@@ -45,12 +40,23 @@ const INPUT_SCHEMA = zodSchema(
 /**
  * Worker 结果最大返回长度（防止 Coordinator context 膨胀）
  */
-const MAX_WORKER_RESULT_LENGTH = 4000;
+const MAX_WORKER_RESULT_LENGTH = 8000;
 
 /**
  * 输出摘录最大长度
  */
-const MAX_OUTPUT_EXCERPT = 500;
+const MAX_OUTPUT_EXCERPT = 1500;
+
+/**
+ * 智能摘录：保留首尾，中间省略
+ * Worker 输出的重要信息（Overview/结论）通常在开头和结尾
+ */
+function smartExcerpt(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const headLen = Math.floor(maxLength * 0.4);
+  const tailLen = maxLength - headLen;
+  return text.slice(0, headLen) + '\n\n[...omitted...]\n\n' + text.slice(-tailLen);
+}
 
 // ============================================
 // 失败重试保护
@@ -95,6 +101,106 @@ function createRetryGuard() {
   return { shouldBlockRetry, clearErrorHistory };
 }
 
+// ============================================
+// 卡死检测（空结果循环保护）
+// ============================================
+
+const EMPTY_RESULT_WARN_THRESHOLD = 3;
+const EMPTY_RESULT_ABORT_THRESHOLD = 5;
+
+/**
+ * 判断工具输出是否为"空结果"（成功但无有效数据）
+ */
+function isEmptyResult(output: string): boolean {
+  const s = output.trim();
+  if (s.length === 0) return true;
+  if (s.length > 200) return false;
+  const patterns = [
+    /^No .* found/i,
+    /^No results/i,
+    /^0 .* found/i,
+    /^\[?\s*empty\s*\]?$/i,
+    /^no matches found/i,
+  ];
+  return patterns.some(p => p.test(s));
+}
+
+/**
+ * 计算工具结果的指纹（用于判断"相同结果"）
+ */
+function getResultFingerprint(toolName: string, output: string): string {
+  const normalized = output.trim().slice(0, 100)
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, '<DATE>')
+    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '<IP>')
+    .replace(/\b[0-9a-f]{8,}\b/g, '<HEX>');
+  return `${toolName}:${normalized}`;
+}
+
+/**
+ * 创建闭包隔离的卡死检测器
+ *
+ * 跟踪同一工具的连续空结果调用，超过阈值时注入 WARNING 或触发 abort。
+ */
+function createStuckDetector(abortController: AbortController) {
+  const recentCalls: Array<{ fingerprint: string; isEmpty: boolean; timestamp: number }> = [];
+  let consecutiveEmptyCount = 0;
+  let lastFingerprint = '';
+  let warned = false;
+
+  function recordResult(toolName: string, output: string): { stuck: boolean; warning: string | null } {
+    const now = Date.now();
+    const fp = getResultFingerprint(toolName, output);
+    const empty = isEmptyResult(output);
+
+    // 清理过期记录
+    while (recentCalls.length > 0 && now - recentCalls[0].timestamp > ERROR_TTL_MS) {
+      recentCalls.shift();
+    }
+
+    recentCalls.push({ fingerprint: fp, isEmpty: empty, timestamp: now });
+
+    // 检查是否是同一工具的连续空结果
+    if (fp === lastFingerprint && empty) {
+      consecutiveEmptyCount++;
+    } else {
+      consecutiveEmptyCount = empty ? 1 : 0;
+      lastFingerprint = fp;
+      warned = false;
+    }
+
+    // 阈值 2：达到 abort 阈值，终止 Worker
+    if (consecutiveEmptyCount >= EMPTY_RESULT_ABORT_THRESHOLD) {
+      console.warn(`[stuck-detector] Tool "${toolName}" returned empty results ${consecutiveEmptyCount} times consecutively. Aborting Worker.`);
+      abortController.abort();
+      return {
+        stuck: true,
+        warning: `STOP: Tool "${toolName}" has returned empty results ${consecutiveEmptyCount} times. This is likely a dead-end. Report to the user that the requested information could not be found.`,
+      };
+    }
+
+    // 阈值 1：达到警告阈值，注入 WARNING（只注入一次）
+    if (consecutiveEmptyCount >= EMPTY_RESULT_WARN_THRESHOLD && !warned) {
+      warned = true;
+      console.warn(`[stuck-detector] Tool "${toolName}" returned empty results ${consecutiveEmptyCount} times. Injecting warning.`);
+      return {
+        stuck: true,
+        warning: `WARNING: Tool "${toolName}" has returned empty/no-result responses ${consecutiveEmptyCount} consecutive times. Try a fundamentally different approach or inform the user that the information is not available. Do NOT call this tool again with similar parameters.`,
+      };
+    }
+
+    return { stuck: false, warning: null };
+  }
+
+  function reset(): void {
+    recentCalls.length = 0;
+    consecutiveEmptyCount = 0;
+    lastFingerprint = '';
+    warned = false;
+  }
+
+  return { recordResult, reset };
+}
+
 /**
  * 构建结构化 Worker 结果摘要
  */
@@ -104,8 +210,9 @@ function buildWorkerResultSummary(input: {
   accumulatedText: string;
   duration: number;
   shouldBlockRetry: (error: string) => boolean;
+  stuckWarning?: string | null;
 }): string {
-  const { type, result, accumulatedText, duration, shouldBlockRetry } = input;
+  const { type, result, accumulatedText, duration, shouldBlockRetry, stuckWarning } = input;
   const parts: string[] = [];
 
   // 状态行
@@ -124,17 +231,20 @@ function buildWorkerResultSummary(input: {
     parts.push('Status: SUCCESS');
   }
 
+  // 卡死检测警告
+  if (stuckWarning) {
+    parts.push(stuckWarning);
+  }
+
   // 使用的工具
   if (result.tools.length > 0) {
     parts.push(`Tools used: ${result.tools.join(', ')}`);
   }
 
-  // 输出摘录（最后 N 字符）
+  // 输出摘录（首尾保留策略）
   if (accumulatedText.trim()) {
-    const excerpt = accumulatedText.length > MAX_OUTPUT_EXCERPT
-      ? accumulatedText.slice(-MAX_OUTPUT_EXCERPT) + '\n... (truncated)'
-      : accumulatedText;
-    parts.push(`Output excerpt:\n${excerpt}`);
+    const excerpt = smartExcerpt(accumulatedText, MAX_OUTPUT_EXCERPT);
+    parts.push(`Output (${accumulatedText.length} chars):\n${excerpt}`);
   }
 
   let summary = parts.join('\n\n');
@@ -145,37 +255,19 @@ function buildWorkerResultSummary(input: {
 }
 
 /**
- * Worker 线程入口文件路径
- *
- * Bundle 模式：import.meta.url 指向 main.js（bundle 根），worker 在 bundle/workers/
- * Dev 模式：import.meta.url 指向 agent-tool.js，worker 在 dist/workers/
- */
-let _cachedWorkerPath: string | undefined;
-
-function resolveWorkerEntryPath(): string {
-  if (_cachedWorkerPath) return _cachedWorkerPath;
-  const baseDir = path.dirname(fileURLToPath(import.meta.url));
-  // Bundle: main.js is at root, workers/ is a sibling directory
-  const bundlePath = path.join(baseDir, 'workers', 'worker-entry.js');
-  if (existsSync(bundlePath)) {
-    _cachedWorkerPath = bundlePath;
-  } else {
-    // Dev: agent-tool.js is at dist/tools/built-in/, worker at dist/workers/
-    _cachedWorkerPath = fileURLToPath(new URL('../../workers/worker-entry.js', import.meta.url));
-  }
-  return _cachedWorkerPath;
-}
-
-/**
  * 创建 AgentTool
  *
- * Coordinator 调用此工具 spawn Worker（独立线程），Worker 事件通过 hook 实时透传。
- * 取消时直接 worker.terminate() 杀线程。
+ * Coordinator 调用此工具在当前进程内异步执行子代理。
+ * 通过 hook 实时透传中间事件（text, tool-call, tool-result, reasoning）。
+ * 取消时直接通过 AbortController 中止 LLM 请求。
  *
  * @returns Tool 实例和 clearErrorHistory 方法（错误历史通过闭包隔离）
  */
 export function createAgentTool(context: AgentContext, taskManager: TaskManager): Tool & { clearErrorHistory: () => void } {
   const { shouldBlockRetry, clearErrorHistory } = createRetryGuard();
+
+  // 共享 AgentRunner：复用父进程的 ProviderManager，子代理共享 provider 配置
+  const runner = createAgentRunner(context.providerManager);
 
   const agentTool = tool({
     description: [
@@ -185,6 +277,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       '- "explore": Read-only (Glob, Grep, Read, WebSearch, WebFetch). Use for: file discovery, code search, architecture understanding.',
       '- "plan": Deep analysis (same tools, higher thoroughness). Use for: complex planning, dependency analysis, risk assessment.',
       '- "general": Full access (Bash, File write, Glob, Grep, Web). Use for: code modifications, running commands, complex tasks.',
+      '- "schedule": Schedule management (create, list, pause, resume, remove, history). Use for: creating/managing scheduled/cron tasks.',
       '',
       '## When to Use',
       '- Task requires extensive file reading that would consume your context',
@@ -209,17 +302,9 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       // 注册 Worker（获取 AbortController）
       const abortController = taskManager.register(workerId, input.type, input.description);
 
-      // 构建外部配置（传递给 Worker 线程以继承 Provider 配置）
-      const externalConfig: ExternalConfig = {
-        providers: context.providerManager.all,
-        activeProvider: context.providerManager.active?.id,
-      };
-
-      // 启动 Worker 线程（通过 workerData 传递 Provider 配置）
-      const worker = new Worker(resolveWorkerEntryPath(), {
-        workerData: { externalConfig },
-      });
-      taskManager.setWorker(workerId, worker);
+      // 卡死检测器（与 AbortController 联动）
+      const stuckDetector = createStuckDetector(abortController);
+      let stuckWarning: string | null = null;
 
       // 通知 Worker 启动
       await context.hookRegistry.emit('worker:start', {
@@ -255,85 +340,6 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         }).catch(() => {});
       };
 
-      // Abort promise：信号触发时立即 resolve，同时向 Worker 发送 abort 消息
-      const abortPromise = new Promise<true>((resolve) => {
-        const triggerAbort = () => {
-          // 优雅终止：通知 Worker 内部 AbortController 取消 LLM 请求
-          try { worker.postMessage({ type: 'abort' } satisfies WorkerInboundMessage); } catch {}
-          resolve(true);
-        };
-        if (isAborted()) { triggerAbort(); return; }
-        const handler = () => triggerAbort();
-        abortController.signal.addEventListener('abort', handler, { once: true });
-      });
-
-      // Worker 结果 promise（必须在 timeoutPromise 之前定义）
-      const resultPromise = new Promise<AgentResult>((resolve, reject) => {
-        worker.on('message', (msg: WorkerEventMessage) => {
-          if (isAborted()) return; // abort 后忽略后续消息
-
-          switch (msg.type) {
-            case 'text':
-              accumulatedText += msg.text;
-              break;
-            case 'tool-call':
-              context.hookRegistry.emit('worker:tool-call', {
-                workerId,
-                workerType: input.type,
-                toolName: msg.toolName,
-                input: msg.input,
-                sessionId,
-                timestamp: new Date(),
-              }).catch(() => {});
-              break;
-            case 'tool-result':
-              context.hookRegistry.emit('worker:tool-result', {
-                workerId,
-                workerType: input.type,
-                toolName: msg.toolName,
-                output: msg.output,
-                sessionId,
-                timestamp: new Date(),
-              }).catch(() => {});
-              break;
-            case 'reasoning':
-              context.hookRegistry.emit('worker:reasoning', {
-                workerId,
-                workerType: input.type,
-                text: msg.text,
-                sessionId,
-                timestamp: new Date(),
-              }).catch(() => {});
-              break;
-            case 'complete':
-              resolve(msg.result);
-              break;
-            case 'error':
-              reject(new Error(msg.error));
-              break;
-          }
-        });
-
-        worker.on('error', (error) => {
-          reject(error);
-        });
-
-        worker.on('exit', (code) => {
-          if (code !== 0 && !isAborted()) {
-            reject(new Error(`Worker exited with code ${code}`));
-          }
-        });
-      });
-
-      // Worker 级别兜底超时（5 分钟），防止 Worker 永远不返回
-      const WORKER_TIMEOUT_MS = 5 * 60 * 1000;
-      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<true>((resolve) => {
-        timeoutTimer = setTimeout(() => {
-          resolve(true); // 超时视为 abort
-        }, WORKER_TIMEOUT_MS);
-      });
-
       try {
         // 提前退出：Worker 在启动前已被中止
         if (isAborted()) {
@@ -342,42 +348,100 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           return buildAbortResult();
         }
 
-        // 发送执行指令到 Worker 线程
-        worker.postMessage({
-          type: 'execute',
-          payload: {
-            agentType: input.type,
-            prompt: input.prompt,
-            model: input.model,
-            maxTurns: input.maxTurns,
-          },
-        });
+        // 在当前进程内执行子代理
+        // 注入平台信息到 prompt，避免 Worker 用错命令语法（如 macOS 的 ps 与 Linux 不同）
+        const envCtx = context.environmentContext;
+        const platformHint = envCtx
+          ? `\n[Platform: ${envCtx.os.displayName} (${envCtx.os.platform}/${envCtx.os.arch}), Shell: ${envCtx.shell}]`
+          : '';
 
-        // Race: 正常完成 vs abort vs timeout
-        const raceResult = await Promise.race([resultPromise, abortPromise, timeoutPromise]);
-
-        if (raceResult === true) {
-          // Abort 或超时胜出 — 杀线程
-          taskManager.unregister(workerId);
-          const isTimeout = abortController.signal.aborted === false;
-          emitComplete(false, isTimeout ? 'Worker timed out after 5 minutes' : 'Worker aborted');
-          return buildAbortResult();
+        // Schedule Worker 需要动态注册 schedule 工具（因为白名单为空，工具需要闭包持有 ScheduleCapability）
+        if (input.type === 'schedule') {
+          try {
+            const scheduleCap = context.getCapability<ScheduleCapability>('schedule');
+            const registry = runner.getToolRegistry();
+            registry.register('schedule', createScheduleTool(scheduleCap));
+          } catch {
+            // ScheduleCapability 未注册，schedule Worker 将无工具可用
+          }
         }
 
-        // 正常完成 — 清理线程
+        const result = await runner.executeStreaming(
+          input.type,
+          platformHint + input.prompt,
+          {
+            onText: (text: string) => {
+              if (isAborted()) return;
+              accumulatedText += text;
+            },
+            onToolCall: (toolName: string, toolInput?: unknown) => {
+              if (isAborted()) return;
+              context.hookRegistry.emit('worker:tool-call', {
+                workerId,
+                workerType: input.type,
+                toolName,
+                input: toolInput,
+                sessionId,
+                timestamp: new Date(),
+              }).catch(() => {});
+            },
+            onToolResult: (toolName: string, output?: unknown) => {
+              if (isAborted()) return;
+
+              // 卡死检测：检查空结果循环
+              const outputStr = typeof output === 'string' ? output : JSON.stringify(output ?? '');
+              const detection = stuckDetector.recordResult(toolName, outputStr);
+              if (detection.warning && !stuckWarning) {
+                stuckWarning = detection.warning;
+                accumulatedText += `\n\n${detection.warning}`;
+              }
+
+              context.hookRegistry.emit('worker:tool-result', {
+                workerId,
+                workerType: input.type,
+                toolName,
+                output,
+                sessionId,
+                timestamp: new Date(),
+              }).catch(() => {});
+            },
+            onReasoning: (text: string) => {
+              if (isAborted()) return;
+              context.hookRegistry.emit('worker:reasoning', {
+                workerId,
+                workerType: input.type,
+                text,
+                sessionId,
+                timestamp: new Date(),
+              }).catch(() => {});
+            },
+          },
+          {
+            model: input.model,
+            maxTurns: input.maxTurns,
+            abortSignal: abortController.signal,
+          },
+        );
+
+        // 正常完成 — 清理
         taskManager.unregister(workerId);
-        emitComplete(raceResult.success, raceResult.error);
+        if (!result.success) {
+          console.error(`[worker:${workerId.slice(0, 8)}] Task failed: ${result.error || 'unknown error'}`);
+        }
+        emitComplete(result.success, result.error);
 
         return buildWorkerResultSummary({
           type: input.type,
-          result: raceResult,
+          result,
           accumulatedText,
           duration: Date.now() - startTime,
           shouldBlockRetry,
+          stuckWarning,
         });
       } catch (error) {
         taskManager.unregister(workerId);
         const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error(`[worker:${workerId.slice(0, 8)}] Execution failed: ${errorMsg}`);
         emitComplete(false, errorMsg);
         return buildWorkerResultSummary({
           type: input.type,
@@ -385,9 +449,8 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           accumulatedText,
           duration: Date.now() - startTime,
           shouldBlockRetry,
+          stuckWarning,
         });
-      } finally {
-        if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
       }
     },
   }) as Tool & { clearErrorHistory: () => void };
@@ -405,3 +468,6 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
 export function clearErrorHistory(): void {
   // 模块级导出仅做 no-op，实际清除由实例级 clearErrorHistory 处理
 }
+
+// 导出供测试使用
+export { isEmptyResult, createStuckDetector, getResultFingerprint };

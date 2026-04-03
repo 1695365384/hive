@@ -54,7 +54,8 @@ describe('Agent 模块', () => {
       expect(coreAgents).toContain('explore');
       expect(coreAgents).toContain('plan');
       expect(coreAgents).toContain('general');
-      expect(coreAgents).toHaveLength(3);
+      expect(coreAgents).toContain('schedule');
+      expect(coreAgents).toHaveLength(4);
     });
   });
 

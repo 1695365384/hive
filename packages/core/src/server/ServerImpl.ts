@@ -92,6 +92,9 @@ class ServerImpl implements Server {
   private streamingHandlers: Set<StreamingHandler> = new Set();
   private fileHandlers: Set<FileHandler> = new Set();
 
+  /** Reasoning 防抖状态：sessionId → { buffer, timer, workerId?, workerType? } */
+  private reasoningBuffers: Map<string, { buffer: string; timer: ReturnType<typeof setTimeout>; workerId?: string; workerType?: string }> = new Map();
+
   /** WorkspaceManager — 由 createServer() 创建，在 start() 中初始化 */
   _workspaceManager: WorkspaceManager | undefined;
 
@@ -146,6 +149,56 @@ class ServerImpl implements Server {
     for (const handler of this.fileHandlers) {
       try { handler(event); } catch (e) { this.logger.error('[server] FileHandler error:', e); }
     }
+  }
+
+  // ============================================
+  // Reasoning 防抖合并
+  // ============================================
+
+  /**
+   * 带防抖的 reasoning 发送：合并短时间内的多个 reasoning delta 为一条消息。
+   * 减少前端 UI 上的碎片化思考气泡。
+   */
+  private emitReasoningDebounced(
+    sessionId: string,
+    text: string,
+    workerId?: string,
+    workerType?: string,
+  ): void {
+    const existing = this.reasoningBuffers.get(sessionId);
+
+    if (existing) {
+      // 追加到已有 buffer
+      existing.buffer += text;
+      // 重置定时器
+      clearTimeout(existing.timer);
+      existing.timer = setTimeout(() => this.flushReasoning(sessionId), 300);
+    } else {
+      // 新建 buffer
+      const timer = setTimeout(() => this.flushReasoning(sessionId), 300);
+      this.reasoningBuffers.set(sessionId, { buffer: text, timer, workerId, workerType });
+    }
+  }
+
+  /** 刷新 reasoning buffer，发送合并后的消息 */
+  private flushReasoning(sessionId: string): void {
+    const entry = this.reasoningBuffers.get(sessionId);
+    if (!entry || !entry.buffer.trim()) {
+      this.reasoningBuffers.delete(sessionId);
+      return;
+    }
+
+    const payload: Record<string, unknown> = { sessionId, type: 'reasoning', text: entry.buffer.trim() };
+    if (entry.workerId) payload.workerId = entry.workerId;
+    if (entry.workerType) payload.workerType = entry.workerType;
+
+    this.emitStreaming(payload as any);
+    this.reasoningBuffers.delete(sessionId);
+  }
+
+  /** 会话结束时刷新残留的 reasoning buffer */
+  private flushAllReasoning(sessionId: string): void {
+    this.flushReasoning(sessionId);
   }
 
   // ============================================
@@ -402,7 +455,7 @@ class ServerImpl implements Server {
 
       workerHookIds.push(
         this.agent.context.hookRegistry.on('worker:reasoning', (ctx: any) => {
-          this.emitStreaming({ sessionId: sessionKey, type: 'reasoning', text: ctx.text });
+          this.emitReasoningDebounced(sessionKey, ctx.text, ctx.workerId, ctx.workerType);
           return { proceed: true };
         }),
       );
@@ -427,7 +480,7 @@ class ServerImpl implements Server {
             this.logger.info(`[agent] [${phase}] ${message}`);
           },
           onReasoning: (text) => {
-            this.emitStreaming({ sessionId: sessionKey, type: 'reasoning', text });
+            this.emitReasoningDebounced(sessionKey, text);
           },
           onText: (text) => {
             this.emitStreaming({ sessionId: sessionKey, type: 'text-delta', text });
@@ -458,6 +511,7 @@ class ServerImpl implements Server {
 
         this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
       } finally {
+        this.flushAllReasoning(sessionKey);
         for (const hookId of workerHookIds) {
           this.agent.context.hookRegistry.off(hookId);
         }

@@ -43,7 +43,7 @@ export type BashToolInput = z.infer<typeof bashInputSchema>;
 /** 创建原始工具（execute → ToolResult，不经 harness） */
 export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolInput> {
   return {
-    description: 'Execute commands in a shell. For running scripts, git operations, building projects, etc. Returns merged stdout and stderr output.',
+    description: 'Execute commands in a shell. For running scripts, git operations, building projects, etc. Returns merged stdout and stderr output. CRITICAL: Control output size — always use head, tail, wc -l, or --limit to avoid massive output. Never cat large files or run commands that may produce unbounded output.',
     inputSchema: zodSchema(bashInputSchema),
     execute: async ({ command, timeout }): Promise<ToolResult> => {
       // 权限检查
@@ -120,7 +120,7 @@ export function createRawBashTool(options?: BashToolOptions): RawTool<BashToolIn
         return {
           ok: true,
           code: 'OK',
-          data: truncateOutput(result),
+          data: truncateOutput(result, 40000),
         };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);

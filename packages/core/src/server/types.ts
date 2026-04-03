@@ -16,7 +16,7 @@ import type { EnvironmentContext } from '../environment/types.js';
 /** 流式事件联合类型（替代 MessageBus agent:streaming topic） */
 export type StreamingEventUnion =
   | { type: 'start'; sessionId: string }
-  | { type: 'reasoning'; sessionId: string; text: string }
+  | { type: 'reasoning'; sessionId: string; text: string; workerId?: string; workerType?: string }
   | { type: 'text-delta'; sessionId: string; text: string }
   | { type: 'tool-call'; sessionId: string; tool: string; input: unknown; workerId?: string; workerType?: string }
   | { type: 'tool-result'; sessionId: string; tool: string; output: unknown; workerId?: string; workerType?: string }

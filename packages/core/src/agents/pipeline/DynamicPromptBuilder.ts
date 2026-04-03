@@ -214,12 +214,7 @@ export class DynamicPromptBuilder {
    * Format schedule awareness section
    */
   private formatScheduleSection(scheduleSummary: string): string {
-    try {
-      const template = this.promptTemplate.load('schedule-awareness');
-      return template.replaceAll('{{scheduleSummary}}', scheduleSummary);
-    } catch {
-      return '';
-    }
+    return `## Current Scheduled Tasks\n\n${scheduleSummary}`;
   }
 
   /**
