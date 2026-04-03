@@ -3,6 +3,12 @@
  *
  * 追踪活跃的 Worker 任务，支持注册、中止和查询。
  * 被 CoordinatorCapability 和 AgentTool 共享使用。
+ *
+ * Worker 状态机：
+ *   PENDING → RUNNING → SUCCESS
+ *                    ↘ FAILED
+ *                    ↘ CANCELLED
+ *                    ↘ TIMEOUT
  */
 
 // ============================================
@@ -11,6 +17,9 @@
 
 /** Worker 任务类型 */
 export type WorkerType = 'explore' | 'plan' | 'general' | 'schedule';
+
+/** Worker 执行状态 */
+export type WorkerStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'timeout';
 
 /** 活跃的 Worker 任务 */
 export interface WorkerTask {
@@ -24,6 +33,12 @@ export interface WorkerTask {
   abortController: AbortController;
   /** 启动时间戳 */
   startedAt: number;
+  /** 当前执行状态 */
+  status: WorkerStatus;
+  /** 完成时间戳（终止状态时设置） */
+  completedAt?: number;
+  /** 终止原因（failed/cancelled/timeout 时设置） */
+  failureReason?: string;
 }
 
 // ============================================
@@ -39,6 +54,9 @@ export class TaskManager {
   private tasks: Map<string, WorkerTask> = new Map();
   private _peakConcurrent = 0;
 
+  /** 等待特定 Worker 完成的 Promise 解析器 */
+  private waiters: Map<string, Array<() => void>> = new Map();
+
   /**
    * 注册新 Worker
    *
@@ -52,6 +70,7 @@ export class TaskManager {
       description,
       abortController,
       startedAt: Date.now(),
+      status: 'running',
     });
     if (this.tasks.size > this._peakConcurrent) {
       this._peakConcurrent = this.tasks.size;
@@ -63,7 +82,12 @@ export class TaskManager {
    * 注销 Worker（正常完成时调用）
    */
   unregister(id: string): void {
+    const task = this.tasks.get(id);
+    if (task && task.status === 'running') {
+      this.transitionTo(id, 'success');
+    }
     this.tasks.delete(id);
+    this.resolveWaiters(id);
   }
 
   /**
@@ -76,8 +100,10 @@ export class TaskManager {
   abort(id: string): boolean {
     const task = this.tasks.get(id);
     if (!task) return false;
+    this.transitionTo(id, 'cancelled');
     task.abortController.abort();
     this.tasks.delete(id);
+    this.resolveWaiters(id);
     return true;
   }
 
@@ -86,6 +112,36 @@ export class TaskManager {
    */
   getAbortController(id: string): AbortController | undefined {
     return this.tasks.get(id)?.abortController;
+  }
+
+  /**
+   * 获取 Worker 当前状态
+   *
+   * @returns WorkerStatus，若 Worker 不存在返回 undefined
+   */
+  getWorkerStatus(id: string): WorkerStatus | undefined {
+    return this.tasks.get(id)?.status;
+  }
+
+  /**
+   * 等待指定 Worker 进入终止状态（success/failed/cancelled/timeout）
+   *
+   * 若 Worker 不存在，立即 resolve。
+   * 最大等待时间由调用方通过 AbortSignal 控制。
+   */
+  waitFor(id: string, signal?: AbortSignal): Promise<void> {
+    if (!this.tasks.has(id)) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      if (!this.waiters.has(id)) {
+        this.waiters.set(id, []);
+      }
+      this.waiters.get(id)!.push(resolve);
+
+      // 外部取消信号
+      signal?.addEventListener('abort', () => resolve(), { once: true });
+    });
   }
 
   /**
@@ -107,7 +163,9 @@ export class TaskManager {
    */
   abortAll(): void {
     for (const task of this.tasks.values()) {
+      this.transitionTo(task.id, 'cancelled');
       task.abortController.abort();
+      this.resolveWaiters(task.id);
     }
     this.tasks.clear();
   }
@@ -124,5 +182,34 @@ export class TaskManager {
    */
   get peakConcurrent(): number {
     return this._peakConcurrent;
+  }
+
+  // ============================================
+  // 私有工具方法
+  // ============================================
+
+  /**
+   * 执行状态转换（仅向终止态迁移，不可逆）
+   */
+  private transitionTo(id: string, newStatus: WorkerStatus): void {
+    const task = this.tasks.get(id);
+    if (!task) return;
+    const terminal: WorkerStatus[] = ['success', 'failed', 'cancelled', 'timeout'];
+    if (terminal.includes(task.status)) return; // 已终止，不再转换
+    task.status = newStatus;
+    if (terminal.includes(newStatus)) {
+      task.completedAt = Date.now();
+    }
+  }
+
+  /**
+   * 解除对指定 Worker 的所有等待
+   */
+  private resolveWaiters(id: string): void {
+    const waiters = this.waiters.get(id);
+    if (waiters) {
+      for (const resolve of waiters) resolve();
+      this.waiters.delete(id);
+    }
   }
 }
