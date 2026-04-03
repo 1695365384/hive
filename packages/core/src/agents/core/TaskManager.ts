@@ -77,6 +77,10 @@ export class TaskManager {
    * 注销 Worker（正常完成时调用）
    */
   unregister(id: string): void {
+    const task = this.tasks.get(id);
+    if (task) {
+      task.worker?.terminate();
+    }
     this.tasks.delete(id);
   }
 
