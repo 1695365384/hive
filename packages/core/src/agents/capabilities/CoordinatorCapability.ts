@@ -182,43 +182,52 @@ export class CoordinatorCapability implements AgentCapability {
           ? [...historyMessages.map(m => ({ role: m.role as string, content: m.content as string })), { role: 'user' as const, content: task }]
           : [];
 
-        const runtimeResult = await this.runtime.run({
+        const { events, result: resultPromise } = this.runtime.stream({
           system: systemPrompt,
           messages: baseMessages.length > 0 ? baseMessages as any : undefined,
           prompt: baseMessages.length === 0 ? task : undefined,
           tools: this.coordinatorTools,
           maxSteps: options?.maxTurns ?? CoordinatorCapability.DEFAULT_MAX_TURNS,
           model: options?.modelId,
-          streaming: true,
           abortSignal: combinedSignal,
-          onText: (text: string) => {
-            result += text;
-            options?.onText?.(text);
-          },
-          onToolCall: (toolName: string, input: unknown) => {
-            this.emitToolBefore(sessionId, toolName, input).catch(
-              (err) => this.context.hookRegistry.emit('notification:push', {
-                sessionId, type: 'warning', title: 'Hook Error',
-                message: `tool:before hook failed: ${err instanceof Error ? err.message : String(err)}`,
-                timestamp: new Date(),
-              }),
-            );
-            options?.onTool?.(toolName, input);
-          },
-          onToolResult: (toolName: string, output: unknown) => {
-            // 记录最后工具结果位置，用于提取 finalText
-            lastToolResultIndex = result.length;
-            this.emitToolAfter(sessionId, toolName, output).catch(
-              (err) => this.context.hookRegistry.emit('notification:push', {
-                sessionId, type: 'warning', title: 'Hook Error',
-                message: `tool:after hook failed: ${err instanceof Error ? err.message : String(err)}`,
-                timestamp: new Date(),
-              }),
-            );
-            options?.onToolResult?.(toolName, output);
-            this.context.timeoutCap.updateActivity();
-          },
         });
+
+        for await (const event of events) {
+          switch (event.type) {
+            case 'text-delta':
+              result += event.text;
+              options?.onText?.(event.text);
+              break;
+            case 'tool-call':
+              this.emitToolBefore(sessionId, event.toolName, event.input).catch(
+                (err) => this.context.hookRegistry.emit('notification:push', {
+                  sessionId, type: 'warning', title: 'Hook Error',
+                  message: `tool:before hook failed: ${err instanceof Error ? err.message : String(err)}`,
+                  timestamp: new Date(),
+                }),
+              );
+              options?.onTool?.(event.toolName, event.input);
+              break;
+            case 'tool-result':
+              // 记录最后工具结果位置，用于提取 finalText
+              lastToolResultIndex = result.length;
+              this.emitToolAfter(sessionId, event.toolName, event.output).catch(
+                (err) => this.context.hookRegistry.emit('notification:push', {
+                  sessionId, type: 'warning', title: 'Hook Error',
+                  message: `tool:after hook failed: ${err instanceof Error ? err.message : String(err)}`,
+                  timestamp: new Date(),
+                }),
+              );
+              options?.onToolResult?.(event.toolName, event.output);
+              this.context.timeoutCap.updateActivity();
+              break;
+            case 'reasoning':
+              options?.onReasoning?.(event.text);
+              break;
+          }
+        }
+
+        const runtimeResult = await resultPromise;
 
         // 提取最后一次工具调用后的文本（用于 channel 回复，不含叙述）
         const finalText = lastToolResultIndex >= 0 && result.length > lastToolResultIndex

@@ -21,6 +21,8 @@ export type { AgentType, AgentConfig, AgentCapability } from './capabilities.js'
  * Agent 执行选项
  */
 export interface AgentExecuteOptions {
+  /** 外部取消信号（来自 TaskManager 的 Worker 中止） */
+  abortSignal?: AbortSignal;
   /** 子 Agent 超时（毫秒），超时后返回错误结果 */
   timeout?: number;
   /** 独立 messages 数组（子 Agent 使用独立对话实例时传入） */

@@ -234,3 +234,4 @@ export function isSensitiveFile(filePath: string, operation: 'read' | 'write'): 
   }
   return { sensitive: false };
 }
+

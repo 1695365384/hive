@@ -8,4 +8,6 @@ export type {
   RuntimeResult,
   StepResult,
   AgentPreset,
+  StreamEvent,
+  StreamHandle,
 } from './types.js';

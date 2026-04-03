@@ -15,10 +15,12 @@ import type { AgentContext } from '../../../src/agents/core/types.js';
 
 // Mock LLMRuntime
 const mockRuntimeRun = vi.fn();
+const mockRuntimeStream = vi.fn();
 vi.mock('../../../src/agents/runtime/LLMRuntime.js', () => {
   return {
     LLMRuntime: class MockLLMRuntime {
       run = mockRuntimeRun;
+      stream = mockRuntimeStream;
     },
   };
 });
@@ -57,10 +59,41 @@ describe('CoordinatorCapability', () => {
     duration: 100,
   };
 
-  function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defaultRuntimeResult>) {
-    return async (config: any) => {
-      config.onText?.(text);
-      return { ...defaultRuntimeResult, ...resultOverride };
+function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defaultRuntimeResult>) {
+    return (_config: any) => {
+      let resolveResult!: (result: any) => void;
+      const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+      const events = (async function* () {
+        yield { type: 'text-delta', text };
+        resolveResult({ ...defaultRuntimeResult, ...resultOverride });
+      })();
+      return { events, result: resultPromise };
+    };
+  }
+
+  function mockRuntimeWithToolCall(toolName: string, input: unknown, resultOverride?: Partial<typeof defaultRuntimeResult>) {
+    return (_config: any) => {
+      let resolveResult!: (result: any) => void;
+      const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+      const events = (async function* () {
+        yield { type: 'tool-call', toolName, input };
+        yield { type: 'tool-result', toolName, output: 'result' };
+        resolveResult({ ...defaultRuntimeResult, ...resultOverride });
+      })();
+      return { events, result: resultPromise };
+    };
+  }
+
+  function mockRuntimeWithToolResult(toolName: string, output: unknown, resultOverride?: Partial<typeof defaultRuntimeResult>) {
+    return (_config: any) => {
+      let resolveResult!: (result: any) => void;
+      const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+      const events = (async function* () {
+        yield { type: 'tool-call', toolName, input: {} };
+        yield { type: 'tool-result', toolName, output };
+        resolveResult({ ...defaultRuntimeResult, ...resultOverride });
+      })();
+      return { events, result: resultPromise };
     };
   }
 
@@ -76,7 +109,7 @@ describe('CoordinatorCapability', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRuntimeRun.mockImplementation(mockRuntimeWithText('Task completed successfully'));
+    mockRuntimeStream.mockImplementation(mockRuntimeWithText('Task completed successfully'));
 
     capability = new CoordinatorCapability();
     context = createContext();
@@ -114,13 +147,12 @@ describe('CoordinatorCapability', () => {
       expect(result.tools).toEqual(['agent', 'task-stop']);
     });
 
-    it('should call LLMRuntime.run with correct config', async () => {
+    it('should call LLMRuntime.stream with correct config', async () => {
       await capability.run('Implement a feature');
 
-      expect(mockRuntimeRun).toHaveBeenCalledWith(
+      expect(mockRuntimeStream).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: 'Implement a feature',
-          streaming: true,
           maxSteps: 30,
         }),
       );
@@ -129,7 +161,7 @@ describe('CoordinatorCapability', () => {
     it('should pass system prompt to runtime', async () => {
       await capability.run('Implement a feature');
 
-      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      const callArgs = mockRuntimeStream.mock.calls[0][0];
       expect(callArgs.system).toBeDefined();
       expect(typeof callArgs.system).toBe('string');
       expect(callArgs.system.length).toBeGreaterThan(0);
@@ -137,10 +169,9 @@ describe('CoordinatorCapability', () => {
 
     it('should only have coordinator tools (agent, task-stop, send-message)', async () => {
       let capturedTools: Record<string, any> = {};
-      mockRuntimeRun.mockImplementation(async (config: any) => {
+      mockRuntimeStream.mockImplementation((config: any) => {
         capturedTools = config.tools;
-        config.onText?.('result');
-        return defaultRuntimeResult;
+        return mockRuntimeWithText('result')(config);
       });
 
       await capability.run('test task');
@@ -154,7 +185,7 @@ describe('CoordinatorCapability', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('Task is empty');
       expect(result.text).toBe('');
-      expect(mockRuntimeRun).not.toHaveBeenCalled();
+      expect(mockRuntimeStream).not.toHaveBeenCalled();
     });
 
     it('should return empty result for whitespace-only task', async () => {
@@ -221,7 +252,14 @@ describe('CoordinatorCapability', () => {
         }
         return true;
       });
-      mockRuntimeRun.mockRejectedValue(new Error('Failed'));
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          throw new Error('Failed');
+        })();
+        return { events, result: resultPromise };
+      });
 
       await capability.run('Test task');
 
@@ -229,10 +267,15 @@ describe('CoordinatorCapability', () => {
     });
 
     it('should emit tool:before and tool:after hooks', async () => {
-      mockRuntimeRun.mockImplementation(async (config: any) => {
-        config.onToolCall?.('agent', { type: 'explore', prompt: 'test' });
-        config.onToolResult?.('agent', 'Worker result');
-        return defaultRuntimeResult;
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          yield { type: 'tool-call', toolName: 'agent', input: { type: 'explore', prompt: 'test' } };
+          yield { type: 'tool-result', toolName: 'agent', output: 'Worker result' };
+          resolveResult(defaultRuntimeResult);
+        })();
+        return { events, result: resultPromise };
       });
 
       await capability.run('Test task');
@@ -258,10 +301,15 @@ describe('CoordinatorCapability', () => {
   describe('streaming callbacks', () => {
     it('should call onText callback with streaming text', async () => {
       const texts: string[] = [];
-      mockRuntimeRun.mockImplementation(async (config: any) => {
-        config.onText?.('Hello ');
-        config.onText?.('World');
-        return defaultRuntimeResult;
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          yield { type: 'text-delta', text: 'Hello ' };
+          yield { type: 'text-delta', text: 'World' };
+          resolveResult(defaultRuntimeResult);
+        })();
+        return { events, result: resultPromise };
       });
 
       await capability.run('Test task', {
@@ -272,9 +320,15 @@ describe('CoordinatorCapability', () => {
     });
 
     it('should call onTool callback during execution', async () => {
-      mockRuntimeRun.mockImplementation(async (config: any) => {
-        config.onToolCall?.('agent', { type: 'explore', prompt: 'Find files' });
-        return defaultRuntimeResult;
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          yield { type: 'tool-call', toolName: 'agent', input: { type: 'explore', prompt: 'Find files' } };
+          yield { type: 'tool-result', toolName: 'agent', output: '' };
+          resolveResult(defaultRuntimeResult);
+        })();
+        return { events, result: resultPromise };
       });
 
       const tools: Array<{ name: string; input: unknown }> = [];
@@ -286,9 +340,15 @@ describe('CoordinatorCapability', () => {
     });
 
     it('should call onToolResult callback during execution', async () => {
-      mockRuntimeRun.mockImplementation(async (config: any) => {
-        config.onToolResult?.('agent', 'Worker completed');
-        return defaultRuntimeResult;
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          yield { type: 'tool-call', toolName: 'agent', input: {} };
+          yield { type: 'tool-result', toolName: 'agent', output: 'Worker completed' };
+          resolveResult(defaultRuntimeResult);
+        })();
+        return { events, result: resultPromise };
       });
 
       const results: Array<{ name: string; result: unknown }> = [];
@@ -313,9 +373,15 @@ describe('CoordinatorCapability', () => {
     });
 
     it('should update activity on tool result', async () => {
-      mockRuntimeRun.mockImplementation(async (config: any) => {
-        config.onToolResult?.('agent', 'result');
-        return defaultRuntimeResult;
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          yield { type: 'tool-call', toolName: 'agent', input: {} };
+          yield { type: 'tool-result', toolName: 'agent', output: 'result' };
+          resolveResult(defaultRuntimeResult);
+        })();
+        return { events, result: resultPromise };
       });
 
       await capability.run('Test task');
@@ -331,14 +397,14 @@ describe('CoordinatorCapability', () => {
     it('should use coordinator.md template', async () => {
       await capability.run('Implement a feature');
 
-      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      const callArgs = mockRuntimeStream.mock.calls[0][0];
       expect(callArgs.system).toContain('Coordinator');
     });
 
     it('should inject task into system prompt', async () => {
       await capability.run('Implement a feature');
 
-      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      const callArgs = mockRuntimeStream.mock.calls[0][0];
       expect(callArgs.system).toContain('Implement a feature');
     });
   });
@@ -372,7 +438,14 @@ describe('CoordinatorCapability', () => {
     });
 
     it('should not persist on failure', async () => {
-      mockRuntimeRun.mockRejectedValue(new Error('Failed'));
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          throw new Error('Failed');
+        })();
+        return { events, result: resultPromise };
+      });
 
       const mockAddUserMessage = vi.fn();
       const sessionContext = createContext();
@@ -403,7 +476,7 @@ describe('CoordinatorCapability', () => {
 
       await coordCap.run('new task');
 
-      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      const callArgs = mockRuntimeStream.mock.calls[0][0];
       expect(callArgs.messages).toBeDefined();
       expect(callArgs.messages.length).toBe(3);
       expect(callArgs.prompt).toBeUndefined();
@@ -412,7 +485,7 @@ describe('CoordinatorCapability', () => {
     it('should use prompt when no session history', async () => {
       await capability.run('test task');
 
-      const callArgs = mockRuntimeRun.mock.calls[0][0];
+      const callArgs = mockRuntimeStream.mock.calls[0][0];
       expect(callArgs.prompt).toBe('test task');
       expect(callArgs.messages).toBeUndefined();
     });
@@ -424,7 +497,14 @@ describe('CoordinatorCapability', () => {
 
   describe('error handling', () => {
     it('should handle Error exceptions', async () => {
-      mockRuntimeRun.mockRejectedValue(new Error('Execution failed'));
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          throw new Error('Execution failed');
+        })();
+        return { events, result: resultPromise };
+      });
 
       const result = await capability.run('Test task');
 
@@ -433,7 +513,14 @@ describe('CoordinatorCapability', () => {
     });
 
     it('should handle non-Error exceptions', async () => {
-      mockRuntimeRun.mockRejectedValue('String error');
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          throw 'String error';
+        })();
+        return { events, result: resultPromise };
+      });
 
       const result = await capability.run('Test task');
 
