@@ -215,7 +215,7 @@ describe('FeishuPlugin Integration', () => {
       expect(result).toEqual({ challenge: 'challenge_test_123' })
     })
 
-    it('should emit message event to MessageBus', async () => {
+    it('should emit message event via MessageHandler', async () => {
       const messageEvent = {
         header: {
           event_id: 'evt_integration_001',
