@@ -28,6 +28,11 @@ export interface WorkerExecuteMessage {
   };
 }
 
+/** 通过 workerData 传递的初始化数据 */
+export interface WorkerInitData {
+  externalConfig?: import('../providers/types.js').ExternalConfig;
+}
+
 /** Worker → 主线程的事件消息 */
 export type WorkerEventMessage =
   | { type: 'text'; text: string }
@@ -52,8 +57,12 @@ async function handleMessage(msg: WorkerExecuteMessage): Promise<void> {
   const startTime = Date.now();
 
   try {
-    // 独立创建 ProviderManager（环境变量自动继承）
-    const providerManager = createProviderManager({ useEnvFallback: true });
+    // 使用主线程传入的外部配置创建 ProviderManager（继承 hive.config.json 配置）
+    const initData = workerData as WorkerInitData | undefined;
+    const providerManager = createProviderManager({
+      externalConfig: initData?.externalConfig,
+      useEnvFallback: true,
+    });
     const runner = createAgentRunner(providerManager);
 
     const opts: Record<string, unknown> = {};

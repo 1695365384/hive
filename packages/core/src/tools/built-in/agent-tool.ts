@@ -16,6 +16,7 @@ import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
 import type { WorkerEventMessage } from '../../workers/worker-entry.js';
+import type { ExternalConfig } from '../../providers/types.js';
 
 // ============================================
 // Schema
@@ -177,8 +178,16 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       // 注册 Worker（获取 AbortController）
       const abortController = taskManager.register(workerId, input.type, input.description);
 
-      // 启动 Worker 线程
-      const worker = new Worker(WORKER_ENTRY_URL);
+      // 构建外部配置（传递给 Worker 线程以继承 Provider 配置）
+      const externalConfig: ExternalConfig = {
+        providers: context.providerManager.all,
+        activeProvider: context.providerManager.active?.id,
+      };
+
+      // 启动 Worker 线程（通过 workerData 传递 Provider 配置）
+      const worker = new Worker(WORKER_ENTRY_URL, {
+        workerData: { externalConfig },
+      });
       taskManager.setWorker(workerId, worker);
 
       // 通知 Worker 启动
