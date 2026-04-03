@@ -454,7 +454,7 @@ class ServerImpl implements Server {
 
         await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, replyText, replyType);
 
-        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: !abortController.signal.aborted });
+        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: !abortController.signal.aborted, cancelled: abortController.signal.aborted });
 
         this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
       } finally {
@@ -469,7 +469,8 @@ class ServerImpl implements Server {
 
       await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, `处理失败：${errorMsg}`, replyType);
 
-      this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: false, error: errorMsg });
+      const isAborted = error instanceof DOMException && error.name === 'AbortError';
+      this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: false, cancelled: isAborted, error: errorMsg });
     }
   }
 
