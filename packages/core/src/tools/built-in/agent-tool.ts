@@ -156,7 +156,7 @@ const WORKER_ENTRY_URL = new URL('../../workers/worker-entry.js', import.meta.ur
 export function createAgentTool(context: AgentContext, taskManager: TaskManager): Tool & { clearErrorHistory: () => void } {
   const { shouldBlockRetry, clearErrorHistory } = createRetryGuard();
 
-  return tool({
+  const agentTool = tool({
     description: [
       'Delegate a task to a Worker agent in an isolated context window.',
       '',
@@ -241,17 +241,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         abortController.signal.addEventListener('abort', handler, { once: true });
       });
 
-      // Worker 级别兜底超时（5 分钟），防止 Worker 永远不返回
-      const WORKER_TIMEOUT_MS = 5 * 60 * 1000;
-      const timeoutPromise = new Promise<true>((resolve) => {
-        const timer = setTimeout(() => {
-          resolve(true); // 超时视为 abort
-        }, WORKER_TIMEOUT_MS);
-        // 当正常完成时清除定时器
-        resultPromise.finally(() => clearTimeout(timer));
-      });
-
-      // Worker 结果 promise
+      // Worker 结果 promise（必须在 timeoutPromise 之前定义）
       const resultPromise = new Promise<AgentResult>((resolve, reject) => {
         worker.on('message', (msg: WorkerEventMessage) => {
           if (isAborted()) return; // abort 后忽略后续消息
@@ -309,10 +299,18 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         });
       });
 
+      // Worker 级别兜底超时（5 分钟），防止 Worker 永远不返回
+      const WORKER_TIMEOUT_MS = 5 * 60 * 1000;
+      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<true>((resolve) => {
+        timeoutTimer = setTimeout(() => {
+          resolve(true); // 超时视为 abort
+        }, WORKER_TIMEOUT_MS);
+      });
+
       try {
         // 提前退出：Worker 在启动前已被中止
         if (isAborted()) {
-          worker.terminate();
           taskManager.unregister(workerId);
           emitComplete(false, 'Worker aborted before start');
           return buildAbortResult();
@@ -334,7 +332,6 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
 
         if (raceResult === true) {
           // Abort 或超时胜出 — 杀线程
-          worker.terminate();
           taskManager.unregister(workerId);
           const isTimeout = abortController.signal.aborted === false;
           emitComplete(false, isTimeout ? 'Worker timed out after 5 minutes' : 'Worker aborted');
@@ -342,7 +339,6 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         }
 
         // 正常完成 — 清理线程
-        worker.terminate();
         taskManager.unregister(workerId);
         emitComplete(raceResult.success, raceResult.error);
 
@@ -354,7 +350,6 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           shouldBlockRetry,
         });
       } catch (error) {
-        worker.terminate();
         taskManager.unregister(workerId);
         const errorMsg = error instanceof Error ? error.message : String(error);
         emitComplete(false, errorMsg);
@@ -365,13 +360,15 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           duration: Date.now() - startTime,
           shouldBlockRetry,
         });
+      } finally {
+        if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
       }
     },
   }) as Tool & { clearErrorHistory: () => void };
 
   // 将 clearErrorHistory 挂到返回的工具对象上（闭包隔离）
-  (result as any).clearErrorHistory = clearErrorHistory;
-  return result;
+  (agentTool as any).clearErrorHistory = clearErrorHistory;
+  return agentTool;
 }
 
 /**
