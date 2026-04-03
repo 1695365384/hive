@@ -3,7 +3,6 @@
  *
  * 从 templates/ 目录加载 .md 文件作为提示词模板。
  * 模板文件通过 `pnpm run copy-templates` 复制到 dist 目录。
- * SEA 环境下通过 node:sea 的 getAsset() 从 blob 读取嵌入的模板。
  *
  * 模板目录结构:
  * - templates/explore.md            - Explore Agent 主模板（plan 已合并）
@@ -13,14 +12,14 @@
  */
 
 import * as path from 'path';
-import { resolveAsset, readAssetText, assetExists } from '../../utils/sea-path.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-// 模板目录（ESM 环境下的文件系统路径，用于 hasTemplateFile 检查）
-export const TEMPLATES_DIR = resolveAsset(
-  '../prompts/templates',
-  'agents/prompts/templates',
-  import.meta.url,
-);
+// ESM dev: use import.meta.url; CJS bundle: __dirname is provided by Node.js
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 模板目录（标准 ESM 路径解析）
+export const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
 /**
  * 模板变量类型
@@ -44,12 +43,11 @@ export class PromptTemplate {
       return this.cache.get(name)!;
     }
 
-    const assetKey = `${name}.md`;
-    const fsPath = path.join(TEMPLATES_DIR, assetKey);
+    const filePath = path.join(TEMPLATES_DIR, `${name}.md`);
 
     let content: string;
     try {
-      content = readAssetText(assetKey, fsPath);
+      content = readFileSync(filePath, 'utf-8');
     } catch {
       throw new Error(`Prompt template not found: ${name}`);
     }
@@ -94,14 +92,10 @@ export class PromptTemplate {
   }
 
   /**
-   * 检查模板文件是否存在（仅检查文件系统，SEA 环境始终返回 false）
+   * 检查模板文件是否存在
    */
   hasTemplateFile(name: string): boolean {
-    return assetExists(
-      `../prompts/templates/${name}.md`,
-      `agents/prompts/templates/${name}.md`,
-      import.meta.url,
-    );
+    return existsSync(path.join(TEMPLATES_DIR, `${name}.md`));
   }
 }
 

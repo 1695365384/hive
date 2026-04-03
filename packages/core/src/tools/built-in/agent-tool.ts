@@ -13,7 +13,9 @@ import { Worker } from 'node:worker_threads';
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { resolveAsset } from '../../utils/sea-path.js';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
@@ -145,21 +147,22 @@ function buildWorkerResultSummary(input: {
 /**
  * Worker 线程入口文件路径
  *
- * 通过 resolveAsset() 自动处理 ESM / SEA / CJS 三种环境。
- * SEA 包结构：server/
- *   ├── hive-server (SEA binary)
- *   ├── dist/workers/worker-entry.js
- *   └── node_modules/
+ * Bundle 模式：import.meta.url 指向 main.js（bundle 根），worker 在 bundle/workers/
+ * Dev 模式：import.meta.url 指向 agent-tool.js，worker 在 dist/workers/
  */
 let _cachedWorkerPath: string | undefined;
 
 function resolveWorkerEntryPath(): string {
   if (_cachedWorkerPath) return _cachedWorkerPath;
-  _cachedWorkerPath = resolveAsset(
-    '../../workers/worker-entry.js',
-    'dist/workers/worker-entry.js',
-    import.meta.url,
-  );
+  const baseDir = path.dirname(fileURLToPath(import.meta.url));
+  // Bundle: main.js is at root, workers/ is a sibling directory
+  const bundlePath = path.join(baseDir, 'workers', 'worker-entry.js');
+  if (existsSync(bundlePath)) {
+    _cachedWorkerPath = bundlePath;
+  } else {
+    // Dev: agent-tool.js is at dist/tools/built-in/, worker at dist/workers/
+    _cachedWorkerPath = fileURLToPath(new URL('../../workers/worker-entry.js', import.meta.url));
+  }
   return _cachedWorkerPath;
 }
 
