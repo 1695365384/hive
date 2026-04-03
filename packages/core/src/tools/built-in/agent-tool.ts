@@ -5,6 +5,10 @@
  * 直接使用 AgentRunner.executeStreaming() 执行，无需子进程和 IPC 通信。
  *
  * 防递归：子代理的工具来自 ToolRegistry 的类型白名单（不含 agent 工具），天然无法再派生。
+ *
+ * 优化点（Harness Engineer）：
+ *   - 令牌桶限流：Worker 启动前通过 TokenBucketRateLimiter 获取令牌，防止批量启动触发 API 429
+ *   - 语义截断：Worker 输出 > MAX_WORKER_RESULT_LENGTH 时用 ContextCompactor 做 LLM 摘要，而非固定比例截断
  */
 
 import { tool, zodSchema, type Tool } from 'ai';
@@ -16,6 +20,8 @@ import type { TaskManager } from '../../agents/core/TaskManager.js';
 import type { ScheduleCapability } from '../../agents/capabilities/ScheduleCapability.js';
 import { createAgentRunner } from '../../agents/core/runner.js';
 import { createScheduleTool } from './schedule-tools.js';
+import { getDefaultRateLimiter } from '../harness/rate-limiter.js';
+import { createContextCompactor } from '../../agents/pipeline/ContextCompactor.js';
 
 // ============================================
 // Schema
@@ -203,6 +209,9 @@ function createStuckDetector(abortController: AbortController) {
 
 /**
  * 构建结构化 Worker 结果摘要
+ *
+ * 注意：语义截断（ContextCompactor）是异步的，此函数仅用于构建摘要头部+摘录。
+ * 实际摘要由 buildWorkerResultSummaryAsync 处理。
  */
 function buildWorkerResultSummary(input: {
   type: string;
@@ -211,8 +220,10 @@ function buildWorkerResultSummary(input: {
   duration: number;
   shouldBlockRetry: (error: string) => boolean;
   stuckWarning?: string | null;
+  /** 已压缩的文本摘要（由 ContextCompactor 生成），若有则替代 smartExcerpt */
+  compressedExcerpt?: string | null;
 }): string {
-  const { type, result, accumulatedText, duration, shouldBlockRetry, stuckWarning } = input;
+  const { type, result, accumulatedText, duration, shouldBlockRetry, stuckWarning, compressedExcerpt } = input;
   const parts: string[] = [];
 
   // 状态行
@@ -241,10 +252,11 @@ function buildWorkerResultSummary(input: {
     parts.push(`Tools used: ${result.tools.join(', ')}`);
   }
 
-  // 输出摘录（首尾保留策略）
+  // 输出摘录：优先使用语义摘要，回退到启发式截断
   if (accumulatedText.trim()) {
-    const excerpt = smartExcerpt(accumulatedText, MAX_OUTPUT_EXCERPT);
-    parts.push(`Output (${accumulatedText.length} chars):\n${excerpt}`);
+    const excerpt = compressedExcerpt ?? smartExcerpt(accumulatedText, MAX_OUTPUT_EXCERPT);
+    const label = compressedExcerpt ? 'Summary' : 'Output';
+    parts.push(`${label} (${accumulatedText.length} chars):\n${excerpt}`);
   }
 
   let summary = parts.join('\n\n');
@@ -268,6 +280,12 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
 
   // 共享 AgentRunner：复用父进程的 ProviderManager，子代理共享 provider 配置
   const runner = createAgentRunner(context.providerManager);
+
+  // 语义截断：使用 ContextCompactor 对超长 Worker 输出做 LLM 摘要
+  const compactor = createContextCompactor(context.providerManager);
+
+  // 令牌桶限流器：防止批量 Worker 启动触发 LLM API 429
+  const rateLimiter = getDefaultRateLimiter();
 
   const agentTool = tool({
     description: [
@@ -298,6 +316,9 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       const workerId = randomUUID();
       const startTime = Date.now();
       const sessionId = context.hookRegistry.getSessionId();
+
+      // 令牌桶限流：等待可用令牌，防止批量启动 Worker 触发 API 429
+      await rateLimiter.acquire();
 
       // 注册 Worker（获取 AbortController）
       const abortController = taskManager.register(workerId, input.type, input.description);
@@ -343,6 +364,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       try {
         // 提前退出：Worker 在启动前已被中止
         if (isAborted()) {
+          rateLimiter.release();
           taskManager.unregister(workerId);
           emitComplete(false, 'Worker aborted before start');
           return buildAbortResult();
@@ -424,11 +446,27 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         );
 
         // 正常完成 — 清理
+        rateLimiter.release();
         taskManager.unregister(workerId);
         if (!result.success) {
           console.error(`[worker:${workerId.slice(0, 8)}] Task failed: ${result.error || 'unknown error'}`);
         }
         emitComplete(result.success, result.error);
+
+        // 语义截断：Worker 输出超过阈值时用 ContextCompactor 做 LLM 摘要
+        let compressedExcerpt: string | null = null;
+        if (accumulatedText.length > MAX_WORKER_RESULT_LENGTH && result.success) {
+          try {
+            const agentType = input.type === 'schedule' ? 'general' : input.type;
+            const phaseResult = await compactor.compressPhase(
+              { text: accumulatedText, tools: result.tools, success: true },
+              agentType as 'explore' | 'plan' | 'general',
+            );
+            compressedExcerpt = phaseResult.summary;
+          } catch {
+            // ContextCompactor 失败时回退到启发式截断（buildWorkerResultSummary 默认行为）
+          }
+        }
 
         return buildWorkerResultSummary({
           type: input.type,
@@ -437,8 +475,10 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           duration: Date.now() - startTime,
           shouldBlockRetry,
           stuckWarning,
+          compressedExcerpt,
         });
       } catch (error) {
+        rateLimiter.release();
         taskManager.unregister(workerId);
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error(`[worker:${workerId.slice(0, 8)}] Execution failed: ${errorMsg}`);

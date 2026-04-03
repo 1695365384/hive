@@ -3,11 +3,17 @@
  *
  * 将 ToolResult 转换为 LLM 友好的 string。
  * 格式兼容现有 [OK]/[Error]/[Security] 前缀，新增 [Hint] 前缀。
+ *
+ * BLOCKED 错误追加熔断提示，防止 LLM 反复重试被安全策略拦截的操作。
  */
 
 import type { ToolResult, HintTemplateMap } from './types.js';
 import { getHintForTool } from './hint-registry.js';
 import { BLOCKED_CODES } from './types.js';
+import { isBlockedCode, createBlockedCircuitBreaker } from './circuit-breaker.js';
+
+// 模块级熔断器（跨同一进程内所有工具调用共享）
+const globalCircuitBreaker = createBlockedCircuitBreaker();
 
 /**
  * 序列化 ToolResult 为 string
@@ -36,6 +42,18 @@ export function serializeToolResult(
   const hint = result.hint ?? resolveHint(result.code, result.context, customTemplates, toolName);
   if (hint) {
     lines.push(`[Hint] ${hint}`);
+  }
+
+  // BLOCKED 类错误：注入熔断提示
+  if (isBlockedCode(result.code)) {
+    const circuitMsg = globalCircuitBreaker.record(
+      toolName ?? 'unknown',
+      result.code,
+      result.context ?? {},
+    );
+    if (circuitMsg) {
+      lines.push(circuitMsg);
+    }
   }
 
   return lines.join('\n');
