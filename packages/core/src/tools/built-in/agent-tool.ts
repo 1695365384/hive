@@ -241,6 +241,16 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         abortController.signal.addEventListener('abort', handler, { once: true });
       });
 
+      // Worker 级别兜底超时（5 分钟），防止 Worker 永远不返回
+      const WORKER_TIMEOUT_MS = 5 * 60 * 1000;
+      const timeoutPromise = new Promise<true>((resolve) => {
+        const timer = setTimeout(() => {
+          resolve(true); // 超时视为 abort
+        }, WORKER_TIMEOUT_MS);
+        // 当正常完成时清除定时器
+        resultPromise.finally(() => clearTimeout(timer));
+      });
+
       // Worker 结果 promise
       const resultPromise = new Promise<AgentResult>((resolve, reject) => {
         worker.on('message', (msg: WorkerEventMessage) => {
@@ -319,14 +329,15 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           },
         });
 
-        // Race: 正常完成 vs abort
-        const raceResult = await Promise.race([resultPromise, abortPromise]);
+        // Race: 正常完成 vs abort vs timeout
+        const raceResult = await Promise.race([resultPromise, abortPromise, timeoutPromise]);
 
         if (raceResult === true) {
-          // Abort 胜出 — 杀线程
+          // Abort 或超时胜出 — 杀线程
           worker.terminate();
           taskManager.unregister(workerId);
-          emitComplete(false, 'Worker aborted');
+          const isTimeout = abortController.signal.aborted === false;
+          emitComplete(false, isTimeout ? 'Worker timed out after 5 minutes' : 'Worker aborted');
           return buildAbortResult();
         }
 
