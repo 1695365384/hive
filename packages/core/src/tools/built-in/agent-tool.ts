@@ -13,6 +13,8 @@ import { Worker } from 'node:worker_threads';
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { resolve, dirname } from 'node:path';
 import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
@@ -142,9 +144,21 @@ function buildWorkerResultSummary(input: {
 }
 
 /**
- * Worker 线程入口文件 URL
+ * Worker 线程入口文件路径
+ *
+ * 兼容 ESM（import.meta.url）和 SEA 打包（__dirname 回退）。
+ * 使用函数延迟解析，避免模块加载时 import.meta.url 在 SEA 环境下报错。
  */
-const WORKER_ENTRY_URL = new URL('../../workers/worker-entry.js', import.meta.url);
+function resolveWorkerEntryPath(): string {
+  try {
+    // ESM / 正常 tsc 输出
+    const entryUrl = new URL('../../workers/worker-entry.js', import.meta.url);
+    return fileURLToPath(entryUrl);
+  } catch {
+    // SEA 打包环境：import.meta.url 可能无效，回退到 __dirname
+    return resolve(dirname(__dirname), 'workers', 'worker-entry.js');
+  }
+}
 
 /**
  * 创建 AgentTool
@@ -196,7 +210,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       };
 
       // 启动 Worker 线程（通过 workerData 传递 Provider 配置）
-      const worker = new Worker(WORKER_ENTRY_URL, {
+      const worker = new Worker(resolveWorkerEntryPath(), {
         workerData: { externalConfig },
       });
       taskManager.setWorker(workerId, worker);
