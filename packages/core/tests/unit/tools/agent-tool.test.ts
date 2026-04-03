@@ -86,7 +86,7 @@ vi.mock('node:worker_threads', () => {
   return { Worker: MockWorker };
 });
 
-import { createAgentTool, clearErrorHistory } from '../../../src/tools/built-in/agent-tool.js';
+import { createAgentTool } from '../../../src/tools/built-in/agent-tool.js';
 
 describe('AgentTool', () => {
   let context: ReturnType<typeof createMockAgentContext>;
@@ -95,7 +95,6 @@ describe('AgentTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWorkerInstances.length = 0;
-    clearErrorHistory();
     context = createMockAgentContext();
     taskManager = new TaskManager();
   });

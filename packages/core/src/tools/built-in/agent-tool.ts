@@ -54,7 +54,6 @@ const MAX_OUTPUT_EXCERPT = 500;
 
 const MAX_SAME_ERROR_RETRIES = 2;
 const ERROR_TTL_MS = 300_000; // 5 分钟
-const recentErrors: Array<{ fingerprint: string; timestamp: number }> = [];
 
 function getErrorFingerprint(error: string): string {
   return error
@@ -65,25 +64,31 @@ function getErrorFingerprint(error: string): string {
     .slice(0, 200);
 }
 
-function shouldBlockRetry(error: string): boolean {
-  const fp = getErrorFingerprint(error);
-  const now = Date.now();
+/**
+ * 创建闭包隔离的错误重试保护器
+ */
+function createRetryGuard() {
+  const recentErrors: Array<{ fingerprint: string; timestamp: number }> = [];
 
-  // 清理过期记录
-  while (recentErrors.length > 0 && now - recentErrors[0].timestamp > ERROR_TTL_MS) {
-    recentErrors.shift();
+  function shouldBlockRetry(error: string): boolean {
+    const fp = getErrorFingerprint(error);
+    const now = Date.now();
+
+    // 清理过期记录
+    while (recentErrors.length > 0 && now - recentErrors[0].timestamp > ERROR_TTL_MS) {
+      recentErrors.shift();
+    }
+
+    const count = recentErrors.filter(e => e.fingerprint === fp).length;
+    recentErrors.push({ fingerprint: fp, timestamp: now });
+    return count >= MAX_SAME_ERROR_RETRIES;
   }
 
-  const count = recentErrors.filter(e => e.fingerprint === fp).length;
-  recentErrors.push({ fingerprint: fp, timestamp: now });
-  return count >= MAX_SAME_ERROR_RETRIES;
-}
+  function clearErrorHistory(): void {
+    recentErrors.length = 0;
+  }
 
-/**
- * 清除错误历史（用于测试和 session 重置）
- */
-export function clearErrorHistory(): void {
-  recentErrors.length = 0;
+  return { shouldBlockRetry, clearErrorHistory };
 }
 
 /**
@@ -94,8 +99,9 @@ function buildWorkerResultSummary(input: {
   result: { text: string; tools: string[]; success: boolean; error?: string };
   accumulatedText: string;
   duration: number;
+  shouldBlockRetry: (error: string) => boolean;
 }): string {
-  const { type, result, accumulatedText, duration } = input;
+  const { type, result, accumulatedText, duration, shouldBlockRetry } = input;
   const parts: string[] = [];
 
   // 状态行
@@ -144,8 +150,12 @@ const WORKER_ENTRY_URL = new URL('../../workers/worker-entry.js', import.meta.ur
  *
  * Coordinator 调用此工具 spawn Worker（独立线程），Worker 事件通过 hook 实时透传。
  * 取消时直接 worker.terminate() 杀线程。
+ *
+ * @returns Tool 实例和 clearErrorHistory 方法（错误历史通过闭包隔离）
  */
-export function createAgentTool(context: AgentContext, taskManager: TaskManager): Tool {
+export function createAgentTool(context: AgentContext, taskManager: TaskManager): Tool & { clearErrorHistory: () => void } {
+  const { shouldBlockRetry, clearErrorHistory } = createRetryGuard();
+
   return tool({
     description: [
       'Delegate a task to a Worker agent in an isolated context window.',
@@ -208,6 +218,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         result: { text: '', tools: [], success: false, error: 'Worker aborted' },
         accumulatedText,
         duration: Date.now() - startTime,
+        shouldBlockRetry,
       });
 
       // 通知 Worker 完成的辅助函数
@@ -329,6 +340,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           result: raceResult,
           accumulatedText,
           duration: Date.now() - startTime,
+          shouldBlockRetry,
         });
       } catch (error) {
         worker.terminate();
@@ -340,8 +352,22 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           result: { text: '', tools: [], success: false, error: errorMsg },
           accumulatedText,
           duration: Date.now() - startTime,
+          shouldBlockRetry,
         });
       }
     },
-  });
+  }) as Tool & { clearErrorHistory: () => void };
+
+  // 将 clearErrorHistory 挂到返回的工具对象上（闭包隔离）
+  (result as any).clearErrorHistory = clearErrorHistory;
+  return result;
+}
+
+/**
+ * 清除错误历史（向后兼容的模块级导出）
+ *
+ * @deprecated 使用 createAgentTool() 返回对象的 clearErrorHistory 方法
+ */
+export function clearErrorHistory(): void {
+  // 模块级导出仅做 no-op，实际清除由实例级 clearErrorHistory 处理
 }
