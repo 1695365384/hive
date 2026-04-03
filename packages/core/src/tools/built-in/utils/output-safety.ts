@@ -4,8 +4,8 @@
  * 所有内置工具共享的输出截断逻辑，防止大输出撑爆上下文窗口。
  */
 
-/** 默认最大输出字符数 */
-const DEFAULT_MAX_CHARS = 30_000;
+/** 极端安全兜底，防止 OOM。正常情况下 LLM 通过工具参数自控输出量 */
+const DEFAULT_MAX_CHARS = 1_000_000;
 
 /**
  * 截断输出内容
@@ -17,7 +17,7 @@ const DEFAULT_MAX_CHARS = 30_000;
  * @returns 截断后的文本（可能附加截断提示）
  */
 export function truncateOutput(text: string, maxChars: number = DEFAULT_MAX_CHARS): string {
-  if (text.length <= maxChars) {
+  if (text.length < maxChars) {
     return text;
   }
   return `${text.slice(0, maxChars)}\n\n[Output truncated, ${text.length} characters total]`;

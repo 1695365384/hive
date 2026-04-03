@@ -16,6 +16,7 @@ export const AGENT_NAMES = {
   EXPLORE: 'explore',
   PLAN: 'plan',
   GENERAL: 'general',
+  SCHEDULE: 'schedule',
 } as const;
 
 // ============================================
@@ -23,9 +24,9 @@ export const AGENT_NAMES = {
 // ============================================
 
 /**
- * 核心三代理
+ * 核心代理
  */
-export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = {
+export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule', AgentConfig> = {
   explore: {
     type: 'explore',
     description: 'Read-only agent for searching, analyzing codebases, and deep research.',
@@ -44,7 +45,14 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general', AgentConfig> = 
     type: 'general',
     description: 'Full-access agent for executing tasks, modifying files, and running commands.',
     tools: ['bash', 'file', 'glob', 'grep', 'web-search', 'web-fetch', 'ask-user', 'send-file', 'env'],
-    maxTurns: 30,
+    maxTurns: 15,
+  },
+
+  schedule: {
+    type: 'schedule',
+    description: 'Schedule management agent for creating, listing, pausing, resuming, and removing scheduled tasks.',
+    tools: ['schedule'],
+    maxTurns: 10,
   },
 };
 

@@ -80,7 +80,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
     : '';
 
   return {
-    description: `File operations tool. Supports viewing, creating, and editing file contents.${descSuffix}`,
+    description: `File operations tool. Supports viewing, creating, and editing file contents.${descSuffix} Use limit parameter to read specific line ranges when viewing files. Avoid reading entire large files.`,
     inputSchema: zodSchema(fileInputSchema),
     execute: async (args): Promise<ToolResult> => {
       const { command, file_path: rawPath } = args;

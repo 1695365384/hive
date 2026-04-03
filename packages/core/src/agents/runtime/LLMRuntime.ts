@@ -40,7 +40,10 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
     maxSteps: 15,
   },
   general: {
-    maxSteps: 30,
+    maxSteps: 15,
+  },
+  schedule: {
+    maxSteps: 10,
   },
 };
 

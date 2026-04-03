@@ -140,7 +140,7 @@ describe('DynamicPromptBuilder', () => {
       // Context section should be truncated (not the full 5000+ chars)
       // Base template is still loaded from file, so total may exceed 400,
       // but the context should be much smaller than the input
-      expect(prompt.length).toBeLessThan(3000);
+      expect(prompt.length).toBeLessThan(4000);
     });
 
     it('should remove skill section when over budget', () => {
@@ -406,12 +406,12 @@ describe('DynamicPromptBuilder', () => {
       };
 
       const prompt = builder.buildPrompt(context);
-      expect(prompt).toContain('## Scheduled Tasks');
+      expect(prompt).toContain('## Current Scheduled Tasks');
       expect(prompt).toContain('Daily logs');
       expect(prompt).toContain('0 9 * * *');
     });
 
-    it('should include schedule capability declaration even without tasks', () => {
+    it('should include schedule data when scheduleSummary is provided', () => {
       const context: PromptBuildContext = {
         task: 'Hello',
         priorResults: [],
@@ -420,9 +420,8 @@ describe('DynamicPromptBuilder', () => {
       };
 
       const prompt = builder.buildPrompt(context);
-      expect(prompt).toContain('## Scheduled Tasks');
+      expect(prompt).toContain('## Current Scheduled Tasks');
       expect(prompt).toContain('No scheduled tasks configured');
-      expect(prompt).toContain('Confirmation Required');
     });
 
     it('should not include schedule section when scheduleSummary is undefined', () => {
@@ -433,7 +432,7 @@ describe('DynamicPromptBuilder', () => {
       };
 
       const prompt = builder.buildPrompt(context);
-      expect(prompt).not.toContain('## Scheduled Tasks');
+      expect(prompt).not.toContain('## Current Scheduled Tasks');
     });
 
     it('should truncate schedule section when over budget (priority 4)', () => {

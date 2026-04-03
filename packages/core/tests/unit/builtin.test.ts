@@ -19,12 +19,13 @@ import {
 
 describe('Builtin Agents', () => {
   describe('CORE_AGENTS', () => {
-    it('should have exactly 3 core agents', () => {
+    it('should have exactly 4 core agents', () => {
       const names = Object.keys(CORE_AGENTS);
-      expect(names).toHaveLength(3);
+      expect(names).toHaveLength(4);
       expect(names).toContain('explore');
       expect(names).toContain('plan');
       expect(names).toContain('general');
+      expect(names).toContain('schedule');
     });
 
     it('explore agent should have correct configuration', () => {
@@ -64,8 +65,8 @@ describe('Builtin Agents', () => {
       expect(general.tools).toContain('env');
     });
 
-    it('general agent should have maxTurns 30', () => {
-      expect(CORE_AGENTS.general.maxTurns).toBe(30);
+    it('general agent should have maxTurns 15', () => {
+      expect(CORE_AGENTS.general.maxTurns).toBe(15);
     });
   });
 
@@ -77,8 +78,8 @@ describe('Builtin Agents', () => {
       expect(names).toContain('general');
     });
 
-    it('should have exactly 3 agents', () => {
-      expect(Object.keys(BUILTIN_AGENTS).length).toBe(3);
+    it('should have exactly 4 agents', () => {
+      expect(Object.keys(BUILTIN_AGENTS).length).toBe(4);
     });
   });
 
@@ -104,8 +105,8 @@ describe('Builtin Agents', () => {
 
     it('getAllAgentNames should return core agent names only', () => {
       const names = getAllAgentNames();
-      expect(names).toHaveLength(3);
-      expect(names).toEqual(['explore', 'plan', 'general']);
+      expect(names).toHaveLength(4);
+      expect(names).toEqual(['explore', 'plan', 'general', 'schedule']);
     });
   });
 

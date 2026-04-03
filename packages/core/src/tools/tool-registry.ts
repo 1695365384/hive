@@ -25,13 +25,14 @@ import { setEnvDbProvider } from './built-in/env-tool.js';
 import type { AgentType as CapabilityAgentType } from '../agents/types/capabilities.js';
 
 /** Agent types that have tool whitelists in the registry */
-export type AgentType = 'explore' | 'plan' | 'general';
+export type AgentType = 'explore' | 'plan' | 'general' | 'schedule';
 
 /**
  * Agent 类型对应的工具白名单
  *
  * - explore: 只读工具（file 只读版、glob、grep、web-search、web-fetch、env）
  * - general: 全量工具（含 bash、file 全量版、ask-user、send-file、env）
+ * - schedule: 空白名单，schedule 工具由 agent-tool.ts 在 spawn 时动态注册
  *
  * 'plan' 使用与 explore 相同的只读工具集。
  */
@@ -63,6 +64,7 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'send-file', factory: () => createSendFileTool() },
     { name: 'env', factory: () => createEnvTool() },
   ],
+  schedule: [],
 };
 
 /**
