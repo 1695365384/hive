@@ -5,6 +5,8 @@
  * 被 CoordinatorCapability 和 AgentTool 共享使用。
  */
 
+import { type Worker as WorkerThread } from 'node:worker_threads';
+
 // ============================================
 // 类型
 // ============================================
@@ -22,6 +24,8 @@ export interface WorkerTask {
   description?: string;
   /** 中止控制器 */
   abortController: AbortController;
+  /** Worker 线程引用 */
+  worker?: WorkerThread;
   /** 启动时间戳 */
   startedAt: number;
 }
@@ -37,6 +41,7 @@ export interface WorkerTask {
  */
 export class TaskManager {
   private tasks: Map<string, WorkerTask> = new Map();
+  private _peakConcurrent = 0;
 
   /**
    * 注册新 Worker
@@ -52,13 +57,30 @@ export class TaskManager {
       abortController,
       startedAt: Date.now(),
     });
+    if (this.tasks.size > this._peakConcurrent) {
+      this._peakConcurrent = this.tasks.size;
+    }
     return abortController;
+  }
+
+  /**
+   * 设置 Worker 线程引用
+   */
+  setWorker(id: string, worker: WorkerThread): void {
+    const task = this.tasks.get(id);
+    if (task) {
+      task.worker = worker;
+    }
   }
 
   /**
    * 注销 Worker（正常完成时调用）
    */
   unregister(id: string): void {
+    const task = this.tasks.get(id);
+    if (task) {
+      task.worker?.terminate();
+    }
     this.tasks.delete(id);
   }
 
@@ -70,6 +92,7 @@ export class TaskManager {
   abort(id: string): boolean {
     const task = this.tasks.get(id);
     if (!task) return false;
+    task.worker?.terminate();
     task.abortController.abort();
     this.tasks.delete(id);
     return true;
@@ -101,6 +124,7 @@ export class TaskManager {
    */
   abortAll(): void {
     for (const task of this.tasks.values()) {
+      task.worker?.terminate();
       task.abortController.abort();
     }
     this.tasks.clear();
@@ -111,5 +135,12 @@ export class TaskManager {
    */
   isActive(id: string): boolean {
     return this.tasks.has(id);
+  }
+
+  /**
+   * 本次会话中最大并发 Worker 数
+   */
+  get peakConcurrent(): number {
+    return this._peakConcurrent;
   }
 }

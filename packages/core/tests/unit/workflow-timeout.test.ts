@@ -13,10 +13,12 @@ import type { AgentContext } from '../../src/agents/core/types.js';
 
 // Mock LLMRuntime
 const mockRuntimeRun = vi.fn();
+const mockRuntimeStream = vi.fn();
 vi.mock('../../src/agents/runtime/LLMRuntime.js', () => {
   return {
     LLMRuntime: class MockLLMRuntime {
       run = mockRuntimeRun;
+      stream = mockRuntimeStream;
     },
   };
 });
@@ -34,16 +36,21 @@ describe('CoordinatorCapability 超时保护', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRuntimeRun.mockImplementation(async (config: any) => {
-      config.onText?.('Done');
-      return {
-        text: 'Done',
-        tools: [],
-        success: true,
-        usage: { promptTokens: 50, completionTokens: 10 },
-        steps: [],
-        duration: 50,
-      };
+    mockRuntimeStream.mockImplementation((_config: any) => {
+      let resolveResult!: (result: any) => void;
+      const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+      const events = (async function* () {
+        yield { type: 'text-delta', text: 'Done' };
+        resolveResult({
+          text: 'Done',
+          tools: [],
+          success: true,
+          usage: { promptTokens: 50, completionTokens: 10 },
+          steps: [],
+          duration: 50,
+        });
+      })();
+      return { events, result: resultPromise };
     });
 
     capability = new CoordinatorCapability();
@@ -73,7 +80,14 @@ describe('CoordinatorCapability 超时保护', () => {
   });
 
   it('执行出错后应停止心跳（finally 保证）', async () => {
-    mockRuntimeRun.mockRejectedValue(new Error('exec failed'));
+    mockRuntimeStream.mockImplementation((_config: any) => {
+      let resolveResult!: (result: any) => void;
+      const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+      const events = (async function* () {
+        throw new Error('exec failed');
+      })();
+      return { events, result: resultPromise };
+    });
 
     await capability.run('Test task');
 
@@ -106,17 +120,22 @@ describe('CoordinatorCapability 超时保护', () => {
     vi.mocked(context.timeoutCap.startHeartbeat).mockImplementation(() => {
       callOrder.push('startHeartbeat');
     });
-    mockRuntimeRun.mockImplementation(async (config: any) => {
-      callOrder.push('run');
-      config.onText?.('Done');
-      return {
-        text: 'Done',
-        tools: ['agent'],
-        success: true,
-        usage: { promptTokens: 50, completionTokens: 10 },
-        steps: [],
-        duration: 50,
-      };
+    mockRuntimeStream.mockImplementation((_config: any) => {
+      let resolveResult!: (result: any) => void;
+      const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+      const events = (async function* () {
+        callOrder.push('stream');
+        yield { type: 'text-delta', text: 'Done' };
+        resolveResult({
+          text: 'Done',
+          tools: ['agent'],
+          success: true,
+          usage: { promptTokens: 50, completionTokens: 10 },
+          steps: [],
+          duration: 50,
+        });
+      })();
+      return { events, result: resultPromise };
     });
     vi.mocked(context.timeoutCap.stopHeartbeat).mockImplementation(() => {
       callOrder.push('stopHeartbeat');
@@ -124,6 +143,6 @@ describe('CoordinatorCapability 超时保护', () => {
 
     await capability.run('Test task');
 
-    expect(callOrder).toEqual(['startHeartbeat', 'run', 'stopHeartbeat']);
+    expect(callOrder).toEqual(['startHeartbeat', 'stream', 'stopHeartbeat']);
   });
 });

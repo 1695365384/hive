@@ -5,9 +5,8 @@
  * 替代 claude-agent-sdk 的 query()。
  *
  * 设计原则：
- * - 单一入口 run(config) → Promise<RuntimeResult>
- * - streaming=false → generateText（子 Agent、分类器）
- * - streaming=true  → streamText + fullStream（对话）
+ * - run(config) → Promise<RuntimeResult>（非流式，子 Agent、分类器）
+ * - stream(config) → AsyncGenerator<StreamEvent, RuntimeResult>（流式，对话）
  * - 模型通过 ProviderManager.getModel() 获取，兼容所有 Provider
  */
 
@@ -20,6 +19,8 @@ import type {
   RuntimeResult,
   StepResult,
   AgentPreset,
+  StreamEvent,
+  StreamHandle,
 } from './types.js';
 
 // ============================================
@@ -58,20 +59,13 @@ export class LLMRuntime {
   }
 
   /**
-   * 执行 LLM 调用
+   * 执行 LLM 调用（非流式）
    */
   async run(config: RuntimeConfig): Promise<RuntimeResult> {
     const startTime = Date.now();
     const { model, spec } = await this.resolveModelWithSpec(config);
     if (!model) {
-      return {
-        text: '',
-        tools: [],
-        success: false,
-        error: 'No available model. Check provider configuration.',
-        steps: [],
-        duration: Date.now() - startTime,
-      };
+      return this.buildErrorResult(startTime, 'No available model. Check provider configuration.');
     }
 
     const modelSpec = spec ? {
@@ -81,35 +75,158 @@ export class LLMRuntime {
     } : undefined;
 
     try {
-      if (config.streaming) {
-        return await this.runStreaming(model, config, startTime, modelSpec);
-      }
       return await this.runGenerate(model, config, startTime, modelSpec);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
       if (err.name === 'AbortError') {
-        return {
-          text: '',
-          tools: [],
-          success: false,
-          error: 'Request aborted',
-          steps: [],
-          duration: Date.now() - startTime,
-          modelSpec,
-        };
+        return this.buildErrorResult(startTime, 'Request aborted', modelSpec);
       }
 
-      return {
-        text: '',
-        tools: [],
-        success: false,
-        error: err.message,
-        steps: [],
-        duration: Date.now() - startTime,
-        modelSpec,
-      };
+      return this.buildErrorResult(startTime, err.message, modelSpec);
     }
+  }
+
+  // ============================================
+  // 流式生成器模式（async generator）
+  // ============================================
+
+  /**
+   * 以 async generator 模式执行 LLM 流式调用
+   *
+   * 返回 StreamHandle，包含事件生成器和结果 Promise。
+   * - events: 用 for await 消费中间事件
+   * - result: 在所有事件 yield 完成后 resolve 为 RuntimeResult
+   *
+   * @example
+   * ```ts
+   * const { events, result } = runtime.stream({ prompt: 'hello', ... });
+   * for await (const event of events) {
+   *   if (event.type === 'text-delta') process.stdout.write(event.text);
+   * }
+   * const final = await result; // RuntimeResult
+   * ```
+   */
+  stream(config: RuntimeConfig): StreamHandle {
+    let resolveResult!: (result: RuntimeResult) => void;
+    let rejectResult!: (error: Error) => void;
+    let resultResolved = false;
+
+    const resultPromise = new Promise<RuntimeResult>((resolve, reject) => {
+      resolveResult = (result: RuntimeResult) => {
+        resultResolved = true;
+        resolve(result);
+      };
+      rejectResult = (error: Error) => {
+        resultResolved = true;
+        reject(error);
+      };
+    });
+
+    const startTime = Date.now();
+
+    const self = this;
+    const events = (async function* (): AsyncGenerator<StreamEvent> {
+      try {
+        const { model, spec } = await self.resolveModelWithSpec(config);
+        const modelSpec = spec ? {
+          contextWindow: spec.contextWindow,
+          maxOutputTokens: spec.maxOutputTokens ?? 0,
+          supportsTools: spec.supportsTools ?? false,
+        } : undefined;
+
+        if (!model) {
+          resolveResult(self.buildErrorResult(startTime, 'No available model. Check provider configuration.', modelSpec));
+          return;
+        }
+
+        const streamResult = streamText({
+          model,
+          prompt: config.prompt,
+          system: config.system,
+          messages: config.messages as any,
+          tools: config.tools,
+          stopWhen: stepCountIs(config.maxSteps ?? 10),
+          abortSignal: config.abortSignal,
+        });
+
+        try {
+          for await (const chunk of streamResult.fullStream) {
+            switch (chunk.type) {
+              case 'text-delta':
+                yield { type: 'text-delta' as const, text: chunk.text };
+                break;
+
+              case 'tool-call':
+                yield { type: 'tool-call' as const, toolName: chunk.toolName, input: chunk.input };
+                break;
+
+              case 'tool-result':
+                yield { type: 'tool-result' as const, toolName: chunk.toolName, output: chunk.output };
+                break;
+
+              case 'reasoning-delta':
+                yield { type: 'reasoning' as const, text: chunk.text };
+                break;
+
+              case 'finish-step':
+                yield {
+                  type: 'step-finish' as const,
+                  step: {
+                    toolCalls: [],
+                    toolResults: [],
+                    isToolStep: false,
+                    finishReason: chunk.finishReason,
+                  },
+                };
+                break;
+            }
+          }
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          if (err.name === 'AbortError') {
+            resolveResult(self.buildErrorResult(startTime, 'Request aborted', modelSpec));
+            return;
+          }
+          resolveResult(self.buildErrorResult(startTime, err.message, modelSpec));
+          return;
+        }
+
+        // 等待完整结果
+        const [text, finishReason, steps, totalUsage] = await Promise.all([
+          streamResult.text,
+          streamResult.finishReason,
+          streamResult.steps,
+          streamResult.totalUsage,
+        ]);
+
+        const toolsUsed = self.collectToolsFromSteps(steps);
+
+        resolveResult({
+          text,
+          tools: toolsUsed,
+          usage: totalUsage
+            ? {
+                promptTokens: totalUsage.inputTokens ?? 0,
+                completionTokens: totalUsage.outputTokens ?? 0,
+              }
+            : undefined,
+          steps: steps.map(step => self.mapStepResult(step)),
+          success: finishReason !== 'error',
+          error: finishReason === 'error' ? 'Generation finished with error' : undefined,
+          duration: Date.now() - startTime,
+          modelSpec,
+        });
+      } finally {
+        // 消费者 break for-await 循环后，async generator 被 GC
+        // 但 resultPromise 可能永远 pending，这里确保它被 reject
+        if (!resultResolved) {
+          rejectResult(new Error('Stream consumer exited early'));
+        }
+      }
+    })();
+
+    return { events, result: resultPromise };
   }
 
   // ============================================
@@ -151,85 +268,24 @@ export class LLMRuntime {
   }
 
   // ============================================
-  // 流式执行（对话）
+  // 内部方法
   // ============================================
 
-  private async runStreaming(
-    model: LanguageModelV3,
-    config: RuntimeConfig,
+  private buildErrorResult(
     startTime: number,
+    error: string,
     modelSpec?: RuntimeResult['modelSpec'],
-  ): Promise<RuntimeResult> {
-    const result = streamText({
-      model,
-      prompt: config.prompt,
-      system: config.system,
-      messages: config.messages as any,
-      tools: config.tools,
-      stopWhen: stepCountIs(config.maxSteps ?? 10),
-      abortSignal: config.abortSignal,
-    });
-
-    // 遍历 fullStream 事件
-    for await (const chunk of result.fullStream) {
-      switch (chunk.type) {
-        case 'text-delta':
-          config.onText?.(chunk.text);
-          break;
-
-        case 'tool-call':
-          config.onToolCall?.(chunk.toolName, chunk.input);
-          break;
-
-        case 'tool-result':
-          config.onToolResult?.(chunk.toolName, chunk.output);
-          break;
-
-        case 'reasoning-delta':
-          config.onReasoning?.(chunk.text);
-          break;
-
-        case 'finish-step':
-          config.onStepFinish?.({
-            toolCalls: [],
-            toolResults: [],
-            isToolStep: false,
-            finishReason: chunk.finishReason,
-          });
-          break;
-      }
-    }
-
-    // 等待完整结果
-    const [text, finishReason, steps, totalUsage] = await Promise.all([
-      result.text,
-      result.finishReason,
-      result.steps,
-      result.totalUsage,
-    ]);
-
-    const toolsUsed = this.collectToolsFromSteps(steps);
-
+  ): RuntimeResult {
     return {
-      text,
-      tools: toolsUsed,
-      usage: totalUsage
-        ? {
-            promptTokens: totalUsage.inputTokens ?? 0,
-            completionTokens: totalUsage.outputTokens ?? 0,
-          }
-        : undefined,
-      steps: steps.map(step => this.mapStepResult(step)),
-      success: finishReason !== 'error',
-      error: finishReason === 'error' ? 'Generation finished with error' : undefined,
+      text: '',
+      tools: [],
+      success: false,
+      error,
+      steps: [],
       duration: Date.now() - startTime,
       modelSpec,
     };
   }
-
-  // ============================================
-  // 内部方法
-  // ============================================
 
   private async resolveModelWithSpec(config: RuntimeConfig): Promise<{ model: LanguageModelV3 | null; spec: ModelSpec | null }> {
     // 直接提供 LanguageModelV3 实例（最高优先级）
