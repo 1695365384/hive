@@ -156,6 +156,38 @@ export class AgentRunner {
       tools: this.toolRegistry.getToolsForAgent(agentConfig.type as ToolAgentType),
     };
 
+    // 支持 timeout + abortSignal 联动
+    if (options?.timeout) {
+      const controller = new AbortController();
+      const signals: AbortSignal[] = [controller.signal];
+      if (options?.abortSignal) signals.push(options.abortSignal);
+      runtimeConfig.abortSignal = AbortSignal.any(signals);
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`Sub-agent timed out after ${options.timeout}ms`));
+        }, options.timeout);
+      });
+
+      try {
+        const result = await Promise.race([
+          this.consumeStream(runtimeConfig, callbacks),
+          timeoutPromise,
+        ]);
+        return result;
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (options?.onError) {
+          options.onError(err);
+        }
+        return { text: '', tools: [], success: false, error: err.message };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    }
+
     if (options?.abortSignal) {
       runtimeConfig.abortSignal = options.abortSignal;
     }
