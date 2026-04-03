@@ -94,15 +94,28 @@ fi
 echo "[sea] Native: node_modules/better-sqlite3 + bindings shim"
 
 # =============================================
-# Step 2.5: Copy core prompt templates + worker entry
+# Step 2.5: Embed prompt templates as SEA assets + copy worker entry
 # =============================================
-echo "[sea] Step 2.5: Copying prompt templates + worker entry..."
+echo "[sea] Step 2.5: Preparing prompt templates + worker entry..."
 CORE_DIST="$SERVER_ROOT/../../packages/core/dist"
-mkdir -p "$OUT_DIR/agents/prompts/templates"
-cp "$CORE_DIST/agents/prompts/templates/"*.md "$OUT_DIR/agents/prompts/templates/" 2>/dev/null || true
-echo "[sea] Templates: $(ls "$OUT_DIR/agents/prompts/templates/" 2>/dev/null | wc -l | tr -d ' ') files"
+TEMPLATES_SRC="$CORE_DIST/agents/prompts/templates"
+
+# Build assets JSON from .md template files (embedded into SEA blob at build time)
+ASSETS_JSON="{"
+if [ -d "$TEMPLATES_SRC" ]; then
+  for f in "$TEMPLATES_SRC"/*.md; do
+    [ -f "$f" ] || continue
+    key=$(basename "$f")
+    ASSETS_JSON+="\"$key\":\"$f\","
+  done
+fi
+# Remove trailing comma
+ASSETS_JSON="${ASSETS_JSON%,}}"
+ASSET_COUNT=$(echo "$ASSETS_JSON" | grep -o '"' | wc -l | xargs -I{} expr {} / 2)
+echo "[sea] Assets: $ASSET_COUNT template files will be embedded in SEA blob"
 
 # Copy worker-entry.js for Worker thread spawning (agent-tool uses new Worker(path))
+# Worker scripts must remain on disk — new Worker(path) requires a real file path
 mkdir -p "$OUT_DIR/dist/workers"
 if [ -f "$CORE_DIST/workers/worker-entry.js" ]; then
   cp "$CORE_DIST/workers/worker-entry.js" "$OUT_DIR/dist/workers/worker-entry.js"
@@ -135,13 +148,14 @@ if [ ! -f "$NODE_BIN" ]; then
   rm -f "$NODE_TAR"
 fi
 
-# Create sea-config.json
+# Create sea-config.json with embedded template assets
 cat > "$OUT_DIR/sea-config.json" << EOF
 {
   "main": "sea-main.cjs",
   "output": "sea-prep.blob",
   "disableExperimentalSEAWarning": true,
-  "useCodeCache": true
+  "useCodeCache": true,
+  "assets": $ASSETS_JSON
 }
 EOF
 

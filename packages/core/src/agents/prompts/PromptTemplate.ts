@@ -3,6 +3,7 @@
  *
  * 从 templates/ 目录加载 .md 文件作为提示词模板。
  * 模板文件通过 `pnpm run copy-templates` 复制到 dist 目录。
+ * SEA 环境下通过 node:sea 的 getAsset() 从 blob 读取嵌入的模板。
  *
  * 模板目录结构:
  * - templates/explore.md            - Explore Agent 主模板（plan 已合并）
@@ -11,28 +12,15 @@
  * - templates/schedule-awareness.md - 定时任务感知模板
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import { resolveAsset, readAssetText, assetExists } from '../../utils/sea-path.js';
 
-// ES 模块中获取 __dirname
-// 兼容 SEA 环境：import.meta.url 在 CJS bundle 中可能为空，回退到 process.argv[1]
-function getTemplatesDir(): string {
-  try {
-    const metaUrl = import.meta.url;
-    if (metaUrl && metaUrl !== 'undefined') {
-      const __filename = fileURLToPath(metaUrl);
-      return path.join(path.dirname(__filename), 'templates');
-    }
-  } catch { /* fallback below */ }
-
-  // SEA / CJS fallback: 从 main script 所在目录向上查找
-  const mainDir = path.dirname(process.argv[1]);
-  return path.join(mainDir, 'agents', 'prompts', 'templates');
-}
-
-// 模板目录
-export const TEMPLATES_DIR = getTemplatesDir();
+// 模板目录（ESM 环境下的文件系统路径，用于 hasTemplateFile 检查）
+export const TEMPLATES_DIR = resolveAsset(
+  '../prompts/templates',
+  'agents/prompts/templates',
+  import.meta.url,
+);
 
 /**
  * 模板变量类型
@@ -52,21 +40,22 @@ export class PromptTemplate {
    * @returns 模板内容
    */
   load(name: string): string {
-    // 检查缓存
     if (this.cache.has(name)) {
       return this.cache.get(name)!;
     }
 
-    // 从文件加载
-    const filePath = path.join(TEMPLATES_DIR, `${name}.md`);
+    const assetKey = `${name}.md`;
+    const fsPath = path.join(TEMPLATES_DIR, assetKey);
 
-    if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      this.cache.set(name, content);
-      return content;
+    let content: string;
+    try {
+      content = readAssetText(assetKey, fsPath);
+    } catch {
+      throw new Error(`Prompt template not found: ${name}`);
     }
 
-    throw new Error(`Prompt template not found: ${name}`);
+    this.cache.set(name, content);
+    return content;
   }
 
   /**
@@ -105,11 +94,14 @@ export class PromptTemplate {
   }
 
   /**
-   * 检查模板文件是否存在
+   * 检查模板文件是否存在（仅检查文件系统，SEA 环境始终返回 false）
    */
   hasTemplateFile(name: string): boolean {
-    const filePath = path.join(TEMPLATES_DIR, `${name}.md`);
-    return fs.existsSync(filePath);
+    return assetExists(
+      `../prompts/templates/${name}.md`,
+      `agents/prompts/templates/${name}.md`,
+      import.meta.url,
+    );
   }
 }
 

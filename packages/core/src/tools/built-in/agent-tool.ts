@@ -13,8 +13,7 @@ import { Worker } from 'node:worker_threads';
 import { tool, zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { resolve, dirname } from 'node:path';
+import { resolveAsset } from '../../utils/sea-path.js';
 import type { AgentContext } from '../../agents/core/types.js';
 import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
@@ -146,53 +145,21 @@ function buildWorkerResultSummary(input: {
 /**
  * Worker 线程入口文件路径
  *
- * 兼容三种环境：
- * 1. ESM 开发（import.meta.url 可用）
- * 2. SEA 打包（import.meta.url=undefined，__dirname 指向 SEA binary 所在目录）
- * 3. CJS 开发（__dirname 指向编译输出目录）
- *
+ * 通过 resolveAsset() 自动处理 ESM / SEA / CJS 三种环境。
  * SEA 包结构：server/
- *   ├── index.cjs (SEA binary)
- *   ├── dist/       ← core 编译输出（含 workers/）
+ *   ├── hive-server (SEA binary)
+ *   ├── dist/workers/worker-entry.js
  *   └── node_modules/
  */
 let _cachedWorkerPath: string | undefined;
 
 function resolveWorkerEntryPath(): string {
   if (_cachedWorkerPath) return _cachedWorkerPath;
-
-  try {
-    // ESM / 正常 tsc 输出：import.meta.url 可用
-    if (import.meta.url) {
-      const entryUrl = new URL('../../workers/worker-entry.js', import.meta.url);
-      const path = fileURLToPath(entryUrl);
-      // 验证文件存在（dev 环境可能被清理）
-      const { existsSync } = require('node:fs');
-      if (existsSync(path)) {
-        _cachedWorkerPath = path;
-        return path;
-      }
-    }
-  } catch { /* import.meta.url 不可用 */ }
-
-  // SEA / CJS 回退：基于 __dirname 解析
-  // SEA: __dirname = .../server/  → dist/workers/worker-entry.js
-  // CJS: __dirname = .../core/dist/tools/built-in/ → ../../workers/worker-entry.js
-  const candidates = [
-    resolve(__dirname, 'dist', 'workers', 'worker-entry.js'),
-    resolve(__dirname, '..', '..', 'workers', 'worker-entry.js'),
-  ];
-
-  const { existsSync } = require('node:fs');
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      _cachedWorkerPath = p;
-      return p;
-    }
-  }
-
-  // 最终回退（CJS dev 环境，不验证文件存在性）
-  _cachedWorkerPath = resolve(__dirname, '..', '..', 'workers', 'worker-entry.js');
+  _cachedWorkerPath = resolveAsset(
+    '../../workers/worker-entry.js',
+    'dist/workers/worker-entry.js',
+    import.meta.url,
+  );
   return _cachedWorkerPath;
 }
 
