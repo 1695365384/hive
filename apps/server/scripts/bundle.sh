@@ -94,13 +94,22 @@ fi
 echo "[sea] Native: node_modules/better-sqlite3 + bindings shim"
 
 # =============================================
-# Step 2.5: Copy core prompt templates
+# Step 2.5: Copy core prompt templates + worker entry
 # =============================================
-echo "[sea] Step 2.5: Copying prompt templates..."
+echo "[sea] Step 2.5: Copying prompt templates + worker entry..."
 CORE_DIST="$SERVER_ROOT/../../packages/core/dist"
 mkdir -p "$OUT_DIR/agents/prompts/templates"
-cp "$CORE_DIST/agents/prompts/templates/"*.md "$OUT_DIR/agents/prompts/templates/"
-echo "[sea] Templates: $(ls "$OUT_DIR/agents/prompts/templates/" | wc -l | tr -d ' ') files"
+cp "$CORE_DIST/agents/prompts/templates/"*.md "$OUT_DIR/agents/prompts/templates/" 2>/dev/null || true
+echo "[sea] Templates: $(ls "$OUT_DIR/agents/prompts/templates/" 2>/dev/null | wc -l | tr -d ' ') files"
+
+# Copy worker-entry.js for Worker thread spawning (agent-tool uses new Worker(path))
+mkdir -p "$OUT_DIR/dist/workers"
+if [ -f "$CORE_DIST/workers/worker-entry.js" ]; then
+  cp "$CORE_DIST/workers/worker-entry.js" "$OUT_DIR/dist/workers/worker-entry.js"
+  echo "[sea] Worker entry: dist/workers/worker-entry.js"
+else
+  echo "[sea] WARNING: worker-entry.js not found at $CORE_DIST/workers/worker-entry.js"
+fi
 
 # =============================================
 # Step 3: Create SEA entry (wraps bundle with createRequire)
