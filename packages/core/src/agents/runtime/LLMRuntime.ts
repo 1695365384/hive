@@ -109,101 +109,121 @@ export class LLMRuntime {
    */
   stream(config: RuntimeConfig): StreamHandle {
     let resolveResult!: (result: RuntimeResult) => void;
-    const resultPromise = new Promise<RuntimeResult>((resolve) => { resolveResult = resolve; });
+    let rejectResult!: (error: Error) => void;
+    let resultResolved = false;
+
+    const resultPromise = new Promise<RuntimeResult>((resolve, reject) => {
+      resolveResult = (result: RuntimeResult) => {
+        resultResolved = true;
+        resolve(result);
+      };
+      rejectResult = (error: Error) => {
+        resultResolved = true;
+        reject(error);
+      };
+    });
 
     const startTime = Date.now();
 
     const self = this;
     const events = (async function* (): AsyncGenerator<StreamEvent> {
-      const { model, spec } = await self.resolveModelWithSpec(config);
-      const modelSpec = spec ? {
-        contextWindow: spec.contextWindow,
-        maxOutputTokens: spec.maxOutputTokens ?? 0,
-        supportsTools: spec.supportsTools ?? false,
-      } : undefined;
-
-      if (!model) {
-        resolveResult(self.buildErrorResult(startTime, 'No available model. Check provider configuration.', modelSpec));
-        return;
-      }
-
-      const streamResult = streamText({
-        model,
-        prompt: config.prompt,
-        system: config.system,
-        messages: config.messages as any,
-        tools: config.tools,
-        stopWhen: stepCountIs(config.maxSteps ?? 10),
-        abortSignal: config.abortSignal,
-      });
-
       try {
-        for await (const chunk of streamResult.fullStream) {
-          switch (chunk.type) {
-            case 'text-delta':
-              yield { type: 'text-delta' as const, text: chunk.text };
-              break;
+        const { model, spec } = await self.resolveModelWithSpec(config);
+        const modelSpec = spec ? {
+          contextWindow: spec.contextWindow,
+          maxOutputTokens: spec.maxOutputTokens ?? 0,
+          supportsTools: spec.supportsTools ?? false,
+        } : undefined;
 
-            case 'tool-call':
-              yield { type: 'tool-call' as const, toolName: chunk.toolName, input: chunk.input };
-              break;
-
-            case 'tool-result':
-              yield { type: 'tool-result' as const, toolName: chunk.toolName, output: chunk.output };
-              break;
-
-            case 'reasoning-delta':
-              yield { type: 'reasoning' as const, text: chunk.text };
-              break;
-
-            case 'finish-step':
-              yield {
-                type: 'step-finish' as const,
-                step: {
-                  toolCalls: [],
-                  toolResults: [],
-                  isToolStep: false,
-                  finishReason: chunk.finishReason,
-                },
-              };
-              break;
-          }
-        }
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        if (err.name === 'AbortError') {
-          resolveResult(self.buildErrorResult(startTime, 'Request aborted', modelSpec));
+        if (!model) {
+          resolveResult(self.buildErrorResult(startTime, 'No available model. Check provider configuration.', modelSpec));
           return;
         }
-        resolveResult(self.buildErrorResult(startTime, err.message, modelSpec));
-        return;
-      }
 
-      // 等待完整结果
-      const [text, finishReason, steps, totalUsage] = await Promise.all([
-        streamResult.text,
-        streamResult.finishReason,
-        streamResult.steps,
-        streamResult.totalUsage,
-      ]);
+        const streamResult = streamText({
+          model,
+          prompt: config.prompt,
+          system: config.system,
+          messages: config.messages as any,
+          tools: config.tools,
+          stopWhen: stepCountIs(config.maxSteps ?? 10),
+          abortSignal: config.abortSignal,
+        });
 
-      const toolsUsed = self.collectToolsFromSteps(steps);
+        try {
+          for await (const chunk of streamResult.fullStream) {
+            switch (chunk.type) {
+              case 'text-delta':
+                yield { type: 'text-delta' as const, text: chunk.text };
+                break;
 
-      resolveResult({
-        text,
-        tools: toolsUsed,
-        usage: totalUsage
-          ? {
-              promptTokens: totalUsage.inputTokens ?? 0,
-              completionTokens: totalUsage.outputTokens ?? 0,
+              case 'tool-call':
+                yield { type: 'tool-call' as const, toolName: chunk.toolName, input: chunk.input };
+                break;
+
+              case 'tool-result':
+                yield { type: 'tool-result' as const, toolName: chunk.toolName, output: chunk.output };
+                break;
+
+              case 'reasoning-delta':
+                yield { type: 'reasoning' as const, text: chunk.text };
+                break;
+
+              case 'finish-step':
+                yield {
+                  type: 'step-finish' as const,
+                  step: {
+                    toolCalls: [],
+                    toolResults: [],
+                    isToolStep: false,
+                    finishReason: chunk.finishReason,
+                  },
+                };
+                break;
             }
-          : undefined,
-        steps: steps.map(step => self.mapStepResult(step)),
-        success: finishReason !== 'error',
-        error: finishReason === 'error' ? 'Generation finished with error' : undefined,
-        duration: Date.now() - startTime,
-        modelSpec,
-      });
+          }
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          if (err.name === 'AbortError') {
+            resolveResult(self.buildErrorResult(startTime, 'Request aborted', modelSpec));
+            return;
+          }
+          resolveResult(self.buildErrorResult(startTime, err.message, modelSpec));
+          return;
+        }
+
+        // 等待完整结果
+        const [text, finishReason, steps, totalUsage] = await Promise.all([
+          streamResult.text,
+          streamResult.finishReason,
+          streamResult.steps,
+          streamResult.totalUsage,
+        ]);
+
+        const toolsUsed = self.collectToolsFromSteps(steps);
+
+        resolveResult({
+          text,
+          tools: toolsUsed,
+          usage: totalUsage
+            ? {
+                promptTokens: totalUsage.inputTokens ?? 0,
+                completionTokens: totalUsage.outputTokens ?? 0,
+              }
+            : undefined,
+          steps: steps.map(step => self.mapStepResult(step)),
+          success: finishReason !== 'error',
+          error: finishReason === 'error' ? 'Generation finished with error' : undefined,
+          duration: Date.now() - startTime,
+          modelSpec,
+        });
+      } finally {
+        // 消费者 break for-await 循环后，async generator 被 GC
+        // 但 resultPromise 可能永远 pending，这里确保它被 reject
+        if (!resultResolved) {
+          rejectResult(new Error('Stream consumer exited early'));
+        }
+      }
     })();
 
     return { events, result: resultPromise };
