@@ -58,7 +58,7 @@ const recentErrors: Array<{ fingerprint: string; timestamp: number }> = [];
 
 function getErrorFingerprint(error: string): string {
   return error
-    .replace(/\/[^\s]+/g, '<PATH>')
+    .replace(/\/Users\/[^/]+\//g, '<HOME>/')
     .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/, '<IP>')
     .replace(/\b[0-9a-f]{8,}\b/g, '<HEX>')
     .trim()
