@@ -1,14 +1,12 @@
 /**
  * 心跳调度器
  *
- * 周期性调用 Agent.runHeartbeatOnce() 执行健康巡检，
- * 通过 MessageBus 推送巡检结果。
+ * 周期性调用 Agent.runHeartbeatOnce() 执行健康巡检。
  *
  * 间隔 >= 1 分钟时使用 node-cron 调度；< 1 分钟时 fallback 到 setInterval。
  */
 
 import type { Agent } from '../agents/index.js';
-import type { MessageBus } from '../bus/index.js';
 import type { ILogger } from '../types/logger.js';
 import { schedule as cronSchedule } from 'node-cron';
 import type { ScheduledTask } from 'node-cron';
@@ -20,14 +18,12 @@ export interface HeartbeatSchedulerOptions {
     model?: string;
     prompt?: string;
   };
-  bus: MessageBus;
   logger?: ILogger;
 }
 
 export class HeartbeatScheduler {
   private agent: Agent;
   private config: HeartbeatSchedulerOptions['config'];
-  private bus: MessageBus;
   private logger: ILogger;
   private task?: ScheduledTask;
   private fallbackTimer?: ReturnType<typeof setInterval>;
@@ -36,7 +32,6 @@ export class HeartbeatScheduler {
   constructor(options: HeartbeatSchedulerOptions) {
     this.agent = options.agent;
     this.config = options.config;
-    this.bus = options.bus;
     this.logger = options.logger ?? console as unknown as ILogger;
   }
 
@@ -98,14 +93,6 @@ export class HeartbeatScheduler {
 
       const duration = Date.now() - startTime;
 
-      this.bus.publish('heartbeat:tick', {
-        timestamp: new Date(),
-        isOk: result.isOk,
-        hasAlert: result.hasAlert,
-        content: result.content,
-        duration,
-      });
-
       if (result.hasAlert) {
         this.logger.warn(`[heartbeat] Alert detected (${duration}ms): ${result.content.slice(0, 200)}`);
       } else {
@@ -113,16 +100,6 @@ export class HeartbeatScheduler {
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-
-      this.bus.publish('heartbeat:tick', {
-        timestamp: new Date(),
-        isOk: false,
-        hasAlert: true,
-        content: `Heartbeat check failed: ${error instanceof Error ? error.message : String(error)}`,
-        duration,
-        error: true,
-      });
-
       this.logger.error(`[heartbeat] Tick failed (${duration}ms):`, error);
     }
   }

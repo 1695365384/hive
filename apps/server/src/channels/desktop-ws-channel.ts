@@ -2,8 +2,8 @@
  * DesktopWSChannel — Desktop 端 WebSocket 虚拟通道
  *
  * 实现 IChannel 接口，让 Agent 的 send-file 工具在 Desktop 端可用。
- * send() 方法通过 MessageBus 发布 agent:file 事件，
- * 由 ChatWsHandler 订阅并推送给前端 WebSocket。
+ * send() 方法通过 FileHandler 回调发送文件事件，
+ * 由 ServerImpl 转发到已注册的 ChatWsHandler。
  */
 
 import type {
@@ -11,7 +11,7 @@ import type {
   ChannelSendOptions,
   ChannelSendResult,
   ChannelCapabilities,
-  IMessageBus,
+  FileHandler,
 } from '@bundy-lmw/hive-core';
 
 export class DesktopWSChannel implements IChannel {
@@ -29,14 +29,14 @@ export class DesktopWSChannel implements IChannel {
     deleteMessage: false,
   };
 
-  constructor(private bus: IMessageBus) {}
+  constructor(private onFile: FileHandler) {}
 
   async send(options: ChannelSendOptions): Promise<ChannelSendResult> {
     const to = options.to;
     if (!to) return { success: false, error: 'No recipient ID' };
 
     if (options.filePath) {
-      this.bus.publish('agent:file', {
+      this.onFile({
         sessionId: `ws-chat:${to}`,
         threadId: to,
         filePath: options.filePath,

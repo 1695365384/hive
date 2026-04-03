@@ -1,10 +1,10 @@
 /**
  * ChatWsHandler — /ws/chat 端点
  *
- * 职责：WebSocket ↔ MessageBus 桥接
- * - chat.send → bus.publish('message:received') → ServerImpl 统一分发
- * - bus.subscribe('agent:streaming') → WS event 转发
- * - chat.cancel → bus.publish('agent:abort')
+ * 职责：WebSocket ↔ Server 桥接
+ * - chat.send → server.handleMessage() → ServerImpl 统一分发
+ * - server.onStreamingEvent() → WS event 转发
+ * - chat.cancel → server.abort()
  *
  * 所有 Agent 调度逻辑集中在 ServerImpl，本类只做协议转换。
  */
@@ -37,11 +37,12 @@ export class ChatWsHandler extends EventEmitter {
   private server: Server | null = null
   private hiveLogger: HiveLogger | null = null
   private hookIds: string[] = []
-  private busSubIds: string[] = []
   /** Track toolCallId per threadId for tool-call/tool-result matching */
   private toolCallIdMaps: Map<string, Map<string, string>> = new Map()
   /** Per-threadId sequence counters for deduplication */
   private seqCounters: Map<string, number> = new Map()
+  private _streamingUnregister: (() => void) | null = null
+  private _fileUnregister: (() => void) | null = null
 
   constructor(hiveLogger: HiveLogger | null) {
     super()
@@ -55,7 +56,7 @@ export class ChatWsHandler extends EventEmitter {
   setServer(server: Server): void {
     this.server = server
     this.subscribeAgentHooks()
-    this.subscribeStreamingEvents()
+    this.registerStreamingHandler()
   }
 
   // ============================================
@@ -112,21 +113,18 @@ export class ChatWsHandler extends EventEmitter {
   }
 
   // ============================================
-  // Bus 流式事件订阅
+  // 流式事件订阅（替代 bus.subscribe）
   // ============================================
 
-  private subscribeStreamingEvents(): void {
-    if (!this.server?.bus) return
-    const bus = this.server.bus
+  private registerStreamingHandler(): void {
+    if (!this.server) return
 
-    this.busSubIds.push(bus.subscribe('agent:streaming', (message: { payload: any }) => {
-      const { sessionId, type, ...data } = message.payload
-      this.forwardStreamingEvent(sessionId, type, data)
-    }))
+    this._streamingUnregister = this.server.onStreamingEvent((event) => {
+      this.forwardStreamingEvent(event.sessionId, event.type, event)
+    })
 
-    // File/image events from Agent (via DesktopWSChannel)
-    this.busSubIds.push(bus.subscribe('agent:file', async (message: { payload: any }) => {
-      const { sessionId, filePath } = message.payload
+    this._fileUnregister = this.server.onFileEvent(async (event) => {
+      const { sessionId, filePath } = event
       const tid = sessionId.includes(':') ? sessionId.slice(sessionId.indexOf(':') + 1) : sessionId
       const ws = this.threadClientMap.get(tid)
       if (!ws || ws.readyState !== ws.OPEN) return
@@ -152,15 +150,12 @@ export class ChatWsHandler extends EventEmitter {
       } catch (err) {
         console.warn('[chat-handler] agent:file error:', err)
       }
-    }))
+    })
   }
 
-  private unsubscribeStreamingEvents(): void {
-    if (!this.server) return
-    for (const id of this.busSubIds) {
-      this.server.bus.unsubscribe(id)
-    }
-    this.busSubIds = []
+  private unregisterStreamingHandler(): void {
+    if (this._streamingUnregister) { this._streamingUnregister(); this._streamingUnregister = null; }
+    if (this._fileUnregister) { this._fileUnregister(); this._fileUnregister = null; }
   }
 
   /** 递增并返回 threadId 对应的序号 */
@@ -170,7 +165,7 @@ export class ChatWsHandler extends EventEmitter {
     return seq
   }
 
-  /** 将 bus 流式事件映射为 WS 事件并定向发送 */
+  /** 将流式事件映射为 WS 事件并定向发送 */
   private forwardStreamingEvent(sessionId: string, type: string, data: any): void {
     // sessionId 格式: "channelId:recipientId" → 提取 recipientId 作为 threadId
     const threadId = sessionId.includes(':') ? sessionId.slice(sessionId.indexOf(':') + 1) : sessionId
@@ -236,7 +231,6 @@ export class ChatWsHandler extends EventEmitter {
           error: data.error,
         })))
         // Only clean up toolCallIdMaps; threadClientMap is cleaned on WS disconnect
-        // to allow the same threadId to be reused for follow-up messages
         this.toolCallIdMaps.delete(threadId)
         this.seqCounters.delete(threadId)
         break
@@ -282,7 +276,7 @@ export class ChatWsHandler extends EventEmitter {
 
   async closeAll(): Promise<void> {
     this.unsubscribeAgentHooks()
-    this.unsubscribeStreamingEvents()
+    this.unregisterStreamingHandler()
     for (const client of this.clients) {
       client.ws.close()
     }
@@ -360,8 +354,8 @@ export class ChatWsHandler extends EventEmitter {
       if (client) client.threadIds.add(tid)
     }
 
-    // 发布到 bus — ServerImpl.subscribeMessageHandler 统一处理
-    this.server?.bus?.publish('message:received', {
+    // 直接调用 server.handleMessage() 替代 bus.publish
+    this.server.handleMessage({
       id: crypto.randomUUID(),
       content,
       type: 'text',
@@ -383,8 +377,8 @@ export class ChatWsHandler extends EventEmitter {
       return createErrorResponse(id, 'VALIDATION', 'threadId is required')
     }
 
-    // 通过 bus 通知 ServerImpl 中止执行（sessionKey 格式: channelId:threadId）
-    this.server?.bus?.publish('agent:abort', { sessionId: `ws-chat:${threadId}` })
+    // 直接调用 server.abort() 替代 bus.publish
+    this.server?.abort(`ws-chat:${threadId}`)
 
     return createSuccessResponse(id, { threadId, cancelled: true })
   }

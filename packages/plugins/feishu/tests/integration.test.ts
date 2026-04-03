@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FeishuPlugin } from '../src/plugin.js'
 import { FeishuChannel } from '../src/channel.js'
-import type { IMessageBus, ILogger, IChannel } from '@bundy-lmw/hive-core'
+import type { ILogger, IChannel } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK - use vi.hoisted for proper hoisting
 const { mockCreate, mockReply } = vi.hoisted(() => {
@@ -55,7 +55,7 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
 
 describe('FeishuPlugin Integration', () => {
   let plugin: FeishuPlugin
-  let mockMessageBus: IMessageBus
+  let mockMessageHandler: ReturnType<typeof vi.fn>
   let mockLogger: ILogger
 
   const multiTenantConfig = {
@@ -75,12 +75,7 @@ describe('FeishuPlugin Integration', () => {
   }
 
   beforeEach(() => {
-    mockMessageBus = {
-      emit: vi.fn(),
-      subscribe: vi.fn().mockReturnValue('sub_integration'),
-      unsubscribe: vi.fn(),
-      publish: vi.fn(),
-    }
+    mockMessageHandler = vi.fn()
 
     mockLogger = {
       debug: vi.fn(),
@@ -99,7 +94,7 @@ describe('FeishuPlugin Integration', () => {
   describe('Plugin Lifecycle', () => {
     it('should initialize with multi-tenant config', async () => {
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('[FeishuPlugin] Initializing')
@@ -109,7 +104,7 @@ describe('FeishuPlugin Integration', () => {
 
     it('should activate all channels', async () => {
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
       await plugin.activate()
 
       const channels = plugin.getChannels()
@@ -120,7 +115,7 @@ describe('FeishuPlugin Integration', () => {
 
     it('should deactivate all channels', async () => {
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
       await plugin.activate()
 
       await plugin.deactivate()
@@ -132,7 +127,7 @@ describe('FeishuPlugin Integration', () => {
 
     it('should destroy plugin cleanly', async () => {
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
       await plugin.activate()
 
       await plugin.destroy()
@@ -144,7 +139,7 @@ describe('FeishuPlugin Integration', () => {
   describe('Multi-tenant Channel Management', () => {
     beforeEach(async () => {
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
       await plugin.activate()
     })
 
@@ -198,7 +193,7 @@ describe('FeishuPlugin Integration', () => {
 
     beforeEach(async () => {
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
       await plugin.activate()
       channel = plugin.getChannelByAppId('cli_tenant1') as IChannel & { appId: string; handleWebhook: any }
     })
@@ -245,8 +240,7 @@ describe('FeishuPlugin Integration', () => {
 
       await channel.handleWebhook(messageEvent, 'sig', Date.now().toString(), 'nonce')
 
-      expect(mockMessageBus.publish).toHaveBeenCalledWith(
-        'channel:feishu:cli_tenant1:message:received',
+      expect(mockMessageHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'msg_integration_001',
           content: 'Integration test message',
@@ -280,7 +274,7 @@ describe('FeishuPlugin Integration', () => {
       await channel.handleWebhook(createEvent('002', 'Message 2'), 'sig', '1700000000', 'n2')
       await channel.handleWebhook(createEvent('003', 'Message 3'), 'sig', '1700000000', 'n3')
 
-      expect(mockMessageBus.publish).toHaveBeenCalledTimes(3)
+      expect(mockMessageHandler).toHaveBeenCalledTimes(3)
     })
   })
 
@@ -289,7 +283,7 @@ describe('FeishuPlugin Integration', () => {
 
     beforeEach(async () => {
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
       await plugin.activate()
       channel = plugin.getChannelByAppId('cli_tenant1') as IChannel & { appId: string }
     })
@@ -334,7 +328,7 @@ describe('FeishuPlugin Integration', () => {
       })
 
       const registerChannel = vi.fn()
-      await plugin.initialize(mockMessageBus, mockLogger, registerChannel)
+      await plugin.initialize(mockMessageHandler, mockLogger, registerChannel)
       await plugin.activate()
       const channel = plugin.getChannelByAppId('cli_tenant1')
 
@@ -358,23 +352,18 @@ describe('FeishuPlugin Integration', () => {
   })
 })
 
-describe('FeishuChannel + MessageBus Integration', () => {
+describe('FeishuChannel + MessageHandler Integration', () => {
   let channel: FeishuChannel
-  let messageBus: IMessageBus
+  let messageHandler: ReturnType<typeof vi.fn>
   let logger: ILogger
   let emittedMessages: any[] = []
 
   beforeEach(() => {
     emittedMessages = []
 
-    messageBus = {
-      emit: vi.fn(),
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-      publish: vi.fn((event, message) => {
-        emittedMessages.push({ event, message })
-      }),
-    }
+    messageHandler = vi.fn((message) => {
+      emittedMessages.push(message)
+    })
 
     logger = {
       debug: vi.fn(),
@@ -388,12 +377,12 @@ describe('FeishuChannel + MessageBus Integration', () => {
         appId: 'cli_integration',
         appSecret: 'secret',
       },
-      messageBus,
+      messageHandler,
       logger
     )
   })
 
-  it('should emit correctly formatted messages to MessageBus', async () => {
+  it('should emit correctly formatted messages via MessageHandler', async () => {
     const event = {
       header: {
         event_id: 'evt_full_integration',
@@ -420,8 +409,7 @@ describe('FeishuChannel + MessageBus Integration', () => {
     await channel.handleWebhook(event, 'sig', '1700000000', 'nonce')
 
     expect(emittedMessages).toHaveLength(1)
-    expect(emittedMessages[0].event).toBe('channel:feishu:cli_integration:message:received')
-    expect(emittedMessages[0].message).toMatchObject({
+    expect(emittedMessages[0]).toMatchObject({
       id: 'msg_full',
       content: 'Full integration test',
       type: 'text',
@@ -459,6 +447,6 @@ describe('FeishuChannel + MessageBus Integration', () => {
 
     await channel.handleWebhook(event, 'sig', '1700000000', 'nonce')
 
-    expect(emittedMessages[0].message.raw).toEqual(event)
+    expect(emittedMessages[0].raw).toEqual(event)
   })
 })

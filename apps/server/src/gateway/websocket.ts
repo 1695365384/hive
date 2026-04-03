@@ -38,8 +38,6 @@ export function createWebSocketGateway(
 ): WebSocketGateway {
   const clients = new Map<string, WebSocketClient>()
   let clientIdCounter = 0
-  let busSubscriptionId: string | null = null
-
   // Handle WebSocket upgrade
   server.on('upgrade', (request, socket, head) => {
     const url = request.url
@@ -131,25 +129,9 @@ export function createWebSocketGateway(
     }
 
     try {
-      // Emit message received event
-      ctx.bus?.emit('message:received', {
-        content: text,
-        sessionId: sessionId || client.sessionId,
-        clientId: client.id,
-        timestamp: Date.now(),
-      })
-
       // Send to agent (dispatch for smart routing)
       const result = await ctx.agent.dispatch(text)
       const response = result.text
-
-      // Emit message sent event
-      ctx.bus?.emit('message:sent', {
-        content: response,
-        sessionId: sessionId || client.sessionId,
-        clientId: client.id,
-        timestamp: Date.now(),
-      })
 
       send(client, {
         type: 'response',
@@ -228,28 +210,12 @@ export function createWebSocketGateway(
    * Close all connections
    */
   function close(): void {
-    // Unsubscribe from MessageBus
-    if (busSubscriptionId && ctx.bus) {
-      ctx.bus.unsubscribe(busSubscriptionId)
-    }
-
     // Close all client connections
     for (const client of clients.values()) {
       client.ws.close()
     }
 
     clients.clear()
-  }
-
-  // Subscribe to MessageBus events and broadcast
-  if (ctx.bus) {
-    busSubscriptionId = ctx.bus.subscribe('plugin:event', (event: unknown) => {
-      broadcast({
-        type: 'event',
-        event: 'plugin:event',
-        data: event,
-      })
-    })
   }
 
   return {

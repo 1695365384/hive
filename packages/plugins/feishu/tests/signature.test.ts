@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import crypto from 'crypto'
 import { FeishuChannel } from '../src/channel.js'
-import type { IMessageBus, ILogger } from '@bundy-lmw/hive-core'
+import type { ILogger } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK - use vi.hoisted for proper hoisting
 vi.mock('@larksuiteoapi/node-sdk', () => {
@@ -27,7 +27,7 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
 
 describe('Signature Verification', () => {
   let channel: FeishuChannel
-  let mockMessageBus: IMessageBus
+  let mockMessageHandler: ReturnType<typeof vi.fn>
   let mockLogger: ILogger
 
   const testConfig = {
@@ -38,12 +38,7 @@ describe('Signature Verification', () => {
   }
 
   beforeEach(() => {
-    mockMessageBus = {
-      emit: vi.fn(),
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-      publish: vi.fn(),
-    }
+    mockMessageHandler = vi.fn()
 
     mockLogger = {
       debug: vi.fn(),
@@ -52,7 +47,7 @@ describe('Signature Verification', () => {
       error: vi.fn(),
     }
 
-    channel = new FeishuChannel(testConfig, mockMessageBus, mockLogger)
+    channel = new FeishuChannel(testConfig, mockMessageHandler, mockLogger)
   })
 
   /**
@@ -122,7 +117,7 @@ describe('Signature Verification', () => {
         // No encryptKey or verificationToken
       }
 
-      const noKeyChannel = new FeishuChannel(noKeyConfig, mockMessageBus, mockLogger)
+      const noKeyChannel = new FeishuChannel(noKeyConfig, mockMessageHandler, mockLogger)
 
       const body = {
         type: 'url_verification',

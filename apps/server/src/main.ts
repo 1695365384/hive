@@ -128,7 +128,7 @@ export async function startServer(options: ServerOptions = {}): Promise<{
 
   // Register Desktop WS channel so send-file tool works for desktop clients
   const { DesktopWSChannel } = await import('./channels/desktop-ws-channel.js')
-  context.server.registerChannel(new DesktopWSChannel(context.bus))
+  context.server.registerChannel(new DesktopWSChannel((event) => context.server.emitFileEvent(event)))
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`)
