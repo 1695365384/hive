@@ -69,7 +69,7 @@ export function resolveSource(input: string): PluginSource {
 /**
  * 安装插件（统一入口）
  */
-export async function installPlugin(input: string): Promise<InstallResult> {
+export async function installPlugin(input: string, options?: { force?: boolean }): Promise<InstallResult> {
   const source = resolveSource(input)
 
   // 路径穿越检查
@@ -79,14 +79,21 @@ export async function installPlugin(input: string): Promise<InstallResult> {
 
   const targetDir = resolve(PLUGINS_DIR, source.targetName)
 
-  // 检查是否已安装
-  const { hasPlugin } = await import('./registry.js')
-  if (hasPlugin(source.targetName)) {
-    return {
-      success: false,
-      name: source.targetName,
-      error: 'Plugin already installed. Use `hive plugin update <name>` to upgrade.',
+  // 检查是否已安装（force 模式跳过检查）
+  if (!options?.force) {
+    const { hasPlugin } = await import('./registry.js')
+    if (hasPlugin(source.targetName)) {
+      return {
+        success: false,
+        name: source.targetName,
+        error: 'Plugin already installed. Use `hive plugin update <name>` to upgrade.',
+      }
     }
+  }
+
+  // force 模式：先清理旧文件
+  if (options?.force && existsSync(targetDir)) {
+    cleanupDir(targetDir)
   }
 
   try {

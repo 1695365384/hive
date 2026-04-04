@@ -162,9 +162,18 @@ export async function updatePlugin(name?: string): Promise<{ updated: string[]; 
 
       console.log(`  Updating ${pluginName}: ${entry.resolvedVersion} → ${latest.version}`)
 
+      // 备份用户配置
+      const configBackup = backupPluginConfig(pluginName)
+
+      // 先从注册表移除旧记录
+      removePlugin(pluginName)
+
+      // 强制重新安装
       const { installPlugin } = await import('./installer.js')
-      const result = await installPlugin(`${npmPackage}@${latest.version}`)
+      const result = await installPlugin(`${npmPackage}@${latest.version}`, { force: true })
       if (result.success) {
+        // 恢复用户配置
+        restorePluginConfig(pluginName, configBackup)
         updated.push(pluginName)
       } else {
         errors.push({ name: pluginName, error: result.error || 'Install failed' })
@@ -203,5 +212,30 @@ function readPluginConfig(): Record<string, Record<string, unknown>> {
   } catch {
     console.warn('[plugin-manager] Failed to read hive.config.json')
     return {}
+  }
+}
+
+/**
+ * 备份插件配置（返回配置快照，更新失败时可恢复）
+ */
+function backupPluginConfig(pluginName: string): Record<string, unknown> | null {
+  const configs = readPluginConfig()
+  return configs[pluginName] ?? null
+}
+
+/**
+ * 恢复插件配置（更新后写入用户之前的配置）
+ */
+function restorePluginConfig(pluginName: string, config: Record<string, unknown> | null): void {
+  if (!config || !existsSync(CONFIG_PATH)) return
+
+  try {
+    const content = readFileSync(CONFIG_PATH, 'utf-8')
+    const hiveConfig = JSON.parse(content)
+    if (!hiveConfig.plugins) hiveConfig.plugins = {}
+    hiveConfig.plugins[pluginName] = config
+    atomicWriteJSON(CONFIG_PATH, hiveConfig)
+  } catch {
+    console.warn('[plugin-manager] Failed to restore plugin config')
   }
 }
