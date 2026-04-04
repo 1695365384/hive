@@ -7,6 +7,8 @@ import { Screenshots } from '@/components/screenshots';
 import { QuickStart } from '@/components/quick-start';
 import { Footer } from '@/components/footer';
 
+export const dynamic = 'force-dynamic';
+
 export default function HomePage() {
   return (
     <>
