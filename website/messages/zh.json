@@ -1,0 +1,95 @@
+{
+  "nav": {
+    "docs": "文档",
+    "github": "GitHub",
+    "getStarted": "开始使用"
+  },
+  "hero": {
+    "badge": "开源 · MIT 许可证",
+    "title": "TypeScript 多 Agent",
+    "titleHighlight": "编排 SDK",
+    "subtitle": "Coordinator-Worker 架构，内置成本控制、权限分层、国产大模型支持。",
+    "cta": "下载安装",
+    "secondary": "开发者 SDK →",
+    "installCommand": "npm i @bundy-lmw/hive-core"
+  },
+  "providers": {
+    "title": "13 个提供商，一个 SDK",
+    "subtitle": "国产大模型一流支持，覆盖所有主流提供商。任何 OpenAI 兼容端点均可接入。"
+  },
+  "features": {
+    "title": "开箱即用",
+    "subtitle": "为生产级多 Agent 系统打造。",
+    "coordinator": {
+      "title": "Coordinator-Worker",
+      "description": "仅在需要时启动 Worker。简单查询直接响应，不浪费 token。"
+    },
+    "providers": {
+      "title": "13 个 LLM 提供商",
+      "description": "GLM、DeepSeek、Qwen、Kimi、ERNIE、Claude、GPT、Gemini 等，运行时切换。"
+    },
+    "cost": {
+      "title": "成本控制",
+      "description": "按任务指定模型。探索用便宜模型，代码修改用强力模型。"
+    },
+    "permissions": {
+      "title": "权限分层",
+      "description": "只读 explore Agent、全权限 general Agent。架构即安全。"
+    },
+    "skills": {
+      "title": "技能系统",
+      "description": "Markdown 定义 + YAML frontmatter，兼容 agentskills.io 生态。"
+    },
+    "monitoring": {
+      "title": "内置监控",
+      "description": "心跳检测、卡死识别、中断信号。长时间运行的 Agent 不会失联。"
+    }
+  },
+  "architecture": {
+    "title": "系统架构",
+    "subtitle": "四层设计：客户端 → 服务层 → Agent 层 → 基础设施。"
+  },
+  "screenshots": {
+    "title": "实际效果",
+    "subtitle": "桌面应用与服务端面板。"
+  },
+  "quickStart": {
+    "title": "快速开始",
+    "subtitle": "三步即可上手。",
+    "step1": {
+      "title": "下载",
+      "description": "从 GitHub Releases 下载对应平台的安装包。",
+      "code": "open https://github.com/1695365384/hive/releases"
+    },
+    "step2": {
+      "title": "安装",
+      "description": "macOS：拖拽到 Applications 文件夹。Windows：运行安装程序。"
+    },
+    "step3": {
+      "title": "启动",
+      "description": "打开 Hive，配置 API Key，开始使用。"
+    }
+  },
+  "footer": {
+    "product": {
+      "title": "产品",
+      "core": "核心 SDK",
+      "server": "服务端",
+      "desktop": "桌面端",
+      "plugins": "插件"
+    },
+    "resources": {
+      "title": "资源",
+      "docs": "文档",
+      "github": "GitHub",
+      "npm": "npm",
+      "changelog": "更新日志"
+    },
+    "community": {
+      "title": "社区",
+      "issues": "Issues",
+      "contributing": "贡献指南"
+    },
+    "copyright": "MIT 许可证"
+  }
+}

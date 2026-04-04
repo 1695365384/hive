@@ -13,6 +13,7 @@ packages/core/           @bundy-lmw/hive-core        Agent SDK 核心
 packages/plugins/feishu/ @bundy-lmw/hive-plugin-feishu 飞书插件
 apps/server/             @bundy-lmw/hive-server       HTTP/WS 服务 (Hono + ws)
 apps/desktop/            @bundy-lmw/hive-desktop      Tauri 2 桌面应用 (Rust + React 19)
+website/                 @bundy-lmw/hive-website     Landing Page (Next.js 15 + Tailwind CSS 4)
 .hive/skills/                                         内置技能 (committed, 在 DEFAULT_WORKSPACE_DIR 下)
 .hive/skills.local/                                   用户安装的技能 (gitignored, via hive skill add)
 ```

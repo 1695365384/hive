@@ -1,0 +1,95 @@
+{
+  "nav": {
+    "docs": "Docs",
+    "github": "GitHub",
+    "getStarted": "Get Started"
+  },
+  "hero": {
+    "badge": "Open Source · MIT License",
+    "title": "The Multi-Agent SDK",
+    "titleHighlight": "for TypeScript",
+    "subtitle": "Coordinator-Worker architecture with built-in cost control, permission layers, and Chinese LLM support.",
+    "cta": "Download",
+    "secondary": "Developer SDK →",
+    "installCommand": "npm i @bundy-lmw/hive-core"
+  },
+  "providers": {
+    "title": "13 Providers, One SDK",
+    "subtitle": "First-class support for Chinese LLMs and all major providers. Any OpenAI-compatible endpoint works."
+  },
+  "features": {
+    "title": "Everything You Need",
+    "subtitle": "Built for production multi-agent systems.",
+    "coordinator": {
+      "title": "Coordinator-Worker",
+      "description": "Only spawn workers when needed. Simple queries get direct responses — no wasted tokens."
+    },
+    "providers": {
+      "title": "13 LLM Providers",
+      "description": "GLM, DeepSeek, Qwen, Kimi, ERNIE, Claude, GPT, Gemini, and more. Switch at runtime."
+    },
+    "cost": {
+      "title": "Cost Control",
+      "description": "Per-task model selection. Use cheap models for exploration, powerful models for code changes."
+    },
+    "permissions": {
+      "title": "Permission Layers",
+      "description": "Read-only explore agents, full-access general agents. Security by architecture."
+    },
+    "skills": {
+      "title": "Skill System",
+      "description": "Markdown-based skills with YAML frontmatter. Compatible with agentskills.io ecosystem."
+    },
+    "monitoring": {
+      "title": "Built-in Monitoring",
+      "description": "Heartbeat, stall detection, abort signals. Long-running agents never go silent."
+    }
+  },
+  "architecture": {
+    "title": "System Architecture",
+    "subtitle": "Four-layer design: Client → Server → Agent → Infrastructure."
+  },
+  "screenshots": {
+    "title": "See It in Action",
+    "subtitle": "Desktop app and server dashboard."
+  },
+  "quickStart": {
+    "title": "Get Started",
+    "subtitle": "Three steps to get up and running.",
+    "step1": {
+      "title": "Download",
+      "description": "Download from GitHub Releases for your platform.",
+      "code": "open https://github.com/1695365384/hive/releases"
+    },
+    "step2": {
+      "title": "Install",
+      "description": "macOS: drag to Applications. Windows: run the installer."
+    },
+    "step3": {
+      "title": "Start",
+      "description": "Open Hive, configure your API key, and start chatting."
+    }
+  },
+  "footer": {
+    "product": {
+      "title": "Product",
+      "core": "Core SDK",
+      "server": "Server",
+      "desktop": "Desktop",
+      "plugins": "Plugins"
+    },
+    "resources": {
+      "title": "Resources",
+      "docs": "Documentation",
+      "github": "GitHub",
+      "npm": "npm",
+      "changelog": "Changelog"
+    },
+    "community": {
+      "title": "Community",
+      "issues": "Issues",
+      "contributing": "Contributing"
+    },
+    "copyright": "MIT License"
+  }
+}
