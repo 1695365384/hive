@@ -25,6 +25,8 @@ import { CoordinatorCapability } from '../capabilities/CoordinatorCapability.js'
 import type { DispatchOptions, DispatchResult } from '../capabilities/CoordinatorCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
 import { ScheduleCapability } from '../capabilities/ScheduleCapability.js';
+import { ProgressCapability } from '../capabilities/ProgressCapability.js';
+import { WorkflowCheckpointCapability } from '../capabilities/WorkflowCheckpointCapability.js';
 import { SessionDelegation } from './session-delegation.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
@@ -42,6 +44,8 @@ export class Agent {
   private coordinatorCap: CoordinatorCapability;
   private sessionCap: SessionCapability;
   private scheduleCap: ScheduleCapability;
+  private progressCap: ProgressCapability;
+  private workflowCheckpointCap: WorkflowCheckpointCapability;
   private sessionDelegation: SessionDelegation;
   private timeoutDelegation: TimeoutDelegation;
   private notificationDelegation: NotificationDelegation;
@@ -70,6 +74,8 @@ export class Agent {
     this.coordinatorCap = new CoordinatorCapability();
     this.sessionCap = new SessionCapability(sessionConfig);
     this.scheduleCap = new ScheduleCapability();
+    this.progressCap = new ProgressCapability();
+    this.workflowCheckpointCap = new WorkflowCheckpointCapability({ dbPath: options.dbPath });
     this.sessionDelegation = new SessionDelegation(this.sessionCap);
     this.timeoutDelegation = new TimeoutDelegation(this._context);
     this.notificationDelegation = new NotificationDelegation(this._context);
@@ -82,6 +88,8 @@ export class Agent {
     this._context.registerCapability(this.skillCap);
     this._context.registerCapability(this.coordinatorCap);
     this._context.registerCapability(this.scheduleCap);
+    this._context.registerCapability(this.progressCap);
+    this._context.registerCapability(this.workflowCheckpointCap);
   }
 
   /**

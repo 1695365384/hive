@@ -27,6 +27,7 @@ vi.mock('../../../src/agents/runtime/LLMRuntime.js', () => {
 
 // Import after mock setup
 import { CoordinatorCapability } from '../../../src/agents/capabilities/CoordinatorCapability.js';
+import type { ResumeInfo } from '../../../src/agents/capabilities/WorkflowCheckpointCapability.js';
 
 describe('CoordinatorCapability', () => {
   let capability: CoordinatorCapability;
@@ -292,6 +293,33 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
       const notificationCalls = emitCalls.filter(c => c[0] === 'notification:push');
       expect(notificationCalls.length).toBeGreaterThanOrEqual(2); // start + complete
     });
+
+    it('should emit task:progress when progress capability is available', async () => {
+      const mockProgressCap = {
+        begin: vi.fn(),
+        step: vi.fn(),
+        complete: vi.fn(),
+      };
+      const mockCheckpointCap = {
+        canResume: vi.fn(() => null),
+        startWorkflow: vi.fn(() => ({ id: 'cp-1', workflowId: 'wf-s1', sessionId: 'test-session-id' })),
+        markExecute: vi.fn(),
+        markCompleted: vi.fn(),
+        markFailed: vi.fn(),
+      };
+
+      (context as any).getCapability = vi.fn((name: string) => {
+        if (name === 'progress') return mockProgressCap;
+        if (name === 'workflow-checkpoint') return mockCheckpointCap;
+        throw new Error('missing capability');
+      });
+
+      await capability.run('Test task');
+
+      expect(mockProgressCap.begin).toHaveBeenCalled();
+      expect(mockProgressCap.step).toHaveBeenCalled();
+      expect(mockProgressCap.complete).toHaveBeenCalled();
+    });
   });
 
   // ============================================
@@ -526,6 +554,71 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('String error');
+    });
+
+    it('should mark checkpoint failed when execution throws', async () => {
+      const mockCheckpointCap = {
+        canResume: vi.fn(() => null),
+        startWorkflow: vi.fn(() => ({ id: 'cp-2', workflowId: 'wf-s2', sessionId: 'test-session-id' })),
+        markExecute: vi.fn(),
+        markCompleted: vi.fn(),
+        markFailed: vi.fn(),
+      };
+
+      (context as any).getCapability = vi.fn((name: string) => {
+        if (name === 'workflow-checkpoint') return mockCheckpointCap;
+        throw new Error('missing capability');
+      });
+
+      mockRuntimeStream.mockImplementation((_config: any) => {
+        let resolveResult!: (result: any) => void;
+        const resultPromise = new Promise<any>((resolve) => { resolveResult = resolve; });
+        const events = (async function* () {
+          throw new Error('Execution failed');
+        })();
+        return { events, result: resultPromise };
+      });
+
+      await capability.run('Test task');
+
+      expect(mockCheckpointCap.markFailed).toHaveBeenCalled();
+    });
+  });
+
+  describe('checkpoint resume', () => {
+    it('should return cached completed result from checkpoint', async () => {
+      const resumeInfo: ResumeInfo = {
+        checkpointId: 'cp-3',
+        workflowId: 'wf-s3',
+        phase: 'completed',
+        retryCount: 1,
+        data: {
+          task: 'Test task',
+          finalText: 'cached answer',
+          tools: ['agent'],
+          usage: { input: 10, output: 5 },
+        },
+      };
+
+      const mockCheckpointCap = {
+        canResume: vi.fn(() => resumeInfo),
+        startWorkflow: vi.fn(() => ({ id: 'cp-3', workflowId: 'wf-s3', sessionId: 'test-session-id' })),
+        markExecute: vi.fn(),
+        markCompleted: vi.fn(),
+        markFailed: vi.fn(),
+      };
+
+      (context as any).getCapability = vi.fn((name: string) => {
+        if (name === 'workflow-checkpoint') return mockCheckpointCap;
+        throw new Error('missing capability');
+      });
+
+      const result = await capability.run('Test task');
+
+      expect(result.success).toBe(true);
+      expect(result.resumed).toBe(true);
+      expect(result.text).toBe('cached answer');
+      expect(mockRuntimeStream).not.toHaveBeenCalled();
     });
   });
 

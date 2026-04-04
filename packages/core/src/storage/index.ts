@@ -33,6 +33,13 @@ export {
   createScheduleRepository,
 } from './ScheduleRepository.js';
 
+export {
+  CheckpointRepository,
+  type WorkflowCheckpoint,
+  type WorkflowCheckpointData,
+  type WorkflowCheckpointPhase,
+} from './CheckpointRepository.js';
+
 export type { IScheduleRepository } from '../scheduler/types.js';
 
 // Row types (for consumers extending storage)

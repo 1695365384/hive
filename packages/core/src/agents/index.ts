@@ -51,6 +51,8 @@ export {
   CoordinatorCapability,
   ScheduleCapability,
   createScheduleCapability,
+  ProgressCapability,
+  WorkflowCheckpointCapability,
 } from './capabilities/index.js';
 
 export type {

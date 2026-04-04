@@ -40,3 +40,16 @@ export {
 // 工具基础设施
 export { truncateOutput } from './built-in/utils/output-safety.js';
 export { isDangerousCommand, isSensitiveFile } from './built-in/utils/security.js';
+
+// 权限与审计
+export {
+  TOOL_PERMISSIONS,
+  TOOL_PERMISSION_DESCRIPTIONS,
+  getToolPermissionLevel,
+  getToolDescription,
+  requiresUserConfirmation,
+  requiresAuditLogging,
+  type ToolPermissionLevel,
+} from './permissions.js';
+export type { AuditLogEntry, AuditLogQuery, AuditLogStats, IAuditLogRepository } from './audit-types.js';
+export { createSqliteAuditLogRepository } from './audit-repository.js';
