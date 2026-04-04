@@ -80,7 +80,7 @@ const result = await agent.dispatch('分析认证流程', {
   onText: (text) => process.stdout.write(text),
   onTool: (tool, input) => console.log(`→ ${tool}`),
   onToolResult: (tool, result) => console.log(`← ${tool}`),
-  onReasoning: (thought) => console.log(`💭 ${thought}`),
+  onReasoning: (thought) => console.log(`[reasoning] ${thought}`),
   abortSignal: controller.signal,
 });
 ```
@@ -129,27 +129,27 @@ Hive 采用 **Coordinator-Worker** 模式。`Agent` 是唯一入口，`dispatch(
 
 <table style="border:none; margin: 0 auto;">
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Coordinator</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Coordinator</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">调度 · Worker 编排 · 成本追踪</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Provider</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Provider</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">注册 · 切换 · AI SDK 集成</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Skill</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Skill</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">加载 · 匹配 · 指令生成</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Session</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Session</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">SQLite 持久化 · 多会话</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Timeout</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Timeout</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">心跳 · 卡死检测 · 中断</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Schedule</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Schedule</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">定时任务 · 生命周期管理</td>
 </tr>
 </table>
