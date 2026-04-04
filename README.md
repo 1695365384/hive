@@ -1,6 +1,6 @@
 <div align="center">
   <p>
-    <img src="logo.svg" alt="Hive Logo" width="80" height="80" style="vertical-align: middle;"> <span style="font-size: 2em; font-weight: bold; vertical-align: middle;">Hive</span>
+    <img src="logo-with-text.svg" alt="Hive" width="160">
   </p>
 
   <p><strong>The Multi-Agent SDK for TypeScript</strong></p>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80">
+  <defs>
+    <linearGradient id="hg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <!-- Hexagon -->
+  <polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="url(#hg)"/>
+  <text x="40" y="53" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="38" fill="#0a0a0a">H</text>
+  <!-- Brand name -->
+  <text x="88" y="53" font-family="Inter,system-ui,sans-serif" font-weight="700" font-size="38" fill="#1a1a1a">Hive</text>
+</svg>
