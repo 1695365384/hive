@@ -11,7 +11,14 @@
     "subtitle": "Coordinator-Worker 架构，内置成本控制、权限分层、国产大模型支持。",
     "cta": "下载安装",
     "secondary": "开发者 SDK →",
-    "installCommand": "npm i @bundy-lmw/hive-core"
+    "installCommand": "npm i @bundy-lmw/hive-core",
+    "tabSdk": "SDK",
+    "tabMacos": "macOS",
+    "tabWindows": "Windows",
+    "tabLinux": "Linux",
+    "sdkComment": "安装核心 SDK",
+    "macosComment": "下载桌面应用",
+    "comingSoon": "开发中"
   },
   "download": {
     "macos": "macOS",
