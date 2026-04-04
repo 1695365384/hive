@@ -16,21 +16,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create draft release
+      - name: Create or reuse draft release
         id: create-release
         uses: actions/github-script@v7
         with:
           script: |
-            const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: '${{ github.ref_name }}',
-              name: 'Hive ${{ github.ref_name }}',
-              body: `## Hive ${{ github.ref_name }}\n\n### macOS 安装说明\n\n如果双击安装包提示"已损坏"，请：\n1. 右键点击 Hive.app → 选择"打开"\n2. 在弹出的对话框中点击"打开"\n\n或终端执行：\n\`\`\`bash\nxattr -cr /Applications/Hive.app\n\`\`\``,
-              draft: true,
-              prerelease: false
-            })
-            return data.id
+            const tag = '${{ github.ref_name }}'
+            let release
+            try {
+              release = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag
+              })
+            } catch {
+              release = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: `Hive ${tag}`,
+                body: `## Hive ${tag}\n\n### macOS 安装说明\n\n如果双击安装包提示"已损坏"，请：\n1. 右键点击 Hive.app → 选择"打开"\n2. 在弹出的对话框中点击"打开"\n\n或终端执行：\n\`\`\`bash\nxattr -cr /Applications/Hive.app\n\`\`\``,
+                draft: true,
+                prerelease: false
+              })
+            }
+            return release.data.id
 
   build:
     needs: create-release
