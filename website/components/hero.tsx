@@ -1,7 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { getLatestRelease } from '@/lib/release';
-import { DownloadButtons } from './download-buttons';
-import { HeroClient } from './hero-client';
+import { TerminalInstall } from './terminal-install';
 
 export async function Hero() {
   const t = await getTranslations('hero');
@@ -35,7 +34,11 @@ export async function Hero() {
         </p>
 
         <div className="mb-8">
-          <DownloadButtons assets={assetsByPlatform} tagName={tagName} />
+          <TerminalInstall
+            assets={assetsByPlatform}
+            tagName={tagName}
+            installCommand={t('installCommand')}
+          />
           <div className="mt-4 flex items-center justify-center">
             <a
               href="https://github.com/1695365384/hive#quick-start"
@@ -45,8 +48,6 @@ export async function Hero() {
             </a>
           </div>
         </div>
-
-        <HeroClient installCommand={t('installCommand')} />
       </div>
     </section>
   );

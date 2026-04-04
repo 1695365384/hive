@@ -11,15 +11,13 @@
     "subtitle": "Coordinator-Worker architecture with built-in cost control, permission layers, and Chinese LLM support.",
     "cta": "Download",
     "secondary": "Developer SDK →",
-    "installCommand": "npm i @bundy-lmw/hive-core"
-  },
-  "download": {
-    "macos": "macOS",
-    "windows": "Windows",
-    "linux": "Linux",
-    "macosFormat": ".dmg",
-    "windowsFormat": ".exe",
-    "linuxFormat": ".AppImage",
+    "installCommand": "npm i @bundy-lmw/hive-core",
+    "tabSdk": "SDK",
+    "tabMacos": "macOS",
+    "tabWindows": "Windows",
+    "tabLinux": "Linux",
+    "sdkComment": "Install the core SDK",
+    "macosComment": "Download desktop app",
     "comingSoon": "Coming Soon"
   },
   "providers": {
