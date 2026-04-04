@@ -26,12 +26,13 @@ fn pid_to_i32(pid: u32) -> Option<i32> {
     if p > 0 { Some(p) } else { None }
 }
 
-/// Send a signal to a process.
+/// Send a signal to a process (POSIX only).
 ///
 /// # Safety
 /// PID was obtained from a child process we spawned. There is a theoretical
 /// PID reuse race (OS recycles PID between store and kill), but the window
 /// is negligible for a short-lived desktop app sidecar.
+#[cfg(unix)]
 unsafe fn send_signal(pid: u32, signal: libc::c_int) {
     if let Some(p) = pid_to_i32(pid) {
         libc::kill(p, signal);
@@ -230,10 +231,18 @@ fn is_process_running(pid: u32) -> bool {
     if pid == NO_PID {
         return false;
     }
-    // SAFETY: signal 0 is a no-op that only checks PID existence.
-    // PID reuse risk is mitigated by server_pid being cleared on exit.
-    unsafe {
-        pid_to_i32(pid).map_or(false, |p| libc::kill(p, 0) == 0)
+    #[cfg(unix)]
+    {
+        // SAFETY: signal 0 is a no-op that only checks PID existence.
+        // PID reuse risk is mitigated by server_pid being cleared on exit.
+        unsafe {
+            return pid_to_i32(pid).map_or(false, |p| libc::kill(p, 0) == 0);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows: no kill(0), skip liveness check
+        true
     }
 }
 

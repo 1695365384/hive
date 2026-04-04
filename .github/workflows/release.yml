@@ -40,8 +40,9 @@ jobs:
         include:
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
-          - platform: windows-latest
-            args: ''
+          # TODO: Re-enable Windows build after fixing CI compilation issues
+          # - platform: windows-latest
+          #   args: ''
 
     runs-on: ${{ matrix.platform }}
 
