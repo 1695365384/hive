@@ -5,10 +5,10 @@
     "getStarted": "Get Started"
   },
   "hero": {
-    "badge": "Open Source · MIT License",
-    "title": "The Multi-Agent SDK",
-    "titleHighlight": "for TypeScript",
-    "subtitle": "Coordinator-Worker architecture with built-in cost control, permission layers, and Chinese LLM support.",
+    "badge": "Open Source · Free",
+    "titleLine1": "Multiple AI Agents,",
+    "titleHighlight": "Operating Your Computer",
+    "subtitle": "More than chat. AI agents manage your Notes, schedule events, send emails, organize files, and search the web — multiple agents collaborate to get things done.",
     "cta": "Download",
     "secondary": "Developer SDK →",
     "installCommand": "npm i @bundy-lmw/hive-core",
@@ -71,19 +71,19 @@
   },
   "quickStart": {
     "title": "Get Started",
-    "subtitle": "Three steps to get up and running.",
+    "subtitle": "Three steps to let AI work for you.",
     "step1": {
-      "title": "Download",
-      "description": "Choose your platform above and download the installer.",
-      "code": "# macOS\ncurl -L -o Hive.dmg https://github.com/1695365384/hive/releases/latest/download/Hive.dmg\n\n# Windows\nInvoke-WebRequest -Uri https://github.com/1695365384/hive/releases/latest/download/Hive.exe -OutFile Hive.exe\n\n# Linux\ncurl -L -o Hive.AppImage https://github.com/1695365384/hive/releases/latest/download/Hive.AppImage"
+      "title": "Download & Install",
+      "description": "Available for macOS / Windows / Linux. Pick your platform above.",
+      "code": ""
     },
     "step2": {
-      "title": "Install",
-      "description": "macOS: drag to Applications. Windows: run the installer."
+      "title": "Configure AI",
+      "description": "Open Hive, pick a provider, and enter your API key. Supports GLM, DeepSeek, Qwen, Kimi, Claude, GPT, and more."
     },
     "step3": {
-      "title": "Start",
-      "description": "Open Hive, configure your API key, and start chatting."
+      "title": "Start Talking",
+      "description": "Tell Hive what you need — it automatically assigns multiple agents to collaborate and get it done."
     }
   },
   "footer": {

@@ -3,7 +3,6 @@ import { Hero } from '@/components/hero';
 import { Providers } from '@/components/providers';
 import { Features } from '@/components/features';
 import { Architecture } from '@/components/architecture';
-import { Screenshots } from '@/components/screenshots';
 import { QuickStart } from '@/components/quick-start';
 import { Footer } from '@/components/footer';
 
@@ -18,7 +17,6 @@ export default function HomePage() {
         <Providers />
         <Features />
         <Architecture />
-        <Screenshots />
         <QuickStart />
       </main>
       <Footer />

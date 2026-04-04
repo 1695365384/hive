@@ -5,10 +5,10 @@
     "getStarted": "开始使用"
   },
   "hero": {
-    "badge": "开源 · MIT 许可证",
-    "title": "TypeScript 多 Agent",
-    "titleHighlight": "编排 SDK",
-    "subtitle": "Coordinator-Worker 架构，内置成本控制、权限分层、国产大模型支持。",
+    "badge": "开源 · 免费",
+    "titleLine1": "多个 AI Agent 协作",
+    "titleHighlight": "直接操作你的电脑",
+    "subtitle": "不只是聊天。AI Agent 能操作备忘录、制定日程、发邮件、整理文件、搜索网络——多个 Agent 自动分工，完成复杂任务。",
     "cta": "下载安装",
     "secondary": "开发者 SDK →",
     "installCommand": "npm i @bundy-lmw/hive-core",
@@ -70,20 +70,20 @@
     "subtitle": "桌面应用与服务端面板。"
   },
   "quickStart": {
-    "title": "快速开始",
-    "subtitle": "三步即可上手。",
+    "title": "开始使用",
+    "subtitle": "三步上手，让 AI 帮你干活。",
     "step1": {
-      "title": "下载",
-      "description": "在上方选择你的平台，下载安装包。",
-      "code": "# macOS\ncurl -L -o Hive.dmg https://github.com/1695365384/hive/releases/latest/download/Hive.dmg\n\n# Windows\nInvoke-WebRequest -Uri https://github.com/1695365384/hive/releases/latest/download/Hive.exe -OutFile Hive.exe\n\n# Linux\ncurl -L -o Hive.AppImage https://github.com/1695365384/hive/releases/latest/download/Hive.AppImage"
+      "title": "下载安装",
+      "description": "支持 macOS / Windows / Linux，在上方选择你的系统下载。",
+      "code": ""
     },
     "step2": {
-      "title": "安装",
-      "description": "macOS：拖拽到 Applications 文件夹。Windows：运行安装程序。"
+      "title": "配置大模型",
+      "description": "打开 Hive，选择一个 AI 提供商，填入 API Key 即可。支持智谱、DeepSeek、通义、Kimi、Claude、GPT 等。"
     },
     "step3": {
-      "title": "启动",
-      "description": "打开 Hive，配置 API Key，开始使用。"
+      "title": "开始对话",
+      "description": "告诉 Hive 你想做什么——它会自动分配多个 Agent 协作完成。"
     }
   },
   "footer": {
