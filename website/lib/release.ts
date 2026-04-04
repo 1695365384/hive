@@ -2,6 +2,7 @@ const GITHUB_REPO = '1695365384/hive';
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
 const DOWNLOAD_PROXY_BASE = process.env.DOWNLOAD_PROXY_BASE; // e.g. https://hive-download-proxy.xxx.workers.dev
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 export interface ReleaseAsset {
   platform: 'macos' | 'windows' | 'linux';
@@ -31,8 +32,14 @@ function mapPlatform(filename: string): 'macos' | 'windows' | 'linux' | null {
 }
 
 export async function getLatestRelease(): Promise<ReleaseInfo> {
+  const headers: Record<string, string> = {};
+  if (GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${GITHUB_TOKEN}`;
+  }
+
   const res = await fetch(GITHUB_API, {
-    next: { revalidate: 3600 },
+    headers,
+    next: { revalidate: 300 },
   });
 
   if (!res.ok) {
