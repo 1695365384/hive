@@ -55,5 +55,5 @@ jobs:
             ```bash
             xattr -cr /Applications/Hive.app
             ```
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
