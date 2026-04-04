@@ -119,16 +119,28 @@ echo "[bundle] Templates: $TEMPLATE_COUNT .md files copied to templates/"
 # =============================================
 echo "[bundle] Step 4: Downloading Node.js binary..."
 NODE_VERSION=$(node -v | sed 's/v//')
-NODE_TAR="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz"
-NODE_BIN="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}/bin/node"
 NODE_SIDE_NAME="node-${NODE_ARCH}"
 
-if [ ! -f "$NODE_BIN" ]; then
-  echo "[bundle] Downloading Node.js $NODE_VERSION ($NODE_ARCH)..."
-  curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" \
-    -o "$NODE_TAR"
-  tar -xf "$NODE_TAR" -C /tmp/
-  rm -f "$NODE_TAR"
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+  NODE_ZIP="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}.zip"
+  NODE_BIN="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}/node.exe"
+  if [ ! -f "$NODE_BIN" ]; then
+    echo "[bundle] Downloading Node.js $NODE_VERSION ($NODE_ARCH)..."
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.zip" \
+      -o "$NODE_ZIP"
+    unzip -qo "$NODE_ZIP" -d /tmp/
+    rm -f "$NODE_ZIP"
+  fi
+else
+  NODE_TAR="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz"
+  NODE_BIN="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}/bin/node"
+  if [ ! -f "$NODE_BIN" ]; then
+    echo "[bundle] Downloading Node.js $NODE_VERSION ($NODE_ARCH)..."
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" \
+      -o "$NODE_TAR"
+    tar -xf "$NODE_TAR" -C /tmp/
+    rm -f "$NODE_TAR"
+  fi
 fi
 
 cp "$NODE_BIN" "$OUT_DIR/$NODE_SIDE_NAME"
