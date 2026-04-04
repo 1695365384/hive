@@ -95,7 +95,9 @@ pnpm --filter @bundy-lmw/hive-server start
 
 ---
 
-<!-- TODO: Add workflow demo GIF here -->
+<div align="center">
+  <img src="docs/demo.gif" alt="Hive Desktop Demo" width="800">
+</div>
 
 ---
 

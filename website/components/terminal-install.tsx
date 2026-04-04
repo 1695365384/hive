@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Download } from 'lucide-react';
+import { Download, Package } from 'lucide-react';
 import { CopyButton } from './copy-button';
 
 interface PlatformAsset {
@@ -29,80 +29,68 @@ const tabKeyMap: Record<TabKey, string> = {
 
 export function TerminalInstall({ assets, tagName, installCommand }: TerminalInstallProps) {
   const t = useTranslations('hero');
-  const [activeTab, setActiveTab] = useState<TabKey>('sdk');
+  const [activeTab, setActiveTab] = useState<TabKey>('macos');
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface-light">
-        {/* Header: dots + tabs */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-red-500/80" />
-            <span className="h-3 w-3 rounded-full bg-yellow-500/80" />
-            <span className="h-3 w-3 rounded-full bg-green-500/80" />
+    <div className="mx-auto w-full max-w-xl">
+      {/* Segmented control */}
+      <div className="mx-auto mb-4 inline-flex rounded-full border border-border/60 bg-surface-light p-1">
+        {tabs.map((key) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`relative rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+              activeTab === key
+                ? 'bg-amber-500 text-black shadow-sm shadow-amber-500/25'
+                : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            {t(tabKeyMap[key])}
+          </button>
+        ))}
+      </div>
+
+      {/* Content area */}
+      <div className="relative rounded-2xl border border-border/40 bg-surface-light/80 p-5 backdrop-blur-sm">
+        {/* SDK Tab */}
+        {activeTab === 'sdk' && (
+          <div className="flex items-center gap-3 rounded-xl bg-black/30 px-4 py-3 font-mono text-sm">
+            <span className="text-amber-500">$</span>
+            <code className="flex-1 text-text-primary">{installCommand}</code>
+            <CopyButton code={installCommand} visible />
           </div>
-          <div className="flex items-center gap-1">
-            {tabs.map((key) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  activeTab === key
-                    ? 'bg-border text-text-primary'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-              >
-                {t(tabKeyMap[key])}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
 
-        {/* Content */}
-        <div className="relative p-4 font-mono text-sm">
-          {/* SDK Tab */}
-          {activeTab === 'sdk' && (
-            <>
-              <div className="mb-2 text-text-muted"># {t('sdkComment')}</div>
-              <div className="group relative flex items-center">
-                <span className="mr-2 text-amber-500">$</span>
-                <code className="text-text-primary">{installCommand}</code>
-                <CopyButton code={installCommand} visible />
-              </div>
-            </>
-          )}
+        {/* macOS Tab */}
+        {activeTab === 'macos' && assets.macos.url && (
+          <a
+            href={assets.macos.url}
+            className="group flex items-center gap-3 rounded-xl bg-amber-500 px-5 py-3.5 font-semibold text-black transition-all hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/20"
+          >
+            <Download size={18} className="shrink-0" />
+            <div className="flex flex-1 items-baseline gap-2">
+              <span>{assets.macos.name ?? 'Hive.dmg'}</span>
+              {tagName && (
+                <span className="text-sm font-normal opacity-60">{tagName}</span>
+              )}
+            </div>
+            <Package size={14} className="opacity-50" />
+          </a>
+        )}
 
-          {/* macOS Tab */}
-          {activeTab === 'macos' && assets.macos.url && (
-            <>
-              <div className="mb-2 text-text-muted"># {t('macosComment')}</div>
-              <a
-                href={assets.macos.url}
-                className="inline-flex items-center gap-2 rounded bg-amber-500 px-4 py-2 font-semibold text-black transition-colors hover:bg-amber-600"
-              >
-                <Download size={16} />
-                <span>{assets.macos.name ?? 'Hive.dmg'}</span>
-                {tagName && (
-                  <span className="text-sm opacity-75">{tagName}</span>
-                )}
-              </a>
-            </>
-          )}
+        {activeTab === 'macos' && !assets.macos.url && (
+          <div className="py-2 text-center text-sm text-text-muted">{t('comingSoon')}</div>
+        )}
 
-          {activeTab === 'macos' && !assets.macos.url && (
-            <div className="py-1 text-text-muted">{t('comingSoon')}</div>
-          )}
+        {/* Windows Tab */}
+        {activeTab === 'windows' && (
+          <div className="py-2 text-center text-sm text-text-muted">{t('comingSoon')}</div>
+        )}
 
-          {/* Windows Tab */}
-          {activeTab === 'windows' && (
-            <div className="py-1 text-text-muted">{t('comingSoon')}</div>
-          )}
-
-          {/* Linux Tab */}
-          {activeTab === 'linux' && (
-            <div className="py-1 text-text-muted">{t('comingSoon')}</div>
-          )}
-        </div>
+        {/* Linux Tab */}
+        {activeTab === 'linux' && (
+          <div className="py-2 text-center text-sm text-text-muted">{t('comingSoon')}</div>
+        )}
       </div>
     </div>
   );
