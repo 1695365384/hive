@@ -31,6 +31,8 @@ import { createDynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js'
 import type { PromptBuildContext } from '../types/pipeline.js';
 import { buildScheduleSummary } from './schedule-summary.js';
 import { getModelPricing } from '../../providers/metadata/pricing.js';
+import type { ProgressCapability } from './ProgressCapability.js';
+import type { WorkflowCheckpointCapability } from './WorkflowCheckpointCapability.js';
 
 // ============================================
 // 类型
@@ -86,6 +88,12 @@ export interface DispatchResult {
   error?: string;
   /** 执行步骤详情（可选） */
   steps?: import('../runtime/types.js').StepResult[];
+  /** 是否从检查点恢复 */
+  resumed?: boolean;
+  /** 恢复来源阶段 */
+  resumedFrom?: string;
+  /** 检查点 ID */
+  checkpointId?: string;
 }
 
 // ============================================
@@ -133,6 +141,8 @@ export class CoordinatorCapability implements AgentCapability {
   async run(task: string, options?: DispatchOptions): Promise<DispatchResult> {
     const startTime = Date.now();
     const sessionId = this.context.hookRegistry.getSessionId();
+    const checkpointCap = this.getCheckpointCap();
+    const progressCap = this.getProgressCap();
 
     // 空任务快速返回
     if (!task?.trim()) {
@@ -147,10 +157,48 @@ export class CoordinatorCapability implements AgentCapability {
 
     let previousPhase: string | undefined;
     const abortController = new AbortController();
+    const resumeInfo = checkpointCap?.canResume(sessionId, task) ?? null;
+    const checkpoint = checkpointCap?.startWorkflow(sessionId, task) ?? null;
+    const workflowId = checkpoint?.workflowId;
+    let isResumed = resumeInfo !== null;
+    let taskToRun = task;
+
+    if (resumeInfo?.phase === 'completed' && resumeInfo.data?.finalText) {
+      return {
+        text: resumeInfo.data.finalText,
+        finalText: resumeInfo.data.finalText,
+        success: true,
+        duration: Date.now() - startTime,
+        tools: resumeInfo.data.tools ?? [],
+        usage: resumeInfo.data.usage,
+        resumed: true,
+        resumedFrom: 'completed',
+        checkpointId: resumeInfo.checkpointId,
+      };
+    }
+
+    if (resumeInfo?.data?.partialText) {
+      const safePartialText = resumeInfo.data.partialText
+        .replace(/\[RESUME_CONTEXT\]/g, '[RESUME-CONTEXT]')
+        .slice(0, 2000);
+      taskToRun = `${task}\n\n[RESUME_CONTEXT]\nPrevious partial output:\n${safePartialText}`;
+    }
+
+    if (workflowId) {
+      checkpointCap?.markExecute(workflowId, {
+        task,
+        partialText: resumeInfo?.data?.partialText,
+      });
+    }
+
+    if (progressCap && workflowId) {
+      progressCap.begin(workflowId, `执行任务: ${task.slice(0, 60)}`, 'execute', 4);
+    }
 
     try {
       // 确保 session 已切换到正确的 chatId
       await this.ensureSession(options?.chatId);
+      progressCap?.step('session-ready');
 
       // 启动心跳
       const timeoutConfig = this.context.timeoutCap.getConfig();
@@ -167,6 +215,7 @@ export class CoordinatorCapability implements AgentCapability {
 
         previousPhase = 'start';
         await this.emitPhase(sessionId, 'execute', '执行任务...', previousPhase, options);
+        progressCap?.step('runtime-started');
 
         // 构建 system prompt
         const systemPrompt = await this.buildSystemPrompt(task, options?.systemPrompt);
@@ -185,7 +234,7 @@ export class CoordinatorCapability implements AgentCapability {
         const { events, result: resultPromise } = this.runtime.stream({
           system: systemPrompt,
           messages: baseMessages.length > 0 ? baseMessages as any : undefined,
-          prompt: baseMessages.length === 0 ? task : undefined,
+          prompt: baseMessages.length === 0 ? taskToRun : undefined,
           tools: this.coordinatorTools,
           maxSteps: options?.maxTurns ?? CoordinatorCapability.DEFAULT_MAX_TURNS,
           model: options?.modelId,
@@ -211,6 +260,13 @@ export class CoordinatorCapability implements AgentCapability {
             case 'tool-result':
               // 记录最后工具结果位置，用于提取 finalText
               lastToolResultIndex = result.length;
+              progressCap?.step('worker-updated');
+              if (workflowId) {
+                checkpointCap?.markExecute(workflowId, {
+                  task,
+                  partialText: result,
+                });
+              }
               this.emitToolAfter(sessionId, event.toolName, event.output).catch(
                 (err) => this.context.hookRegistry.emit('notification:push', {
                   sessionId, type: 'warning', title: 'Hook Error',
@@ -236,6 +292,7 @@ export class CoordinatorCapability implements AgentCapability {
 
         const duration = Date.now() - startTime;
         const success = runtimeResult.success;
+        progressCap?.step('finalizing');
 
         previousPhase = 'execute';
         await this.emitPhase(sessionId, 'complete', success ? '任务完成' : '任务失败', previousPhase, options);
@@ -252,6 +309,26 @@ export class CoordinatorCapability implements AgentCapability {
         if (success && result) {
           await this.persistSession(task, result);
         }
+
+        if (workflowId) {
+          if (success) {
+            checkpointCap?.markCompleted(workflowId, {
+              task,
+              partialText: result,
+              finalText,
+              tools: runtimeResult.tools,
+              usage: runtimeResult.usage
+                ? { input: runtimeResult.usage.promptTokens, output: runtimeResult.usage.completionTokens }
+                : undefined,
+            });
+          } else {
+            checkpointCap?.markFailed(workflowId, runtimeResult.error ?? 'Runtime failed', {
+              task,
+              partialText: result,
+            });
+          }
+        }
+        progressCap?.complete(success ? '任务完成' : '任务失败');
 
         const modelId = this.context.getActiveProvider()?.model;
 
@@ -272,6 +349,9 @@ export class CoordinatorCapability implements AgentCapability {
           ),
           steps: runtimeResult.steps,
           duration,
+          resumed: isResumed,
+          resumedFrom: resumeInfo?.phase,
+          checkpointId: checkpoint?.id,
         };
       } finally {
         this.context.timeoutCap.stopHeartbeat();
@@ -282,6 +362,10 @@ export class CoordinatorCapability implements AgentCapability {
       abortController.abort();
       this.taskManager.abortAll();
       const errorMsg = error instanceof Error ? error.message : String(error);
+      if (workflowId) {
+        checkpointCap?.markFailed(workflowId, errorMsg, { task, partialText: undefined });
+      }
+      progressCap?.complete('任务异常终止');
       await this.emitPhase(sessionId, 'error', errorMsg, previousPhase, options);
       await this.emitNotification(sessionId, 'error', '执行错误', errorMsg, { error: true });
 
@@ -379,6 +463,28 @@ export class CoordinatorCapability implements AgentCapability {
 
   private getSessionCap(): SessionCapability | null {
     return this.context.getSessionCap?.() ?? null;
+  }
+
+  private getProgressCap(): ProgressCapability | null {
+    try {
+      return this.context.getCapability<ProgressCapability>('progress');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Capability not found')) {
+        return null;
+      }
+      return null;
+    }
+  }
+
+  private getCheckpointCap(): WorkflowCheckpointCapability | null {
+    try {
+      return this.context.getCapability<WorkflowCheckpointCapability>('workflow-checkpoint');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Capability not found')) {
+        return null;
+      }
+      return null;
+    }
   }
 
   // ============================================
