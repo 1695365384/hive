@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="logo.svg" alt="Hive Logo" width="120" height="120">
-
-  <h1>Hive</h1>
+  <p>
+    <img src="logo.svg" alt="Hive Logo" width="80" height="80" style="vertical-align: middle;"> <span style="font-size: 2em; font-weight: bold; vertical-align: middle;">Hive</span>
+  </p>
 
   <p><strong>The Multi-Agent SDK for TypeScript</strong></p>
   <p>Coordinator-Worker architecture with built-in cost control, permission layers, and Chinese LLM support.</p>
