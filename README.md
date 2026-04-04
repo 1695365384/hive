@@ -80,7 +80,7 @@ const result = await agent.dispatch('Analyze the auth flow', {
   onText: (text) => process.stdout.write(text),
   onTool: (tool, input) => console.log(`→ ${tool}`),
   onToolResult: (tool, result) => console.log(`← ${tool}`),
-  onReasoning: (thought) => console.log(`💭 ${thought}`),
+  onReasoning: (thought) => console.log(`[reasoning] ${thought}`),
   abortSignal: controller.signal,
 });
 ```
@@ -129,27 +129,27 @@ Hive uses a **Coordinator-Worker** pattern. The `Agent` class is the single entr
 
 <table style="border:none; margin: 0 auto;">
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Coordinator</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Coordinator</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">dispatch · worker orchestration · cost</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Provider</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Provider</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">registry · switching · AI SDK</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Skill</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Skill</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">loading · matching · instruction generation</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Session</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Session</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">SQLite persistence · multi-session</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Timeout</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Timeout</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">heartbeat · stall detection · abort</td>
 </tr>
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb;">Schedule</code></td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Schedule</code></td>
   <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">cron · task lifecycle</td>
 </tr>
 </table>
