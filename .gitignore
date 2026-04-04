@@ -88,3 +88,6 @@ apps/server/bundle/
 
 # Eval results (promptfoo)
 eval/results/
+
+docs/superpowers/
+.superpowers

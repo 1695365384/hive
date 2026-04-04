@@ -1,0 +1,231 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 740" fill="none">
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+    .layer-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+    .section-title { font-size: 13px; font-weight: 600; }
+    .mono { font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace; font-size: 11px; }
+    .small { font-size: 11px; }
+    .xs { font-size: 10px; }
+    .route { font-family: 'SF Mono', SFMono-Regular, Consolas, monospace; font-size: 10px; }
+    .pill { fill: #161b22; stroke: #30363d; }
+  </style>
+
+  <defs>
+    <linearGradient id="orangeGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+  </defs>
+
+  <!-- CLIENT LAYER -->
+  <rect x="10" y="10" width="840" height="70" rx="0" fill="#0d1117" stroke="#1f6feb33" stroke-width="1"/>
+  <text class="layer-label" x="30" y="28" fill="#58a6ff">Client Layer</text>
+
+  <rect x="40" y="36" width="180" height="34" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="130" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">Desktop</text>
+  <text x="130" y="65" text-anchor="middle" class="small" fill="#8b949e">Tauri 2 + React 19</text>
+
+  <rect x="240" y="36" width="180" height="34" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="330" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">External API</text>
+  <text x="330" y="65" text-anchor="middle" class="small" fill="#8b949e">REST / WebSocket</text>
+
+  <rect x="440" y="36" width="180" height="34" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="530" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">CLI</text>
+  <text x="530" y="65" text-anchor="middle" class="small" fill="#8b949e">Terminal</text>
+
+  <rect x="640" y="36" width="180" height="34" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="730" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">Plugins</text>
+  <text x="730" y="65" text-anchor="middle" class="small" fill="#8b949e">Feishu / Slack / Custom</text>
+
+  <!-- Flow arrow -->
+  <line x1="430" y1="88" x2="430" y2="102" stroke="#484f58" stroke-width="1"/>
+  <polygon points="425,102 435,102 430,108" fill="#484f58"/>
+
+  <!-- SERVER LAYER -->
+  <rect x="10" y="112" width="840" height="100" rx="0" fill="#0d1117" stroke="#8b5cf633" stroke-width="1"/>
+  <text class="layer-label" x="30" y="130" fill="#a78bfa">Server Layer</text>
+
+  <rect x="40" y="138" width="780" height="60" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="60" y="157" class="section-title" fill="#a78bfa">Hono HTTP + WebSocket Gateway</text>
+  <text x="330" y="157" class="small" fill="#8b949e">port 4450</text>
+
+  <!-- Routes -->
+  <text x="60" y="176" class="route" fill="#3fb950" font-weight="600">GET</text>
+  <text x="85" y="176" class="route" fill="#8b949e">/health</text>
+  <text x="150" y="176" class="route" fill="#d29922" font-weight="600">POST</text>
+  <text x="182" y="176" class="route" fill="#8b949e">/api/chat</text>
+  <text x="255" y="176" class="route" fill="#3fb950" font-weight="600">GET</text>
+  <text x="280" y="176" class="route" fill="#8b949e">/api/sessions</text>
+  <text x="380" y="176" class="route" fill="#58a6ff" font-weight="600">WS</text>
+  <text x="400" y="176" class="route" fill="#8b949e">/ws/chat</text>
+  <text x="465" y="176" class="route" fill="#58a6ff" font-weight="600">WS</text>
+  <text x="485" y="176" class="route" fill="#8b949e">/ws/admin</text>
+  <text x="555" y="176" class="route" fill="#d29922" font-weight="600">POST</text>
+  <text x="590" y="176" class="route" fill="#8b949e">/webhook/:plugin/:appId</text>
+  <text x="748" y="176" class="route" fill="#d29922" font-weight="600">POST</text>
+  <text x="776" y="176" class="route" fill="#8b949e">/api/upload</text>
+
+  <text x="430" y="192" text-anchor="middle" class="small" fill="#8b949e">CORS · Auth (Bearer) · Logger (pino) · FileHandler · Max 10k sessions (LRU)</text>
+
+  <!-- Flow arrow -->
+  <line x1="430" y1="220" x2="430" y2="234" stroke="#484f58" stroke-width="1"/>
+  <polygon points="425,234 435,234 430,240" fill="#484f58"/>
+
+  <!-- AGENT LAYER -->
+  <rect x="10" y="244" width="840" height="240" rx="0" fill="#0d1117" stroke="#f9731633" stroke-width="1"/>
+  <text class="layer-label" x="30" y="262" fill="#f97316">Agent Layer</text>
+
+  <!-- Agent entry -->
+  <rect x="265" y="274" width="100" height="32" rx="0" fill="url(#orangeGrad)"/>
+  <text x="315" y="295" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">Agent</text>
+
+  <!-- Arrow -->
+  <line x1="375" y1="290" x2="393" y2="290" stroke="#f97316" stroke-width="1.5"/>
+  <polygon points="393,286 401,290 393,294" fill="#f97316"/>
+
+  <!-- Coordinator -->
+  <rect x="405" y="272" width="250" height="36" rx="0" fill="#161b22" stroke="#f9731633" stroke-width="1.5"/>
+  <text x="530" y="288" text-anchor="middle" font-size="13" font-weight="700" fill="#f97316">CoordinatorCapability</text>
+  <text x="530" y="302" text-anchor="middle" class="small" fill="#8b949e">LLM Loop · Worker Orchestration · Cost</text>
+
+  <!-- Workers: 3 equal boxes, 230px wide, 15px gap -->
+  <!-- Total: 3*230 + 2*15 = 720. Start: (860-720)/2 = 70 -->
+
+  <!-- explore -->
+  <rect x="70" y="322" width="230" height="80" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="185" y="342" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">explore</text>
+  <rect x="90" y="352" width="36" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="108" y="363" text-anchor="middle" class="xs" fill="#3fb950">file</text>
+  <rect x="132" y="352" width="34" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="149" y="363" text-anchor="middle" class="xs" fill="#3fb950">glob</text>
+  <rect x="172" y="352" width="36" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="190" y="363" text-anchor="middle" class="xs" fill="#3fb950">grep</text>
+  <rect x="214" y="352" width="32" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="230" y="363" text-anchor="middle" class="xs" fill="#3fb950">web</text>
+  <rect x="252" y="352" width="28" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="266" y="363" text-anchor="middle" class="xs" fill="#3fb950">env</text>
+  <rect x="110" y="378" width="140" height="14" rx="0" fill="#0d2818"/>
+  <text x="180" y="389" text-anchor="middle" class="xs" fill="#3fb950" font-weight="500">read-only · 10 turns</text>
+
+  <!-- plan -->
+  <rect x="315" y="322" width="230" height="80" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="430" y="342" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">plan</text>
+  <rect x="335" y="352" width="36" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="353" y="363" text-anchor="middle" class="xs" fill="#3fb950">file</text>
+  <rect x="377" y="352" width="34" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="394" y="363" text-anchor="middle" class="xs" fill="#3fb950">glob</text>
+  <rect x="417" y="352" width="36" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="435" y="363" text-anchor="middle" class="xs" fill="#3fb950">grep</text>
+  <rect x="459" y="352" width="32" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="475" y="363" text-anchor="middle" class="xs" fill="#3fb950">web</text>
+  <rect x="497" y="352" width="28" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="511" y="363" text-anchor="middle" class="xs" fill="#3fb950">env</text>
+  <rect x="355" y="378" width="140" height="14" rx="0" fill="#0d2818"/>
+  <text x="425" y="389" text-anchor="middle" class="xs" fill="#3fb950" font-weight="500">read-only · 15 turns</text>
+
+  <!-- general -->
+  <rect x="560" y="322" width="230" height="80" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="675" y="342" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">general</text>
+  <rect x="580" y="352" width="34" height="16" rx="0" fill="#2d1600" stroke="#6e4b00"/>
+  <text x="597" y="363" text-anchor="middle" class="xs" fill="#d29922">bash</text>
+  <rect x="620" y="352" width="40" height="16" rx="0" fill="#2d1600" stroke="#6e4b00"/>
+  <text x="640" y="363" text-anchor="middle" class="xs" fill="#d29922">file(w)</text>
+  <rect x="666" y="352" width="34" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="683" y="363" text-anchor="middle" class="xs" fill="#3fb950">glob</text>
+  <rect x="706" y="352" width="36" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="724" y="363" text-anchor="middle" class="xs" fill="#3fb950">grep</text>
+  <rect x="748" y="352" width="28" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="762" y="363" text-anchor="middle" class="xs" fill="#3fb950">web</text>
+  <rect x="580" y="372" width="50" height="16" rx="0" fill="#2d1600" stroke="#6e4b00"/>
+  <text x="605" y="383" text-anchor="middle" class="xs" fill="#d29922">ask-user</text>
+  <rect x="636" y="372" width="56" height="16" rx="0" fill="#2d1600" stroke="#6e4b00"/>
+  <text x="664" y="383" text-anchor="middle" class="xs" fill="#d29922">send-file</text>
+  <rect x="698" y="372" width="28" height="16" rx="0" fill="#0d2818" stroke="#238636"/>
+  <text x="712" y="383" text-anchor="middle" class="xs" fill="#3fb950">env</text>
+  <rect x="598" y="394" width="150" height="14" rx="0" fill="#2d1600"/>
+  <text x="673" y="405" text-anchor="middle" class="xs" fill="#d29922" font-weight="500">full access · 15 turns</text>
+
+  <!-- Capabilities -->
+  <line x1="40" y1="418" x2="820" y2="418" stroke="#21262d"/>
+  <text x="430" y="434" text-anchor="middle" font-size="10" fill="#8b949e" letter-spacing="1.5px">CAPABILITIES</text>
+
+  <!-- 7 pills: 100px wide, 8px gap. Total: 7*100 + 6*8 = 748. Start: (860-748)/2 = 56 -->
+  <rect x="56" y="444" width="100" height="22" rx="0" class="pill"/>
+  <text x="70" y="459" font-size="11" font-weight="600" fill="#e6edf3">Provider</text>
+  <text x="138" y="459" class="xs" fill="#8b949e">13</text>
+
+  <rect x="164" y="444" width="100" height="22" rx="0" class="pill"/>
+  <text x="178" y="459" font-size="11" font-weight="600" fill="#e6edf3">Skill</text>
+  <text x="240" y="459" class="xs" fill="#8b949e">match</text>
+
+  <rect x="272" y="444" width="100" height="22" rx="0" class="pill"/>
+  <text x="286" y="459" font-size="11" font-weight="600" fill="#e6edf3">Session</text>
+  <text x="352" y="459" class="xs" fill="#8b949e">SQLite</text>
+
+  <rect x="380" y="444" width="100" height="22" rx="0" class="pill"/>
+  <text x="394" y="459" font-size="11" font-weight="600" fill="#e6edf3">Timeout</text>
+  <text x="458" y="459" class="xs" fill="#8b949e">heartbeat</text>
+
+  <rect x="488" y="444" width="100" height="22" rx="0" class="pill"/>
+  <text x="502" y="459" font-size="11" font-weight="600" fill="#e6edf3">Schedule</text>
+  <text x="566" y="459" class="xs" fill="#8b949e">cron</text>
+
+  <rect x="596" y="444" width="100" height="22" rx="0" class="pill"/>
+  <text x="610" y="459" font-size="11" font-weight="600" fill="#e6edf3">Hook</text>
+  <text x="660" y="459" class="xs" fill="#8b949e">intercept</text>
+
+  <rect x="704" y="444" width="100" height="22" rx="0" class="pill"/>
+  <text x="718" y="459" font-size="11" font-weight="600" fill="#e6edf3">Compress</text>
+  <text x="784" y="459" class="xs" fill="#8b949e">hybrid</text>
+
+  <!-- Flow arrow -->
+  <line x1="430" y1="478" x2="430" y2="492" stroke="#484f58" stroke-width="1"/>
+  <polygon points="425,492 435,492 430,498" fill="#484f58"/>
+
+  <!-- INFRASTRUCTURE LAYER -->
+  <rect x="10" y="502" width="840" height="210" rx="0" fill="#0d1117" stroke="#484f5833" stroke-width="1"/>
+  <text class="layer-label" x="30" y="520" fill="#8b949e">Infrastructure</text>
+
+  <!-- 3 equal cards: 250px wide, 15px gap. Total: 3*250 + 2*15 = 780. Start: (860-780)/2 = 40 -->
+  <rect x="40" y="532" width="250" height="108" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="60" y="552" font-size="12" font-weight="600" fill="#e6edf3">Provider Adapters (7)</text>
+  <text x="60" y="570" class="small" fill="#8b949e">AnthropicAdapter</text>
+  <text x="170" y="570" class="small" fill="#8b949e">DeepSeekAdapter</text>
+  <text x="60" y="584" class="small" fill="#8b949e">OpenAIAdapter</text>
+  <text x="170" y="584" class="small" fill="#8b949e">MistralAdapter</text>
+  <text x="60" y="598" class="small" fill="#8b949e">GoogleAdapter</text>
+  <text x="170" y="598" class="small" fill="#8b949e">XaiAdapter</text>
+  <text x="60" y="612" class="small" fill="#8b949e">OpenAICompatible</text>
+  <text x="60" y="630" class="xs" fill="#484f58">GLM · Qwen · Kimi · ERNIE · OpenRouter · Groq · LiteLLM</text>
+
+  <rect x="305" y="532" width="250" height="108" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="325" y="552" font-size="12" font-weight="600" fill="#e6edf3">Storage</text>
+  <text x="325" y="570" class="small" fill="#8b949e">SQLite sessions</text>
+  <text x="325" y="584" class="small" fill="#8b949e">SQLite schedules</text>
+  <text x="325" y="598" class="small" fill="#8b949e">File uploads (10MB max)</text>
+  <text x="325" y="612" class="small" fill="#8b949e">In-memory cache</text>
+  <text x="325" y="630" class="xs" fill="#484f58">Compression: hybrid / summary / sliding-window</text>
+
+  <rect x="570" y="532" width="250" height="108" rx="0" fill="#161b22" stroke="#30363d"/>
+  <text x="590" y="552" font-size="12" font-weight="600" fill="#e6edf3">Built-in Tools (14)</text>
+  <text x="590" y="570" class="small" fill="#8b949e">bash · file · glob · grep</text>
+  <text x="590" y="584" class="small" fill="#8b949e">web-search · web-fetch · env</text>
+  <text x="590" y="598" class="small" fill="#8b949e">ask-user · send-file · schedule</text>
+  <text x="590" y="612" class="small" fill="#8b949e">agent · task-stop · send-message</text>
+  <text x="590" y="630" class="xs" fill="#484f58">Path constraints · SSRF protection · Command allowlist</text>
+
+  <!-- Security bar -->
+  <rect x="40" y="654" width="780" height="24" rx="0" fill="#161b22" stroke="#23863633"/>
+  <text x="60" y="670" font-size="11" fill="#e6edf3" font-weight="600">Security:</text>
+  <text x="128" y="670" font-size="11" fill="#8b949e">Path constraints · SSRF protection · Command allowlist (14 patterns) · Sensitive file guard (.env, .ssh, .pem) · Hook intercept</text>
+
+  <!-- Legend -->
+  <rect x="305" y="696" width="12" height="3" fill="#3fb950"/>
+  <text x="322" y="699" font-size="10" fill="#484f58">read-only</text>
+  <rect x="380" y="696" width="12" height="3" fill="#d29922"/>
+  <text x="397" y="699" font-size="10" fill="#484f58">write</text>
+  <rect x="430" y="696" width="12" height="3" fill="#f97316"/>
+  <text x="447" y="699" font-size="10" fill="#484f58">agent entry</text>
+  <rect x="505" y="696" width="12" height="3" fill="#a78bfa"/>
+  <text x="522" y="699" font-size="10" fill="#484f58">server gateway</text>
+</svg>
