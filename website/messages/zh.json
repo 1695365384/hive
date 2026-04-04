@@ -13,6 +13,15 @@
     "secondary": "开发者 SDK →",
     "installCommand": "npm i @bundy-lmw/hive-core"
   },
+  "download": {
+    "macos": "macOS",
+    "windows": "Windows",
+    "linux": "Linux",
+    "macosFormat": ".dmg",
+    "windowsFormat": ".exe",
+    "linuxFormat": ".AppImage",
+    "comingSoon": "开发中"
+  },
   "providers": {
     "title": "13 个提供商，一个 SDK",
     "subtitle": "国产大模型一流支持，覆盖所有主流提供商。任何 OpenAI 兼容端点均可接入。"
@@ -58,8 +67,8 @@
     "subtitle": "三步即可上手。",
     "step1": {
       "title": "下载",
-      "description": "从 GitHub Releases 下载对应平台的安装包。",
-      "code": "open https://github.com/1695365384/hive/releases"
+      "description": "在上方选择你的平台，下载安装包。",
+      "code": "# macOS\ncurl -L -o Hive.dmg https://github.com/1695365384/hive/releases/latest/download/Hive.dmg\n\n# Windows\nInvoke-WebRequest -Uri https://github.com/1695365384/hive/releases/latest/download/Hive.exe -OutFile Hive.exe\n\n# Linux\ncurl -L -o Hive.AppImage https://github.com/1695365384/hive/releases/latest/download/Hive.AppImage"
     },
     "step2": {
       "title": "安装",
