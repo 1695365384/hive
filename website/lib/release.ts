@@ -1,6 +1,8 @@
 const GITHUB_REPO = '1695365384/hive';
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
+const DOWNLOAD_PROXY_BASE = process.env.DOWNLOAD_PROXY_BASE; // e.g. https://hive-download-proxy.xxx.workers.dev
+
 export interface ReleaseAsset {
   platform: 'macos' | 'windows' | 'linux';
   name: string;
@@ -43,10 +45,14 @@ export async function getLatestRelease(): Promise<ReleaseInfo> {
     .map((asset: { name: string; browser_download_url: string }) => {
       const platform = mapPlatform(asset.name);
       if (!platform) return null;
+      // browser_download_url: https://github.com/.../releases/download/{tag}/{filename}
+      const url = DOWNLOAD_PROXY_BASE
+        ? `${DOWNLOAD_PROXY_BASE}/download/${data.tag_name}/${asset.name}`
+        : asset.browser_download_url;
       return {
         platform,
         name: asset.name,
-        url: asset.browser_download_url,
+        url,
       };
     })
     .filter(Boolean);
