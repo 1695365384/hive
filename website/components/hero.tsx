@@ -1,20 +1,21 @@
-'use client';
-
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
+import { getLatestRelease } from '@/lib/release';
 import { DownloadButtons } from './download-buttons';
+import { HeroClient } from './hero-client';
 
-export function Hero() {
-  const t = useTranslations('hero');
-  const [copied, setCopied] = useState(false);
-  const command = t('installCommand');
+export async function Hero() {
+  const t = await getTranslations('hero');
+  const { tagName, assets } = await getLatestRelease();
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const assetsByPlatform: Record<'macos' | 'windows' | 'linux', { url?: string; name?: string }> = {
+    macos: {},
+    windows: {},
+    linux: {},
   };
+
+  for (const asset of assets) {
+    assetsByPlatform[asset.platform] = { url: asset.url, name: asset.name };
+  }
 
   return (
     <section className="px-6 pb-20 pt-32">
@@ -34,7 +35,7 @@ export function Hero() {
         </p>
 
         <div className="mb-8">
-          <DownloadButtons />
+          <DownloadButtons assets={assetsByPlatform} tagName={tagName} />
           <div className="mt-4 flex items-center justify-center">
             <a
               href="https://github.com/1695365384/hive#quick-start"
@@ -45,16 +46,7 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-3 rounded border border-border bg-surface-light px-5 py-3 font-mono text-sm opacity-60">
-          <span className="text-text-muted">$</span>
-          <code>{command}</code>
-          <button
-            onClick={handleCopy}
-            className="ml-2 cursor-pointer rounded border border-border px-1.5 py-0.5 text-xs text-text-muted transition-colors hover:border-border-light hover:text-text-secondary"
-          >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-          </button>
-        </div>
+        <HeroClient installCommand={t('installCommand')} />
       </div>
     </section>
   );
