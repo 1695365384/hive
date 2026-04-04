@@ -106,10 +106,11 @@ jobs:
         with:
           projectPath: apps/desktop
           releaseId: ${{ needs.create-release.outputs.release_id }}
+          isDraft: true
           args: ${{ matrix.args }}
 
   publish-release:
-    needs: build
+    needs: [create-release, build]
     runs-on: ubuntu-latest
 
     steps:
@@ -117,14 +118,9 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const { data } = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ github.ref_name }}'
-            })
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: data.id,
+              release_id: ${{ needs.create-release.outputs.release_id }},
               draft: false
             })
