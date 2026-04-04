@@ -73,6 +73,9 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
+          # 确保是合法 semver (x.y.z)，缺 patch 时补 0
+          PARTS=(${VERSION//./ })
+          [ ${#PARTS[@]} -lt 3 ] && VERSION="${PARTS[0]}.${PARTS[1]}.0"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           # package.json
           cd apps/desktop
