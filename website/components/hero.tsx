@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
+import { DownloadButtons } from './download-buttons';
 
 export function Hero() {
   const t = useTranslations('hero');
@@ -32,19 +33,16 @@ export function Hero() {
           {t('subtitle')}
         </p>
 
-        <div className="mb-8 flex items-center justify-center gap-4">
-          <a
-            href="https://github.com/1695365384/hive/releases"
-            className="rounded bg-amber-500 px-6 py-3 font-semibold text-black transition-colors hover:bg-amber-600"
-          >
-            {t('cta')}
-          </a>
-          <a
-            href="https://github.com/1695365384/hive#quick-start"
-            className="rounded border border-border px-6 py-3 text-text-primary transition-colors hover:border-border-light"
-          >
-            {t('secondary')}
-          </a>
+        <div className="mb-8">
+          <DownloadButtons />
+          <div className="mt-4 flex items-center justify-center">
+            <a
+              href="https://github.com/1695365384/hive#quick-start"
+              className="rounded border border-border px-6 py-3 text-text-primary transition-colors hover:border-border-light"
+            >
+              {t('secondary')}
+            </a>
+          </div>
         </div>
 
         <div className="inline-flex items-center gap-3 rounded border border-border bg-surface-light px-5 py-3 font-mono text-sm opacity-60">

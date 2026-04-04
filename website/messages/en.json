@@ -13,6 +13,15 @@
     "secondary": "Developer SDK →",
     "installCommand": "npm i @bundy-lmw/hive-core"
   },
+  "download": {
+    "macos": "macOS",
+    "windows": "Windows",
+    "linux": "Linux",
+    "macosFormat": ".dmg",
+    "windowsFormat": ".exe",
+    "linuxFormat": ".AppImage",
+    "comingSoon": "Coming Soon"
+  },
   "providers": {
     "title": "13 Providers, One SDK",
     "subtitle": "First-class support for Chinese LLMs and all major providers. Any OpenAI-compatible endpoint works."
@@ -58,8 +67,8 @@
     "subtitle": "Three steps to get up and running.",
     "step1": {
       "title": "Download",
-      "description": "Download from GitHub Releases for your platform.",
-      "code": "open https://github.com/1695365384/hive/releases"
+      "description": "Choose your platform above and download the installer.",
+      "code": "# macOS\ncurl -L -o Hive.dmg https://github.com/1695365384/hive/releases/latest/download/Hive.dmg\n\n# Windows\nInvoke-WebRequest -Uri https://github.com/1695365384/hive/releases/latest/download/Hive.exe -OutFile Hive.exe\n\n# Linux\ncurl -L -o Hive.AppImage https://github.com/1695365384/hive/releases/latest/download/Hive.AppImage"
     },
     "step2": {
       "title": "Install",
