@@ -10,6 +10,7 @@
     <a href="#quick-start">Quick Start</a> &middot;
     <a href="#architecture">Architecture</a> &middot;
     <a href="#api-reference">API</a> &middot;
+    <a href="#vertical-pack-system">Vertical Pack</a> &middot;
     <a href="#providers">Providers</a> &middot;
     <a href="#faq">FAQ</a>
   </p>
@@ -337,6 +338,31 @@ hive/
 | `pnpm test` | Run tests (1,337 cases) |
 | `pnpm test:e2e` | E2E tests (requires API key) |
 | `pnpm --filter @bundy-lmw/hive-server start` | Start HTTP server |
+
+---
+
+## Vertical Pack System
+
+Hive 支持通过 **Vertical Pack** 扩展任意垂直业务场景。一个 Vertical Pack 把场景所需的工具、子 Agent、技能、后台服务、生命周期钩子打包为一个声明式 npm 包，多个 pack 可共存且互不干扰。
+
+```typescript
+import { Agent } from '@bundy-lmw/hive-core';
+import { LegalPack } from '@hive-pack/legal';
+import { MedicalPack } from '@hive-pack/medical';
+
+const agent = new Agent();
+agent.use(new LegalPack({ namespaced: true }));
+agent.use(new MedicalPack({ namespaced: true }));
+await agent.initialize();
+```
+
+📖 完整文档：[docs/vertical-pack.md](docs/vertical-pack.md)
+
+特性：
+- **6 种扩展点**：工具 / 子 Agent / 技能 / 能力模块 / 钩子 / 生命周期
+- **运行时隔离**：冲突检测、命名空间前缀、单独卸载，多 pack 互不污染
+- **CLI 脚手架**：`npx hive-pack init <name>` 生成骨架
+- **npm 分发**：一个 pack 就是一个标准 npm 包
 
 ---
 
