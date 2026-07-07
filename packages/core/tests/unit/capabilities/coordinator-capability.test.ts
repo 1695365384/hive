@@ -167,7 +167,7 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
       expect(callArgs.system.length).toBeGreaterThan(0);
     });
 
-    it('should only have coordinator tools (agent, task-stop, send-message)', async () => {
+    it('should only have coordinator tools (agent, task-stop, send-message, remember)', async () => {
       let capturedTools: Record<string, any> = {};
       mockRuntimeStream.mockImplementation((config: any) => {
         capturedTools = config.tools;
@@ -176,7 +176,7 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
 
       await capability.run('test task');
 
-      expect(Object.keys(capturedTools)).toEqual(['agent', 'task-stop', 'send-message']);
+      expect(Object.keys(capturedTools)).toEqual(['agent', 'task-stop', 'send-message', 'remember']);
     });
 
     it('should return empty result for empty task', async () => {
