@@ -33,6 +33,7 @@ export class StatusHandler extends WsDomainHandler {
       ['server.getProviders', this.handleGetProviders.bind(this)],
       ['provider.list', this.handleProviderList.bind(this)],
       ['provider.getModels', this.handleProviderGetModels.bind(this)],
+      ['provider.testKey', this.handleProviderTestKey.bind(this)],
     ])
   }
 
@@ -133,6 +134,43 @@ export class StatusHandler extends WsDomainHandler {
       })))
     } catch (error) {
       return createErrorResponse(id, 'INTERNAL', error instanceof Error ? error.message : 'Failed to get models')
+    }
+  }
+
+  /**
+   * 测试 API key 是否有效（不修改当前配置）
+   *
+   * 请求参数：{ providerId: string, apiKey: string, model?: string }
+   * 响应：{ valid: boolean, error?: string, errorKind?: 'auth'|'network'|'model'|'unknown', latencyMs?: number, modelUsed?: string }
+   */
+  private async handleProviderTestKey(params: unknown, id: string) {
+    const { providerId, apiKey, model } = params as {
+      providerId: string
+      apiKey: string
+      model?: string
+    }
+
+    if (!providerId) {
+      return createErrorResponse(id, 'VALIDATION', 'providerId is required')
+    }
+    if (!apiKey) {
+      return createErrorResponse(id, 'VALIDATION', 'apiKey is required')
+    }
+
+    const server = this.ctx.getServer()
+    if (!server) {
+      return createErrorResponse(id, 'INTERNAL', 'Server not initialized')
+    }
+
+    try {
+      const result = await server.agent.testProviderConnection(providerId, apiKey, model)
+      return createSuccessResponse(id, result)
+    } catch (error) {
+      return createErrorResponse(
+        id,
+        'INTERNAL',
+        error instanceof Error ? error.message : 'Failed to test API key',
+      )
     }
   }
 
