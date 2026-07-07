@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getWsClient } from "../lib/ws-client";
 import { useWsClient } from "../hooks/use-ws-client";
 import { useLogPolling } from "../hooks/use-log-polling";
 import { useServerStore } from "../stores/server-store";
@@ -9,9 +10,15 @@ import { ChatPage } from "./ChatPage";
 import { LogDrawer } from "../components/LogDrawer";
 import { StatusBar } from "../components/StatusBar";
 import { MessageSquare, Activity, Settings, Puzzle } from "lucide-react";
+import type { ProviderInfo } from "../types/provider";
 
 type Page = "status" | "config" | "plugins" | "chat";
 type DrawerHeight = "collapsed" | "half" | "full";
+
+interface AgentStatus {
+  providerReady: boolean;
+  currentProvider: string | null;
+}
 
 export function Dashboard() {
   const [page, setPage] = useState<Page>("status");
@@ -19,6 +26,30 @@ export function Dashboard() {
   const { state } = useWsClient();
   const restarting = useServerStore((s) => s.restarting);
   useLogPolling();
+
+  // 获取当前 provider 信息（用于侧边栏底部显示）
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+
+  useEffect(() => {
+    const fetchStatus = () => {
+      getWsClient()
+        .request<{ agent: AgentStatus }>("status.get")
+        .then((data) => setAgentStatus(data.agent))
+        .catch(() => {});
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 10000);
+
+    getWsClient()
+      .request<ProviderInfo[]>("provider.list")
+      .then(setProviders)
+      .catch(() => {});
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const currentProvider = providers.find((p) => p.id === agentStatus?.currentProvider);
 
   const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
     { id: "chat", label: "Chat", icon: <MessageSquare className="w-4 h-4" /> },
@@ -78,8 +109,42 @@ export function Dashboard() {
             ))}
           </nav>
 
+          {/* Current Provider 显示 */}
           <div className="p-3 border-t border-stone-800">
-            <p className="text-[11px] text-stone-600">v0.1.0</p>
+            {agentStatus?.providerReady && currentProvider ? (
+              <button
+                onClick={() => setPage("config")}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-stone-800 transition-colors text-left"
+                title={`${currentProvider.name} — Click to change`}
+              >
+                {currentProvider.logo ? (
+                  <div className="w-5 h-5 rounded bg-white/10 p-0.5 shrink-0">
+                    <img
+                      src={currentProvider.logo}
+                      alt=""
+                      className="w-full h-full object-contain"
+                      style={{ filter: "invert(1) brightness(2)" }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-5 h-5 rounded bg-stone-700 flex items-center justify-center text-[10px] text-stone-400 shrink-0">
+                    {currentProvider.name.slice(0, 2)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs text-stone-300 truncate">{currentProvider.name}</p>
+                  <p className="text-[10px] text-stone-600 truncate">{currentProvider.defaultModel || "auto"}</p>
+                </div>
+              </button>
+            ) : (
+              <button
+                onClick={() => setPage("config")}
+                className="w-full text-left px-2 py-1.5 text-xs text-amber-400 hover:bg-stone-800 rounded transition-colors"
+              >
+                ⚠ Configure provider
+              </button>
+            )}
+            <p className="text-[10px] text-stone-600 mt-2">v0.1.0</p>
           </div>
         </aside>
 

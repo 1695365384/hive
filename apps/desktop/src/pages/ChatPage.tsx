@@ -5,8 +5,12 @@ import { FilePreviewList } from "../components/FilePreview";
 import { ImagePreview } from "../components/ImagePreview";
 import { TextBlock } from "../components/TextBlock";
 import { PreviewSidebar } from "../components/preview/PreviewSidebar";
+import { SessionSidebar } from "../components/SessionSidebar";
 import { isPreviewableFile } from "../components/preview/detect-preview";
 import { usePreviewStore } from "../stores/preview-store";
+import { useSessionStore } from "../stores/session-store";
+import * as db from "../lib/db";
+import type { ChatMessage, ContentPart } from "../types/chat";
 import {
   Send,
   Square,
@@ -21,26 +25,8 @@ import {
   CheckCircle2,
   XCircle,
   FileText,
+  PanelLeft,
 } from "lucide-react";
-
-// ============================================
-// Types
-// ============================================
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: ContentPart[];
-  createdAt: number;
-}
-
-type ContentPart =
-  | { type: "text"; text: string }
-  | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
-  | { type: "worker-start"; workerId: string; workerType: string; description?: string }
-  | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }
-  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
 
 type GroupedContent =
   | { type: "text"; text: string }
@@ -70,6 +56,49 @@ export function ChatPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTextSeqRef = useRef(0);
   const lastReasoningSeqRef = useRef(0);
+
+  // ── Session store integration ──
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const currentId = useSessionStore((s) => s.currentId);
+  const sessions = useSessionStore((s) => s.sessions);
+  const initStore = useSessionStore((s) => s.init);
+  const createSession = useSessionStore((s) => s.createSession);
+  const autoTitle = useSessionStore((s) => s.autoTitle);
+  const storeLoading = useSessionStore((s) => s.loading);
+  /** Track the assistant message ID so we can persist it on complete */
+  const assistantMsgIdRef = useRef<string | null>(null);
+
+  // Init store on mount
+  useEffect(() => {
+    initStore();
+  }, [initStore]);
+
+  // When session changes (or first load), load messages from DB
+  useEffect(() => {
+    if (!currentId) return;
+    const load = async () => {
+      try {
+        const rows = await db.listMessages(currentId);
+        const msgs: ChatMessage[] = rows.map((r) => ({
+          id: r.id,
+          role: r.role as "user" | "assistant",
+          content: JSON.parse(r.content) as ContentPart[],
+          createdAt: r.created_at,
+        }));
+        setMessages(msgs);
+      } catch {
+        // DB not available — stay with empty messages
+      }
+    };
+    load();
+  }, [currentId]);
+
+  // Create first session if none exists
+  useEffect(() => {
+    if (!storeLoading && sessions.length === 0) {
+      createSession();
+    }
+  }, [storeLoading, sessions.length, createSession]);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -206,12 +235,29 @@ export function ChatPage() {
 
   const handleComplete = useCallback((data: { threadId?: string; cancelled?: boolean }) => {
     if (data.threadId && data.threadId !== activeThreadIdRef.current) return;
+    const tid = activeThreadIdRef.current;
     setIsRunning(false);
     activeThreadIdRef.current = null;
     activeToolStartRef.current = null;
     setTimerActive(false);
     if (data.cancelled) {
       appendPart({ type: "text", text: "\n\n*Execution cancelled*" });
+    }
+    // Persist final assistant message to DB
+    if (tid && !data.cancelled) {
+      setMessages((prev) => {
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg?.role === "assistant" && lastMsg.content.length > 0) {
+          db.insertMessage(
+            lastMsg.id,
+            tid,
+            "assistant",
+            JSON.stringify(lastMsg.content),
+            lastMsg.createdAt
+          ).catch(() => {});
+        }
+        return prev;
+      });
     }
   }, [appendPart]);
 
@@ -284,7 +330,13 @@ export function ChatPage() {
     if ((!text && pendingFiles.length === 0) || isRunning) return;
 
     setError(null);
-    const threadId = crypto.randomUUID();
+
+    // Use current session as threadId, or create one
+    let sessionId = currentId;
+    if (!sessionId) {
+      sessionId = await createSession();
+    }
+    const threadId = sessionId;
     activeThreadIdRef.current = threadId;
     lastTextSeqRef.current = 0;
     lastReasoningSeqRef.current = 0;
@@ -298,24 +350,39 @@ export function ChatPage() {
       userContent.push({ type: "text", text });
     }
 
+    const userMsgId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
+    const now = Date.now();
+
     const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: userMsgId,
       role: "user",
       content: userContent,
-      createdAt: Date.now(),
+      createdAt: now,
     };
 
     const assistantMsg: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: assistantMsgId,
       role: "assistant",
       content: [],
-      createdAt: Date.now(),
+      createdAt: now,
     };
+
+    assistantMsgIdRef.current = assistantMsgId;
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput("");
     clearFiles();
     setIsRunning(true);
+
+    // Persist user message to DB
+    db.insertMessage(userMsgId, threadId, "user", JSON.stringify(userContent), now).catch(() => {});
+
+    // Auto-title from first user message text (not files)
+    if (text && threadId) {
+      const titleText = text.length > 80 ? text.slice(0, 80) : text;
+      autoTitle(threadId, titleText);
+    }
 
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
@@ -374,7 +441,19 @@ export function ChatPage() {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-full bg-stone-950">
+    <div className="flex h-full bg-stone-950">
+      {/* Session sidebar */}
+      <SessionSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
+      {sidebarCollapsed && (
+        <button
+          onClick={() => setSidebarCollapsed(false)}
+          className="absolute top-2 left-[52px] z-10 p-1 rounded text-stone-500 hover:text-stone-300 hover:bg-stone-800 transition-colors"
+          title="Show sessions"
+        >
+          <PanelLeft className="w-4 h-4" />
+        </button>
+      )}
+      <div className="flex flex-col flex-1 min-w-0">
       {/* Main + Preview sidebar */}
       <div className="flex flex-1 overflow-hidden">
         {/* Messages Area */}
@@ -472,6 +551,7 @@ export function ChatPage() {
 
       {/* Image Lightbox */}
       {lightboxSrc && <ImagePreview src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+      </div>
     </div>
   );
 }

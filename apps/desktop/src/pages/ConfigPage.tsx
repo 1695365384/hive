@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { getWsClient } from "../lib/ws-client";
 import { useServerStore } from "../stores/server-store";
+import { ProviderGrid } from "../components/provider-setup/ProviderGrid";
+import { ApiKeyInput } from "../components/provider-setup/ApiKeyInput";
+import { ModelSelector } from "../components/provider-setup/ModelSelector";
+import { type ProviderInfo, type ModelInfo } from "../types/provider";
 
 interface ServerConfig {
   server: { port: number; host: string; logLevel: string };
@@ -9,29 +13,11 @@ interface ServerConfig {
   heartbeat: { enabled: boolean; intervalMs: number; model?: string };
 }
 
-interface ProviderInfo {
-  id: string;
-  name: string;
-  logo?: string;
-  type: string;
-  defaultModel?: string;
-  modelCount: number;
-}
-
-interface ModelInfo {
-  id: string;
-  name?: string;
-  family?: string;
-  contextWindow: number;
-  maxOutputTokens?: number;
-}
-
 export function ConfigPage() {
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const restarting = useServerStore((s) => s.restarting);
   const startRestart = useServerStore((s) => s.startRestart);
 
-  // Provider editing state
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [draftProvider, setDraftProvider] = useState("");
@@ -39,7 +25,6 @@ export function ConfigPage() {
   const [draftModel, setDraftModel] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [_dirty, setDirty] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
 
   useEffect(() => {
@@ -68,7 +53,6 @@ export function ConfigPage() {
       .request<ModelInfo[]>("provider.getModels", { providerId: draftProvider })
       .then((data) => {
         setModels(data ?? []);
-        // Only reset model if switching provider
         if (config && draftProvider !== config.provider.id) {
           const provider = providers.find((p) => p.id === draftProvider);
           setDraftModel(provider?.defaultModel ?? "");
@@ -88,17 +72,13 @@ export function ConfigPage() {
       await getWsClient().request("config.update", {
         provider: { id: draftProvider, apiKey: draftApiKey, model: draftModel || undefined },
       });
-
       await startRestart();
-
-      // Update local config to match draft
       if (config) {
         setConfig({
           ...config,
           provider: { id: draftProvider, apiKey: draftApiKey, model: draftModel || undefined },
         });
       }
-      setDirty(false);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save configuration";
       setError(msg);
@@ -112,7 +92,6 @@ export function ConfigPage() {
     setDraftProvider(config.provider.id);
     setDraftApiKey(config.provider.apiKey);
     setDraftModel(config.provider.model ?? "");
-    setDirty(false);
     setError("");
   };
 
@@ -149,9 +128,7 @@ export function ConfigPage() {
       <div className="bg-stone-900 rounded-lg p-4 space-y-4 border border-stone-800">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">Provider</h3>
-          {isDirty && (
-            <span className="text-xs text-amber-400">Unsaved changes</span>
-          )}
+          {isDirty && <span className="text-xs text-amber-400">Unsaved changes</span>}
         </div>
 
         <div className="space-y-4">
@@ -162,114 +139,45 @@ export function ConfigPage() {
               <div className="flex items-center gap-1.5 text-sm text-stone-300">
                 {selected?.logo ? (
                   <div className="w-4 h-4 rounded bg-white/10 p-0.5">
-                    <img src={selected.logo} alt="" className="w-full h-full object-contain" style={{ filter: 'invert(1) brightness(2)' }} />
+                    <img
+                      src={selected.logo}
+                      alt=""
+                      className="w-full h-full object-contain"
+                      style={{ filter: "invert(1) brightness(2)" }}
+                    />
                   </div>
                 ) : null}
                 <span className="text-amber-400">{selected?.name ?? draftProvider}</span>
                 {draftModel && <span className="text-stone-500">/ {draftModel}</span>}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto pr-1">
-              {providers.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    setDraftProvider(p.id);
-                    setDirty(true);
-                  }}
-                  className={`flex flex-col items-center gap-1.5 p-2.5 rounded-lg border transition-colors ${
-                    draftProvider === p.id
-                      ? "border-amber-500 bg-amber-500/10"
-                      : "border-stone-700 hover:border-stone-500 bg-stone-900"
-                  }`}
-                >
-                  {p.logo ? (
-                    <div className="w-7 h-7 rounded bg-white/10 p-1">
-                      <img
-                        src={p.logo}
-                        alt={p.name}
-                        className="w-full h-full object-contain"
-                        style={{ filter: 'invert(1) brightness(2)' }}
-                        onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none" }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-7 h-7 rounded bg-stone-700 flex items-center justify-center text-xs text-stone-400">
-                      {p.name.slice(0, 2)}
-                    </div>
-                  )}
-                  <span className="text-xs text-stone-300 truncate w-full text-center">
-                    {p.name}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* API Key */}
-          <div>
-            <label className="block text-sm text-stone-400 mb-1">API Key</label>
-            <input
-              type="password"
-              value={draftApiKey}
-              onChange={(e) => {
-                setDraftApiKey(e.target.value);
-                setDirty(true);
-              }}
-              placeholder={`Enter your ${selected?.name ?? ""} API key`}
-              className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm text-stone-100 placeholder-stone-500 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            <ProviderGrid
+              providers={providers}
+              selectedId={draftProvider}
+              onSelect={setDraftProvider}
+              columns={4}
             />
           </div>
 
+          {/* API Key with Test Button */}
+          <ApiKeyInput
+            value={draftApiKey}
+            onChange={setDraftApiKey}
+            providerName={selected?.name ?? ""}
+            providerId={draftProvider}
+            model={draftModel || selected?.defaultModel}
+          />
+
           {/* Model Selection */}
-          <div>
-            <label className="block text-sm text-stone-400 mb-1">
-              Default Model
-              {models.length > 0 && (
-                <span className="text-stone-600 ml-1">({models.length} available)</span>
-              )}
-            </label>
-            {loadingModels ? (
-              <div className="flex items-center gap-2 text-sm text-stone-500 py-2">
-                <div className="animate-spin h-4 w-4 border-2 border-stone-600 border-t-amber-500 rounded-full" />
-                Loading models...
-              </div>
-            ) : models.length > 0 ? (
-              <select
-                value={draftModel}
-                onChange={(e) => {
-                  setDraftModel(e.target.value);
-                  setDirty(true);
-                }}
-                className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm text-stone-100 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-              >
-                <option value="">Auto (default)</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name ?? m.id}
-                    {m.contextWindow > 0 && ` (${Math.round(m.contextWindow / 1000)}k ctx)`}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={draftModel}
-                onChange={(e) => {
-                  setDraftModel(e.target.value);
-                  setDirty(true);
-                }}
-                placeholder="Model ID (e.g., glm-4-flash)"
-                className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm text-stone-100 placeholder-stone-500 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-              />
-            )}
-          </div>
+          <ModelSelector
+            models={models}
+            value={draftModel}
+            onChange={setDraftModel}
+            loading={loadingModels}
+          />
 
           {/* Error */}
-          {error && (
-            <div className="text-red-400 text-sm">{error}</div>
-          )}
+          {error && <div className="text-red-400 text-sm">{error}</div>}
 
           {/* Actions */}
           {isDirty && (

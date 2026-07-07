@@ -1,0 +1,31 @@
+/** ContentPart — one segment of a chat message */
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
+  | { type: "worker-start"; workerId: string; workerType: string; description?: string }
+  | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }
+  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: ContentPart[];
+  createdAt: number;
+}
+
+export type GroupedContent =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
+  | { type: "worker"; workerId: string; workerType: string; description?: string; children: GroupedContent[]; status: "running" | "completed" | "failed"; duration?: number; error?: string }
+  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
+
+/** Session record */
+export interface Session {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+}
