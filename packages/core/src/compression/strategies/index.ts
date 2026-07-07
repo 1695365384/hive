@@ -17,3 +17,13 @@ export {
   createHybridStrategy,
   type HybridStrategyConfig,
 } from './HybridStrategy.js';
+
+export {
+  ObservationMaskingStrategy,
+  createObservationMaskingStrategy,
+} from './ObservationMaskingStrategy.js';
+
+export {
+  ToolResultOffloadStrategy,
+  createToolResultOffloadStrategy,
+} from './ToolResultOffloadStrategy.js';

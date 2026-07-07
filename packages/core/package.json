@@ -16,7 +16,14 @@
     "./providers": {
       "import": "./dist/providers/index.js",
       "types": "./dist/providers/index.d.ts"
+    },
+    "./vertical": {
+      "import": "./dist/vertical/index.js",
+      "types": "./dist/vertical/index.d.ts"
     }
+  },
+  "bin": {
+    "hive-pack": "./dist/cli/pack-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run copy-templates",
@@ -43,6 +50,7 @@
     "cheerio": "^1.2.0",
     "conf": "^13.0.1",
     "node-cron": "^4.2.1",
+    "tiktoken": "^1.0.22",
     "turndown": "^7.2.2",
     "zod": "^4.3.6"
   },
