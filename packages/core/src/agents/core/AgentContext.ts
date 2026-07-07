@@ -16,6 +16,7 @@ import type { Skill, SkillMatchResult } from '../../skills/index.js';
 import type { EnvironmentContext } from '../../environment/types.js';
 import { TimeoutCapability, createTimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { CapabilityRegistry } from './CapabilityRegistry.js';
+import type { FileMemory } from '../../memory/FileMemory.js';
 
 /**
  * Agent 上下文选项
@@ -45,6 +46,12 @@ export class AgentContextImpl implements AgentContext {
   /** 能力注册表 */
   readonly capabilityRegistry: CapabilityRegistry;
 
+  /** 当前对话的用户 ID（由 ServerImpl 在 dispatch 前设置） */
+  currentUserId?: string;
+
+  /** 文件型记忆存储实例（由 ServerImpl 在 dispatch 前设置） */
+  fileMemory?: FileMemory;
+
   private initialized: boolean = false;
 
   constructor(options: AgentContextOptions = {}) {
@@ -67,6 +74,13 @@ export class AgentContextImpl implements AgentContext {
    */
   registerCapability(capability: AgentCapability): void {
     this.capabilityRegistry.register(capability);
+  }
+
+  /**
+   * 注销能力模块（Vertical Pack 卸载时使用）
+   */
+  unregisterCapability(name: string): boolean {
+    return this.capabilityRegistry.unregister(name);
   }
 
   /**

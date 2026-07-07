@@ -17,6 +17,8 @@ export const AGENT_NAMES = {
   PLAN: 'plan',
   GENERAL: 'general',
   SCHEDULE: 'schedule',
+  CRITIC: 'critic',
+  ARBITER: 'arbiter',
 } as const;
 
 // ============================================
@@ -26,7 +28,7 @@ export const AGENT_NAMES = {
 /**
  * 核心代理
  */
-export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule', AgentConfig> = {
+export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter', AgentConfig> = {
   explore: {
     type: 'explore',
     description: 'Read-only agent for searching, analyzing codebases, and deep research.',
@@ -52,6 +54,20 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule', Ag
     type: 'schedule',
     description: 'Schedule management agent for creating, listing, pausing, resuming, and removing scheduled tasks.',
     tools: ['schedule'],
+    maxTurns: 10,
+  },
+
+  critic: {
+    type: 'critic',
+    description: 'Adversarial reviewer for quality assurance. Critically examines outputs, finds flaws, gaps, and security issues. Part of the triadic adversarial harness.',
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
+    maxTurns: 10,
+  },
+
+  arbiter: {
+    type: 'arbiter',
+    description: 'Neutral synthesizer that resolves conflicts between thesis and antithesis. Produces final integrated output with quality scoring. Part of the triadic adversarial harness.',
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
     maxTurns: 10,
   },
 };

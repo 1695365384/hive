@@ -25,7 +25,7 @@ import { setEnvDbProvider } from './built-in/env-tool.js';
 import type { AgentType as CapabilityAgentType } from '../agents/types/capabilities.js';
 
 /** Agent types that have tool whitelists in the registry */
-export type AgentType = 'explore' | 'plan' | 'general' | 'schedule';
+export type AgentType = 'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter';
 
 /**
  * Agent 类型对应的工具白名单
@@ -65,6 +65,22 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'env', factory: () => createEnvTool() },
   ],
   schedule: [],
+  critic: [
+    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
+    { name: 'glob', factory: () => createGlobTool() },
+    { name: 'grep', factory: () => createGrepTool() },
+    { name: 'web-search', factory: () => createWebSearchTool() },
+    { name: 'web-fetch', factory: () => createWebFetchTool() },
+    { name: 'env', factory: () => createEnvTool() },
+  ],
+  arbiter: [
+    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
+    { name: 'glob', factory: () => createGlobTool() },
+    { name: 'grep', factory: () => createGrepTool() },
+    { name: 'web-search', factory: () => createWebSearchTool() },
+    { name: 'web-fetch', factory: () => createWebFetchTool() },
+    { name: 'env', factory: () => createEnvTool() },
+  ],
 };
 
 /**
@@ -74,12 +90,28 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
  */
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
+  /** 自定义 Agent 类型的工具白名单（由 Vertical Pack 注册） */
+  private customAgentTools: Map<string, string[]> = new Map();
 
   /**
    * 注册工具
    */
   register(name: string, tool: Tool): void {
     this.tools.set(name, tool);
+  }
+
+  /**
+   * 注销工具（Vertical Pack 卸载时使用）
+   */
+  unregister(name: string): boolean {
+    return this.tools.delete(name);
+  }
+
+  /**
+   * 注销自定义 Agent 类型的工具白名单（Vertical Pack 卸载时使用）
+   */
+  unregisterAgentTools(agentType: string): boolean {
+    return this.customAgentTools.delete(agentType);
   }
 
   /**
@@ -109,18 +141,41 @@ export class ToolRegistry {
 
   /**
    * 获取指定 Agent 类型的工具集
+   *
+   * 查找优先级：
+   * 1. customAgentTools 中注册的动态白名单（Vertical Pack 声明的 agent）
+   * 2. AGENT_TOOL_WHITELIST 硬编码白名单（内置 agent）
+   * 3. fallback 到 general
+   *
+   * 无论哪种白名单，都会叠加通过 register() 注册的自定义工具。
    */
   getToolsForAgent(agentType: string): Record<string, Tool> {
-    const whitelist = AGENT_TOOL_WHITELIST[agentType as AgentType] ?? AGENT_TOOL_WHITELIST.general;
+    // 优先查动态白名单（pack 注册的）
+    const customWhitelist = this.customAgentTools.get(agentType);
     const result: Record<string, Tool> = {};
 
-    // 先添加白名单工具
+    if (customWhitelist) {
+      // pack 声明的 agent：按声明的 toolNames 取工具
+      for (const toolName of customWhitelist) {
+        // 内置工具（如 bash/file/glob）按工厂创建
+        const builtinFactory = this.findBuiltinFactory(toolName);
+        if (builtinFactory) {
+          result[toolName] = builtinFactory();
+        } else if (this.tools.has(toolName)) {
+          // pack 注册的自定义工具
+          result[toolName] = this.tools.get(toolName)!;
+        }
+      }
+      return result;
+    }
+
+    // 内置 agent：按硬编码白名单
+    const whitelist = AGENT_TOOL_WHITELIST[agentType as AgentType] ?? AGENT_TOOL_WHITELIST.general;
     for (const item of whitelist) {
       result[item.name] = item.factory();
     }
 
-    // 叠加自定义工具（外部注册的工具对所有 Agent 类型可见）
-    // 注意：需要排除所有内置工具名称（不仅仅是当前 agent 的白名单）
+    // 叠加自定义工具（外部注册的工具对所有内置 Agent 类型可见）
     const allBuiltinNames = new Set(
       Object.values(AGENT_TOOL_WHITELIST).flatMap(list => list.map(w => w.name)),
     );
@@ -131,6 +186,30 @@ export class ToolRegistry {
     }
 
     return result;
+  }
+
+  /**
+   * 在内置白名单中查找工具工厂（用于 pack 声明的 agent 复用内置工具）
+   */
+  private findBuiltinFactory(toolName: string): (() => Tool) | null {
+    for (const list of Object.values(AGENT_TOOL_WHITELIST)) {
+      const found = list.find(w => w.name === toolName);
+      if (found) return found.factory;
+    }
+    return null;
+  }
+
+  /**
+   * 注册自定义 Agent 类型的工具白名单（Vertical Pack 使用）
+   *
+   * 这让 pack 声明的 agent（如 'legal-reviewer'）能精确控制可用工具集，
+   * 而不是 fallback 到 general。
+   *
+   * @param agentType  Agent 类型标识
+   * @param toolNames  该 agent 可用的工具名列表（内置工具名 + pack 自定义工具名）
+   */
+  registerAgentTools(agentType: string, toolNames: string[]): void {
+    this.customAgentTools.set(agentType, toolNames);
   }
 
   /**

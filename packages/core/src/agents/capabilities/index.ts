@@ -12,6 +12,7 @@ export { ProviderCapability } from './ProviderCapability.js';
 export { SkillCapability } from './SkillCapability.js';
 export { CoordinatorCapability } from './CoordinatorCapability.js';
 export type { DispatchOptions, DispatchResult } from './CoordinatorCapability.js';
+export type { AdversarialConfig } from '../harness/types.js';
 export { SessionCapability, createSessionCapability } from './SessionCapability.js';
 export type { SessionCapabilityConfig, DispatchTraceEvent } from './SessionCapability.js';
 export { TimeoutCapability, createTimeoutCapability } from './TimeoutCapability.js';

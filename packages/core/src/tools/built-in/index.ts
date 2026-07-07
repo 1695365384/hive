@@ -28,6 +28,7 @@ export type { WebSearchToolInput } from './web-search-tool.js';
 export { createAgentTool } from './agent-tool.js';
 export { createTaskStopTool } from './task-stop-tool.js';
 export { createSendMessageTool } from './send-message-tool.js';
+export { createRememberTool, setRememberCallback } from './remember-tool.js';
 
 // 环境查询工具
 export { createEnvTool, envTool, setEnvDbProvider } from './env-tool.js';

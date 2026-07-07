@@ -62,6 +62,8 @@ export type {
   DispatchOptions,
   DispatchResult,
   DispatchTraceEvent,
+  /** 三元对抗质量控制配置 */
+  AdversarialConfig,
 } from './agents/index.js';
 
 // ============================================
@@ -302,10 +304,14 @@ export { TimeoutError } from './agents/core/types.js';
 
 export {
   // Token 计数器
+  ModelAwareTokenCounter,
   SimpleTokenCounter,
   createTokenCounter,
   calculateThreshold,
+  calculateEffectiveBudget,
   shouldCompress,
+  registerTokenizer,
+  type TokenizerFn,
 
   // 压缩服务
   CompressionService,
@@ -494,6 +500,14 @@ export type {
 } from './environment/index.js';
 
 // ============================================
+// 文件型记忆系统
+// ============================================
+
+export {
+  FileMemory,
+} from './memory/index.js';
+
+// ============================================
 // Server 工厂
 // ============================================
 
@@ -507,8 +521,31 @@ export type {
 } from './server/index.js';
 
 // ============================================
-// ============================================
 // 工具函数
 // ============================================
 
 export { safeJsonParse } from './utils/safe-json-parse.js';
+
+// ============================================
+// Vertical Pack 系统（垂直场景扩展）
+// ============================================
+
+export {
+  PackManager,
+  createPackManager,
+} from './vertical/index.js';
+
+export type {
+  VerticalPack,
+  ToolDefinition,
+  HookRegistration,
+  SubAgentDefinition,
+  SkillDefinition,
+  PackSetupContext,
+} from './vertical/index.js';
+
+export {
+  PackError,
+  PackCycleError,
+  PackDependencyMissingError,
+} from './vertical/index.js';

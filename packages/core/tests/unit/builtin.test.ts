@@ -19,13 +19,15 @@ import {
 
 describe('Builtin Agents', () => {
   describe('CORE_AGENTS', () => {
-    it('should have exactly 4 core agents', () => {
+    it('should have exactly 6 core agents', () => {
       const names = Object.keys(CORE_AGENTS);
-      expect(names).toHaveLength(4);
+      expect(names).toHaveLength(6);
       expect(names).toContain('explore');
       expect(names).toContain('plan');
       expect(names).toContain('general');
       expect(names).toContain('schedule');
+      expect(names).toContain('critic');
+      expect(names).toContain('arbiter');
     });
 
     it('explore agent should have correct configuration', () => {
@@ -78,8 +80,8 @@ describe('Builtin Agents', () => {
       expect(names).toContain('general');
     });
 
-    it('should have exactly 4 agents', () => {
-      expect(Object.keys(BUILTIN_AGENTS).length).toBe(4);
+    it('should have exactly 6 agents', () => {
+      expect(Object.keys(BUILTIN_AGENTS).length).toBe(6);
     });
   });
 
@@ -105,8 +107,8 @@ describe('Builtin Agents', () => {
 
     it('getAllAgentNames should return core agent names only', () => {
       const names = getAllAgentNames();
-      expect(names).toHaveLength(4);
-      expect(names).toEqual(['explore', 'plan', 'general', 'schedule']);
+      expect(names).toHaveLength(6);
+      expect(names).toEqual(['explore', 'plan', 'general', 'schedule', 'critic', 'arbiter']);
     });
   });
 

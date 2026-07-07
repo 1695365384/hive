@@ -166,6 +166,8 @@ export interface ParallelTaskConfig extends Omit<TaskConfig, 'name'> {
 export class AgentRunner {
   private runtime: LLMRuntime;
   private toolRegistry: ToolRegistry;
+  /** 自定义 Agent 定义（由 Vertical Pack 注册，优先于 BUILTIN_AGENTS） */
+  private customAgents: Map<string, AgentConfig> = new Map();
 
   constructor(providerManager?: ProviderManager) {
     if (providerManager) {
@@ -175,6 +177,39 @@ export class AgentRunner {
     }
     this.toolRegistry = new ToolRegistry();
     this.toolRegistry.registerBuiltInTools();
+  }
+
+  /**
+   * 注册自定义 Agent 定义（Vertical Pack 使用）
+   *
+   * 注册后 `execute(name)` / `executeStreaming(name)` 会优先使用此定义。
+   * 同时把声明的 tools 白名单注册到 ToolRegistry。
+   */
+  registerAgentDefinition(name: string, config: AgentConfig): void {
+    this.customAgents.set(name, config);
+    // 同步工具白名单到 ToolRegistry，让 getToolsForAgent(name) 返回声明的工具集
+    if (config.tools && config.tools.length > 0) {
+      this.toolRegistry.registerAgentTools(name, config.tools);
+    }
+  }
+
+  /**
+   * 注销自定义 Agent 定义（Vertical Pack 卸载时使用）
+   *
+   * 同步清理 ToolRegistry 中该 agent 的工具白名单。
+   */
+  unregisterAgentDefinition(name: string): boolean {
+    if (!this.customAgents.has(name)) return false;
+    this.customAgents.delete(name);
+    this.toolRegistry.unregisterAgentTools(name);
+    return true;
+  }
+
+  /**
+   * 解析 Agent 配置：优先自定义定义，其次 BUILTIN_AGENTS
+   */
+  private resolveAgentConfig(name: string): AgentConfig | undefined {
+    return this.customAgents.get(name) ?? getAgentConfig(name);
   }
 
   // ============================================
@@ -189,7 +224,7 @@ export class AgentRunner {
     prompt: string,
     options?: AgentExecuteOptions,
   ): Promise<AgentResult> {
-    const agentConfig = getAgentConfig(agentName);
+    const agentConfig = this.resolveAgentConfig(agentName);
     if (!agentConfig) {
       return {
         text: '',
@@ -220,7 +255,7 @@ export class AgentRunner {
     },
     options?: AgentExecuteOptions,
   ): Promise<AgentResult> {
-    const agentConfig = getAgentConfig(agentName);
+    const agentConfig = this.resolveAgentConfig(agentName);
     if (!agentConfig) {
       return {
         text: '',

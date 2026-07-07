@@ -23,9 +23,12 @@ import { ProviderCapability } from '../capabilities/ProviderCapability.js';
 import { SkillCapability } from '../capabilities/SkillCapability.js';
 import { CoordinatorCapability } from '../capabilities/CoordinatorCapability.js';
 import type { DispatchOptions, DispatchResult } from '../capabilities/CoordinatorCapability.js';
+import type { ProviderConnectionTestResult } from '../capabilities/ProviderCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
 import { ScheduleCapability } from '../capabilities/ScheduleCapability.js';
 import { SessionDelegation } from './session-delegation.js';
+import { PackManager } from '../../vertical/PackManager.js';
+import type { VerticalPack } from '../../vertical/types.js';
 import type { Skill, SkillMatchResult, SkillSystemConfig } from '../../skills/index.js';
 import type { ProviderConfig } from '../../providers/index.js';
 import type { Session, Message } from '../../session/index.js';
@@ -45,6 +48,8 @@ export class Agent {
   private sessionDelegation: SessionDelegation;
   private timeoutDelegation: TimeoutDelegation;
   private notificationDelegation: NotificationDelegation;
+  /** Vertical Pack 管理器 */
+  private packManager: PackManager = new PackManager();
   private initialized: boolean = false;
   private disposed: boolean = false;
 
@@ -100,11 +105,71 @@ export class Agent {
     return this.scheduleCap;
   }
 
+  // ============================================
+  // Vertical Pack 系统
+  // ============================================
+
+  /**
+   * 注册一个 Vertical Pack（必须在 initialize() 之前调用）
+   *
+   * 支持链式调用：
+   * ```typescript
+   * agent
+   *   .use(new LegalPack())
+   *   .use(new CompliancePack());
+   * await agent.initialize();
+   * ```
+   *
+   * @returns this（支持链式）
+   */
+  use(pack: VerticalPack): this {
+    this.packManager.use(pack);
+    return this;
+  }
+
+  /**
+   * 卸载单个 Vertical Pack，精确移除它注册的全部资源
+   *
+   * 用于运行时切换垂直场景（如从法务场景切到医疗场景），
+   * 或在命名冲突修复后热重载 pack。
+   *
+   * 注意：只能在 `initialize()` 之后、`dispose()` 之前调用。
+   * 卸载后会清除该 pack 注册的工具/SubAgent/Capability/Hook/Skill。
+   *
+   * @param packId  要卸载的 pack id
+   * @returns 是否成功卸载
+   */
+  async unuse(packId: string): Promise<boolean> {
+    if (!this.initialized) {
+      // 尚未初始化：直接从 PackManager 移除注册即可（资源尚未 apply）
+      if (this.packManager.has(packId)) {
+        // 复用 unloadPack 的清理逻辑，但 target 尚未 apply，归属表为空
+        const removed = this.packManager.forceRemove(packId);
+        return removed;
+      }
+      return false;
+    }
+    return this.packManager.unloadPack(packId, this._context, this);
+  }
+
+  /**
+   * 获取 PackManager（用于查询已注册的 pack）
+   */
+  get packs(): PackManager {
+    return this.packManager;
+  }
+
   /**
    * 初始化
+   *
+   * 内部流程：
+   * 1. apply 所有已注册的 Vertical Pack（注册 capability/tool/skill/hook/agent）
+   * 2. initializeAll()（初始化所有 capability，含 pack 带的）
    */
   async initialize(): Promise<void> {
     if (!this.initialized) {
+      // 先 apply packs，这样 pack 的 capability 能走正常的 init 流程
+      await this.packManager.apply(this, this._context);
       await this._context.initializeAll();
       this.initialized = true;
     }
@@ -135,6 +200,9 @@ export class Agent {
 
     // 销毁所有能力模块
     await this._context.disposeAll();
+
+    // 销毁所有 Vertical Pack（反向顺序）
+    await this.packManager.disposeAll();
 
     this.disposed = true;
   }
@@ -183,6 +251,19 @@ export class Agent {
 
   useProvider(name: string, apiKey?: string): boolean {
     return this.providerCap.useSync(name, apiKey);
+  }
+
+  /**
+   * 测试 API key 是否有效（不切换当前配置）
+   *
+   * 构造临时配置发起最小化 LLM 调用，用于 UI 的「测试连接」按钮。
+   */
+  async testProviderConnection(
+    providerId: string,
+    apiKey: string,
+    model?: string,
+  ): Promise<ProviderConnectionTestResult> {
+    return this.providerCap.testProviderConnection(providerId, apiKey, model);
   }
 
   // ============================================

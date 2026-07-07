@@ -26,11 +26,17 @@ import { PromptTemplate } from '../prompts/PromptTemplate.js';
 import { createAgentTool } from '../../tools/built-in/agent-tool.js';
 import { createTaskStopTool } from '../../tools/built-in/task-stop-tool.js';
 import { createSendMessageTool } from '../../tools/built-in/send-message-tool.js';
+import { createRememberTool } from '../../tools/built-in/remember-tool.js';
 import { TaskManager } from '../core/TaskManager.js';
 import { createDynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
 import type { PromptBuildContext } from '../types/pipeline.js';
 import { buildScheduleSummary } from './schedule-summary.js';
 import { getModelPricing } from '../../providers/metadata/pricing.js';
+import { fetchModelSpec } from '../../providers/metadata/index.js';
+import { CompressionService } from '../../compression/CompressionService.js';
+import type { PipelineCompressionResult } from '../../compression/CompressionService.js';
+import { AdversarialHarness } from '../harness/AdversarialHarness.js';
+import type { AdversarialConfig, HarnessResult } from '../harness/types.js';
 
 // ============================================
 // 类型
@@ -62,6 +68,8 @@ export interface DispatchOptions {
   onReasoning?: (text: string) => void;
   /** 外部取消信号 */
   abortSignal?: AbortSignal;
+  /** 三元对抗质量控制配置（启用后 Thesis → Antithesis → Synthesis） */
+  adversarial?: AdversarialConfig;
 }
 
 /**
@@ -113,6 +121,7 @@ export class CoordinatorCapability implements AgentCapability {
       agent: createAgentTool(context, this.taskManager),
       'task-stop': createTaskStopTool(this.taskManager),
       'send-message': createSendMessageTool(context),
+      remember: createRememberTool(),
     };
   }
 
@@ -174,12 +183,19 @@ export class CoordinatorCapability implements AgentCapability {
         // 加载历史消息
         const historyMessages = this.loadHistoryMessages();
 
+        // 动态模型感知压缩：根据当前模型的 contextWindow 计算 budget，触发分级管道
+        const compressedHistoryMessages = await this.compressHistoryIfNeeded(
+          historyMessages,
+          options?.modelId,
+          systemPrompt,
+        );
+
         // NOTE: Intentional mutable accumulator for streaming
         let result = '';
         let lastToolResultIndex = -1; // 最后一次工具结果后的文本起始位置（用于提取 finalText）
 
-        const baseMessages = historyMessages.length > 0
-          ? [...historyMessages.map(m => ({ role: m.role as string, content: m.content as string })), { role: 'user' as const, content: task }]
+        const baseMessages = compressedHistoryMessages.length > 0
+          ? [...compressedHistoryMessages.map(m => ({ role: m.role as string, content: m.content as string })), { role: 'user' as const, content: task }]
           : [];
 
         const { events, result: resultPromise } = this.runtime.stream({
@@ -235,7 +251,41 @@ export class CoordinatorCapability implements AgentCapability {
           : result.trim();
 
         const duration = Date.now() - startTime;
-        const success = runtimeResult.success;
+        let success = runtimeResult.success;
+
+        // 三元对抗质量控制（Thesis → Antithesis → Synthesis）
+        let harnessResult: HarnessResult | null = null;
+        const adversarialCfg = options?.adversarial;
+        if (adversarialCfg && success && result) {
+          try {
+            await this.emitPhase(sessionId, 'verify', 'Starting adversarial quality review (critic → arbiter)...', 'execute', options);
+            const harness = new AdversarialHarness(this.context.providerManager);
+            harnessResult = await harness.run(task, result, adversarialCfg, {
+              onRoundStart: (round) => {
+                this.emitPhase(sessionId, 'verify', `Adversarial round ${round}: critic reviewing...`, 'verify', options)
+                  .catch(() => {});
+              },
+              onRoundComplete: (record) => {
+                const q = record.synthesis.quality;
+                this.emitPhase(sessionId, 'verify',
+                  `Round ${record.round} complete — quality: ${(q.overall * 100).toFixed(0)}% ${q.passed ? '✓' : '✗'}`,
+                  'verify', options).catch(() => {});
+              },
+            });
+
+            if (harnessResult.success && harnessResult.text) {
+              // 用 harness 输出替换原始结果
+              result = harnessResult.text;
+            }
+          } catch (harnessError) {
+            // Harness 失败时优雅降级：使用原始输出
+            console.warn('[coordinator] Adversarial harness failed, falling back to original output:',
+              harnessError instanceof Error ? harnessError.message : String(harnessError));
+            this.emitPhase(sessionId, 'verify',
+              `Adversarial review failed, using original output`,
+              'verify', options).catch(() => {});
+          }
+        }
 
         previousPhase = 'execute';
         await this.emitPhase(sessionId, 'complete', success ? '任务完成' : '任务失败', previousPhase, options);
@@ -251,6 +301,19 @@ export class CoordinatorCapability implements AgentCapability {
         // 持久化对话到 session
         if (success && result) {
           await this.persistSession(task, result);
+        }
+
+        // 自动保存对话摘要到记忆文件
+        if (success && result && this.context.currentUserId && this.context.fileMemory) {
+          try {
+            const summary = [
+              `**User**: ${task.slice(0, 200)}${task.length > 200 ? '…' : ''}`,
+              `**Assistant**: ${result.slice(0, 500)}${result.length > 500 ? '…' : ''}`,
+            ].join('\n\n');
+            await this.context.fileMemory.appendMemory(this.context.currentUserId, summary);
+          } catch {
+            // 记忆保存失败时静默忽略
+          }
         }
 
         const modelId = this.context.getActiveProvider()?.model;
@@ -337,11 +400,31 @@ export class CoordinatorCapability implements AgentCapability {
       toolDescriptions,
     } satisfies PromptBuildContext);
 
-    if (extraSections.trim()) {
-      return basePrompt + '\n\n' + extraSections;
+    const parts: string[] = [];
+
+    // 注入用户记忆（previous knowledge）
+    const userId = this.context.currentUserId;
+    const fileMemory = this.context.fileMemory;
+    if (userId && fileMemory) {
+      try {
+        const memoryContent = await fileMemory.readMemory(userId);
+        if (memoryContent.trim()) {
+          parts.push(`[Previous knowledge about the user]\n${memoryContent.trim()}\n[/Previous knowledge]`);
+        }
+      } catch {
+        // 读取记忆失败时静默忽略，不影响主流程
+      }
     }
 
-    return basePrompt;
+    if (basePrompt.trim()) {
+      parts.push(basePrompt);
+    }
+
+    if (extraSections.trim()) {
+      parts.push(extraSections);
+    }
+
+    return parts.join('\n\n');
   }
 
   // ============================================
@@ -374,6 +457,91 @@ export class CoordinatorCapability implements AgentCapability {
     await sessionCap.addUserMessage(task);
     if (responseText) {
       await sessionCap.addAssistantMessage(responseText);
+    }
+  }
+
+  /**
+   * 动态模型感知的历史消息压缩
+   *
+   * 根据当前模型（或 options.modelId 指定）的 contextWindow 计算 budget，
+   * 触发 L0→L1→L2→L3 分级压缩管道，达标即止。
+   */
+  private async compressHistoryIfNeeded(
+    messages: import('../../session/types.js').Message[],
+    modelIdOverride: string | undefined,
+    systemPrompt: string,
+  ): Promise<import('../../session/types.js').Message[]> {
+    if (messages.length === 0) return messages;
+
+    const activeProvider = this.context.getActiveProvider();
+    if (!activeProvider?.model) return messages;
+
+    // 组装 system prompt Token 估算（粗略：中文字符 * 1.3 + ASCII / 4）
+    const systemPromptSize = Math.ceil(systemPrompt.length * 0.35);
+
+    // 工具 schemas 估算（4 个工具 * ~300 tokens each）
+    const toolSchemaSize = 1200;
+
+    // 默认 contextWindow（safe fallback）
+    let contextWindow = 128_000;
+
+    let maxOutputTokens = 0;
+    let resolvedModelId = modelIdOverride ?? activeProvider.model;
+
+    try {
+      const spec = await fetchModelSpec(activeProvider.id, resolvedModelId);
+      if (spec?.contextWindow) {
+        contextWindow = spec.contextWindow;
+      }
+      if (spec?.maxOutputTokens) {
+        maxOutputTokens = spec.maxOutputTokens;
+      }
+      // 如果 spec 有 family 信息也可以用来细化模型选择
+      if (spec?.family) {
+        resolvedModelId = spec.family;
+      }
+    } catch {
+      // fallback to default
+    }
+
+    const compressionService = new CompressionService({
+      compression: {
+        contextWindowSize: contextWindow,
+        threshold: 0, // 使用 thresholdPercentage 动态计算
+        thresholdPercentage: 0.8,
+        systemPromptTokens: systemPromptSize,
+        toolSchemaTokens: toolSchemaSize,
+        maxOutputTokens, // 从模型 spec 获取精确值
+        strategy: 'hybrid',
+      },
+      modelId: resolvedModelId, // 传递给 token counter 实现模型感知计数
+      autoCompress: true,
+    });
+
+    // 初始化 token 计数器（后台加载 tiktoken WASM）
+    await compressionService.initialize();
+
+    try {
+      const pipelineResult: PipelineCompressionResult = await compressionService.compressPipeline(messages);
+
+      if (pipelineResult.totalTokensSaved > 0) {
+        const phasesSummary = pipelineResult.phases
+          .filter(p => p.triggered)
+          .map(p => `${p.strategy}=${p.tokensSaved}tok`)
+          .join(', ');
+
+        this.emitNotification(
+          this.context.hookRegistry.getSessionId(),
+          'info',
+          '上下文压缩',
+          `模型窗口=${contextWindow}, 节省=${pipelineResult.totalTokensSaved}tok [${phasesSummary}]`,
+        ).catch(() => {});
+      }
+
+      return pipelineResult.messages;
+    } catch {
+      // 压缩失败时优雅降级，使用原始消息
+      return messages;
     }
   }
 

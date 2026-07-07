@@ -38,10 +38,20 @@ export class CapabilityRegistry {
   }
 
   /**
-   * 检查能力是否存在
+   * 检查能力是否存�?
    */
   has(name: string): boolean {
     return this.capabilities.has(name);
+  }
+
+  /**
+   * 注销能力（Vertical Pack 卸载时使用）
+   */
+  unregister(name: string): boolean {
+    if (!this.capabilities.has(name)) return false;
+    this.capabilities.delete(name);
+    this.registrationOrder = this.registrationOrder.filter(n => n !== name);
+    return true;
   }
 
   /**

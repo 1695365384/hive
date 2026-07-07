@@ -10,6 +10,7 @@ import type { HookRegistry } from '../../hooks/index.js';
 import type { SessionCapabilityConfig } from '../capabilities/SessionCapability.js';
 import type { AgentConfig, AgentCapability } from './capabilities.js';
 import type { ScheduleCircuitBreakEvent } from '../../scheduler/types.js';
+import type { FileMemory } from '../../memory/FileMemory.js';
 
 // 重导出 SkillSystemConfig
 export type { SkillSystemConfig } from '../../skills/index.js';
@@ -193,6 +194,12 @@ export interface AgentContext {
   // 超时能力（内置）
   /** 超时能力实例 */
   timeoutCap: import('../capabilities/TimeoutCapability.js').TimeoutCapability;
+
+  /** 当前对话的用户 ID（由 ServerImpl 在 dispatch 前设置） */
+  currentUserId?: string;
+
+  /** 文件型记忆存储实例（由 ServerImpl 在 dispatch 前设置） */
+  fileMemory?: FileMemory;
 
   // ============================================
   // 类型安全的能力访问器

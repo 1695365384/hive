@@ -57,6 +57,7 @@ export type {
   DispatchOptions,
   DispatchResult,
   DispatchTraceEvent,
+  AdversarialConfig,
 } from './capabilities/index.js';
 
 // ============================================

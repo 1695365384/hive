@@ -45,6 +45,12 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
   schedule: {
     maxSteps: 10,
   },
+  critic: {
+    maxSteps: 10,
+  },
+  arbiter: {
+    maxSteps: 10,
+  },
 };
 
 // ============================================
