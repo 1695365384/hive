@@ -25,6 +25,8 @@ import {
 import { noopLogger } from '../types/logger.js';
 import { ChannelContext } from './ChannelContext.js';
 import { setSendFileCallback } from '../tools/built-in/send-file-tool.js';
+import { FileMemory } from '../memory/FileMemory.js';
+import { setRememberCallback } from '../tools/built-in/remember-tool.js';
 import type {
   Server,
   ServerOptions,
@@ -97,6 +99,9 @@ class ServerImpl implements Server {
 
   /** WorkspaceManager — 由 createServer() 创建，在 start() 中初始化 */
   _workspaceManager: WorkspaceManager | undefined;
+
+  /** 文件型记忆存储（由 start() 初始化） */
+  private _fileMemory: FileMemory | undefined;
 
   constructor(
     agent: Agent,
@@ -214,6 +219,18 @@ class ServerImpl implements Server {
     // 初始化工作空间（创建 .hive/cache 等目录结构）
     if (this._workspaceManager) {
       await this._workspaceManager.initialize();
+      // 初始化文件型记忆存储
+      const rootPath = this._workspaceManager.getRootPath();
+      this._fileMemory = new FileMemory(rootPath);
+      // 注册 remember 工具回调（读取当前 agent context 中的 userId）
+      setRememberCallback(async (content: string) => {
+        const ctx = this.agent.context;
+        if (ctx.currentUserId && ctx.fileMemory) {
+          await ctx.fileMemory.appendMemory(ctx.currentUserId, content);
+        } else {
+          throw new Error('No active user session for memory');
+        }
+      });
     }
 
     // 初始化 Agent
@@ -423,6 +440,13 @@ class ServerImpl implements Server {
       });
     }
 
+    // 设置记忆上下文（用于 dispatch 前后注入/保存记忆）
+    const userId = channelMessage.from?.id;
+    if (userId && this._fileMemory) {
+      this.agent.context.currentUserId = userId;
+      this.agent.context.fileMemory = this._fileMemory;
+    }
+
     try {
       const abortController = new AbortController();
       this.activeAbortControllers.set(sessionKey, abortController);
@@ -525,6 +549,10 @@ class ServerImpl implements Server {
 
       const isAborted = error instanceof DOMException && error.name === 'AbortError';
       this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: false, cancelled: isAborted, error: errorMsg });
+    } finally {
+      // 清除记忆上下文，避免影响下一次 dispatch
+      this.agent.context.currentUserId = undefined;
+      this.agent.context.fileMemory = undefined;
     }
   }
 
