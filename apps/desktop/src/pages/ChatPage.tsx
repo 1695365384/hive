@@ -3,6 +3,10 @@ import { useChatWsClient } from "../hooks/use-chat-ws-client";
 import { useFileUpload } from "../hooks/use-file-upload";
 import { FilePreviewList } from "../components/FilePreview";
 import { ImagePreview } from "../components/ImagePreview";
+import { TextBlock } from "../components/TextBlock";
+import { PreviewSidebar } from "../components/preview/PreviewSidebar";
+import { isPreviewableFile } from "../components/preview/detect-preview";
+import { usePreviewStore } from "../stores/preview-store";
 import {
   Send,
   Square,
@@ -214,6 +218,40 @@ export function ChatPage() {
   const handleFile = useCallback((data: { threadId: string; name: string; path: string; size: number; mimeType: string; type: string; src?: string }) => {
     if (data.threadId !== activeThreadIdRef.current) return;
     appendPart({ type: "file-attachment", name: data.name, size: data.size, mimeType: data.mimeType, path: data.path, src: data.src });
+
+    // Auto-preview html/svg/ppt/doc files
+    const previewType = isPreviewableFile(data.name);
+    if (previewType && data.src) {
+      const previewId = `file-${data.threadId}-${data.name}`;
+      const previewStore = usePreviewStore.getState();
+      if (previewStore.previews.some((p) => p.id === previewId)) return;
+
+      if (previewType === "ppt" || previewType === "doc" || previewType === "pdf" || previewType === "xlsx") {
+        // Binary format — renderer fetches the file
+        previewStore.openFor({
+          id: previewId,
+          title: data.name,
+          type: previewType,
+          content: "",
+          src: data.src,
+          sourceMessageId: data.threadId,
+        });
+      } else {
+        // HTML/SVG — eager-fetch text content
+        fetch(`http://127.0.0.1:4450${data.src}`)
+          .then((r) => r.text())
+          .then((content) => {
+            previewStore.openFor({
+              id: previewId,
+              title: data.name,
+              type: previewType as "html" | "svg",
+              content,
+              sourceMessageId: data.threadId,
+            });
+          })
+          .catch(() => {});
+      }
+    }
   }, [appendPart]);
 
   // Listen to WS events
@@ -337,8 +375,10 @@ export function ChatPage() {
 
   return (
     <div className="flex flex-col h-full bg-stone-950">
-      {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      {/* Main + Preview sidebar */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Messages Area */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {isEmpty ? (
           <EmptyState />
         ) : (
@@ -360,6 +400,9 @@ export function ChatPage() {
             )}
           </div>
         )}
+        </div>
+        {/* Preview Sidebar */}
+        <PreviewSidebar />
       </div>
 
       {/* Error Banner */}
@@ -619,7 +662,7 @@ function MessageBubble({ message, isLast, isRunning, activeToolTime, onOpenImage
 
         <div className="space-y-3">
           {groupContentParts(message.content).map((part, idx) => (
-            <GroupedContentRenderer key={idx} part={part} activeToolTime={isLast && isRunning ? activeToolTime : null} />
+            <GroupedContentRenderer key={idx} part={part} sourceMessageId={message.id} autoPreview={isLast && isRunning} activeToolTime={isLast && isRunning ? activeToolTime : null} />
           ))}
           {/* Streaming cursor */}
           {isRunning && isLast && message.content.length > 0 && message.content[message.content.length - 1].type === "text" && (
@@ -635,18 +678,53 @@ function MessageBubble({ message, isLast, isRunning, activeToolTime, onOpenImage
 // Grouped Content Renderer (recursive)
 // ============================================
 
-function GroupedContentRenderer({ part, activeToolTime }: { part: GroupedContent; activeToolTime: number | null }) {
+function GroupedContentRenderer({ part, activeToolTime, sourceMessageId, autoPreview }: { part: GroupedContent; activeToolTime: number | null; sourceMessageId?: string; autoPreview?: boolean }) {
   switch (part.type) {
     case "reasoning":
       return <ReasoningBlock text={part.text} />;
     case "text":
-      return <TextBlock text={part.text} />;
+      return <TextBlock text={part.text} sourceMessageId={sourceMessageId} autoPreview={autoPreview} />;
     case "tool-call":
       return <ToolCallBlock toolCallId={part.toolCallId} toolName={part.toolName} args={part.args} result={part.result} isError={part.isError} elapsedSeconds={activeToolTime} workerId={part.workerId} />;
     case "worker":
       return <WorkerBlock workerType={part.workerType} description={part.description} children={part.children} status={part.status} duration={part.duration} error={part.error} />;
     case "file-attachment": {
       const isImage = part.mimeType?.startsWith("image/");
+      const previewType = !isImage ? isPreviewableFile(part.name) : null;
+      const [previewLoading, setPreviewLoading] = useState(false);
+      const openFor = usePreviewStore((s) => s.openFor);
+
+      const handleManualPreview = useCallback(async () => {
+        if (!part.src || !previewType) return;
+        setPreviewLoading(true);
+        try {
+          if (previewType === "ppt" || previewType === "doc" || previewType === "pdf" || previewType === "xlsx") {
+            // Binary format — renderer fetches the file
+            openFor({
+              id: `file-${part.path || part.name}-${Date.now()}`,
+              title: part.name,
+              type: previewType as "ppt" | "doc" | "pdf" | "xlsx",
+              content: "",
+              src: part.src,
+              sourceMessageId: part.path || part.name,
+            });
+          } else {
+            const res = await fetch(`http://127.0.0.1:4450${part.src}`);
+            const content = await res.text();
+            openFor({
+              id: `file-${part.path || part.name}-${Date.now()}`,
+              title: part.name,
+              type: previewType as "html" | "svg",
+              content,
+              sourceMessageId: part.path || part.name,
+            });
+          }
+        } catch {
+          window.open(`http://127.0.0.1:4450${part.src}`, "_blank");
+        }
+        setPreviewLoading(false);
+      }, [part.src, part.name, part.path, previewType, openFor]);
+
       return isImage ? (
         <img
           src={`http://127.0.0.1:4450${part.src}`}
@@ -655,62 +733,30 @@ function GroupedContentRenderer({ part, activeToolTime }: { part: GroupedContent
           onClick={() => window.dispatchEvent(new CustomEvent('open-lightbox', { detail: `http://127.0.0.1:4450${part.src}` }))}
         />
       ) : (
-        <a
-          href={`http://127.0.0.1:4450${part.src}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-amber-400/80 hover:text-amber-300 transition-colors"
-        >
-          <FileText className="w-3 h-3 shrink-0" />
-          <span>{part.name}</span>
-          <span className="text-stone-600">{part.size >= 1024 ? `${(part.size / 1024).toFixed(1)}KB` : `${part.size}B`}</span>
-        </a>
+        <div className="flex items-center gap-1.5">
+          <a
+            href={`http://127.0.0.1:4450${part.src}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-amber-400/80 hover:text-amber-300 transition-colors"
+          >
+            <FileText className="w-3 h-3 shrink-0" />
+            <span>{part.name}</span>
+            <span className="text-stone-600">{part.size >= 1024 ? `${(part.size / 1024).toFixed(1)}KB` : `${part.size}B`}</span>
+          </a>
+          {previewType && (
+            <button
+              onClick={handleManualPreview}
+              disabled={previewLoading}
+              className="px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-amber-500/15 text-amber-400/80 border border-amber-500/20 hover:bg-amber-500/25 transition-colors disabled:opacity-50"
+            >
+              {previewLoading ? "..." : "▶ Preview"}
+            </button>
+          )}
+        </div>
       );
     }
   }
-}
-
-// ============================================
-// Text Block (Markdown-like)
-// ============================================
-
-function TextBlock({ text }: { text: string }) {
-  if (!text) return null;
-
-  // Simple rendering: code blocks + inline code + links + bold
-  const rendered = text.split("\n").map((line, i) => {
-    // Code block
-    if (line.startsWith("```")) return null; // Simplified: strip markers
-    // Bold
-    const boldProcessed = line.replace(/\*\*(.*?)\*\*/g, '<strong class="text-stone-100 font-semibold">$1</strong>');
-    // Inline code
-    const codeProcessed = boldProcessed.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-stone-800 text-amber-400/90 text-[13px] font-mono">$1</code>');
-    // Links
-    const linkProcessed = codeProcessed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-amber-400/80 hover:text-amber-300 underline underline-offset-2">$1</a>');
-    // File paths: [File: name.ext (size)] /path/to/file → extract filename for /files/ route
-    const fileProcessed = linkProcessed.replace(
-      /\[File: ([^\]]+)\] (\/[^\s<]+)/g,
-      (_, name, fullPath) => {
-        const fileName = fullPath.split("/").pop() || fullPath;
-        return `<a href="http://127.0.0.1:4450/files/${fileName}" class="text-amber-400/80 hover:text-amber-300 underline underline-offset-2">[File: ${name}] ${fileName}</a>`;
-      }
-    );
-
-    return (
-      <span key={i}>
-        <span dangerouslySetInnerHTML={{ __html: fileProcessed }} />
-        {i < text.split("\n").length - 1 && <br />}
-      </span>
-    );
-  });
-
-  return (
-    <div className="px-4 py-2.5 rounded-2xl rounded-tl-md bg-stone-900/50 border border-stone-800/50">
-      <p className="text-sm text-stone-300 whitespace-pre-wrap leading-relaxed">
-        {rendered}
-      </p>
-    </div>
-  );
 }
 
 // ============================================
