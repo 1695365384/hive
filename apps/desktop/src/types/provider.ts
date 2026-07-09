@@ -21,6 +21,7 @@ export interface ModelInfo {
   family?: string;
   contextWindow: number;
   maxOutputTokens?: number;
+  supportsTools?: boolean;
 }
 
 /** API key 验证结果（来自 WS provider.testKey） */

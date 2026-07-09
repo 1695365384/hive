@@ -27,6 +27,8 @@ import { createAgentTool } from '../../tools/built-in/agent-tool.js';
 import { createTaskStopTool } from '../../tools/built-in/task-stop-tool.js';
 import { createSendMessageTool } from '../../tools/built-in/send-message-tool.js';
 import { createRememberTool } from '../../tools/built-in/remember-tool.js';
+import { createSkillInstallTool, setReloadSkillsCallback } from '../../tools/built-in/skill-install-tool.js';
+import { createMcpInstallTool, setGetMcpManagerCallback } from '../../tools/built-in/mcp-install-tool.js';
 import { TaskManager } from '../core/TaskManager.js';
 import { createDynamicPromptBuilder } from '../pipeline/DynamicPromptBuilder.js';
 import type { PromptBuildContext } from '../types/pipeline.js';
@@ -117,11 +119,41 @@ export class CoordinatorCapability implements AgentCapability {
     this.context = context;
     this.runtime = new LLMRuntime(context.providerManager);
     this.promptTemplate = new PromptTemplate();
+
+    // 注册 MCP 管理器的工具注册/注销回调
+    context.mcpManager.onToolRegistered = (toolName, tool) => {
+      this.coordinatorTools[toolName] = tool;
+    };
+    context.mcpManager.onToolUnregistered = (toolName) => {
+      delete this.coordinatorTools[toolName];
+    };
+
+    // 注册 skill-install 工具的回调
+    setReloadSkillsCallback(() => {
+      // 通过 hook 触发 reload；实际 reload 由 SkillCapability 的 hook 处理
+      context.hookRegistry.emit('notification:push', {
+        sessionId: context.hookRegistry.getSessionId(),
+        type: 'info',
+        title: 'Skills Reloaded',
+        message: 'New skills installed, please reload skill registry',
+        timestamp: new Date(),
+      });
+    });
+
+    // 注册 mcp-install 工具的 MCP Manager 访问
+    setGetMcpManagerCallback(() => context.mcpManager);
+
+    // 构建工具集
     this.coordinatorTools = {
+      // 原有权重
       agent: createAgentTool(context, this.taskManager),
       'task-stop': createTaskStopTool(this.taskManager),
       'send-message': createSendMessageTool(context),
       remember: createRememberTool(),
+
+      // 自愈/自安装工具
+      'skill-install': createSkillInstallTool(),
+      'mcp-install': createMcpInstallTool(),
     };
   }
 
@@ -180,165 +212,33 @@ export class CoordinatorCapability implements AgentCapability {
         // 构建 system prompt
         const systemPrompt = await this.buildSystemPrompt(task, options?.systemPrompt);
 
-        // 加载历史消息
+        // 加载历史消息 + 模型感知压缩
         const historyMessages = this.loadHistoryMessages();
-
-        // 动态模型感知压缩：根据当前模型的 contextWindow 计算 budget，触发分级管道
         const compressedHistoryMessages = await this.compressHistoryIfNeeded(
           historyMessages,
           options?.modelId,
           systemPrompt,
         );
 
-        // NOTE: Intentional mutable accumulator for streaming
-        let result = '';
-        let lastToolResultIndex = -1; // 最后一次工具结果后的文本起始位置（用于提取 finalText）
-
-        const baseMessages = compressedHistoryMessages.length > 0
-          ? [...compressedHistoryMessages.map(m => ({ role: m.role as string, content: m.content as string })), { role: 'user' as const, content: task }]
-          : [];
-
-        const { events, result: resultPromise } = this.runtime.stream({
-          system: systemPrompt,
-          messages: baseMessages.length > 0 ? baseMessages as any : undefined,
-          prompt: baseMessages.length === 0 ? task : undefined,
-          tools: this.coordinatorTools,
-          maxSteps: options?.maxTurns ?? CoordinatorCapability.DEFAULT_MAX_TURNS,
-          model: options?.modelId,
-          abortSignal: combinedSignal,
-        });
-
-        for await (const event of events) {
-          switch (event.type) {
-            case 'text-delta':
-              result += event.text;
-              options?.onText?.(event.text);
-              break;
-            case 'tool-call':
-              this.emitToolBefore(sessionId, event.toolName, event.input).catch(
-                (err) => this.context.hookRegistry.emit('notification:push', {
-                  sessionId, type: 'warning', title: 'Hook Error',
-                  message: `tool:before hook failed: ${err instanceof Error ? err.message : String(err)}`,
-                  timestamp: new Date(),
-                }),
-              );
-              options?.onTool?.(event.toolName, event.input);
-              break;
-            case 'tool-result':
-              // 记录最后工具结果位置，用于提取 finalText
-              lastToolResultIndex = result.length;
-              this.emitToolAfter(sessionId, event.toolName, event.output).catch(
-                (err) => this.context.hookRegistry.emit('notification:push', {
-                  sessionId, type: 'warning', title: 'Hook Error',
-                  message: `tool:after hook failed: ${err instanceof Error ? err.message : String(err)}`,
-                  timestamp: new Date(),
-                }),
-              );
-              options?.onToolResult?.(event.toolName, event.output);
-              this.context.timeoutCap.updateActivity();
-              break;
-            case 'reasoning':
-              // Coordinator 的思考不发给前端 — 用户只需看到 Worker 的思考
-              break;
-          }
-        }
-
-        const runtimeResult = await resultPromise;
-
-        // 提取最后一次工具调用后的文本（用于 channel 回复，不含叙述）
-        const finalText = lastToolResultIndex >= 0 && result.length > lastToolResultIndex
-          ? result.slice(lastToolResultIndex).trim()
-          : result.trim();
-
-        const duration = Date.now() - startTime;
-        let success = runtimeResult.success;
-
-        // 三元对抗质量控制（Thesis → Antithesis → Synthesis）
-        let harnessResult: HarnessResult | null = null;
-        const adversarialCfg = options?.adversarial;
-        if (adversarialCfg && success && result) {
-          try {
-            await this.emitPhase(sessionId, 'verify', 'Starting adversarial quality review (critic → arbiter)...', 'execute', options);
-            const harness = new AdversarialHarness(this.context.providerManager);
-            harnessResult = await harness.run(task, result, adversarialCfg, {
-              onRoundStart: (round) => {
-                this.emitPhase(sessionId, 'verify', `Adversarial round ${round}: critic reviewing...`, 'verify', options)
-                  .catch(() => {});
-              },
-              onRoundComplete: (record) => {
-                const q = record.synthesis.quality;
-                this.emitPhase(sessionId, 'verify',
-                  `Round ${record.round} complete — quality: ${(q.overall * 100).toFixed(0)}% ${q.passed ? '✓' : '✗'}`,
-                  'verify', options).catch(() => {});
-              },
-            });
-
-            if (harnessResult.success && harnessResult.text) {
-              // 用 harness 输出替换原始结果
-              result = harnessResult.text;
-            }
-          } catch (harnessError) {
-            // Harness 失败时优雅降级：使用原始输出
-            console.warn('[coordinator] Adversarial harness failed, falling back to original output:',
-              harnessError instanceof Error ? harnessError.message : String(harnessError));
-            this.emitPhase(sessionId, 'verify',
-              `Adversarial review failed, using original output`,
-              'verify', options).catch(() => {});
-          }
-        }
-
-        previousPhase = 'execute';
-        await this.emitPhase(sessionId, 'complete', success ? '任务完成' : '任务失败', previousPhase, options);
-
-        await this.emitNotification(
-          sessionId,
-          success ? 'success' : 'error',
-          success ? '任务完成' : '任务失败',
-          success ? '执行成功完成' : `执行失败: ${runtimeResult.error || '未知错误'}`,
-          { duration },
+        // 执行 LLM 流式循环
+        const { result, finalText, runtimeResult } = await this.executeStreamingLoop(
+          task, systemPrompt, compressedHistoryMessages, options, combinedSignal, sessionId,
         );
 
-        // 持久化对话到 session
-        if (success && result) {
-          await this.persistSession(task, result);
-        }
+        const duration = Date.now() - startTime;
 
-        // 自动保存对话摘要到记忆文件
-        if (success && result && this.context.currentUserId && this.context.fileMemory) {
-          try {
-            const summary = [
-              `**User**: ${task.slice(0, 200)}${task.length > 200 ? '…' : ''}`,
-              `**Assistant**: ${result.slice(0, 500)}${result.length > 500 ? '…' : ''}`,
-            ].join('\n\n');
-            await this.context.fileMemory.appendMemory(this.context.currentUserId, summary);
-          } catch {
-            // 记忆保存失败时静默忽略
-          }
-        }
+        // 三元对抗质量控制
+        const { text: qualityResult, harnessResult } = await this.runAdversarialHarness(
+          task, result, options, sessionId,
+        );
 
-        const modelId = this.context.getActiveProvider()?.model;
+        const final = qualityResult ?? result;
+        const isSuccess = (harnessResult?.success ?? runtimeResult?.success) ?? true;
 
-        return {
-          text: result,
-          finalText,
-          tools: runtimeResult.tools,
-          success,
-          error: runtimeResult.error,
-          usage: runtimeResult.usage
-            ? { input: runtimeResult.usage.promptTokens, output: runtimeResult.usage.completionTokens }
-            : undefined,
-          cost: this.calculateCost(
-            runtimeResult.usage
-              ? { input: runtimeResult.usage.promptTokens, output: runtimeResult.usage.completionTokens }
-              : undefined,
-            modelId,
-          ),
-          steps: runtimeResult.steps,
-          duration,
-        };
+        // 收尾：通知 + 持久化 + 返回
+        return await this.finalizeTask(task, final, finalText, runtimeResult, options, sessionId, duration, isSuccess);
       } finally {
         this.context.timeoutCap.stopHeartbeat();
-        // 确保所有 Worker 都被中止
         this.taskManager.abortAll();
       }
     } catch (error) {
@@ -356,6 +256,191 @@ export class CoordinatorCapability implements AgentCapability {
         duration: Date.now() - startTime,
       };
     }
+  }
+
+  // ============================================
+  // Streaming Execution Loop
+  // ============================================
+
+  /** 执行 LLM 流式循环，返回累积文本和运行时结果 */
+  private async executeStreamingLoop(
+    task: string,
+    systemPrompt: string,
+    historyMessages: import('../../session/types.js').Message[],
+    options: DispatchOptions | undefined,
+    combinedSignal: AbortSignal | undefined,
+    sessionId: string,
+  ): Promise<{
+    result: string;
+    finalText: string;
+    runtimeResult: import('../runtime/types.js').RuntimeResult;
+  }> {
+    let text = '';
+    let lastToolResultIndex = -1;
+
+    const baseMessages = historyMessages.length > 0
+      ? [...historyMessages.map(m => ({ role: m.role as string, content: m.content as string })), { role: 'user' as const, content: task }]
+      : [];
+
+    const { events, result: resultPromise } = this.runtime.stream({
+      system: systemPrompt,
+      messages: baseMessages.length > 0 ? baseMessages as any : undefined,
+      prompt: baseMessages.length === 0 ? task : undefined,
+      tools: this.coordinatorTools,
+      maxSteps: options?.maxTurns ?? CoordinatorCapability.DEFAULT_MAX_TURNS,
+      model: options?.modelId,
+      abortSignal: combinedSignal,
+    });
+
+    for await (const event of events) {
+      switch (event.type) {
+        case 'text-delta':
+          text += event.text;
+          options?.onText?.(event.text);
+          break;
+        case 'tool-call':
+          this.emitToolBefore(sessionId, event.toolName, event.input).catch(
+            (err) => this.context.hookRegistry.emit('notification:push', {
+              sessionId, type: 'warning', title: 'Hook Error',
+              message: `tool:before hook failed: ${err instanceof Error ? err.message : String(err)}`,
+              timestamp: new Date(),
+            }),
+          );
+          options?.onTool?.(event.toolName, event.input);
+          break;
+        case 'tool-result':
+          lastToolResultIndex = text.length;
+          this.emitToolAfter(sessionId, event.toolName, event.output).catch(
+            (err) => this.context.hookRegistry.emit('notification:push', {
+              sessionId, type: 'warning', title: 'Hook Error',
+              message: `tool:after hook failed: ${err instanceof Error ? err.message : String(err)}`,
+              timestamp: new Date(),
+            }),
+          );
+          options?.onToolResult?.(event.toolName, event.output);
+          this.context.timeoutCap.updateActivity();
+          break;
+        case 'reasoning':
+          // Coordinator 的思考不发给前端 — 用户只需看到 Worker 的思考
+          break;
+      }
+    }
+
+    const runtimeResult = await resultPromise;
+    const finalText = lastToolResultIndex >= 0 && text.length > lastToolResultIndex
+      ? text.slice(lastToolResultIndex).trim()
+      : text.trim();
+
+    return { result: text, finalText, runtimeResult };
+  }
+
+  // ============================================
+  // Adversarial Harness
+  // ============================================
+
+  /** 执行三元对抗质量控制（Thesis → Antithesis → Synthesis），失败时优雅降级 */
+  private async runAdversarialHarness(
+    task: string,
+    result: string,
+    options: DispatchOptions | undefined,
+    sessionId: string,
+  ): Promise<{ text: string | null; harnessResult: HarnessResult | null }> {
+    const adversarialCfg = options?.adversarial;
+    if (!adversarialCfg || !result) return { text: null, harnessResult: null };
+
+    try {
+      await this.emitPhase(sessionId, 'verify', 'Starting adversarial quality review (critic → arbiter)...', 'execute', options);
+      const harness = new AdversarialHarness(this.context.providerManager);
+      const harnessResult = await harness.run(task, result, adversarialCfg, {
+        onRoundStart: (round) => {
+          this.emitPhase(sessionId, 'verify', `Adversarial round ${round}: critic reviewing...`, 'verify', options)
+            .catch(() => {});
+        },
+        onRoundComplete: (record) => {
+          const q = record.synthesis.quality;
+          this.emitPhase(sessionId, 'verify',
+            `Round ${record.round} complete — quality: ${(q.overall * 100).toFixed(0)}% ${q.passed ? '✓' : '✗'}`,
+            'verify', options).catch(() => {});
+        },
+      });
+
+      if (harnessResult.success && harnessResult.text) {
+        return { text: harnessResult.text, harnessResult };
+      }
+      return { text: null, harnessResult };
+    } catch (harnessError) {
+      console.warn('[coordinator] Adversarial harness failed, falling back to original output:',
+        harnessError instanceof Error ? harnessError.message : String(harnessError));
+      this.emitPhase(sessionId, 'verify',
+        'Adversarial review failed, using original output',
+        'verify', options).catch(() => {});
+      return { text: null, harnessResult: null };
+    }
+  }
+
+  // ============================================
+  // Task Finalization
+  // ============================================
+
+  /** 收尾：通知完成、持久化会话、保存记忆、计算成本、返回结果 */
+  private async finalizeTask(
+    task: string,
+    result: string,
+    finalText: string,
+    runtimeResult: import('../runtime/types.js').RuntimeResult | undefined,
+    options: DispatchOptions | undefined,
+    sessionId: string,
+    duration: number,
+    success: boolean,
+  ): Promise<DispatchResult> {
+    await this.emitPhase(sessionId, 'complete', success ? '任务完成' : '任务失败', 'execute', options);
+
+    await this.emitNotification(
+      sessionId,
+      success ? 'success' : 'error',
+      success ? '任务完成' : '任务失败',
+      success ? '执行成功完成' : `执行失败: ${runtimeResult?.error || '未知错误'}`,
+      { duration },
+    );
+
+    // 持久化对话到 session
+    if (success && result) {
+      await this.persistSession(task, result);
+    }
+
+    // 自动保存对话摘要到记忆文件
+    if (success && result && this.context.currentUserId && this.context.fileMemory) {
+      try {
+        const summary = [
+          `**User**: ${task.slice(0, 200)}${task.length > 200 ? '…' : ''}`,
+          `**Assistant**: ${result.slice(0, 500)}${result.length > 500 ? '…' : ''}`,
+        ].join('\n\n');
+        await this.context.fileMemory.appendMemory(this.context.currentUserId, summary);
+      } catch {
+        // 记忆保存失败时静默忽略
+      }
+    }
+
+    const modelId = this.context.getActiveProvider()?.model;
+
+    return {
+      text: result,
+      finalText,
+      tools: runtimeResult?.tools ?? [],
+      success,
+      error: runtimeResult?.error,
+      usage: runtimeResult?.usage
+        ? { input: runtimeResult.usage.promptTokens, output: runtimeResult.usage.completionTokens }
+        : undefined,
+      cost: this.calculateCost(
+        runtimeResult?.usage
+          ? { input: runtimeResult.usage.promptTokens, output: runtimeResult.usage.completionTokens }
+          : undefined,
+        modelId,
+      ),
+      steps: runtimeResult?.steps,
+      duration,
+    };
   }
 
   // ============================================

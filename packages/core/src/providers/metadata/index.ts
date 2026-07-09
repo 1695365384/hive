@@ -41,6 +41,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       maxOutputTokens: 32000,
       supportsVision: true,
       supportsTools: true,
+      supportsSystemMessages: true,
       pricing: { input: 15, output: 75, currency: 'USD' },
     },
     {
@@ -50,6 +51,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       maxOutputTokens: 16000,
       supportsVision: true,
       supportsTools: true,
+      supportsSystemMessages: true,
       pricing: { input: 3, output: 15, currency: 'USD' },
     },
     {
@@ -59,6 +61,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       maxOutputTokens: 8192,
       supportsVision: true,
       supportsTools: true,
+      supportsSystemMessages: true,
       pricing: { input: 0.8, output: 4, currency: 'USD' },
       aliases: ['claude-3-5-haiku'],
     },
@@ -71,6 +74,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       maxOutputTokens: 16384,
       supportsVision: true,
       supportsTools: true,
+      supportsSystemMessages: true,
       pricing: { input: 5, output: 15, currency: 'USD' },
     },
     {
@@ -80,6 +84,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       maxOutputTokens: 16384,
       supportsVision: true,
       supportsTools: true,
+      supportsSystemMessages: true,
       pricing: { input: 0.15, output: 0.6, currency: 'USD' },
     },
   ],
@@ -90,6 +95,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       contextWindow: 64000,
       maxOutputTokens: 4096,
       supportsTools: true,
+      supportsSystemMessages: true,
       pricing: { input: 1, output: 2, currency: 'CNY' },
     },
     {
@@ -98,6 +104,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       contextWindow: 64000,
       maxOutputTokens: 8192,
       supportsTools: false,
+      supportsSystemMessages: true,
       pricing: { input: 4, output: 16, currency: 'CNY' },
     },
   ],
@@ -108,6 +115,7 @@ const STATIC_MODELS: Record<string, ModelSpec[]> = {
       contextWindow: 128000,
       maxOutputTokens: 4096,
       supportsTools: true,
+      supportsSystemMessages: true,
       pricing: { input: 0.1, output: 0.1, currency: 'CNY' },
     },
   ],

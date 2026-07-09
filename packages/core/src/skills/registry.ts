@@ -314,6 +314,16 @@ export class SkillRegistry {
   }
 
   /**
+   * 重新加载所有技能（热重载）
+   *
+   * 重新扫描内置和用户技能目录，完全刷新注册表。
+   * 安装新 skill 后调用此方法使其立即生效。
+   */
+  reload(): void {
+    this.reloadAllSkills();
+  }
+
+  /**
    * 清空注册表
    */
   clear(): void {

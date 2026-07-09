@@ -195,6 +195,9 @@ export interface AgentContext {
   /** 超时能力实例 */
   timeoutCap: import('../capabilities/TimeoutCapability.js').TimeoutCapability;
 
+  /** MCP 服务器管理器 */
+  mcpManager: import('../../mcp/McpManager.js').McpManager;
+
   /** 当前对话的用户 ID（由 ServerImpl 在 dispatch 前设置） */
   currentUserId?: string;
 

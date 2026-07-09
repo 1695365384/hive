@@ -214,10 +214,11 @@ export class ProviderManager {
    * 注册新的 Provider
    */
   register(config: ProviderConfig): ProviderConfig {
-    this.providers.set(config.id, {
-      config,
+    const resolvedConfig = this.resolveFromRegistry(config);
+    this.providers.set(resolvedConfig.id, {
+      config: resolvedConfig,
     });
-    return config;
+    return resolvedConfig;
   }
 
   /**
@@ -268,11 +269,37 @@ export class ProviderManager {
       if (effectiveModelId) {
         spec = await fetchModelSpec(config.id, effectiveModelId) ?? null;
       }
+      // 未知模型：从同 Provider 的任意已知模型继承能力默认值
+      if (!spec) {
+        spec = await this.resolveProviderDefaultSpec(config.id);
+      }
     } catch {
       // ModelSpec 获取失败不影响正常运行
     }
 
     return { model, spec };
+  }
+
+  /**
+   * 获取 Provider 级别的默认模型能力（未知模型继承此能力）
+   *
+   * 当用户配置了一个不在注册表中的自定义模型时，通过查询同一 Provider
+   * 下的任意已知模型来推断默认能力（如 supportsTools、supportsSystemMessages）。
+   */
+  private async resolveProviderDefaultSpec(providerId: string): Promise<ModelSpec | null> {
+    try {
+      const providers = await (await import('../providers/metadata/index.js')).fetchProviderModels(providerId);
+      if (providers && providers.length > 0) {
+        return {
+          id: `__default_${providerId}`,
+          contextWindow: Math.max(...providers.map(p => p.contextWindow || 4096)),
+          supportsTools: providers.some(p => p.supportsTools),
+          supportsSystemMessages: providers.every(p => p.supportsSystemMessages !== false),
+          supportsStreaming: providers.some(p => p.supportsStreaming),
+        };
+      }
+    } catch { /* fall through */ }
+    return null;
   }
 
   /**

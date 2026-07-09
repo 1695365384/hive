@@ -358,15 +358,17 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           duration: Date.now() - startTime,
           sessionId,
           timestamp: new Date(),
-        }).catch(() => {});
+        }).catch((err) => {
+          console.warn(`[agent-tool] Hook worker:complete failed for ${input.type}:${workerId.slice(0,8)} — ${err instanceof Error ? err.message : String(err)}`);
+        });
       };
 
       try {
         // 提前退出：Worker 在启动前已被中止
         if (isAborted()) {
           rateLimiter.release();
-          taskManager.unregister(workerId);
           emitComplete(false, 'Worker aborted before start');
+          taskManager.unregister(workerId);
           return buildAbortResult();
         }
 
@@ -405,7 +407,9 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
                 input: toolInput,
                 sessionId,
                 timestamp: new Date(),
-              }).catch(() => {});
+              }).catch((err) => {
+                console.warn(`[agent-tool] Hook worker:tool-call failed for ${toolName} — ${err instanceof Error ? err.message : String(err)}`);
+              });
             },
             onToolResult: (toolName: string, output?: unknown) => {
               if (isAborted()) return;
@@ -425,7 +429,9 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
                 output,
                 sessionId,
                 timestamp: new Date(),
-              }).catch(() => {});
+              }).catch((err) => {
+                console.warn(`[agent-tool] Hook worker:tool-result failed for ${toolName} — ${err instanceof Error ? err.message : String(err)}`);
+              });
             },
             onReasoning: (text: string) => {
               if (isAborted()) return;
@@ -435,7 +441,9 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
                 text,
                 sessionId,
                 timestamp: new Date(),
-              }).catch(() => {});
+              }).catch((err) => {
+                console.warn(`[agent-tool] Hook worker:reasoning failed for ${input.type}:${workerId.slice(0,8)} — ${err instanceof Error ? err.message : String(err)}`);
+              });
             },
           },
           {
@@ -445,13 +453,13 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           },
         );
 
-        // 正常完成 — 清理
+        // 正常完成 — 先通知再清理（确保 hook 回调中 TaskManager 仍可见 Worker）
         rateLimiter.release();
-        taskManager.unregister(workerId);
         if (!result.success) {
           console.error(`[worker:${workerId.slice(0, 8)}] Task failed: ${result.error || 'unknown error'}`);
         }
         emitComplete(result.success, result.error);
+        taskManager.unregister(workerId);
 
         // 语义截断：Worker 输出超过阈值时用 ContextCompactor 做 LLM 摘要
         let compressedExcerpt: string | null = null;
@@ -479,10 +487,10 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         });
       } catch (error) {
         rateLimiter.release();
-        taskManager.unregister(workerId);
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error(`[worker:${workerId.slice(0, 8)}] Execution failed: ${errorMsg}`);
         emitComplete(false, errorMsg);
+        taskManager.unregister(workerId);
         return buildWorkerResultSummary({
           type: input.type,
           result: { text: '', tools: [], success: false, error: errorMsg },

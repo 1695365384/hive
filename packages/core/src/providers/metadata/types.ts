@@ -20,6 +20,8 @@ export interface CachedModelInfo {
   supportsVision?: boolean
   /** 是否支持工具 */
   supportsTools?: boolean
+  /** 是否支持 system messages 角色 */
+  supportsSystemMessages?: boolean
 }
 
 /**

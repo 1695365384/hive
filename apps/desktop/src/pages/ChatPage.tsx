@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useChatWsClient } from "../hooks/use-chat-ws-client";
+import { getChatWsClient } from "../lib/ws-client";
 import { useFileUpload } from "../hooks/use-file-upload";
 import { FilePreviewList } from "../components/FilePreview";
 import { ImagePreview } from "../components/ImagePreview";
@@ -40,7 +41,7 @@ type GroupedContent =
 // ============================================
 
 export function ChatPage() {
-  const { request, onEvent } = useChatWsClient();
+  const { state: chatState, request, onEvent } = useChatWsClient();
   const { pendingFiles, uploading, addFiles, removeFile, clearFiles } = useFileUpload();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -193,6 +194,25 @@ export function ChatPage() {
     );
   }, []);
 
+  const failPendingRun = useCallback((message: string) => {
+    setError(message);
+    setIsRunning(false);
+    activeThreadIdRef.current = null;
+    activeToolStartRef.current = null;
+    setTimerActive(false);
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (!last || last.role !== "assistant" || last.content.length > 0) {
+        return prev;
+      }
+
+      return [
+        ...prev.slice(0, -1),
+        { ...last, content: [{ type: "text", text: `处理失败：${message}` }] },
+      ];
+    });
+  }, []);
+
   // Stable WS event handlers — useCallback ensures dedup in WsClient Set
   // across React.StrictMode double-mount cycles
   const handleReasoning = useCallback((data: { threadId: string; text: string; seq: number; workerId?: string; workerType?: string }) => {
@@ -233,7 +253,7 @@ export function ChatPage() {
     updateToolResult(data.toolCallId, data.result, data.isError);
   }, [updateToolResult]);
 
-  const handleComplete = useCallback((data: { threadId?: string; cancelled?: boolean }) => {
+  const handleComplete = useCallback((data: { threadId?: string; cancelled?: boolean; success?: boolean; error?: string }) => {
     if (data.threadId && data.threadId !== activeThreadIdRef.current) return;
     const tid = activeThreadIdRef.current;
     setIsRunning(false);
@@ -242,7 +262,24 @@ export function ChatPage() {
     setTimerActive(false);
     if (data.cancelled) {
       appendPart({ type: "text", text: "\n\n*Execution cancelled*" });
+    } else if (data.success === false && data.error) {
+      setError(data.error);
+      appendPart({ type: "text", text: `处理失败：${data.error}` });
     }
+    // Ensure the assistant message is never left empty after completion
+    setMessages((prev) => {
+      const lastMsg = prev[prev.length - 1];
+      if (lastMsg?.role === "assistant" && lastMsg.content.length === 0) {
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...lastMsg,
+            content: [{ type: "text", text: data.success === false && data.error ? `处理失败：${data.error}` : "Agent 执行完成，但未产生可见输出。" }],
+          },
+        ];
+      }
+      return prev;
+    });
     // Persist final assistant message to DB
     if (tid && !data.cancelled) {
       setMessages((prev) => {
@@ -331,71 +368,77 @@ export function ChatPage() {
 
     setError(null);
 
-    // Use current session as threadId, or create one
-    let sessionId = currentId;
-    if (!sessionId) {
-      sessionId = await createSession();
-    }
-    const threadId = sessionId;
-    activeThreadIdRef.current = threadId;
-    lastTextSeqRef.current = 0;
-    lastReasoningSeqRef.current = 0;
-
-    // Build user message content
-    const userContent: ContentPart[] = [];
-    for (const f of pendingFiles) {
-      userContent.push({ type: "file-attachment", name: f.name, size: f.size, mimeType: f.mimeType, path: f.path, src: f.src });
-    }
-    if (text) {
-      userContent.push({ type: "text", text });
-    }
-
-    const userMsgId = crypto.randomUUID();
-    const assistantMsgId = crypto.randomUUID();
-    const now = Date.now();
-
-    const userMsg: ChatMessage = {
-      id: userMsgId,
-      role: "user",
-      content: userContent,
-      createdAt: now,
-    };
-
-    const assistantMsg: ChatMessage = {
-      id: assistantMsgId,
-      role: "assistant",
-      content: [],
-      createdAt: now,
-    };
-
-    assistantMsgIdRef.current = assistantMsgId;
-
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setInput("");
-    clearFiles();
-    setIsRunning(true);
-
-    // Persist user message to DB
-    db.insertMessage(userMsgId, threadId, "user", JSON.stringify(userContent), now).catch(() => {});
-
-    // Auto-title from first user message text (not files)
-    if (text && threadId) {
-      const titleText = text.length > 80 ? text.slice(0, 80) : text;
-      autoTitle(threadId, titleText);
-    }
-
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-    }
-
     try {
+      await getChatWsClient().waitForConnected();
+
+      // Use current session as threadId, or create one
+      let sessionId = currentId;
+      if (!sessionId) {
+        sessionId = await createSession();
+      }
+      const threadId = sessionId;
+      activeThreadIdRef.current = threadId;
+      lastTextSeqRef.current = 0;
+      lastReasoningSeqRef.current = 0;
+
+      // Build user message content
+      const userContent: ContentPart[] = [];
+      for (const f of pendingFiles) {
+        userContent.push({ type: "file-attachment", name: f.name, size: f.size, mimeType: f.mimeType, path: f.path, src: f.src });
+      }
+      if (text) {
+        userContent.push({ type: "text", text });
+      }
+
+      const userMsgId = crypto.randomUUID();
+      const assistantMsgId = crypto.randomUUID();
+      const now = Date.now();
+
+      const userMsg: ChatMessage = {
+        id: userMsgId,
+        role: "user",
+        content: userContent,
+        createdAt: now,
+      };
+
+      const assistantMsg: ChatMessage = {
+        id: assistantMsgId,
+        role: "assistant",
+        content: [],
+        createdAt: now,
+      };
+
+      assistantMsgIdRef.current = assistantMsgId;
+
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setInput("");
+      clearFiles();
+      setIsRunning(true);
+
+      // Persist user message to DB
+      db.insertMessage(userMsgId, threadId, "user", JSON.stringify(userContent), now).catch(() => {});
+
+      // Auto-title from first user message text (not files)
+      if (text && threadId) {
+        const titleText = text.length > 80 ? text.slice(0, 80) : text;
+        autoTitle(threadId, titleText);
+      }
+
+      if (inputRef.current) {
+        inputRef.current.style.height = "auto";
+      }
+
       const attachments = pendingFiles.map(f => ({ type: f.type, path: f.path, name: f.name, size: f.size, mimeType: f.mimeType }));
       await request("chat.send", { prompt: text || undefined, threadId, attachments: attachments.length > 0 ? attachments : undefined });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send");
-      setIsRunning(false);
+      const errorMessage = err instanceof Error
+        ? err.message
+        : typeof err === "string"
+          ? err
+          : `Failed to send: ${JSON.stringify(err)}`;
+      failPendingRun(errorMessage);
     }
-  }, [input, pendingFiles, isRunning, request, clearFiles]);
+  }, [input, pendingFiles, isRunning, request, clearFiles, currentId, createSession, autoTitle, failPendingRun]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -494,6 +537,18 @@ export function ChatPage() {
         </div>
       )}
 
+      {chatState !== "connected" && (
+        <div className="mx-auto max-w-3xl w-full px-4 pb-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
+            <span>
+              {chatState === "failed"
+                ? "Chat service disconnected. Reconnecting…"
+                : "Connecting to chat service…"}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Input Area */}
       <div className="shrink-0 border-t border-stone-800/60">
         <div className="max-w-3xl mx-auto px-4 py-4">
@@ -523,11 +578,11 @@ export function ChatPage() {
               placeholder="Ask Hive anything..."
               rows={1}
               className="flex-1 bg-transparent text-stone-100 placeholder-stone-600 text-sm resize-none outline-none leading-relaxed max-h-[200px] py-0.5"
-              disabled={isRunning || uploading}
+              disabled={isRunning || uploading || chatState !== "connected"}
             />
             <button
               onClick={isRunning ? handleCancel : handleSend}
-              disabled={!isRunning && (!input.trim() && pendingFiles.length === 0) || uploading}
+              disabled={(!isRunning && (!input.trim() && pendingFiles.length === 0)) || uploading || (!isRunning && chatState !== "connected")}
               className={`shrink-0 p-2 rounded-xl transition-all duration-200 ${
                 isRunning
                   ? "bg-amber-500/20 text-amber-400"

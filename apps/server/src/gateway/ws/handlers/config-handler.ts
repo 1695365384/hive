@@ -5,6 +5,7 @@
  */
 
 import type { HandlerContext, MethodHandler } from '../handler-context.js'
+import type { ProviderConfig } from '@bundy-lmw/hive-core'
 import { WsDomainHandler } from './base.js'
 import type { ConfigUpdateParams } from '../data-types.js'
 import { createSuccessResponse, createErrorResponse } from '../types.js'
@@ -37,6 +38,10 @@ export class ConfigHandler extends WsDomainHandler {
 
     this.ctx.saveConfig(config)
 
+    if (updates.provider) {
+      this.applyProviderConfig(config.provider)
+    }
+
     const changedKeys = Object.keys(updates)
     this.ctx.broadcastEvent('config.changed', { keys: changedKeys })
 
@@ -55,5 +60,26 @@ export class ConfigHandler extends WsDomainHandler {
     } catch {
       return createSuccessResponse(id, [])
     }
+  }
+
+  private applyProviderConfig(provider: {
+    id: string
+    apiKey: string
+    model?: string
+  }): void {
+    const server = this.ctx.getServer()
+    if (!server) {
+      return
+    }
+
+    const runtimeProvider: ProviderConfig = {
+      id: provider.id,
+      name: provider.id.toUpperCase(),
+      apiKey: provider.apiKey,
+      model: provider.model,
+    }
+
+    server.agent.context.providerManager.register(runtimeProvider)
+    server.agent.useProvider(provider.id, provider.apiKey)
   }
 }

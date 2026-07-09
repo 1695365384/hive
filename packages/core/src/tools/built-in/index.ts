@@ -37,6 +37,14 @@ export type { EnvToolInput } from './env-tool.js';
 // Schedule 工具
 export { createScheduleTool } from './schedule-tools.js';
 
+// Skill Install 工具
+export { createSkillInstallTool, createRawSkillInstallTool, setInstallConfirmCallback, setSkillInstalledCallback, setReloadSkillsCallback } from './skill-install-tool.js';
+export type { InstallConfirmCallback, SkillInstalledCallback, ReloadSkillsCallback, SkillInstallToolInput } from './skill-install-tool.js';
+
+// MCP Install 工具
+export { createMcpInstallTool, createRawMcpInstallTool, setGetMcpManagerCallback, setMcpInstallConfirmCallback, setMcpServersChangedCallback } from './mcp-install-tool.js';
+export type { GetMcpManagerCallback, McpServersChangedCallback, McpInstallToolInput } from './mcp-install-tool.js';
+
 // 工具基础设施
 export { truncateOutput } from './utils/output-safety.js';
 export { isDangerousCommand, isSensitiveFile } from './utils/security.js';

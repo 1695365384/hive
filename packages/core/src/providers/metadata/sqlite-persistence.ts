@@ -58,6 +58,7 @@ export class SqlitePersistence implements ModelsDevPersistence {
         max_output_tokens INTEGER,
         supports_vision INTEGER NOT NULL DEFAULT 0,
         supports_tools INTEGER NOT NULL DEFAULT 1,
+        supports_system_messages INTEGER NOT NULL DEFAULT 1,
         supports_reasoning INTEGER DEFAULT 0,
         supports_streaming INTEGER NOT NULL DEFAULT 1,
         supports_structured_output INTEGER DEFAULT 0,
@@ -106,6 +107,7 @@ export class SqlitePersistence implements ModelsDevPersistence {
       ['last_updated', 'TEXT'],
       ['interleaved', 'TEXT'],
       ['status', 'TEXT'],
+      ['supports_system_messages', 'INTEGER NOT NULL DEFAULT 1'],
       ['cost_cache_write', 'REAL'],
       ['cost_reasoning', 'REAL'],
       ['cost_input_audio', 'REAL'],
@@ -165,6 +167,7 @@ export class SqlitePersistence implements ModelsDevPersistence {
             maxOutputTokens: m.maxOutputTokens,
             supportsVision: m.supportsVision,
             supportsTools: m.supportsTools,
+            supportsSystemMessages: m.supportsSystemMessages,
           })),
         })),
       };
@@ -216,14 +219,15 @@ export class SqlitePersistence implements ModelsDevPersistence {
         const upsertModel = this.db.prepare(`
           INSERT INTO models (
             id, provider_id, name, context_window, max_output_tokens,
-            supports_vision, supports_tools
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            supports_vision, supports_tools, supports_system_messages
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id, provider_id) DO UPDATE SET
             name = COALESCE(NULLIF(excluded.name, ''), models.name),
             context_window = COALESCE(NULLIF(excluded.context_window, 0), models.context_window),
             max_output_tokens = COALESCE(excluded.max_output_tokens, models.max_output_tokens),
             supports_vision = COALESCE(excluded.supports_vision, models.supports_vision),
-            supports_tools = COALESCE(excluded.supports_tools, models.supports_tools)
+            supports_tools = COALESCE(excluded.supports_tools, models.supports_tools),
+            supports_system_messages = COALESCE(excluded.supports_system_messages, models.supports_system_messages)
         `);
 
         for (const model of provider.models) {
@@ -235,6 +239,7 @@ export class SqlitePersistence implements ModelsDevPersistence {
             model.maxOutputTokens ?? null,
             model.supportsVision ? 1 : 0,
             model.supportsTools !== false ? 1 : 0,
+            model.supportsSystemMessages !== false ? 1 : 0,
           );
         }
       }
@@ -273,13 +278,13 @@ export class SqlitePersistence implements ModelsDevPersistence {
       const insertModel = this.db.prepare(`
         INSERT INTO models (
           id, provider_id, name, family, context_window, max_input_tokens, max_output_tokens,
-          supports_vision, supports_tools, supports_reasoning, supports_streaming,
+          supports_vision, supports_tools, supports_system_messages, supports_reasoning, supports_streaming,
           supports_structured_output, supports_temperature, open_weights,
           knowledge, release_date, last_updated, interleaved, status,
           input_modalities, output_modalities,
           cost_input, cost_output, cost_cache_read, cost_cache_write,
           cost_reasoning, cost_input_audio, cost_output_audio, cost_context_over_200k
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const provider of providers) {
@@ -307,6 +312,7 @@ export class SqlitePersistence implements ModelsDevPersistence {
             model.maxOutputTokens ?? null,
             model.supportsVision ? 1 : 0,
             model.supportsTools ? 1 : 0,
+            model.supportsSystemMessages !== false ? 1 : 0,
             model.supportsReasoning ? 1 : 0,
             model.supportsStreaming ? 1 : 0,
             model.supportsStructuredOutput ? 1 : 0,
@@ -476,6 +482,7 @@ export class SqlitePersistence implements ModelsDevPersistence {
       maxOutputTokens: (row.max_output_tokens as number) || undefined,
       supportsVision: (row.supports_vision as number) === 1,
       supportsTools: (row.supports_tools as number) === 1,
+      supportsSystemMessages: (row.supports_system_messages as number) !== 0,
       supportsReasoning: (row.supports_reasoning as number) === 1,
       supportsStreaming: (row.supports_streaming as number) !== 0,
       supportsStructuredOutput: (row.supports_structured_output as number) === 1,

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { getWsClient } from "../lib/ws-client";
 import { ProviderGrid } from "../components/provider-setup/ProviderGrid";
 import { ApiKeyInput } from "../components/provider-setup/ApiKeyInput";
@@ -53,6 +52,33 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
   const selected = providers.find((p) => p.id === selectedProvider);
 
+  const waitForProviderReady = async (): Promise<void> => {
+    const client = getWsClient();
+    const start = Date.now();
+    const timeoutMs = 30_000;
+
+    for (;;) {
+      if (client.getState() === "failed") {
+        client.reconnect();
+      }
+
+      try {
+        const status = await client.request<{ agent: { providerReady: boolean } }>("status.get");
+        if (status.agent.providerReady) {
+          return;
+        }
+      } catch {
+        // Admin WS may still be applying the provider change.
+      }
+
+      if (Date.now() - start > timeoutMs) {
+        throw new Error("Provider was saved, but the running agent did not become ready in time");
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedProvider || !apiKey) return;
 
@@ -63,8 +89,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       await getWsClient().request("config.update", {
         provider: { id: selectedProvider, apiKey, model: model || undefined },
       });
-      await invoke("restart_server");
-      setTimeout(() => onComplete(), 3000);
+      await waitForProviderReady();
+      onComplete();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save configuration";
       setError(msg);

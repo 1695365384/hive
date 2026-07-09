@@ -20,6 +20,7 @@ export interface ServerStatus {
     initialized: boolean
     providerReady: boolean
     currentProvider: string | null
+    currentModel: string | null
     activePlugins: string[]
   }
   system: {

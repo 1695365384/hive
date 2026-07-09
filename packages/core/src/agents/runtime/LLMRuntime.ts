@@ -58,6 +58,44 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
 // ============================================
 
 /**
+ * Extract the real provider error from AI SDK wrapper errors.
+ *
+ * Vercel AI SDK wraps provider errors as AI_APICallError with a generic
+ * "No output generated" message. The actual error lives in:
+ *   - error.data?.error?.message  (parsed)
+ *   - error.responseBody           (raw JSON string)
+ *   - error.statusCode             (HTTP status)
+ *
+ * Falls back to the original error message if no structured data is found.
+ */
+function extractProviderErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>;
+
+    // AI SDK v6: AI_APICallError.data.error.message
+    const data = e.data as Record<string, unknown> | undefined;
+    const dataError = data?.error as Record<string, unknown> | undefined;
+    if (typeof dataError?.message === 'string') {
+      const status = typeof e.statusCode === 'number' ? `[${e.statusCode}] ` : '';
+      return `${status}${dataError.message}`;
+    }
+
+    // Fallback: raw responseBody JSON string
+    if (typeof e.responseBody === 'string') {
+      try {
+        const body = JSON.parse(e.responseBody) as Record<string, unknown>;
+        const bodyError = body?.error as Record<string, unknown> | undefined;
+        if (typeof bodyError?.message === 'string') {
+          const status = typeof e.statusCode === 'number' ? `[${e.statusCode}] ` : '';
+          return `${status}${bodyError.message}`;
+        }
+      } catch { /* not JSON, use raw message */ }
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
  * 统一的 LLM 执行引擎
  */
 export class LLMRuntime {
@@ -65,6 +103,46 @@ export class LLMRuntime {
 
   constructor(providerManager: ProviderManager) {
     this.providerManager = providerManager;
+  }
+
+  // ============================================
+  // Request Normalization (LiteLLM-style)
+  //
+  // 每个模型的能力不同（是否支持 system role、tool calling 等）。
+  // 发送请求前根据 model spec 做 normalize，避免 400 错误。
+  // ============================================
+
+  /**
+   * 根据模型能力 normalize 请求配置。
+   *
+   * - 不支持 system role → system 拼入 prompt 前缀
+   * - 不支持 tools → 清空 tools
+   */
+  private normalizeConfig(config: RuntimeConfig, spec?: ModelSpec | null): RuntimeConfig {
+    const out = { ...config };
+
+    if (spec) {
+      // 不支持 system messages: 把 system prompt 移入第一个 user message
+      if (spec.supportsSystemMessages === false && config.system) {
+        out.system = undefined;
+        if (out.messages && out.messages.length > 0) {
+          out.messages = out.messages.map((m, i) =>
+            i === 0 && m.role === 'user'
+              ? { role: 'user' as const, content: `${config.system}\n\n---\n\n${m.content}` }
+              : m,
+          );
+        } else if (config.prompt) {
+          out.prompt = `${config.system}\n\n---\n\n${config.prompt}`;
+        }
+      }
+
+      // 不支持 tool calling: 清空工具集
+      if (spec.supportsTools === false) {
+        out.tools = undefined;
+      }
+    }
+
+    return out;
   }
 
   /**
@@ -81,10 +159,13 @@ export class LLMRuntime {
       contextWindow: spec.contextWindow,
       maxOutputTokens: spec.maxOutputTokens ?? 0,
       supportsTools: spec.supportsTools ?? false,
+      supportsSystemMessages: spec.supportsSystemMessages ?? true,
     } : undefined;
 
+    const normalizedConfig = this.normalizeConfig(config, spec);
+
     try {
-      return await this.runGenerate(model, config, startTime, modelSpec);
+      return await this.runGenerate(model, normalizedConfig, startTime, modelSpec);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
 
@@ -92,7 +173,7 @@ export class LLMRuntime {
         return this.buildErrorResult(startTime, 'Request aborted', modelSpec);
       }
 
-      return this.buildErrorResult(startTime, err.message, modelSpec);
+      return this.buildErrorResult(startTime, extractProviderErrorMessage(error), modelSpec);
     }
   }
 
@@ -142,6 +223,7 @@ export class LLMRuntime {
           contextWindow: spec.contextWindow,
           maxOutputTokens: spec.maxOutputTokens ?? 0,
           supportsTools: spec.supportsTools ?? false,
+          supportsSystemMessages: spec.supportsSystemMessages ?? true,
         } : undefined;
 
         if (!model) {
@@ -149,14 +231,16 @@ export class LLMRuntime {
           return;
         }
 
+        const normalizedConfig = self.normalizeConfig(config, spec);
+
         const streamResult = streamText({
           model,
-          prompt: config.prompt,
-          system: config.system,
-          messages: config.messages as any,
-          tools: config.tools,
-          stopWhen: stepCountIs(config.maxSteps ?? 10),
-          abortSignal: config.abortSignal,
+          prompt: normalizedConfig.prompt,
+          system: normalizedConfig.system,
+          messages: normalizedConfig.messages as any,
+          tools: normalizedConfig.tools,
+          stopWhen: stepCountIs(normalizedConfig.maxSteps ?? 10),
+          abortSignal: normalizedConfig.abortSignal,
         });
 
         try {
@@ -197,7 +281,20 @@ export class LLMRuntime {
             resolveResult(self.buildErrorResult(startTime, 'Request aborted', modelSpec));
             return;
           }
-          resolveResult(self.buildErrorResult(startTime, err.message, modelSpec));
+          // Extract real provider error from AI SDK wrapper (vs generic "No output generated")
+          const realMessage = extractProviderErrorMessage(error);
+          resolveResult(self.buildErrorResult(startTime, realMessage, modelSpec));
+
+          // Drain streamResult promises to prevent unhandled rejections.
+          // When the stream fails, streamText() internals may still have pending
+          // promises that reject — catching them prevents noisy unhandledRejection.
+          void Promise.all([
+            Promise.resolve(streamResult.text),
+            Promise.resolve(streamResult.finishReason),
+            Promise.resolve(streamResult.steps),
+            Promise.resolve(streamResult.usage),
+            Promise.resolve(streamResult.totalUsage),
+          ]).then(undefined, () => {});
           return;
         }
 

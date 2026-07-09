@@ -278,6 +278,34 @@ describe('AdminWsHandler', () => {
       expect(event.data.keys).toContain('provider')
     })
 
+    it('should hot-apply provider config to the running agent', async () => {
+      vi.mocked(existsSync).mockReturnValue(true)
+      vi.mocked(readFileSync).mockReturnValue('{}')
+
+      const register = vi.fn()
+      const useProvider = vi.fn()
+      const { handler, ws, getSentMessages } = setup()
+      handler.setServer({
+        agent: {
+          context: { providerManager: { register } },
+          useProvider,
+        },
+      } as any)
+
+      const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('config.update', {
+        provider: { id: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4' },
+      }))
+
+      const res = messages.find((m: any) => m.type === 'res')!
+      expect(res.success).toBe(true)
+      expect(register).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'anthropic',
+        apiKey: 'sk-ant-test',
+        model: 'claude-sonnet-4',
+      }))
+      expect(useProvider).toHaveBeenCalledWith('anthropic', 'sk-ant-test')
+    })
+
     it('should update server config', async () => {
       vi.mocked(existsSync).mockReturnValue(true)
       vi.mocked(readFileSync).mockReturnValue('{}')
@@ -352,7 +380,7 @@ describe('AdminWsHandler', () => {
     it('should show providerReady=true when provider has apiKey', async () => {
       const { handler, ws, getSentMessages } = setup()
       handler.setServer({
-        agent: { currentProvider: { id: 'glm', apiKey: 'sk-12345' } },
+        agent: { currentProvider: { id: 'glm', apiKey: 'sk-12345', model: 'glm-4.5' } },
       } as any)
 
       const messages = await sendAndWait(handler, { ws, getSentMessages }, createRequest('status.get'))
@@ -360,6 +388,7 @@ describe('AdminWsHandler', () => {
       const res = messages[0] as any
       expect(res.result.agent.providerReady).toBe(true)
       expect(res.result.agent.currentProvider).toBe('glm')
+      expect(res.result.agent.currentModel).toBe('glm-4.5')
     })
 
     it('should show providerReady=false when apiKey is empty', async () => {

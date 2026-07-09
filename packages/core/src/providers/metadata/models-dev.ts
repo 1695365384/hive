@@ -114,6 +114,7 @@ export class ModelsDevClient {
       supportsVision: raw.modalities?.input?.includes('image') || raw.attachment === true,
       supportsTools: raw.tool_call !== false,
       supportsStreaming: true,
+      supportsSystemMessages: true, // models.dev 不提供此字段，默认支持
       supportsReasoning: raw.reasoning === true,
       supportsStructuredOutput: raw.structured_output === true,
       supportsTemperature: raw.temperature === true,

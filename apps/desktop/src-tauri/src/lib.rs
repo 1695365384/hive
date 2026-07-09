@@ -21,6 +21,7 @@ const NO_PID: u32 = 0;
 /// Convert PID to i32 for libc calls, with defensive check.
 /// OS PIDs fit in i32 on all supported platforms; u32::MAX cast to i32 becomes -1
 /// which would signal the entire process group — this guard prevents that.
+#[cfg(unix)]
 fn pid_to_i32(pid: u32) -> Option<i32> {
     let p = pid as i32;
     if p > 0 { Some(p) } else { None }
@@ -88,37 +89,75 @@ async fn do_spawn(bin: &str, args: &[&str], cwd: &str) -> Result<tokio::process:
     Ok(child)
 }
 
-/// Kill processes occupying a port (SIGKILL, for initial startup cleanup only)
+/// Kill processes occupying a port (for initial startup cleanup only)
 async fn kill_port_processes(port: u16) {
-    if let Ok(output) = tokio::process::Command::new("lsof")
-        .args(["-ti", &format!(":{}", port)])
-        .output()
-        .await
-    {
-        let pids_str = String::from_utf8_lossy(&output.stdout).to_string();
-        for pid in pids_str.lines().filter(|l| !l.is_empty()) {
-            eprintln!("[hive] Force-killing leftover process {} on port {}", pid, port);
-            let _ = tokio::process::Command::new("kill")
-                .args(["-9", pid])
-                .output()
-                .await;
-        }
+    let pids = find_pids_on_port(port).await;
+    for pid in pids {
+        eprintln!("[hive] Force-killing leftover process {} on port {}", pid, port);
+        #[cfg(unix)]
+        let _ = tokio::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output()
+            .await;
+        #[cfg(windows)]
+        let _ = tokio::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .output()
+            .await;
     }
 }
 
-/// Wait for port to become free (polls lsof, respects graceful shutdown)
-async fn wait_for_port(port: u16, timeout_ms: u64) -> bool {
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_millis(timeout_ms);
-    while start.elapsed() < timeout {
+/// Find PIDs listening on a TCP port (platform-specific).
+async fn find_pids_on_port(port: u16) -> Vec<u32> {
+    #[cfg(unix)]
+    {
         if let Ok(output) = tokio::process::Command::new("lsof")
             .args(["-ti", &format!(":{}", port)])
             .output()
             .await
         {
-            if output.stdout.is_empty() {
-                return true;
-            }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout
+                .lines()
+                .filter_map(|l| l.trim().parse::<u32>().ok())
+                .collect();
+        }
+        vec![]
+    }
+    #[cfg(windows)]
+    {
+        // netstat -ano output: "  TCP    0.0.0.0:4450   0.0.0.0:0    LISTENING    1234"
+        if let Ok(output) = tokio::process::Command::new("netstat")
+            .args(["-ano"])
+            .output()
+            .await
+        {
+            let needle = format!(":{}", port);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout
+                .lines()
+                .filter(|l| l.contains(&needle) && l.contains("LISTENING"))
+                .filter_map(|l| l.split_whitespace().last()?.parse::<u32>().ok())
+                .collect();
+        }
+        vec![]
+    }
+}
+
+/// Check if a TCP port is in use (cross-platform, no external commands).
+async fn is_port_in_use(port: u16) -> bool {
+    tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port))
+        .await
+        .is_ok()
+}
+
+/// Wait for port to become free (polls TcpStream::connect, respects graceful shutdown)
+async fn wait_for_port(port: u16, timeout_ms: u64) -> bool {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+    while start.elapsed() < timeout {
+        if !is_port_in_use(port).await {
+            return true;
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
@@ -157,25 +196,37 @@ async fn spawn_server(state: &ServerState, force: bool) -> Result<(), String> {
     // - Dev mode: use system node to run entry script
     let spawn_info = {
         let res_root = state.resource_root.lock().unwrap();
-        if let Some(ref res_root) = *res_root {
-            let server_dir = format!("{}/server", res_root);
+        // In dev mode (cargo run), resource_root resolves to target/debug/
+        // but resources from tauri.conf.json are only bundled in production builds.
+        // Check if bundled server exists; if not, fall back to dev mode (system node).
+        let use_bundled = match &*res_root {
+            Some(ref root) => std::path::PathBuf::from(root)
+                .join("server")
+                .join("main.js")
+                .exists(),
+            None => false,
+        };
+        if use_bundled {
+            let res_root = res_root.as_ref().unwrap();
+            let server_dir = std::path::PathBuf::from(res_root).join("server");
+            let server_dir_str = server_dir.to_string_lossy().to_string();
             // Node.js binary name: node-{os}-{arch}
             // e.g. node-darwin-arm64, node-linux-x64
             #[cfg(target_os = "macos")]
             let node_bin = if cfg!(target_arch = "aarch64") {
-                format!("{}/node-darwin-arm64", server_dir)
+                server_dir.join("node-darwin-arm64").to_string_lossy().to_string()
             } else {
-                format!("{}/node-darwin-x64", server_dir)
+                server_dir.join("node-darwin-x64").to_string_lossy().to_string()
             };
             #[cfg(target_os = "linux")]
             let node_bin = if cfg!(target_arch = "x86_64") {
-                format!("{}/node-linux-x64", server_dir)
+                server_dir.join("node-linux-x64").to_string_lossy().to_string()
             } else {
-                format!("{}/node-linux-arm64", server_dir)
+                server_dir.join("node-linux-arm64").to_string_lossy().to_string()
             };
             #[cfg(target_os = "windows")]
-            let node_bin = format!("{}/node-win-x64.exe", server_dir);
-            (node_bin, vec!["main.js"], server_dir.clone())
+            let node_bin = server_dir.join("node-win-x64").to_string_lossy().to_string();
+            (node_bin, vec!["main.js"], server_dir_str)
         } else {
             (
                 "node".to_string(),
@@ -220,6 +271,34 @@ async fn health_check(port: u16) -> bool {
         .await
         .map(|r| r.status().is_success())
         .unwrap_or(false)
+}
+
+async fn request_server_stop(state: &ServerState) {
+    let pid = state.server_pid.load(Ordering::Acquire);
+    if pid == NO_PID {
+        return;
+    }
+
+    #[cfg(unix)]
+    {
+        eprintln!(
+            "[hive] Sending SIGTERM to server (pid {}) for restart...",
+            pid
+        );
+        // SAFETY: PID was obtained from a child we spawned.
+        unsafe {
+            send_signal(pid, libc::SIGTERM);
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        eprintln!(
+            "[hive] Force-killing server on port {} for restart (pid {})...",
+            SERVER_PORT, pid
+        );
+        kill_port_processes(SERVER_PORT).await;
+    }
 }
 
 /// Check if a process is running (via signal 0, POSIX standard).
@@ -395,19 +474,8 @@ async fn get_server_status(
 async fn restart_server(state: tauri::State<'_, Arc<ServerState>>) -> Result<(), String> {
     eprintln!("[hive] restart_server called");
 
-    // Read PID from AtomicU32 (independent of child ownership)
-    let pid = state.server_pid.load(Ordering::Acquire);
-
-    if pid != NO_PID {
-        eprintln!(
-            "[hive] Sending SIGTERM to server (pid {}) for restart...",
-            pid
-        );
-        // SAFETY: PID was obtained from a child we spawned.
-        #[cfg(unix)]
-        unsafe {
-            send_signal(pid, libc::SIGTERM);
-        }
+    if state.server_pid.load(Ordering::Acquire) != NO_PID {
+        request_server_stop(&state).await;
         // watch_server will detect exit and handle the restart
     } else {
         eprintln!("[hive] No server running, starting fresh...");
@@ -457,17 +525,8 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                         let s = (*state).clone();
 
                         // Read PID from AtomicU32 (not from child, which watch_server owns)
-                        let pid = s.server_pid.load(Ordering::Acquire);
-                        if pid != NO_PID {
-                            eprintln!(
-                                "[hive] Tray: Sending SIGTERM to server (pid {})",
-                                pid
-                            );
-                            // SAFETY: PID was obtained from a child we spawned.
-                            #[cfg(unix)]
-                            unsafe {
-                                send_signal(pid, libc::SIGTERM);
-                            }
+                        if s.server_pid.load(Ordering::Acquire) != NO_PID {
+                            request_server_stop(&s).await;
                         }
                     });
                 }
@@ -533,7 +592,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
             // 第二个实例启动时，已有实例会收到回调
         }))
-        .plugin(tauri_plugin_sql::init())
+        .plugin(tauri_plugin_sql::Builder::new().build())
         .manage(server_state)
         .invoke_handler(tauri::generate_handler![get_server_status, restart_server, show_notification])
         .setup(move |app| {

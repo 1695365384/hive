@@ -23,9 +23,8 @@ export const useServerStore = create<ServerState>((set, get) => ({
       throw err;
     }
 
-    // Poll health endpoint until server is ready or timeout
     const start = Date.now();
-    const poll = async (): Promise<void> => {
+    for (;;) {
       if (!get().restarting) return;
 
       try {
@@ -42,12 +41,10 @@ export const useServerStore = create<ServerState>((set, get) => ({
       if (Date.now() - start > POLL_TIMEOUT_MS) {
         set({ restarting: false });
         invoke("show_notification", { title: "Hive", body: "Server restart timed out" }).catch(() => {});
-        return;
+        throw new Error("Server restart timed out");
       }
 
-      setTimeout(poll, POLL_INTERVAL_MS);
-    };
-
-    poll();
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
   },
 }));

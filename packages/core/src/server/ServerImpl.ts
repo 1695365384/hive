@@ -27,6 +27,7 @@ import { ChannelContext } from './ChannelContext.js';
 import { setSendFileCallback } from '../tools/built-in/send-file-tool.js';
 import { FileMemory } from '../memory/FileMemory.js';
 import { setRememberCallback } from '../tools/built-in/remember-tool.js';
+import { SessionId } from './SessionId.js';
 import type {
   Server,
   ServerOptions,
@@ -193,11 +194,15 @@ class ServerImpl implements Server {
       return;
     }
 
-    const payload: Record<string, unknown> = { sessionId, type: 'reasoning', text: entry.buffer.trim() };
-    if (entry.workerId) payload.workerId = entry.workerId;
-    if (entry.workerType) payload.workerType = entry.workerType;
+    const event: StreamingEventUnion = {
+      sessionId,
+      type: 'reasoning',
+      text: entry.buffer.trim(),
+      ...(entry.workerId && { workerId: entry.workerId }),
+      ...(entry.workerType && { workerType: entry.workerType }),
+    };
 
-    this.emitStreaming(payload as any);
+    this.emitStreaming(event);
     this.reasoningBuffers.delete(sessionId);
   }
 
@@ -375,6 +380,27 @@ class ServerImpl implements Server {
     }
   }
 
+  /**
+   * Shared tool-call forwarder — used by BOTH worker hooks and coordinator callbacks.
+   * Eliminates the previous duplication where the two paths independently mapped
+   * tool events to streaming events.
+   */
+  private forwardToolCall(sessionId: string, toolName: string, input: unknown, workerId?: string, workerType?: string): void {
+    const summary = formatToolInput(toolName, input);
+    this.logger.info(`[agent] [tool] ${toolName} ${summary}`);
+    this.emitStreaming({ sessionId, type: 'tool-call', tool: toolName, input, workerId, workerType } as StreamingEventUnion);
+  }
+
+  /**
+   * Shared tool-result forwarder — used by BOTH worker hooks and coordinator callbacks.
+   * Same unification as forwardToolCall.
+   */
+  private forwardToolResult(sessionId: string, toolName: string, output: unknown, workerId?: string, workerType?: string): void {
+    const summary = formatToolResult(toolName, output);
+    this.logger.info(`[agent] [tool-result] ${toolName} → ${summary}`);
+    this.emitStreaming({ sessionId, type: 'tool-result', tool: toolName, output, workerId, workerType } as StreamingEventUnion);
+  }
+
   // ============================================
   // Channel 消息推送
   // ============================================
@@ -396,7 +422,11 @@ class ServerImpl implements Server {
 
     try {
       await channel.send({ to: chatId, content, type: (type || 'markdown') as 'text' | 'markdown', filePath });
-      this.logger.info(`[message:response] Pushed to channel ${channelId} chat ${chatId}`);
+      if (channelId === 'ws-chat') {
+        this.logger.info(`[message:response] Desktop: streaming events handle delivery (pushToChannel is no-op for text)`);
+      } else {
+        this.logger.info(`[message:response] Pushed to channel ${channelId} chat ${chatId}`);
+      }
     } catch (error) {
       this.logger.error(`[message:response] Failed to push to channel ${channelId}:`, error);
     }
@@ -413,7 +443,7 @@ class ServerImpl implements Server {
     const recipientId = channelMessage.to?.id ?? crypto.randomUUID();
 
     // Session key = channelId:recipientId — 隔离不同通道的会话
-    const sessionKey = channelId ? `${channelId}:${recipientId}` : recipientId;
+    const sessionKey = channelId ? SessionId.create(channelId, recipientId) : recipientId;
 
     // 注册 session → channel 映射
     if (channelId && channelMessage.to?.id) {
@@ -464,15 +494,14 @@ class ServerImpl implements Server {
 
       workerHookIds.push(
         this.agent.context.hookRegistry.on('worker:tool-call', (ctx: any) => {
-          this.logger.info(`[agent] [worker:${ctx.workerId}] [tool] ${ctx.toolName}`);
-          this.emitStreaming({ sessionId: sessionKey, type: 'tool-call', workerId: ctx.workerId, workerType: ctx.workerType, tool: ctx.toolName, input: ctx.input });
+          this.forwardToolCall(sessionKey, ctx.toolName, ctx.input, ctx.workerId, ctx.workerType);
           return { proceed: true };
         }),
       );
 
       workerHookIds.push(
         this.agent.context.hookRegistry.on('worker:tool-result', (ctx: any) => {
-          this.emitStreaming({ sessionId: sessionKey, type: 'tool-result', workerId: ctx.workerId, workerType: ctx.workerType, tool: ctx.toolName, output: ctx.output });
+          this.forwardToolResult(sessionKey, ctx.toolName, ctx.output, ctx.workerId, ctx.workerType);
           return { proceed: true };
         }),
       );
@@ -510,14 +539,10 @@ class ServerImpl implements Server {
             this.emitStreaming({ sessionId: sessionKey, type: 'text-delta', text });
           },
           onTool: (tool, input) => {
-            const summary = formatToolInput(tool, input);
-            this.logger.info(`[agent] [tool] ${tool} ${summary}`);
-            this.emitStreaming({ sessionId: sessionKey, type: 'tool-call', tool, input });
+            this.forwardToolCall(sessionKey, tool, input);
           },
           onToolResult: (tool, output) => {
-            const summary = formatToolResult(tool, output);
-            this.logger.info(`[agent] [tool-result] ${tool} → ${summary}`);
-            this.emitStreaming({ sessionId: sessionKey, type: 'tool-result', tool, output });
+            this.forwardToolResult(sessionKey, tool, output);
           },
         });
 
@@ -531,7 +556,7 @@ class ServerImpl implements Server {
 
         await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, replyText, replyType);
 
-        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: !abortController.signal.aborted, cancelled: abortController.signal.aborted });
+        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled: abortController.signal.aborted, error: result.error });
 
         this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
       } finally {

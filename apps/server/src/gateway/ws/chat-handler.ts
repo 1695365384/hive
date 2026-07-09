@@ -12,6 +12,8 @@
 import { EventEmitter } from 'node:events'
 import type { WebSocket } from 'ws'
 import type { Server } from '@bundy-lmw/hive-core'
+import { SessionId } from '@bundy-lmw/hive-core'
+import type { StreamingEventUnion } from '@bundy-lmw/hive-core'
 import type {
   WsRequest, WsResponse,
 } from './types.js'
@@ -137,12 +139,12 @@ export class ChatWsHandler extends EventEmitter {
     if (!this.server) return
 
     this._streamingUnregister = this.server.onStreamingEvent((event) => {
-      this.forwardStreamingEvent(event.sessionId, event.type, event)
+      this.forwardStreamingEvent(event)
     })
 
     this._fileUnregister = this.server.onFileEvent(async (event) => {
       const { sessionId, filePath } = event
-      const tid = sessionId.includes(':') ? sessionId.slice(sessionId.indexOf(':') + 1) : sessionId
+      const tid = SessionId.recipient(sessionId)
       const ws = this.threadClientMap.get(tid)
       if (!ws || ws.readyState !== ws.OPEN) return
 
@@ -183,14 +185,18 @@ export class ChatWsHandler extends EventEmitter {
   }
 
   /** 将流式事件映射为 WS 事件并定向发送 */
-  private forwardStreamingEvent(sessionId: string, type: string, data: any): void {
-    // sessionId 格式: "channelId:recipientId" → 提取 recipientId 作为 threadId
-    const threadId = sessionId.includes(':') ? sessionId.slice(sessionId.indexOf(':') + 1) : sessionId
+  private forwardStreamingEvent(event: StreamingEventUnion): void {
+    const sessionId = event.sessionId;
+    const threadId = SessionId.recipient(sessionId);
     const ws = this.threadClientMap.get(threadId)
-    if (!ws || ws.readyState !== ws.OPEN) return
+    if (!ws || ws.readyState !== ws.OPEN) {
+      console.warn(`[chat-handler] Dropping event "${event.type}" for thread "${threadId}": ` +
+        `${!ws ? 'no socket mapped' : 'socket not open (readyState=' + ws.readyState + ')'}`)
+      return
+    }
 
 
-    switch (type) {
+    switch (event.type) {
       case 'start':
         // 重置序号计数器
         this.seqCounters.set(threadId, 0)
@@ -198,11 +204,11 @@ export class ChatWsHandler extends EventEmitter {
         break
 
       case 'reasoning':
-        ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: data.text, seq: this.nextSeq(threadId), workerId: data.workerId, workerType: data.workerType })))
+        ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: event.text, seq: this.nextSeq(threadId), workerId: event.workerId, workerType: event.workerType })))
         break
 
       case 'text-delta':
-        ws.send(JSON.stringify(createEvent('agent.text-delta', { threadId, text: data.text, seq: this.nextSeq(threadId) })))
+        ws.send(JSON.stringify(createEvent('agent.text-delta', { threadId, text: event.text, seq: this.nextSeq(threadId) })))
         break
 
       case 'tool-call': {
@@ -212,40 +218,40 @@ export class ChatWsHandler extends EventEmitter {
           callMap = new Map()
           this.toolCallIdMaps.set(threadId, callMap)
         }
-        callMap.set(data.tool, toolCallId)
+        callMap.set(event.tool, toolCallId)
         ws.send(JSON.stringify(createEvent('agent.tool-call', {
-          threadId, toolCallId, toolName: data.tool, args: data.input, workerId: data.workerId, workerType: data.workerType,
+          threadId, toolCallId, toolName: event.tool, args: event.input, workerId: event.workerId, workerType: event.workerType,
         })))
         break
       }
 
       case 'tool-result': {
         const resultMap = this.toolCallIdMaps.get(threadId)
-        const toolCallId = resultMap?.get(data.tool) ?? crypto.randomUUID()
+        const toolCallId = resultMap?.get(event.tool) ?? crypto.randomUUID()
         ws.send(JSON.stringify(createEvent('agent.tool-result', {
-          threadId, toolCallId, toolName: data.tool, result: data.output, workerId: data.workerId, workerType: data.workerType,
+          threadId, toolCallId, toolName: event.tool, result: event.output, workerId: event.workerId, workerType: event.workerType,
         })))
         break
       }
 
       case 'worker-start':
         ws.send(JSON.stringify(createEvent('agent.worker-start', {
-          threadId, workerId: data.workerId, workerType: data.workerType, description: data.description,
+          threadId, workerId: event.workerId, workerType: event.workerType, description: event.description,
         })))
         break
 
       case 'worker-complete':
         ws.send(JSON.stringify(createEvent('agent.worker-complete', {
-          threadId, workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration,
+          threadId, workerId: event.workerId, workerType: event.workerType, success: event.success, error: event.error, duration: event.duration,
         })))
         break
 
       case 'complete':
         ws.send(JSON.stringify(createEvent('agent.complete', {
           threadId,
-          success: data.success,
-          cancelled: data.cancelled,
-          error: data.error,
+          success: event.success,
+          cancelled: event.cancelled,
+          error: event.error,
         })))
         // Only clean up toolCallIdMaps; threadClientMap is cleaned on WS disconnect
         this.toolCallIdMaps.delete(threadId)
@@ -276,7 +282,9 @@ export class ChatWsHandler extends EventEmitter {
 
     ws.on('close', () => {
       for (const tid of client.threadIds) {
-        this.threadClientMap.delete(tid)
+        if (this.threadClientMap.get(tid) === ws) {
+          this.threadClientMap.delete(tid)
+        }
         this.toolCallIdMaps.delete(tid)
       }
       this.clients.delete(client)
@@ -284,7 +292,9 @@ export class ChatWsHandler extends EventEmitter {
 
     ws.on('error', () => {
       for (const tid of client.threadIds) {
-        this.threadClientMap.delete(tid)
+        if (this.threadClientMap.get(tid) === ws) {
+          this.threadClientMap.delete(tid)
+        }
         this.toolCallIdMaps.delete(tid)
       }
       this.clients.delete(client)
@@ -395,7 +405,7 @@ export class ChatWsHandler extends EventEmitter {
     }
 
     // 直接调用 server.abort() 替代 bus.publish
-    this.server?.abort(`ws-chat:${threadId}`)
+    this.server?.abort(SessionId.forAbort(threadId))
 
     return createSuccessResponse(id, { threadId, cancelled: true })
   }

@@ -13,6 +13,14 @@ interface ServerConfig {
   heartbeat: { enabled: boolean; intervalMs: number; model?: string };
 }
 
+interface ConfigUpdateRequest {
+  provider?: {
+    id?: string;
+    apiKey?: string;
+    model?: string;
+  };
+}
+
 export function ConfigPage() {
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const restarting = useServerStore((s) => s.restarting);
@@ -26,6 +34,28 @@ export function ConfigPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [loadingModels, setLoadingModels] = useState(false);
+  const [savedMaskedApiKey, setSavedMaskedApiKey] = useState("");
+
+  const applyDraftToLocalConfig = (apiKeyChanged: boolean) => {
+    setConfig((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        provider: {
+          id: draftProvider,
+          apiKey: apiKeyChanged ? draftApiKey : current.provider.apiKey,
+          model: draftModel || undefined,
+        },
+      };
+    });
+  };
+
+  const providerChanged = draftProvider !== config?.provider.id;
+  const apiKeyChanged = draftApiKey !== savedMaskedApiKey;
+  const requiresApiKey = providerChanged || savedMaskedApiKey.length === 0 || apiKeyChanged;
 
   useEffect(() => {
     getWsClient()
@@ -35,6 +65,7 @@ export function ConfigPage() {
           setConfig(data);
           setDraftProvider(data.provider.id);
           setDraftApiKey(data.provider.apiKey);
+          setSavedMaskedApiKey(data.provider.apiKey);
           setDraftModel(data.provider.model ?? "");
         }
       })
@@ -63,22 +94,26 @@ export function ConfigPage() {
   }, [draftProvider]);
 
   const handleSave = async () => {
-    if (!draftProvider || !draftApiKey) return;
+    if (!draftProvider || (requiresApiKey && !draftApiKey)) return;
 
     setSaving(true);
     setError("");
 
     try {
-      await getWsClient().request("config.update", {
-        provider: { id: draftProvider, apiKey: draftApiKey, model: draftModel || undefined },
-      });
-      await startRestart();
-      if (config) {
-        setConfig({
-          ...config,
-          provider: { id: draftProvider, apiKey: draftApiKey, model: draftModel || undefined },
-        });
+      const providerUpdate: NonNullable<ConfigUpdateRequest["provider"]> = {
+        id: draftProvider,
+        model: draftModel || undefined,
+      };
+
+      if (providerChanged || apiKeyChanged) {
+        providerUpdate.apiKey = draftApiKey;
       }
+
+      await getWsClient().request("config.update", {
+        provider: providerUpdate,
+      } satisfies ConfigUpdateRequest);
+      applyDraftToLocalConfig(providerChanged || apiKeyChanged);
+      setSavedMaskedApiKey(providerChanged || apiKeyChanged ? draftApiKey : savedMaskedApiKey);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save configuration";
       setError(msg);
@@ -91,13 +126,14 @@ export function ConfigPage() {
     if (!config) return;
     setDraftProvider(config.provider.id);
     setDraftApiKey(config.provider.apiKey);
+    setSavedMaskedApiKey(config.provider.apiKey);
     setDraftModel(config.provider.model ?? "");
     setError("");
   };
 
   const isDirty =
-    draftProvider !== config?.provider.id ||
-    draftApiKey !== config?.provider.apiKey ||
+    providerChanged ||
+    apiKeyChanged ||
     draftModel !== (config?.provider.model ?? "");
 
   const selected = providers.find((p) => p.id === draftProvider);
@@ -184,7 +220,7 @@ export function ConfigPage() {
             <div className="flex gap-3">
               <button
                 onClick={handleSave}
-                disabled={saving || !draftProvider || !draftApiKey}
+                disabled={saving || !draftProvider || (requiresApiKey && !draftApiKey)}
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
               >
                 {saving ? "Saving..." : "Save Changes"}

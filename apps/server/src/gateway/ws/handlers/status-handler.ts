@@ -53,6 +53,7 @@ export class StatusHandler extends WsDomainHandler {
         initialized: !!server,
         providerReady,
         currentProvider: provider?.id ?? null,
+        currentModel: provider?.model ?? null,
         activePlugins: [],
       },
       system: {
@@ -131,6 +132,7 @@ export class StatusHandler extends WsDomainHandler {
         family: m.family,
         contextWindow: m.contextWindow,
         maxOutputTokens: m.maxOutputTokens,
+        supportsTools: m.supportsTools ?? false,
       })))
     } catch (error) {
       return createErrorResponse(id, 'INTERNAL', error instanceof Error ? error.message : 'Failed to get models')

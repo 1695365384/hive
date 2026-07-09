@@ -27,14 +27,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run copy-templates",
-    "copy-templates": "cp -r src/agents/prompts/templates dist/agents/prompts/",
+    "copy-templates": "node ../../scripts/copy-templates.mjs",
     "dev": "tsc -p tsconfig.build.json --watch",
     "cli": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "clean": "rm -rf dist coverage"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('coverage',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.62",

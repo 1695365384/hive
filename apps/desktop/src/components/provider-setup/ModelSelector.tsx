@@ -23,6 +23,9 @@ export function ModelSelector({
   onChange,
   loading,
 }: ModelSelectorProps) {
+  const selectedModel = models.find(m => m.id === value);
+  const toolsWarning = selectedModel && selectedModel.supportsTools === false;
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -49,6 +52,12 @@ export function ModelSelector({
           placeholder="Model ID (e.g., glm-4-flash)"
           className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-2.5 text-stone-100 placeholder-stone-500 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         />
+      )}
+
+      {toolsWarning && (
+        <p className="text-xs text-amber-400/80">
+          此模型可能不支持工具调用。如果任务需要 Worker 执行代码或命令，建议选择支持 tools 的模型。
+        </p>
       )}
     </div>
   );
@@ -84,6 +93,7 @@ function ModelDropdown({
           {items.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name ?? m.id}
+              {m.supportsTools === false ? " (⚠ no tools)" : ""}
               {m.contextWindow > 0 && ` (${formatContextWindow(m.contextWindow)} ctx)`}
             </option>
           ))}

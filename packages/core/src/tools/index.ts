@@ -37,6 +37,14 @@ export {
   type SendFileCallback,
 } from './built-in/index.js';
 
+// Skill Install 工具
+export { createSkillInstallTool, createRawSkillInstallTool, setInstallConfirmCallback, setSkillInstalledCallback, setReloadSkillsCallback } from './built-in/index.js';
+export type { InstallConfirmCallback, SkillInstalledCallback, ReloadSkillsCallback, SkillInstallToolInput } from './built-in/index.js';
+
+// MCP Install 工具
+export { createMcpInstallTool, createRawMcpInstallTool, setGetMcpManagerCallback, setMcpInstallConfirmCallback, setMcpServersChangedCallback } from './built-in/index.js';
+export type { GetMcpManagerCallback, McpServersChangedCallback, McpInstallToolInput } from './built-in/index.js';
+
 // 工具基础设施
 export { truncateOutput } from './built-in/utils/output-safety.js';
 export { isDangerousCommand, isSensitiveFile } from './built-in/utils/security.js';

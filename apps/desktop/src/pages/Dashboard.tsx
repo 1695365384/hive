@@ -18,6 +18,7 @@ type DrawerHeight = "collapsed" | "half" | "full";
 interface AgentStatus {
   providerReady: boolean;
   currentProvider: string | null;
+  currentModel?: string | null;
 }
 
 export function Dashboard() {
@@ -46,7 +47,14 @@ export function Dashboard() {
       .then(setProviders)
       .catch(() => {});
 
-    return () => clearInterval(interval);
+    const unsubscribeConfigChanged = getWsClient().on("config.changed", () => {
+      fetchStatus();
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsubscribeConfigChanged();
+    };
   }, []);
 
   const currentProvider = providers.find((p) => p.id === agentStatus?.currentProvider);
@@ -133,7 +141,7 @@ export function Dashboard() {
                 )}
                 <div className="min-w-0">
                   <p className="text-xs text-stone-300 truncate">{currentProvider.name}</p>
-                  <p className="text-[10px] text-stone-600 truncate">{currentProvider.defaultModel || "auto"}</p>
+                  <p className="text-[10px] text-stone-600 truncate">{agentStatus?.currentModel || "auto"}</p>
                 </div>
               </button>
             ) : (

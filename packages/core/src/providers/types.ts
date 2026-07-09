@@ -83,6 +83,8 @@ export interface ModelSpec {
   supportsTools?: boolean;
   /** 是否支持流式输出 */
   supportsStreaming?: boolean;
+  /** 是否支持 `system` role 在 messages 数组中（默认 true） */
+  supportsSystemMessages?: boolean;
   /** 是否支持推理（如 DeepSeek Reasoner） */
   supportsReasoning?: boolean;
   /** 是否支持结构化输出 */

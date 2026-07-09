@@ -13,6 +13,7 @@ import type {
   ChannelCapabilities,
   FileHandler,
 } from '@bundy-lmw/hive-core';
+import { SessionId } from '@bundy-lmw/hive-core';
 
 export class DesktopWSChannel implements IChannel {
   readonly id = 'ws-chat';
@@ -37,7 +38,7 @@ export class DesktopWSChannel implements IChannel {
 
     if (options.filePath) {
       this.onFile({
-        sessionId: `ws-chat:${to}`,
+        sessionId: SessionId.create('ws-chat', to),
         threadId: to,
         filePath: options.filePath,
         content: options.content || '',
@@ -49,6 +50,7 @@ export class DesktopWSChannel implements IChannel {
     // Desktop 端不需要 message:response 重复推送文本
     // 流式阶段 agent:streaming text-delta 已经完整推送了所有文本
     if (options.content) {
+      console.debug(`[DesktopWSChannel] Text delivery is handled by streaming events (pushToChannel is no-op for text on desktop)`)
       return { success: true };
     }
 

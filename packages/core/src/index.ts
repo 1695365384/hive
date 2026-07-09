@@ -513,11 +513,13 @@ export {
 
 export {
   createServer,
+  SessionId,
 } from './server/index.js';
 
 export type {
   Server,
   ServerOptions,
+  ParsedSessionId,
 } from './server/index.js';
 
 // ============================================
@@ -549,3 +551,19 @@ export {
   PackCycleError,
   PackDependencyMissingError,
 } from './vertical/index.js';
+
+// ============================================
+// MCP 系统（Model Context Protocol）
+// ============================================
+
+export {
+  McpClient,
+  mcpToolToAiTool,
+  McpManager,
+} from './mcp/index.js';
+
+export type {
+  McpToolDefinition,
+  McpServerInfo,
+  McpServerStatusCallback,
+} from './mcp/index.js';

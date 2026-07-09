@@ -102,6 +102,7 @@ export interface RuntimeResult {
     contextWindow: number;
     maxOutputTokens: number;
     supportsTools: boolean;
+    supportsSystemMessages: boolean;
   };
 }
 

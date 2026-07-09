@@ -28,6 +28,7 @@ function createMockContext(): AgentContext {
     matchSkill: vi.fn(),
     getAgentConfig: vi.fn(),
     timeoutCap: {} as AgentContext['timeoutCap'],
+    mcpManager: {} as AgentContext['mcpManager'],
   };
 }
 

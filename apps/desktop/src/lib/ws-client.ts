@@ -103,6 +103,31 @@ export class WsClient {
     this.connect()
   }
 
+  waitForConnected(timeoutMs = 8_000): Promise<void> {
+    if (this.state === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
+      return Promise.resolve()
+    }
+
+    if (this.state === 'failed') {
+      this.reconnect()
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        unsubscribe()
+        reject(new Error('Chat service is not connected. Please wait a moment and try again.'))
+      }, timeoutMs)
+
+      const unsubscribe = this.onStateChange((state) => {
+        if (state === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
+          clearTimeout(timeout)
+          unsubscribe()
+          resolve()
+        }
+      })
+    })
+  }
+
   // ============================================
   // 请求方法 (req/res)
   // ============================================
@@ -256,6 +281,8 @@ export function getWsClient(): WsClient {
   if (!adminClient || adminClient.isDestroyed) {
     adminClient = new WsClient(ADMIN_WS_URL)
     adminClient.connect()
+  } else if (adminClient.getState() === 'failed') {
+    adminClient.reconnect()
   }
   return adminClient
 }
@@ -264,6 +291,8 @@ export function getChatWsClient(): WsClient {
   if (!chatClient || chatClient.isDestroyed) {
     chatClient = new WsClient(CHAT_WS_URL)
     chatClient.connect()
+  } else if (chatClient.getState() === 'failed') {
+    chatClient.reconnect()
   }
   return chatClient
 }

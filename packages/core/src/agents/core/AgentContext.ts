@@ -17,6 +17,7 @@ import type { EnvironmentContext } from '../../environment/types.js';
 import { TimeoutCapability, createTimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { CapabilityRegistry } from './CapabilityRegistry.js';
 import type { FileMemory } from '../../memory/FileMemory.js';
+import { McpManager } from '../../mcp/McpManager.js';
 
 /**
  * Agent 上下文选项
@@ -43,6 +44,9 @@ export class AgentContextImpl implements AgentContext {
   /** 内置超时能力 */
   readonly timeoutCap: TimeoutCapability;
 
+  /** MCP 服务器管理器 */
+  readonly mcpManager: McpManager;
+
   /** 能力注册表 */
   readonly capabilityRegistry: CapabilityRegistry;
 
@@ -67,6 +71,9 @@ export class AgentContextImpl implements AgentContext {
 
     // 创建内置超时能力
     this.timeoutCap = createTimeoutCapability(timeoutConfig);
+
+    // 创建 MCP 管理器
+    this.mcpManager = new McpManager();
   }
 
   /**
@@ -154,6 +161,9 @@ export class AgentContextImpl implements AgentContext {
     }
 
     this.capabilityRegistry.clear();
+
+    // 销毁 MCP 管理器
+    await this.mcpManager.dispose();
 
     // 销毁内置超时能力（最后销毁）
     if (this.timeoutCap.dispose) {
