@@ -91,4 +91,7 @@ eval/results/
 
 docs/superpowers/
 .superpowers
-.playwright-mcp
+|.playwright-mcp
+
+# AI session caches
+.omo/
