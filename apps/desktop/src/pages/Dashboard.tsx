@@ -1,174 +1,328 @@
 import { useState, useEffect } from "react";
-import { getWsClient } from "../lib/ws-client";
-import { useWsClient } from "../hooks/use-ws-client";
 import { useLogPolling } from "../hooks/use-log-polling";
-import { useServerStore } from "../stores/server-store";
+import { useSessionStore } from "../stores/session-store";
 import { ConfigPage } from "./ConfigPage";
 import { PluginPage } from "./PluginPage";
 import { StatusPage } from "./StatusPage";
 import { ChatPage } from "./ChatPage";
 import { LogDrawer } from "../components/LogDrawer";
 import { StatusBar } from "../components/StatusBar";
-import { MessageSquare, Activity, Settings, Puzzle } from "lucide-react";
-import type { ProviderInfo } from "../types/provider";
+import { TitleBar } from "../components/TitleBar";
+import {
+  Plus,
+  Search,
+  Trash2,
+  Pencil,
+  X,
+  MessageSquare,
+  Settings,
+  Activity,
+  Puzzle,
+} from "lucide-react";
+import type { Session } from "../types/chat";
+import { formatRelativeTime } from "../lib/session-utils";
 
-type Page = "status" | "config" | "plugins" | "chat";
+type SettingsTab = "config" | "status" | "plugins";
 type DrawerHeight = "collapsed" | "half" | "full";
 
-interface AgentStatus {
-  providerReady: boolean;
-  currentProvider: string | null;
-  currentModel?: string | null;
-}
-
 export function Dashboard() {
-  const [page, setPage] = useState<Page>("status");
   const [drawerHeight, setDrawerHeight] = useState<DrawerHeight>("collapsed");
-  const { state } = useWsClient();
-  const restarting = useServerStore((s) => s.restarting);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   useLogPolling();
 
-  // 获取当前 provider 信息（用于侧边栏底部显示）
-  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  // Session store
+  const sessions = useSessionStore((s) => s.sessions);
+  const currentId = useSessionStore((s) => s.currentId);
+  const selectSession = useSessionStore((s) => s.selectSession);
+  const createSession = useSessionStore((s) => s.createSession);
+  const deleteSession = useSessionStore((s) => s.deleteSession);
+  const renameSession = useSessionStore((s) => s.renameSession);
+  const init = useSessionStore((s) => s.init);
+  const available = useSessionStore((s) => s.available);
+  const loading = useSessionStore((s) => s.loading);
+
+  const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   useEffect(() => {
-    const fetchStatus = () => {
-      getWsClient()
-        .request<{ agent: AgentStatus }>("status.get")
-        .then((data) => setAgentStatus(data.agent))
-        .catch(() => {});
-    };
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
+    init();
+  }, [init]);
 
-    getWsClient()
-      .request<ProviderInfo[]>("provider.list")
-      .then(setProviders)
-      .catch(() => {});
+  const filtered = search
+    ? sessions.filter((s) =>
+        s.title.toLowerCase().includes(search.toLowerCase()),
+      )
+    : sessions;
 
-    const unsubscribeConfigChanged = getWsClient().on("config.changed", () => {
-      fetchStatus();
-    });
-
-    return () => {
-      clearInterval(interval);
-      unsubscribeConfigChanged();
-    };
-  }, []);
-
-  const currentProvider = providers.find((p) => p.id === agentStatus?.currentProvider);
-
-  const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
-    { id: "chat", label: "Chat", icon: <MessageSquare className="w-4 h-4" /> },
-    { id: "status", label: "Status", icon: <Activity className="w-4 h-4" /> },
-    { id: "config", label: "Config", icon: <Settings className="w-4 h-4" /> },
-    { id: "plugins", label: "Plugins", icon: <Puzzle className="w-4 h-4" /> },
-  ];
-
-  const toggleDrawer = () => {
+  const toggleDrawer = () =>
     setDrawerHeight((h) => (h === "collapsed" ? "half" : "collapsed"));
-  };
 
   return (
-    <div className="flex flex-col h-screen bg-stone-950 text-stone-100">
+    <div className="flex flex-col h-screen bg-stone-900 text-stone-100">
+      <TitleBar />
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
-        <aside className="w-52 bg-stone-900 border-r border-stone-800 flex flex-col">
-          <div className="p-4 border-b border-stone-800 flex items-center gap-3">
-            <img src="/logo.svg" alt="Hive" className="w-9 h-9" />
-            <div>
-              <h1 className="text-lg font-bold text-amber-400 tracking-wide">
-                Hive
-              </h1>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <div
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    restarting
-                      ? "bg-amber-500 animate-pulse"
-                      : state === "connected"
-                      ? "bg-green-500"
-                      : state === "reconnecting"
-                      ? "bg-amber-500"
-                      : "bg-red-500"
-                  }`}
-                />
-                <span className="text-[11px] text-stone-500 capitalize">
-                  {restarting ? "restarting" : state}
-                </span>
-              </div>
+        {/* ---- Unified sidebar ---- */}
+        <aside className="w-64 bg-stone-900 border-r border-stone-800 flex flex-col">
+          {/* New chat */}
+          <div className="px-3 py-2.5">
+            <button
+              onClick={() => createSession()}
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-stone-100 text-xs font-medium transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Chat
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="px-2 py-1">
+            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-stone-800/50 border border-stone-700/50 text-stone-500 text-xs">
+              <Search className="w-3 h-3 shrink-0" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="flex-1 bg-transparent outline-none text-stone-300 placeholder-stone-600"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="hover:text-stone-400">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
 
-          <nav className="flex-1 p-2 space-y-0.5">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setPage(item.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all duration-150 flex items-center gap-2.5 ${
-                  page === item.id
-                    ? "bg-amber-500/15 text-amber-400 font-medium shadow-sm shadow-amber-500/5"
-                    : "text-stone-400 hover:bg-stone-800/80 hover:text-stone-200"
-                }`}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          {/* Current Provider 显示 */}
-          <div className="p-3 border-t border-stone-800">
-            {agentStatus?.providerReady && currentProvider ? (
-              <button
-                onClick={() => setPage("config")}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-stone-800 transition-colors text-left"
-                title={`${currentProvider.name} — Click to change`}
-              >
-                {currentProvider.logo ? (
-                  <div className="w-5 h-5 rounded bg-white/10 p-0.5 shrink-0">
-                    <img
-                      src={currentProvider.logo}
-                      alt=""
-                      className="w-full h-full object-contain"
-                      style={{ filter: "invert(1) brightness(2)" }}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-5 h-5 rounded bg-stone-700 flex items-center justify-center text-[10px] text-stone-400 shrink-0">
-                    {currentProvider.name.slice(0, 2)}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-xs text-stone-300 truncate">{currentProvider.name}</p>
-                  <p className="text-[10px] text-stone-600 truncate">{agentStatus?.currentModel || "auto"}</p>
-                </div>
-              </button>
-            ) : (
-              <button
-                onClick={() => setPage("config")}
-                className="w-full text-left px-2 py-1.5 text-xs text-amber-400 hover:bg-stone-800 rounded transition-colors"
-              >
-                ⚠ Configure provider
-              </button>
+          {/* Session list */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-2 py-1 space-y-0.5">
+            {!available && null}
+            {loading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-4 h-4 border-2 border-stone-700 border-t-amber-500 rounded-full animate-spin" />
+              </div>
             )}
-            <p className="text-[10px] text-stone-600 mt-2">v0.1.0</p>
+            {!loading && filtered.length === 0 && (
+              <div className="text-center py-8 px-4">
+                <p className="text-xs text-stone-600">
+                  {search ? "No matching sessions" : "No sessions yet"}
+                </p>
+              </div>
+            )}
+            {filtered.map((session) => (
+              <SessionItem
+                key={session.id}
+                session={session}
+                isActive={session.id === currentId}
+                isEditing={session.id === editingId}
+                editValue={editValue}
+                onSelect={() => selectSession(session.id)}
+                onEditValueChange={setEditValue}
+                onRenameConfirm={async () => {
+                  if (editingId) {
+                    await renameSession(editingId, editValue.trim() || "New Chat");
+                    setEditingId(null);
+                  }
+                }}
+                onRenameCancel={() => setEditingId(null)}
+                onRenameStart={() => {
+                  setEditingId(session.id);
+                  setEditValue(session.title);
+                }}
+                onDelete={async (e) => {
+                  e.stopPropagation();
+                  await deleteSession(session.id);
+                  setEditingId(null);
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Bottom: Settings */}
+          <div className="border-t border-stone-800 p-2">
+            <button
+              onClick={() => setSettingsTab("config")}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors text-xs"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Settings
+            </button>
           </div>
         </aside>
 
-        {/* Content */}
+        {/* ---- Main content ---- */}
         <main className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-auto">
-            {page === "chat" && <ChatPage />}
-            {page === "status" && <StatusPage />}
-            {page === "config" && <ConfigPage />}
-            {page === "plugins" && <PluginPage />}
+          <div className="flex-1 overflow-hidden">
+            <ChatPage />
           </div>
           <LogDrawer height={drawerHeight} onHeightChange={setDrawerHeight} />
         </main>
       </div>
 
       <StatusBar drawerHeight={drawerHeight} onToggle={toggleDrawer} />
+
+      {/* ---- Settings modal ---- */}
+      {settingsTab && (
+        <SettingsModal
+          tab={settingsTab}
+          onTabChange={setSettingsTab}
+          onClose={() => setSettingsTab(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Session item (inline, simplified from SessionSidebar)
+// ============================================
+
+interface SessionItemProps {
+  session: Session;
+  isActive: boolean;
+  isEditing: boolean;
+  editValue: string;
+  onSelect: () => void;
+  onEditValueChange: (v: string) => void;
+  onRenameConfirm: () => void;
+  onRenameCancel: () => void;
+  onRenameStart: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}
+
+function SessionItem({
+  session,
+  isActive,
+  isEditing,
+  editValue,
+  onSelect,
+  onEditValueChange,
+  onRenameConfirm,
+  onRenameCancel,
+  onRenameStart,
+  onDelete,
+}: SessionItemProps) {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") onRenameConfirm();
+    if (e.key === "Escape") onRenameCancel();
+  };
+
+  return (
+    <div
+      onClick={isEditing ? undefined : onSelect}
+      className={`group relative flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
+        isActive
+          ? "bg-stone-800/80 text-stone-200"
+          : "hover:bg-stone-800/50 text-stone-400"
+      }`}
+    >
+      <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" />
+      <div className="flex-1 min-w-0">
+        {isEditing ? (
+          <input
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={onRenameConfirm}
+            className="w-full text-xs font-medium bg-stone-800 text-stone-200 rounded px-1 py-0.5 outline-none border border-amber-500/40"
+            onClick={(e) => e.stopPropagation()}
+            autoFocus
+          />
+        ) : (
+          <p className={`text-xs font-medium truncate leading-tight ${isActive ? "text-stone-200" : "text-stone-400"}`}>
+            {session.title}
+          </p>
+        )}
+        <p className="text-[10px] text-stone-600 mt-0.5">
+          {session.messageCount > 0
+            ? `${session.messageCount} msg`
+            : "Empty"}
+          <span className="mx-1">·</span>
+          {formatRelativeTime(session.updatedAt)}
+        </p>
+      </div>
+      {!isEditing && (
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onRenameStart(); }}
+            className="p-0.5 rounded text-stone-600 hover:text-stone-300 hover:bg-stone-700"
+            title="Rename"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-0.5 rounded text-stone-600 hover:text-red-400 hover:bg-stone-700"
+            title="Delete"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Settings modal
+// ============================================
+
+function SettingsModal({
+  tab,
+  onTabChange,
+  onClose,
+}: {
+  tab: SettingsTab;
+  onTabChange: (t: SettingsTab) => void;
+  onClose: () => void;
+}) {
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: "config", label: "Provider", icon: <Settings className="w-3.5 h-3.5" /> },
+    { id: "status", label: "Status", icon: <Activity className="w-3.5 h-3.5" /> },
+    { id: "plugins", label: "Plugins", icon: <Puzzle className="w-3.5 h-3.5" /> },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-stone-900 border border-stone-700 rounded-xl shadow-2xl w-full max-w-3xl h-[80vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal header with tabs */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-800 shrink-0">
+          <div className="flex items-center gap-1">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => onTabChange(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
+                  tab === t.id
+                    ? "bg-stone-800 text-stone-100 font-medium"
+                    : "text-stone-500 hover:text-stone-300 hover:bg-stone-800/50"
+                }`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Modal content */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
+          {tab === "config" && <ConfigPage />}
+          {tab === "status" && <StatusPage />}
+          {tab === "plugins" && <PluginPage />}
+        </div>
+      </div>
     </div>
   );
 }

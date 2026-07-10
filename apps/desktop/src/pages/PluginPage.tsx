@@ -104,7 +104,7 @@ export function PluginPage() {
   const isInstalled = (name: string) => installed.some((p) => p.name === name);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="h-full p-6 space-y-6 overflow-y-auto">
       <h2 className="text-xl font-semibold">Plugins</h2>
 
       {/* Available Plugins */}

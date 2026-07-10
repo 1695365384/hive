@@ -118,9 +118,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   autoTitle: async (id: string, text: string) => {
-    if (!text || text.length > 80) return;
+    if (!text) return;
+    // Truncate to 80 chars max, break at word boundary
+    const truncated = text.length > 80
+      ? text.slice(0, 80).replace(/\s+\S*$/, '')
+      : text;
     try {
-      await db.renameSession(id, text);
+      await db.renameSession(id, truncated);
       await get().loadSessions();
     } catch {
       // Silently fail — not critical

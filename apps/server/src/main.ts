@@ -55,6 +55,13 @@ export async function startServer(options: ServerOptions = {}): Promise<{
   })
   console.log('[hive] Bootstrap complete')
 
+  // ---- 1b. OfficeCLI 自动集成（非阻塞，后台执行）----
+  // 安装 officecli 二进制 + SKILL.md + MCP 服务器注册
+  // 失败只 log warning，不影响 server 启动
+  import('./officecli-setup.js')
+    .then(({ setupOfficeCli }) => setupOfficeCli(context.agent))
+    .catch((err) => console.warn('[officecli] Setup failed:', err instanceof Error ? err.message : err))
+
   // ---- 2. Create WS Handlers (inject HiveLogger, no overrideConsole) ----
   const { WebSocketServer } = await import('ws')
   const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')

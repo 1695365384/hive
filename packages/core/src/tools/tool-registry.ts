@@ -7,7 +7,7 @@
 
 import { type Tool } from 'ai';
 import {
-  createBashTool,
+  createCodeShellShellTool,
   createFileTool,
   fileToolReadOnly,
   createGlobTool,
@@ -25,7 +25,7 @@ import { setEnvDbProvider } from './built-in/env-tool.js';
 import type { AgentType as CapabilityAgentType } from '../agents/types/capabilities.js';
 
 /** Agent types that have tool whitelists in the registry */
-export type AgentType = 'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter';
+export type AgentType = 'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter' | 'office';
 
 /**
  * Agent 类型对应的工具白名单
@@ -54,7 +54,7 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'env', factory: () => createEnvTool() },
   ],
   general: [
-    { name: 'bash', factory: () => createBashTool({ allowed: true }) },
+    { name: 'bash', factory: () => createCodeShellShellTool({ allowed: true }) },
     { name: 'file', factory: () => createFileTool({ allowedCommands: ['view', 'create', 'str_replace', 'insert'] }) },
     { name: 'glob', factory: () => createGlobTool() },
     { name: 'grep', factory: () => createGrepTool() },
@@ -79,6 +79,14 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'grep', factory: () => createGrepTool() },
     { name: 'web-search', factory: () => createWebSearchTool() },
     { name: 'web-fetch', factory: () => createWebFetchTool() },
+    { name: 'env', factory: () => createEnvTool() },
+  ],
+  office: [
+    // Office agent gets code-shell (bash) + file read + env
+    { name: 'bash', factory: () => createCodeShellShellTool({ allowed: true }) },
+    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
+    { name: 'glob', factory: () => createGlobTool() },
+    { name: 'grep', factory: () => createGrepTool() },
     { name: 'env', factory: () => createEnvTool() },
   ],
 };

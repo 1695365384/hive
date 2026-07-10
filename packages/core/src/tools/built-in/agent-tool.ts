@@ -30,8 +30,8 @@ import { createContextCompactor } from '../../agents/pipeline/ContextCompactor.j
 const INPUT_SCHEMA = zodSchema(
   z.object({
     prompt: z.string().describe('The task to delegate to the Worker'),
-    type: z.enum(['explore', 'plan', 'general', 'schedule']).describe(
-      'Worker type: "explore" for read-only research, "plan" for deep analysis, "general" for full-access execution, "schedule" for scheduled task management',
+type: z.enum(['explore', 'plan', 'general', 'schedule', 'office']).describe(
+'Worker type: "explore" for read-only research, "plan" for deep analysis, "general" for full-access execution, "schedule" for scheduled task management, "office" for Office document creation (PPT/Word/Excel)',
     ),
     model: z.string().optional().describe('Override model for this Worker'),
     maxTurns: z.number().int().min(1).max(50).optional().describe('Override max turns'),
@@ -296,6 +296,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       '- "plan": Deep analysis (same tools, higher thoroughness). Use for: complex planning, dependency analysis, risk assessment.',
       '- "general": Full access (Bash, File write, Glob, Grep, Web). Use for: code modifications, running commands, complex tasks.',
       '- "schedule": Schedule management (create, list, pause, resume, remove, history). Use for: creating/managing scheduled/cron tasks.',
+'- "office": Office document specialist (bash, officecli, file read). Use for: creating PPT presentations, Word documents, Excel spreadsheets. The office worker handles all the individual officecli calls — you just give it the content requirements.',
       '',
       '## When to Use',
       '- Task requires extensive file reading that would consume your context',
@@ -390,6 +391,21 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
           }
         }
 
+        // Office Worker 需要 MCP 工具（officecli 等）
+        if (input.type === 'office') {
+          try {
+            const workerRegistry = runner.getToolRegistry();
+            const mcpTools = context.mcpManager.getAllTools();
+            for (const [name, tool] of Object.entries(mcpTools)) {
+              if (!workerRegistry.getTool(name)) {
+                workerRegistry.register(name, tool);
+              }
+            }
+          } catch {
+            // MCP not available — worker uses built-in tools only
+          }
+        }
+
         const result = await runner.executeStreaming(
           input.type,
           platformHint + input.prompt,
@@ -468,7 +484,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
             const agentType = input.type === 'schedule' ? 'general' : input.type;
             const phaseResult = await compactor.compressPhase(
               { text: accumulatedText, tools: result.tools, success: true },
-              agentType as 'explore' | 'plan' | 'general',
+              agentType as 'explore' | 'plan' | 'general' | 'office',
             );
             compressedExcerpt = phaseResult.summary;
           } catch {

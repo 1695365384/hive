@@ -106,7 +106,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-stone-950">
+      <div className="flex items-center justify-center h-screen bg-stone-900">
         <div className="text-center">
           <img src="/logo.svg" alt="Hive" className="w-20 h-20 mx-auto mb-4 opacity-60" />
           <div className="animate-spin h-8 w-8 border-2 border-stone-700 border-t-amber-500 rounded-full mx-auto" />
@@ -116,7 +116,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen bg-stone-950">
+    <div className="flex items-center justify-center h-screen bg-stone-900">
       <div className="w-full max-w-lg p-8">
         {/* Header + Logo */}
         <div className="text-center mb-6">

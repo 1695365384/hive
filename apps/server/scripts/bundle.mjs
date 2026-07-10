@@ -105,8 +105,8 @@ try { rmSync(join(OUT_DIR, 'main.js.map'), { force: true }); } catch {}
 const mainJsPath = join(OUT_DIR, 'main.js');
 let mainJs = readFileSync(mainJsPath, 'utf-8');
 mainJs = mainJs.replace(
-  /import_meta\s*=\s*\{\}/g,
-  `import_meta = { url: require("url").pathToFileURL(__filename).href }`,
+  /(import_meta\d*)\s*=\s*\{\}/g,
+  `$1 = { url: require("url").pathToFileURL(__filename).href }`,
 );
 writeFileSync(mainJsPath, mainJs);
 
@@ -128,7 +128,7 @@ const dbJsPath = join(nativeOut, 'lib/database.js');
 if (existsSync(dbJsPath)) {
   let dbJs = readFileSync(dbJsPath, 'utf-8');
   dbJs = dbJs.replace(
-    /require\('bindings'\('better_sqlite3\.node'\)\)/g,
+    /require\('bindings'\)\('better_sqlite3\.node'\)/g,
     `require(__dirname + '/../build/Release/better_sqlite3.node')`,
   );
   writeFileSync(dbJsPath, dbJs);

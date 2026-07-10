@@ -19,6 +19,7 @@ export const AGENT_NAMES = {
   SCHEDULE: 'schedule',
   CRITIC: 'critic',
   ARBITER: 'arbiter',
+  OFFICE: 'office',
 } as const;
 
 // ============================================
@@ -28,7 +29,7 @@ export const AGENT_NAMES = {
 /**
  * 核心代理
  */
-export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter', AgentConfig> = {
+export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter' | 'office', AgentConfig> = {
   explore: {
     type: 'explore',
     description: 'Read-only agent for searching, analyzing codebases, and deep research.',
@@ -69,6 +70,13 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule' | '
     description: 'Neutral synthesizer that resolves conflicts between thesis and antithesis. Produces final integrated output with quality scoring. Part of the triadic adversarial harness.',
     tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
     maxTurns: 10,
+  },
+
+  office: {
+    type: 'office',
+    description: 'Office document specialist for creating PowerPoint, Word, and Excel documents using officecli.',
+    tools: ['bash', 'file', 'glob', 'grep', 'env'],
+    maxTurns: 50,
   },
 };
 

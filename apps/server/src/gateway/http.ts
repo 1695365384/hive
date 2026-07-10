@@ -13,8 +13,14 @@ import type { IChannel, IWebhookHandler } from '@bundy-lmw/hive-core'
 import type { HiveLogger } from '../logging/hive-logger.js'
 import { createAuthMiddleware } from './auth.js'
 import { randomUUID } from 'node:crypto'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { join } from 'node:path'
 import path from 'node:path'
+import { isOfficeCliAvailable, getOfficeCliCommand } from '../officecli-setup.js'
+
+const execFileAsync = promisify(execFile)
 
 /** Maximum message length (100KB) */
 const MAX_MESSAGE_LENGTH = 100_000
@@ -161,9 +167,83 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
     }
   })
 
-  // Chat endpoint
-  app.post('/api/chat', async (c) => {
+  // ============================================
+  // OfficeCLI 高保真预览
+  // ============================================
+
+  /** HTML 渲染缓存：filename → { html, ts }，TTL 5 分钟 */
+  const previewCache = new Map<string, { html: string; ts: number }>()
+  const PREVIEW_CACHE_TTL = 300_000
+
+  /** GET /api/preview/html?file=<filename>&path=<abs_path> — 用 officecli 渲染 Office 文档为 HTML */
+  app.get('/api/preview/html', async (c) => {
+    const file = c.req.query('file')
+    const absPath = c.req.query('path')
+
+    let filePath: string
+
+    if (file) {
+      // 文件名方式（上传的文件在 TEMP_DIR）
+      if (file.includes('..') || file.includes('/') || file.includes('\\')) {
+        return c.json({ error: 'Invalid filename' }, 400)
+      }
+      filePath = path.join(TEMP_DIR, file)
+    } else if (absPath) {
+      // 绝对路径方式（agent 创建的文件）
+      if (absPath.includes('..')) {
+        return c.json({ error: 'Invalid path' }, 400)
+      }
+      filePath = absPath
+    } else {
+      return c.json({ error: 'Missing ?file= or ?path= parameter' }, 400)
+    }
+
+    // 检查 officecli 是否可用
+    const available = await isOfficeCliAvailable()
+    if (!available) {
+      return c.json({ error: 'OfficeCLI not installed. Run: npm install -g @officecli/officecli' }, 503)
+    }
+
+    // 检查缓存（用路径做 key）
+    const cacheKey = filePath
+    const cached = previewCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < PREVIEW_CACHE_TTL) {
+      return c.html(cached.html)
+    }
+
     try {
+      // 确认文件存在
+      const { stat } = await import('node:fs/promises')
+      try {
+        await stat(filePath)
+      } catch {
+        return c.json({ error: 'File not found' }, 404)
+      }
+
+      // 运行 officecli view <file> html，输出到临时文件
+      const tmpOutput = path.join(TEMP_DIR, `${path.basename(filePath)}.preview.html`)
+      const cmd = getOfficeCliCommand()
+      if (!cmd) {
+        return c.json({ error: 'OfficeCLI binary not found' }, 503)
+      }
+      await execFileAsync(cmd.command, [...cmd.baseArgs, 'view', filePath, 'html', '-o', tmpOutput], {
+        timeout: 30_000,
+      })
+
+      const html = await readFile(tmpOutput, 'utf-8')
+
+      // 更新缓存
+      previewCache.set(cacheKey, { html, ts: Date.now() })
+
+      return c.html(html)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      return c.json({ error: 'Preview rendering failed', detail: msg }, 500)
+    }
+  })
+
+  // Chat endpoint
+  app.post('/api/chat', async (c) => {    try {
       const body = await c.req.json()
       const { message, sessionId } = body as { message?: string; sessionId?: string }
 

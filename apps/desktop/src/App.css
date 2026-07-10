@@ -6,7 +6,9 @@
 @source "../node_modules/@streamdown/code/dist/*.js";
 @source "../node_modules/@streamdown/cjk/dist/*.js";
 
-/* Streamdown / shadcn dark-theme CSS custom properties */
+/* ============================================
+   Theme tokens — streamdown/shadcn 依赖这些变量名，不可改名
+   ============================================ */
 :root {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -19,4 +21,268 @@
   --primary: oklch(0.985 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --radius: 0.625rem;
+}
+
+/* ============================================
+   Scrollbar
+   ============================================ */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.2);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 113, 108, 0.4);
+}
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 113, 108, 0.2) transparent;
+}
+
+/* ============================================
+   Markdown body — 暗色编辑器风格
+   设计参考：Linear changelog、Raycast docs、Notion dark
+   ============================================ */
+
+.md-body {
+  --md-text: oklch(0.795 0 0);         /* stone-300 */
+  --md-heading: oklch(0.936 0 0);      /* stone-200 */
+  --md-muted: oklch(0.555 0 0);        /* stone-500 */
+  --md-accent: oklch(0.728 0.164 75);  /* amber-400 */
+  --md-border: oklch(0.252 0 0);       /* stone-800 */
+  --md-border-hover: oklch(0.319 0 0); /* stone-700 */
+  --md-bg-sunken: oklch(0.148 0 0);    /* stone-950 */
+  --md-bg-elevated: oklch(0.178 0 0);  /* stone-900 */
+
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--md-text);
+  letter-spacing: -0.003em;
+  font-feature-settings: "cv11", "ss03";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- 标题：克制的层级，靠 weight + spacing 区分 ---- */
+
+.md-body h1 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--md-heading);
+  letter-spacing: -0.02em;
+  margin: 1.5em 0 0.6em;
+}
+.md-body h1:first-child { margin-top: 0; }
+
+.md-body h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--md-heading);
+  letter-spacing: -0.015em;
+  margin: 1.3em 0 0.5em;
+}
+.md-body h2:first-child { margin-top: 0; }
+
+.md-body h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--md-heading);
+  margin: 1.1em 0 0.4em;
+}
+.md-body h3:first-child { margin-top: 0; }
+
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--md-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 1em 0 0.3em;
+}
+
+/* ---- 段落 ---- */
+
+.md-body p {
+  margin: 0.6em 0;
+}
+.md-body p:first-child { margin-top: 0; }
+.md-body p:last-child { margin-bottom: 0; }
+
+/* ---- 强调 ---- */
+
+.md-body strong {
+  color: var(--md-heading);
+  font-weight: 600;
+}
+
+.md-body em {
+  font-style: italic;
+  color: var(--md-text);
+}
+
+/* ---- 列表：细线引导符 ---- */
+
+.md-body ul {
+  margin: 0.6em 0;
+  padding-left: 0;
+  list-style: none;
+}
+.md-body ul > li {
+  position: relative;
+  padding-left: 1.1em;
+  margin: 0.2em 0;
+}
+.md-body ul > li::before {
+  content: '';
+  position: absolute;
+  left: 0.15em;
+  top: 0.72em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--md-muted);
+}
+
+.md-body ul > li > ul,
+.md-body ul > li > ol {
+  margin: 0.2em 0;
+}
+
+.md-body ol {
+  margin: 0.6em 0;
+  padding-left: 1.3em;
+  list-style: none;
+  counter-reset: ol-counter;
+}
+.md-body ol > li {
+  position: relative;
+  padding-left: 0.5em;
+  margin: 0.2em 0;
+  counter-increment: ol-counter;
+}
+.md-body ol > li::before {
+  content: counter(ol-counter) ".";
+  position: absolute;
+  left: -1.3em;
+  width: 1.2em;
+  text-align: right;
+  color: var(--md-muted);
+  font-size: 0.8em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.md-body li > p {
+  margin: 0.15em 0;
+}
+
+/* ---- 链接：amber，微妙下划线 ---- */
+
+.md-body a {
+  color: var(--md-accent);
+  text-decoration: none;
+  background-image: linear-gradient(var(--md-accent), var(--md-accent));
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.md-body a:hover {
+  opacity: 1;
+}
+
+/* ---- 引用块 ---- */
+
+.md-body blockquote {
+  border-left: 2px solid var(--md-border-hover);
+  padding: 0.1em 0 0.1em 1em;
+  margin: 0.8em 0;
+  color: var(--md-muted);
+  font-style: italic;
+}
+.md-body blockquote p {
+  margin: 0.25em 0;
+}
+
+/* ---- 分割线 ---- */
+
+.md-body hr {
+  border: none;
+  height: 1px;
+  background: var(--md-border);
+  margin: 1.2em 0;
+}
+
+/* ---- 表格：Linear 风格 ---- */
+
+.md-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 0.8em 0;
+  border: 1px solid var(--md-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.md-body thead {
+  background: var(--md-bg-sunken);
+}
+
+.md-body th {
+  text-align: left;
+  padding: 0.45em 0.75em;
+  color: var(--md-muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--md-border);
+}
+
+.md-body td {
+  padding: 0.4em 0.75em;
+  color: var(--md-text);
+  border-bottom: 1px solid var(--md-border);
+  vertical-align: top;
+}
+
+.md-body tbody tr {
+  transition: background 0.1s;
+}
+.md-body tbody tr:hover {
+  background: oklch(0.168 0 0 / 0.5);
+}
+.md-body tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---- 代码块 ---- */
+
+.md-body pre {
+  margin: 0.8em 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.md-body pre code {
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ---- streamdown 组件圆角覆盖 ---- */
+
+.md-body [class*="rounded-lg"],
+.md-body [class*="rounded-xl"],
+.md-body [class*="rounded-2xl"] {
+  border-radius: var(--radius) !important;
 }

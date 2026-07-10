@@ -22,7 +22,7 @@ export type StreamingEventUnion =
   | { type: 'tool-result'; sessionId: string; tool: string; output: unknown; workerId?: string; workerType?: string }
   | { type: 'worker-start'; sessionId: string; workerId: string; workerType: string; description?: string }
   | { type: 'worker-complete'; sessionId: string; workerId: string; workerType: string; success: boolean; error?: string; duration: number }
-  | { type: 'complete'; sessionId: string; success: boolean; cancelled?: boolean; error?: string };
+  | { type: 'complete'; sessionId: string; success: boolean; cancelled?: boolean; error?: string; text?: string };
 
 /** 流式事件回调 */
 export type StreamingHandler = (event: StreamingEventUnion) => void;

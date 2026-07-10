@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useChatWsClient } from "../hooks/use-chat-ws-client";
 import { getChatWsClient } from "../lib/ws-client";
 import { useFileUpload } from "../hooks/use-file-upload";
@@ -6,33 +6,25 @@ import { FilePreviewList } from "../components/FilePreview";
 import { ImagePreview } from "../components/ImagePreview";
 import { TextBlock } from "../components/TextBlock";
 import { PreviewSidebar } from "../components/preview/PreviewSidebar";
-import { SessionSidebar } from "../components/SessionSidebar";
 import { isPreviewableFile } from "../components/preview/detect-preview";
 import { usePreviewStore } from "../stores/preview-store";
 import { useSessionStore } from "../stores/session-store";
 import * as db from "../lib/db";
 import type { ChatMessage, ContentPart } from "../types/chat";
+import { AskUserCard } from "../components/AskUserCard";
 import {
   Send,
   Square,
-  ChevronDown,
   ChevronRight,
-  Loader2,
-  Bot,
-  Brain,
   Paperclip,
-  Sparkles,
-  Cpu,
-  CheckCircle2,
-  XCircle,
   FileText,
-  PanelLeft,
 } from "lucide-react";
 
 type GroupedContent =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
   | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
+  | { type: "tool-batch"; toolName: string; count: number; children: GroupedContent[] }
   | { type: "worker"; workerId: string; workerType: string; description?: string; children: GroupedContent[]; status: "running" | "completed" | "failed"; duration?: number; error?: string }
   | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
 
@@ -49,6 +41,13 @@ export function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
+  // Ask-user interaction state
+  const [askUserData, setAskUserData] = useState<{
+    askId: string;
+    question: string;
+    options: Array<{ label: string; description?: string }>;
+  } | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeThreadIdRef = useRef<string | null>(null);
@@ -59,7 +58,6 @@ export function ChatPage() {
   const lastReasoningSeqRef = useRef(0);
 
   // ── Session store integration ──
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const currentId = useSessionStore((s) => s.currentId);
   const sessions = useSessionStore((s) => s.sessions);
   const initStore = useSessionStore((s) => s.init);
@@ -270,11 +268,14 @@ export function ChatPage() {
     setMessages((prev) => {
       const lastMsg = prev[prev.length - 1];
       if (lastMsg?.role === "assistant" && lastMsg.content.length === 0) {
+        const fallbackText = data.success === false && data.error
+          ? `处理失败：${data.error}`
+          : (data as { text?: string }).text ?? "任务完成，未产生可见输出。";
         return [
           ...prev.slice(0, -1),
           {
             ...lastMsg,
-            content: [{ type: "text", text: data.success === false && data.error ? `处理失败：${data.error}` : "Agent 执行完成，但未产生可见输出。" }],
+            content: [{ type: "text", text: fallbackText }],
           },
         ];
       }
@@ -307,16 +308,16 @@ export function ChatPage() {
     if (previewType && data.src) {
       const previewId = `file-${data.threadId}-${data.name}`;
       const previewStore = usePreviewStore.getState();
-      if (previewStore.previews.some((p) => p.id === previewId)) return;
-
+      // Use real file path for preview (agent-created files), fall back to src
+      const previewSrc = data.path ? data.path : data.src;
+      // Force re-open even if exists (for refresh)
       if (previewType === "ppt" || previewType === "doc" || previewType === "pdf" || previewType === "xlsx") {
-        // Binary format — renderer fetches the file
         previewStore.openFor({
           id: previewId,
           title: data.name,
           type: previewType,
           content: "",
-          src: data.src,
+          src: previewSrc,
           sourceMessageId: data.threadId,
         });
       } else {
@@ -337,6 +338,12 @@ export function ChatPage() {
     }
   }, [appendPart]);
 
+  // Ask-user handler
+  const handleAskUser = useCallback((data: { askId: string; threadId: string; question: string; options: Array<{ label: string; description?: string }> }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    setAskUserData({ askId: data.askId, question: data.question, options: data.options });
+  }, []);
+
   // Listen to WS events
   useEffect(() => {
     const unsubs = [
@@ -348,9 +355,10 @@ export function ChatPage() {
       onEvent("agent.tool-result", handleToolResult),
       onEvent("agent.complete", handleComplete),
       onEvent("agent.file", handleFile),
+      onEvent("agent.ask-user", handleAskUser),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [onEvent, handleReasoning, handleTextDelta, handleWorkerStart, handleWorkerComplete, handleToolCall, handleToolResult, handleComplete, handleFile]);
+  }, [onEvent, handleReasoning, handleTextDelta, handleWorkerStart, handleWorkerComplete, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser]);
 
   const handleCancel = useCallback(async () => {
     const threadId = activeThreadIdRef.current;
@@ -361,6 +369,23 @@ export function ChatPage() {
       // Ignore cancel errors — agent.complete event will reset state
     }
   }, [request]);
+
+  // Submit ask-user answer back to server
+  const handleAskUserSubmit = useCallback(async (answer: string) => {
+    if (!askUserData) return;
+    try {
+      await request("chat.answerAskUser", { askId: askUserData.askId, answer });
+    } catch {
+      // Ignore — server may have timed out
+    }
+    setAskUserData(null);
+  }, [askUserData, request]);
+
+  const handleAskUserDismiss = useCallback(() => {
+    if (!askUserData) return;
+    request("chat.answerAskUser", { askId: askUserData.askId, answer: "(已忽略)" }).catch(() => {});
+    setAskUserData(null);
+  }, [askUserData, request]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -418,10 +443,10 @@ export function ChatPage() {
       // Persist user message to DB
       db.insertMessage(userMsgId, threadId, "user", JSON.stringify(userContent), now).catch(() => {});
 
-      // Auto-title from first user message text (not files)
-      if (text && threadId) {
-        const titleText = text.length > 80 ? text.slice(0, 80) : text;
-        autoTitle(threadId, titleText);
+      // Auto-title from first user message
+      if (threadId) {
+        const titleSrc = text || pendingFiles.map(f => f.name).slice(0, 3).join(', ');
+        if (titleSrc) autoTitle(threadId, titleSrc);
       }
 
       if (inputRef.current) {
@@ -484,27 +509,16 @@ export function ChatPage() {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex h-full bg-stone-950">
-      {/* Session sidebar */}
-      <SessionSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
-      {sidebarCollapsed && (
-        <button
-          onClick={() => setSidebarCollapsed(false)}
-          className="absolute top-2 left-[52px] z-10 p-1 rounded text-stone-500 hover:text-stone-300 hover:bg-stone-800 transition-colors"
-          title="Show sessions"
-        >
-          <PanelLeft className="w-4 h-4" />
-        </button>
-      )}
+    <div className="flex h-full bg-stone-900">
       <div className="flex flex-col flex-1 min-w-0">
       {/* Main + Preview sidebar */}
       <div className="flex flex-1 overflow-hidden">
         {/* Messages Area */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
         {isEmpty ? (
           <EmptyState />
         ) : (
-          <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+          <div className="w-full px-8 py-6 space-y-6">
             {messages.map((msg) => (
               <MessageBubble key={msg.id} message={msg} isLast={msg === messages[messages.length - 1]} isRunning={isRunning && msg === messages[messages.length - 1]} activeToolTime={activeToolTime} onOpenImage={setLightboxSrc} />
             ))}
@@ -524,12 +538,12 @@ export function ChatPage() {
         )}
         </div>
         {/* Preview Sidebar */}
-        <PreviewSidebar />
+        <PreviewSidebar isRunning={isRunning} />
       </div>
 
       {/* Error Banner */}
       {error && (
-        <div className="mx-auto max-w-3xl w-full px-4">
+        <div className="w-full px-8">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
             <span>{error}</span>
             <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300">&times;</button>
@@ -538,7 +552,7 @@ export function ChatPage() {
       )}
 
       {chatState !== "connected" && (
-        <div className="mx-auto max-w-3xl w-full px-4 pb-2">
+        <div className="w-full px-8 pb-2">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
             <span>
               {chatState === "failed"
@@ -549,9 +563,22 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* Input Area */}
+      {/* Ask-user card — replaces input area when agent needs user choice */}
+      {askUserData ? (
+        <div className="shrink-0 border-t border-stone-800/60 bg-stone-900">
+          <div className="px-4 py-4">
+            <AskUserCard
+              question={askUserData.question}
+              options={askUserData.options}
+              onAnswer={handleAskUserSubmit}
+              onDismiss={handleAskUserDismiss}
+            />
+          </div>
+        </div>
+      ) : (
+      /* Input Area */
       <div className="shrink-0 border-t border-stone-800/60">
-        <div className="max-w-3xl mx-auto px-4 py-4">
+        <div className="w-full px-8 py-4">
           {/* File previews */}
           {pendingFiles.length > 0 && (
             <div className="mb-2">
@@ -559,7 +586,7 @@ export function ChatPage() {
             </div>
           )}
           <div
-            className="relative flex items-end gap-2 bg-stone-900/80 border border-stone-800 rounded-2xl px-3 py-2.5 focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20 transition-all duration-200"
+            className="relative flex items-end gap-2 bg-stone-900 border border-stone-800 rounded-2xl px-3 py-2.5 focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20 transition-all duration-200"
             onDrop={handleDrop}
             onDragOver={handleDragOver}
           >
@@ -603,6 +630,7 @@ export function ChatPage() {
           </p>
         </div>
       </div>
+      )}
 
       {/* Image Lightbox */}
       {lightboxSrc && <ImagePreview src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
@@ -680,7 +708,52 @@ function groupContentParts(parts: ContentPart[]): GroupedContent[] {
     return merged;
   };
 
-  return mergeReasoning(result);
+  // Merge consecutive same-name tool calls into tool-batch groups
+  const mergeToolBatches = (items: GroupedContent[]): GroupedContent[] => {
+    const merged: GroupedContent[] = [];
+    let batch: GroupedContent[] = [];
+
+    const flushBatch = () => {
+      if (batch.length === 0) return;
+      if (batch.length === 1) {
+        merged.push(batch[0]);
+      } else {
+        const first = batch[0] as { type: "tool-call"; toolName: string };
+        merged.push({
+          type: "tool-batch",
+          toolName: first.toolName,
+          count: batch.length,
+          children: batch,
+        });
+      }
+      batch = [];
+    };
+
+    for (const item of items) {
+      if (item.type === "tool-call") {
+        const tc = item as { type: "tool-call"; toolName: string };
+        if (batch.length > 0 && (batch[0] as { type: "tool-call"; toolName: string }).toolName === tc.toolName) {
+          batch.push(item);
+        } else {
+          flushBatch();
+          batch.push(item);
+        }
+      } else {
+        flushBatch();
+        if (item.type === "worker") {
+          const worker = item as GroupedContent & { type: "worker"; children: GroupedContent[] };
+          merged.push({ ...worker, children: mergeToolBatches(worker.children) });
+        } else {
+          merged.push(item);
+        }
+      }
+    }
+    flushBatch();
+
+    return merged;
+  };
+
+  return mergeToolBatches(mergeReasoning(result));
 }
 
 // ============================================
@@ -690,38 +763,9 @@ function groupContentParts(parts: ContentPart[]): GroupedContent[] {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full px-4 select-none">
-      {/* Ambient glow */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-96 h-96 bg-amber-500/[0.03] rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative z-10 flex flex-col items-center gap-6">
-        {/* Logo mark */}
-        <div className="relative">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/5 border border-amber-500/20 flex items-center justify-center">
-            <Sparkles className="w-7 h-7 text-amber-400" />
-          </div>
-          <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400/80 animate-pulse" />
-        </div>
-
-        <div className="text-center space-y-2">
-          <h2 className="text-lg font-semibold text-stone-200">Talk to Hive</h2>
-          <p className="text-sm text-stone-500 max-w-xs leading-relaxed">
-            Your multi-agent collaboration framework. Ask questions, explore code, or let agents solve tasks for you.
-          </p>
-        </div>
-
-        {/* Suggestion chips */}
-        <div className="flex flex-wrap justify-center gap-2 mt-2 max-w-md">
-          {["Analyze the project structure", "Help me debug an issue", "Explain the architecture"].map((suggestion) => (
-            <button
-              key={suggestion}
-              className="px-3 py-1.5 rounded-full text-xs text-stone-400 bg-stone-900/60 border border-stone-800 hover:border-amber-500/30 hover:text-amber-400/80 transition-all duration-200"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-col items-center gap-4">
+        <img src="/logo.svg" alt="Hive" className="w-10 h-10 opacity-40" />
+        <p className="text-sm text-stone-600">Send a message to get started</p>
       </div>
     </div>
   );
@@ -784,12 +828,9 @@ function MessageBubble({ message, isLast, isRunning, activeToolTime, onOpenImage
   // Assistant message
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%]">
+      <div className="w-full min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
-          <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center">
-            <Bot className="w-3 h-3 text-amber-400" />
-          </div>
-          <span className="text-[11px] font-medium text-stone-500">Hive Agent</span>
+          <span className="text-[11px] font-medium text-stone-500">Hive</span>
           <span className="text-[11px] text-stone-700">
             {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
@@ -821,6 +862,8 @@ function GroupedContentRenderer({ part, activeToolTime, sourceMessageId, autoPre
       return <TextBlock text={part.text} sourceMessageId={sourceMessageId} autoPreview={autoPreview} />;
     case "tool-call":
       return <ToolCallBlock toolCallId={part.toolCallId} toolName={part.toolName} args={part.args} result={part.result} isError={part.isError} elapsedSeconds={activeToolTime} workerId={part.workerId} />;
+    case "tool-batch":
+      return <ToolBatchBlock toolName={part.toolName} count={part.count} children={part.children} />;
     case "worker":
       return <WorkerBlock workerType={part.workerType} description={part.description} children={part.children} status={part.status} duration={part.duration} error={part.error} />;
     case "file-attachment": {
@@ -868,24 +911,27 @@ function GroupedContentRenderer({ part, activeToolTime, sourceMessageId, autoPre
           onClick={() => window.dispatchEvent(new CustomEvent('open-lightbox', { detail: `http://127.0.0.1:4450${part.src}` }))}
         />
       ) : (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-3 px-3 py-2 rounded bg-stone-800/50 border border-stone-700/30 my-1">
+          <FileText className="w-4 h-4 shrink-0 text-stone-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-stone-200 truncate">{part.name}</p>
+            <p className="text-[10px] text-stone-600">{part.size >= 1024 ? `${(part.size / 1024).toFixed(1)}KB` : `${part.size}B`}</p>
+          </div>
           <a
             href={`http://127.0.0.1:4450${part.src}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-amber-400/80 hover:text-amber-300 transition-colors"
+            className="px-2 py-1 text-[10px] rounded text-stone-400 hover:text-stone-200 hover:bg-stone-700 transition-colors shrink-0"
           >
-            <FileText className="w-3 h-3 shrink-0" />
-            <span>{part.name}</span>
-            <span className="text-stone-600">{part.size >= 1024 ? `${(part.size / 1024).toFixed(1)}KB` : `${part.size}B`}</span>
+            Open
           </a>
           {previewType && (
             <button
               onClick={handleManualPreview}
               disabled={previewLoading}
-              className="px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-amber-500/15 text-amber-400/80 border border-amber-500/20 hover:bg-amber-500/25 transition-colors disabled:opacity-50"
+              className="px-2 py-1 text-[10px] rounded text-amber-400/80 hover:text-amber-300 hover:bg-amber-500/10 transition-colors disabled:opacity-50 shrink-0"
             >
-              {previewLoading ? "..." : "▶ Preview"}
+              {previewLoading ? "..." : "Preview"}
             </button>
           )}
         </div>
@@ -905,8 +951,7 @@ function ReasoningBlock({ text }: { text: string }) {
   const preview = text.length > 80 ? text.slice(0, 80) + "..." : text;
 
   return (
-    <div className="flex items-center gap-1.5 px-1 py-0.5 text-[11px] text-stone-600">
-      <Brain className="w-3 h-3 text-amber-500/40 shrink-0" />
+    <div className="px-1 py-0.5 text-[11px] text-stone-600">
       <span className="truncate italic">{preview}</span>
     </div>
   );
@@ -926,65 +971,33 @@ type ToolCallBlockProps = {
   workerId?: string;
 };
 
-function ToolCallBlock({ toolName, args, result, isError, elapsedSeconds }: ToolCallBlockProps) {
-  const [isOpen, setIsOpen] = useState(false);
+function ToolCallBlock({ toolName, result, isError, elapsedSeconds }: ToolCallBlockProps) {
   const isDone = result !== undefined;
   const isRunning = !isDone;
+  const timeText = elapsedSeconds != null && elapsedSeconds > 0 ? `${elapsedSeconds}s` : "";
 
-  const dotColor = isDone
-    ? isError ? "bg-red-400" : "bg-emerald-400"
-    : "bg-amber-400";
-
-  // Format first arg value for compact display
-  const argsPreview = useMemo(() => {
-    if (typeof args !== "object" || args === null) return String(args ?? "");
-    const entries = Object.entries(args as Record<string, unknown>)
-      .filter(([key]) => key !== "type" && key !== "id");
-    if (entries.length === 0) return "";
-    const [key, val] = entries[0];
-    const valStr = typeof val === "string" && val.length > 50 ? val.slice(0, 50) + "..." : String(val);
-    return `${key}=${valStr}`;
-  }, [args]);
-
-  const timeText = isRunning
-    ? elapsedSeconds != null && elapsedSeconds > 0 ? `${elapsedSeconds}s` : ""
-    : elapsedSeconds != null && elapsedSeconds > 0 ? `${elapsedSeconds}s` : "";
+  // When collapsed, show nothing — parent WorkerBlock handles the summary
+  // This is only rendered inside an expanded WorkerBlock
+  const [isOpen, setIsOpen] = useState(false);
+  const hasOutput = isDone && result !== undefined;
 
   return (
-    <div className="group flex items-center gap-1.5 py-0.5 px-1 rounded hover:bg-white/[0.02] cursor-pointer transition-colors"
-      onClick={() => setIsOpen(!isOpen)}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isRunning ? "animate-pulse" : ""}`} />
-      <span className="text-[11px] font-mono text-stone-400">{toolName}</span>
-      {argsPreview && (
-        <span className="text-[10px] text-stone-600 truncate font-mono">{argsPreview}</span>
-      )}
-      {timeText && (
-        <span className="text-[10px] text-stone-600 ml-auto shrink-0 tabular-nums">{timeText}</span>
-      )}
-      {isDone && isError && (
-        <span className="text-[10px] text-red-400 shrink-0">failed</span>
-      )}
-      {isOpen ? <ChevronDown className="w-2.5 h-2.5 shrink-0 opacity-30" /> : null}
-
-      {isOpen && (
-        <div className="absolute left-4 right-4 mt-1 z-10 rounded-lg border border-stone-700/60 bg-stone-900 shadow-xl">
-          <div className="p-2.5 space-y-2">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-stone-600 mb-1">Input</p>
-              <pre className="text-[11px] font-mono text-stone-400 whitespace-pre-wrap break-all max-h-40 overflow-auto">
-                {typeof args === "string" ? args : JSON.stringify(args, null, 2)}
-              </pre>
-            </div>
-            {result !== undefined && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-stone-600 mb-1">Output</p>
-                <pre className="text-[11px] font-mono text-stone-400 whitespace-pre-wrap break-all max-h-40 overflow-auto">
-                  {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
+    <div>
+      <button
+        onClick={() => hasOutput && setIsOpen(!isOpen)}
+        className={`flex items-center gap-1.5 text-[11px] w-full text-left ${hasOutput ? "cursor-pointer hover:text-stone-300" : ""}`}
+      >
+        <span className="text-stone-500 font-mono">{toolName}</span>
+        {isRunning && <span className="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse shrink-0" />}
+        {isError && <span className="text-red-400/80">failed</span>}
+        {timeText && <span className="text-stone-700 tabular-nums ml-auto">{timeText}</span>}
+        {hasOutput && (
+          <ChevronRight className={`w-3 h-3 text-stone-700 shrink-0 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+        )}
+      </button>
+      {isOpen && result !== undefined && (
+        <div className="mt-0.5 ml-2 pl-2 border-l border-stone-800/50 text-[11px] text-stone-600 leading-relaxed max-h-32 overflow-auto">
+          {typeof result === "string" ? result : JSON.stringify(result)}
         </div>
       )}
     </div>
@@ -992,24 +1005,38 @@ function ToolCallBlock({ toolName, args, result, isError, elapsedSeconds }: Tool
 }
 
 // ============================================
-// Worker Type Colors
+// Tool Batch Block — 合并同类工具调用
 // ============================================
 
-const WORKER_COLORS: Record<string, { border: string; bg: string; text: string; dot: string }> = {
-  explore: { border: "border-blue-500/30", bg: "bg-blue-500/5", text: "text-blue-400", dot: "bg-blue-400" },
-  plan: { border: "border-purple-500/30", bg: "bg-purple-500/5", text: "text-purple-400", dot: "bg-purple-400" },
-  general: { border: "border-emerald-500/30", bg: "bg-emerald-500/5", text: "text-emerald-400", dot: "bg-emerald-400" },
-};
+function ToolBatchBlock({ toolName, count, children }: { toolName: string; count: number; children: GroupedContent[] }) {
+  const [isOpen, setIsOpen] = useState(false);
 
-function getWorkerColor(workerType: string) {
-  return WORKER_COLORS[workerType] ?? WORKER_COLORS.general;
+  return (
+    <div>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 text-xs w-full text-left hover:text-stone-300"
+      >
+        <span className="text-stone-500 font-mono">{toolName}</span>
+        <span className="text-stone-600">×{count}</span>
+        <ChevronRight className={`w-3 h-3 text-stone-700 shrink-0 transition-transform ml-auto ${isOpen ? "rotate-90" : ""}`} />
+      </button>
+      {isOpen && (
+        <div className="ml-3 pl-2 border-l border-stone-800/50 space-y-0">
+          {children.map((child, idx) => (
+            <GroupedContentRenderer key={idx} part={child} activeToolTime={null} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ============================================
 // Worker Block (unified: start + children + complete)
 // ============================================
 
-function WorkerBlock({ workerType, description, children, status, duration, error }: {
+function WorkerBlock({ workerType, children, status, duration }: {
   workerType: string;
   description?: string;
   children: GroupedContent[];
@@ -1017,70 +1044,35 @@ function WorkerBlock({ workerType, description, children, status, duration, erro
   duration?: number;
   error?: string;
 }) {
-  const color = getWorkerColor(workerType);
   const isRunning = status === "running";
-  // Always collapsed — user clicks to expand if they want details
   const [isOpen, setIsOpen] = useState(false);
-
-  const toolCount = children.filter(c => c.type === "tool-call").length;
   const timeStr = duration != null ? `${(duration / 1000).toFixed(1)}s` : "";
+  // Build comma-separated tool name list
+  const toolNames = children
+    .filter(c => c.type === "tool-call")
+    .map(c => (c as { toolName: string }).toolName)
+    .join(", ");
 
   return (
-    <div className={`rounded-lg border ${color.border} ${color.bg} overflow-hidden`}>
+    <div>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-left hover:bg-white/[0.02] transition-colors"
+        className="flex items-center gap-1.5 text-xs w-full text-left hover:text-stone-300"
       >
-        <Cpu className={`w-3 h-3 shrink-0 ${color.text}`} />
-        <span className={`text-[11px] font-medium ${color.text} uppercase tracking-wider`}>
-          {workerType}
-        </span>
-        {description && (
-          <span className="text-[10px] text-stone-500 truncate">{description}</span>
+        <span className="text-stone-500">{workerType}</span>
+        {isRunning && <span className="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse" />}
+        {!isRunning && timeStr && <span className="text-stone-700">{timeStr}</span>}
+        {!isRunning && toolNames && <span className="text-stone-700 truncate">{toolNames}</span>}
+        {children.length > 0 && (
+          <ChevronRight className={`w-3 h-3 text-stone-700 shrink-0 transition-transform ${isOpen ? "rotate-90" : ""}`} />
         )}
-        <span className="ml-auto flex items-center gap-1.5 shrink-0">
-          {isRunning ? (
-            <Loader2 className="w-2.5 h-2.5 animate-spin text-stone-500" />
-          ) : status === "completed" ? (
-            <CheckCircle2 className={`w-2.5 h-2.5 ${color.text}`} />
-          ) : (
-            <XCircle className="w-2.5 h-2.5 text-red-400" />
-          )}
-          {!isRunning && toolCount > 0 && (
-            <span className="text-[10px] text-stone-600">{toolCount} tools</span>
-          )}
-          {!isRunning && timeStr && (
-            <span className="text-[10px] text-stone-600 tabular-nums">{timeStr}</span>
-          )}
-          {isRunning && (
-            <span className="text-[10px] text-stone-500">Running...</span>
-          )}
-        </span>
-        {isOpen ? <ChevronDown className="w-2.5 h-2.5 shrink-0 opacity-30" /> : <ChevronRight className="w-2.5 h-2.5 shrink-0 opacity-30" />}
       </button>
 
       {isOpen && children.length > 0 && (
-        <div className={`border-t ${color.border}`}>
-          <div className="px-2 py-1">
-            {children.map((child, idx) => (
-              <GroupedContentRenderer key={idx} part={child} activeToolTime={null} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isOpen && isRunning && children.length === 0 && (
-        <div className={`px-2.5 pb-1.5 border-t ${color.border}`}>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className={`w-1 h-1 rounded-full ${color.dot} animate-pulse`} />
-            <span className="text-[10px] text-stone-500">Waiting...</span>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="px-2.5 py-1 border-t border-red-500/20 bg-red-500/5">
-          <span className="text-[10px] text-red-400">{error}</span>
+        <div className="ml-3 pl-2 border-l border-stone-800/50 space-y-0">
+          {children.map((child, idx) => (
+            <GroupedContentRenderer key={idx} part={child} activeToolTime={null} />
+          ))}
         </div>
       )}
     </div>

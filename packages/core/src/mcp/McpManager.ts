@@ -102,14 +102,10 @@ export class McpManager {
   }
 
   /**
-   * 获取所有已注册的 AI SDK Tool
+   * 获取所有已注册的 MCP 工具（AI SDK Tool 格式）
    */
   getAllTools(): Record<string, Tool> {
-    const result: Record<string, Tool> = {};
-    for (const [name, tool] of this.toolRegistry) {
-      result[name] = tool;
-    }
-    return result;
+    return Object.fromEntries(this.toolRegistry.entries());
   }
 
   /**

@@ -9,6 +9,10 @@
 export { createBashTool, bashTool } from './bash-tool.js';
 export type { BashToolOptions } from './bash-tool.js';
 
+// CodeShell 跨平台 shell 工具（Windows=PowerShell, Unix=Bash）
+export { createCodeShellShellTool, codeShellShellTool } from './codeshell-shell-tool.js';
+export type { CodeShellShellToolOptions, CodeShellShellToolInput } from './codeshell-shell-tool.js';
+
 export { createFileTool, fileTool, fileToolReadOnly } from './file-tool.js';
 export type { FileToolOptions } from './file-tool.js';
 

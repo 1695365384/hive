@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@bundy-lmw/hive-core": "workspace:*",
+    "@officecli/officecli": "^1.0.132",
     "commander": "^14.0.3",
     "dotenv": "^16.4.0",
     "hono": "^4.12.0",

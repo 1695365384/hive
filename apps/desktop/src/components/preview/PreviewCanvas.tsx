@@ -5,12 +5,14 @@ import { PptxRenderer } from "./PptxRenderer";
 import { DocxRenderer } from "./DocxRenderer";
 import { PdfRenderer } from "./PdfRenderer";
 import { XlsxRenderer } from "./XlsxRenderer";
+import { OfficeCliRenderer } from "./OfficeCliRenderer";
 
 interface PreviewCanvasProps {
   preview: Preview | null;
+  isRunning?: boolean;
 }
 
-export function PreviewCanvas({ preview }: PreviewCanvasProps) {
+export function PreviewCanvas({ preview, isRunning }: PreviewCanvasProps) {
   if (!preview) {
     return (
       <div className="flex items-center justify-center h-full text-stone-600 text-sm px-4 text-center">
@@ -18,6 +20,9 @@ export function PreviewCanvas({ preview }: PreviewCanvasProps) {
       </div>
     );
   }
+
+  const src = preview.src ? `http://127.0.0.1:4450${preview.src}` : "";
+  const title = preview.title;
 
   switch (preview.type) {
     case "html":
@@ -30,30 +35,36 @@ export function PreviewCanvas({ preview }: PreviewCanvasProps) {
       return <SvgRenderer content={preview.content} />;
     case "ppt":
       return (
-        <PptxRenderer
-          src={`http://127.0.0.1:4450${preview.src}`}
-          title={preview.title}
+        <OfficeCliRenderer
+          src={preview.src ?? ""}
+          title={title}
+          isRunning={isRunning}
+          fallback={<PptxRenderer src={src} title={title} />}
         />
       );
     case "doc":
       return (
-        <DocxRenderer
-          src={`http://127.0.0.1:4450${preview.src}`}
-          title={preview.title}
+        <OfficeCliRenderer
+          src={preview.src ?? ""}
+          title={title}
+          isRunning={isRunning}
+          fallback={<DocxRenderer src={src} title={title} />}
         />
       );
     case "pdf":
       return (
         <PdfRenderer
-          src={`http://127.0.0.1:4450${preview.src}`}
-          title={preview.title}
+          src={src}
+          title={title}
         />
       );
     case "xlsx":
       return (
-        <XlsxRenderer
-          src={`http://127.0.0.1:4450${preview.src}`}
-          title={preview.title}
+        <OfficeCliRenderer
+          src={preview.src ?? ""}
+          title={title}
+          isRunning={isRunning}
+          fallback={<XlsxRenderer src={src} title={title} />}
         />
       );
   }

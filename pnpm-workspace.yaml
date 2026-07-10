@@ -3,3 +3,6 @@ packages:
   - 'packages/plugins/*'
   - 'apps/*'
   - 'website'
+
+onlyBuiltDependencies:
+  - '@officecli/officecli'

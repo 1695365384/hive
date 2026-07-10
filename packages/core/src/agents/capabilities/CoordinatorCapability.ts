@@ -2,7 +2,7 @@
  * CoordinatorCapability — 协调者能力
  *
  * 替代 ExecutionCapability，实现 Coordinator + Worker 模式。
- * Coordinator 只拥有 3 个工具（agent/task-stop/send-message），
+ * Coordinator 只拥有 4 个工具（agent/task-stop/send-message/ask-user），
  * 所有实际工作委派给 Worker 子代理。
  *
  * 设计原则（指挥者-执行者模式）：
@@ -27,6 +27,7 @@ import { createAgentTool } from '../../tools/built-in/agent-tool.js';
 import { createTaskStopTool } from '../../tools/built-in/task-stop-tool.js';
 import { createSendMessageTool } from '../../tools/built-in/send-message-tool.js';
 import { createRememberTool } from '../../tools/built-in/remember-tool.js';
+import { createAskUserTool } from '../../tools/built-in/ask-user-tool.js';
 import { createSkillInstallTool, setReloadSkillsCallback } from '../../tools/built-in/skill-install-tool.js';
 import { createMcpInstallTool, setGetMcpManagerCallback } from '../../tools/built-in/mcp-install-tool.js';
 import { TaskManager } from '../core/TaskManager.js';
@@ -113,7 +114,7 @@ export class CoordinatorCapability implements AgentCapability {
   private coordinatorTools: Record<string, Tool> = {};
   private taskManager = new TaskManager();
 
-  private static readonly DEFAULT_MAX_TURNS = 15;
+  private static readonly DEFAULT_MAX_TURNS = 200;
 
   initialize(context: AgentContext): void {
     this.context = context;
@@ -149,6 +150,7 @@ export class CoordinatorCapability implements AgentCapability {
       agent: createAgentTool(context, this.taskManager),
       'task-stop': createTaskStopTool(this.taskManager),
       'send-message': createSendMessageTool(context),
+      'ask-user': createAskUserTool(),
       remember: createRememberTool(),
 
       // 自愈/自安装工具

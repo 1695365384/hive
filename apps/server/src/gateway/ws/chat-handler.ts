@@ -12,13 +12,14 @@
 import { EventEmitter } from 'node:events'
 import type { WebSocket } from 'ws'
 import type { Server } from '@bundy-lmw/hive-core'
-import { SessionId } from '@bundy-lmw/hive-core'
+import { SessionId, setAskUserCallback } from '@bundy-lmw/hive-core'
 import type { StreamingEventUnion } from '@bundy-lmw/hive-core'
 import type {
   WsRequest, WsResponse,
 } from './types.js'
 import { createSuccessResponse, createErrorResponse, createEvent } from './types.js'
 import type { HiveLogger } from '../../logging/hive-logger.js'
+import crypto from 'node:crypto'
 
 // ============================================
 // 类型
@@ -46,6 +47,9 @@ export class ChatWsHandler extends EventEmitter {
   private _streamingUnregister: (() => void) | null = null
   private _fileUnregister: (() => void) | null = null
 
+  /** Pending ask-user requests: threadId → { resolve, timer } */
+  private pendingAskUser = new Map<string, { resolve: (answer: string) => void; timer: NodeJS.Timeout }>()
+
   constructor(hiveLogger: HiveLogger | null) {
     super()
     this.hiveLogger = hiveLogger
@@ -59,6 +63,7 @@ export class ChatWsHandler extends EventEmitter {
     this.server = server
     this.subscribeAgentHooks()
     this.registerStreamingHandler()
+    this.registerAskUserCallback()
   }
 
   // ============================================
@@ -252,6 +257,7 @@ export class ChatWsHandler extends EventEmitter {
           success: event.success,
           cancelled: event.cancelled,
           error: event.error,
+          text: event.text,
         })))
         // Only clean up toolCallIdMaps; threadClientMap is cleaned on WS disconnect
         this.toolCallIdMaps.delete(threadId)
@@ -334,6 +340,8 @@ export class ChatWsHandler extends EventEmitter {
         return this.handleChatSend(req.params, req.id, client.ws)
       case 'chat.cancel':
         return this.handleChatCancel(req.params, req.id)
+      case 'chat.answerAskUser':
+        return this.handleAnswerAskUser(req.params, req.id)
       default:
         return createErrorResponse(req.id, 'NOT_FOUND', `Unknown method: ${req.method}`)
     }
@@ -408,6 +416,80 @@ export class ChatWsHandler extends EventEmitter {
     this.server?.abort(SessionId.forAbort(threadId))
 
     return createSuccessResponse(id, { threadId, cancelled: true })
+  }
+
+  // ============================================
+  // Ask-User 交互
+  // ============================================
+
+  /**
+   * 注册 ask-user 回调，实现 Agent ↔ 用户交互
+   *
+   * 流程：
+   * 1. Agent 调用 ask-user 工具
+   * 2. 此回调被触发，生成 askId 并存下 Promise resolver
+   * 3. 通过 WS 推送 agent.ask-user 事件给桌面端
+   * 4. 桌面端显示交互卡片，用户点选或输入
+   * 5. 桌面端通过 WS 发回 chat.answerAskUser
+   * 6. resolver 被调用，Agent 拿到结果继续
+   */
+  private registerAskUserCallback(): void {
+    setAskUserCallback((question, options) => {
+      return new Promise<string>((resolve) => {
+        const askId = crypto.randomUUID()
+
+        // 通过第一个可用线程 ID 发送事件（如果有的话）
+        const threadIds = Array.from(this.threadClientMap.entries())
+        let sent = false
+
+        for (const [threadId, ws] of threadIds) {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify(createEvent('agent.ask-user', {
+              askId,
+              threadId,
+              question,
+              options: options ?? [],
+            })))
+            sent = true
+
+            // 超时保底：2 分钟后自动回答 "(未选择)"
+            const timer = setTimeout(() => {
+              this.pendingAskUser.delete(askId)
+              resolve('(未选择)')
+            }, 120_000)
+
+            this.pendingAskUser.set(askId, { resolve, timer })
+
+            // 只发给第一个活跃线程
+            break
+          }
+        }
+
+        // 没有活跃连接 → 直接返回默认答案
+        if (!sent) {
+          resolve('(无活跃连接)')
+        }
+      })
+    })
+  }
+
+  private handleAnswerAskUser(params: unknown, id: string): WsResponse {
+    const { askId, answer } = params as { askId?: string; answer?: string }
+
+    if (!askId) {
+      return createErrorResponse(id, 'VALIDATION', 'askId is required')
+    }
+
+    const pending = this.pendingAskUser.get(askId)
+    if (!pending) {
+      return createErrorResponse(id, 'NOT_FOUND', 'Ask request not found or already answered')
+    }
+
+    clearTimeout(pending.timer)
+    this.pendingAskUser.delete(askId)
+    pending.resolve(answer ?? '(未选择)')
+
+    return createSuccessResponse(id, { success: true })
   }
 
   // ============================================

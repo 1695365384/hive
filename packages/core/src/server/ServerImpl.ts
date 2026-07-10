@@ -556,7 +556,7 @@ class ServerImpl implements Server {
 
         await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, replyText, replyType);
 
-        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled: abortController.signal.aborted, error: result.error });
+        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled: abortController.signal.aborted, error: result.error, text: replyText });
 
         this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
       } finally {

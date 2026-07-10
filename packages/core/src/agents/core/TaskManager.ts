@@ -16,7 +16,7 @@
 // ============================================
 
 /** Worker 任务类型 */
-export type WorkerType = 'explore' | 'plan' | 'general' | 'schedule';
+export type WorkerType = 'explore' | 'plan' | 'general' | 'schedule' | 'office';
 
 /** Worker 执行状态 */
 export type WorkerStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'timeout';

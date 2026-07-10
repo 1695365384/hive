@@ -3,7 +3,7 @@ import { usePreviewStore } from "../../stores/preview-store";
 import { PreviewCanvas } from "./PreviewCanvas";
 import { X } from "lucide-react";
 
-export function PreviewSidebar() {
+export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
   const { isOpen, previews, activeId, close, setActive } = usePreviewStore();
 
   // Close on Escape
@@ -28,7 +28,7 @@ export function PreviewSidebar() {
       `}
     >
       {/* Fixed-width inner container — slides in/out with wrapper */}
-      <div className="w-96 h-full bg-stone-950 flex flex-col">
+      <div className="w-96 h-full bg-stone-900 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-stone-800 shrink-0">
           <div className="flex items-center gap-2">
@@ -69,7 +69,7 @@ export function PreviewSidebar() {
 
         {/* Canvas */}
         <div className="flex-1 overflow-y-auto">
-          <PreviewCanvas preview={activePreview} />
+          <PreviewCanvas preview={activePreview} isRunning={isRunning} />
         </div>
       </div>
     </div>

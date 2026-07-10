@@ -9,6 +9,10 @@
     "opener:default",
     "notification:default",
     "sql:default",
-    "sql:allow-execute"
+    "sql:allow-execute",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
   ]
 }
