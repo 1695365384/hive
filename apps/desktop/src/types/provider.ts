@@ -1,3 +1,5 @@
+import i18n from "../i18n";
+
 /**
  * Provider 配置共享类型
  *
@@ -33,18 +35,17 @@ export interface ConnectionTestResult {
   modelUsed?: string;
 }
 
-/** 错误类型 → 用户可读的中文提示 */
 export function describeConnectionError(result: ConnectionTestResult): string {
   if (result.valid) return "";
   switch (result.errorKind) {
     case "auth":
-      return "API Key 无效或已过期，请检查后重试";
+      return i18n.t("provider.errorInvalidKey");
     case "network":
-      return "网络连接失败，请检查网络或厂商服务状态";
+      return i18n.t("provider.errorNetwork");
     case "model":
-      return "模型不可用，请尝试更换模型";
+      return i18n.t("provider.errorModel");
     default:
-      return result.error || "连接失败，请稍后重试";
+      return result.error || i18n.t("provider.errorGeneric");
   }
 }
 

@@ -1,3 +1,6 @@
+import i18n from "../../i18n";
+import { formatDurationMs } from "../../lib/i18n-format";
+
 /** Human-readable tool labels (hide raw tool names from users). */
 
 function argRecord(args: unknown): Record<string, unknown> {
@@ -22,7 +25,9 @@ export function formatToolLabel(toolName: string, args: unknown): string {
   if (name === "bash" || name === "shell") {
     const command = typeof obj.command === "string" ? obj.command : "";
     const line = command.split("\n").find((l) => l.trim())?.trim() ?? "";
-    return line ? `运行命令 · ${truncate(line)}` : "运行命令";
+    return line
+      ? i18n.t("activity.tool.bashWith", { line: truncate(line) })
+      : i18n.t("activity.tool.bash");
   }
 
   if (name === "read" || name === "file") {
@@ -33,44 +38,46 @@ export function formatToolLabel(toolName: string, args: unknown): string {
           ? obj.path
           : "";
     const file = basename(path);
-    return file ? `读取文件 · ${file}` : "读取文件";
+    return file
+      ? i18n.t("activity.tool.readFileWith", { file })
+      : i18n.t("activity.tool.readFile");
   }
 
   if (name === "grep" || name === "glob") {
     const pattern = typeof obj.pattern === "string" ? obj.pattern : "";
-    return pattern ? `搜索代码 · ${truncate(pattern, 40)}` : "搜索代码";
+    return pattern
+      ? i18n.t("activity.tool.grepWith", { pattern: truncate(pattern, 40) })
+      : i18n.t("activity.tool.grep");
   }
 
   if (name === "send-file") {
     const path = typeof obj.filePath === "string" ? obj.filePath : "";
     const file = basename(path);
-    return file ? `发送文件 · ${file}` : "发送文件";
+    return file
+      ? i18n.t("activity.tool.sendFileWith", { file })
+      : i18n.t("activity.tool.sendFile");
   }
 
   if (name === "agent") {
     const type = typeof obj.type === "string" ? obj.type : "";
-    const labels: Record<string, string> = {
-      office: "委派 Office 文档任务",
-      explore: "委派探索任务",
-      plan: "委派规划任务",
-      general: "委派执行任务",
-      schedule: "委派定时任务",
+    const keys: Record<string, string> = {
+      office: "activity.tool.agentOffice",
+      explore: "activity.tool.agentExplore",
+      plan: "activity.tool.agentPlan",
+      general: "activity.tool.agentGeneral",
+      schedule: "activity.tool.agentSchedule",
     };
-    return labels[type] ?? "委派子任务";
+    return i18n.t(keys[type] ?? "activity.tool.agentDefault");
   }
 
   if (name === "web" || name === "webfetch") {
-    return "获取网页内容";
+    return i18n.t("activity.tool.web");
   }
 
   return toolName;
 }
 
-export function formatDurationMs(ms: number | undefined): string | null {
-  if (ms == null || ms < 0) return null;
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
+export { formatDurationMs };
 
 export function formatElapsedSince(startedAt: number | undefined): string | null {
   if (!startedAt) return null;

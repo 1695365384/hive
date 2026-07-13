@@ -1,21 +1,23 @@
 import { memo, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { formatDurationMs } from "./activity-labels";
 import { useThrottledElapsed } from "../../hooks/use-throttled-elapsed";
 import { isDockVisible, useActivityStore } from "../../stores/activity-store";
 
-function phaseLabel(phase: "working" | "waiting" | "idle"): string {
-  if (phase === "waiting") return "等待确认";
-  if (phase === "idle") return "已完成";
-  return "正在处理";
-}
-
 function ActivityDockInner() {
+  const { t } = useTranslation();
   const rollup = useActivityStore((s) => s.rollup);
   const [visible, setVisible] = useState(false);
   const [entered, setEntered] = useState(false);
   const elapsed = useThrottledElapsed(
     rollup.phase === "working" || rollup.phase === "waiting" ? rollup.startedAt : undefined
   );
+
+  const phaseLabel = (phase: "working" | "waiting" | "idle"): string => {
+    if (phase === "waiting") return t("activity.waitingConfirm");
+    if (phase === "idle") return t("activity.done");
+    return t("activity.processing");
+  };
 
   useEffect(() => {
     const show = isDockVisible(rollup);
@@ -47,8 +49,9 @@ function ActivityDockInner() {
     ? rollup.lastCompleted?.label ?? rollup.title
     : rollup.detail;
   const timeLabel = elapsed != null ? formatDurationMs(elapsed) : null;
+  const processingTitle = t("activity.processing");
 
-  const line = [prefix, rollup.title !== "处理中" ? rollup.title : null, detail]
+  const line = [prefix, rollup.title !== processingTitle ? rollup.title : null, detail]
     .filter(Boolean)
     .join(" · ");
 

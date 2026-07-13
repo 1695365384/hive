@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { getWsClient } from "../lib/ws-client";
 import { ProviderGrid } from "../components/provider-setup/ProviderGrid";
 import { ApiKeyInput } from "../components/provider-setup/ApiKeyInput";
@@ -9,9 +11,8 @@ interface SetupWizardProps {
   onComplete: () => void;
 }
 
-const STEPS = ["Choose Provider", "API Key", "Select Model"] as const;
-
 export function SetupWizard({ onComplete }: SetupWizardProps) {
+  const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -22,6 +23,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingModels, setLoadingModels] = useState(false);
+
+  const steps = [
+    t("setup.stepProvider"),
+    t("setup.stepApiKey"),
+    t("setup.stepModel"),
+  ] as const;
 
   // Step 0: 加载厂商列表
   useEffect(() => {
@@ -72,7 +79,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       }
 
       if (Date.now() - start > timeoutMs) {
-        throw new Error("Provider was saved, but the running agent did not become ready in time");
+        throw new Error(i18n.t("setup.providerTimeout"));
       }
 
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -92,7 +99,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       await waitForProviderReady();
       onComplete();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save configuration";
+      const msg = err instanceof Error ? err.message : t("setup.saveFailed");
       setError(msg);
       setSubmitting(false);
     }
@@ -108,7 +115,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     return (
       <div className="flex items-center justify-center h-screen bg-stone-900">
         <div className="text-center">
-          <img src="/logo.svg" alt="Hive" className="w-20 h-20 mx-auto mb-4 opacity-60" />
+          <img src="/logo.svg" alt={t("app.name")} className="w-20 h-20 mx-auto mb-4 opacity-60" />
           <div className="animate-spin h-8 w-8 border-2 border-stone-700 border-t-amber-500 rounded-full mx-auto" />
         </div>
       </div>
@@ -120,14 +127,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       <div className="w-full max-w-lg p-8">
         {/* Header + Logo */}
         <div className="text-center mb-6">
-          <img src="/logo.svg" alt="Hive" className="w-16 h-16 mx-auto mb-3" />
-          <h1 className="text-2xl font-bold text-amber-400 mb-1">Welcome to Hive</h1>
-          <p className="text-stone-400 text-sm">Configure your AI provider to get started</p>
+          <img src="/logo.svg" alt={t("app.name")} className="w-16 h-16 mx-auto mb-3" />
+          <h1 className="text-2xl font-bold text-amber-400 mb-1">{t("setup.welcome")}</h1>
+          <p className="text-stone-400 text-sm">{t("setup.subtitle")}</p>
         </div>
 
         {/* Progress Indicator */}
         <div className="flex items-center justify-center mb-8">
-          {STEPS.map((label, i) => (
+          {steps.map((label, i) => (
             <div key={label} className="flex items-center">
               <div
                 className={`flex items-center gap-2 transition-colors ${
@@ -151,7 +158,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 </div>
                 <span className="text-xs hidden sm:inline">{label}</span>
               </div>
-              {i < STEPS.length - 1 && (
+              {i < steps.length - 1 && (
                 <div
                   className={`w-8 h-px mx-1 ${i < step ? "bg-green-500" : "bg-stone-700"}`}
                 />
@@ -166,7 +173,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           {step === 0 && (
             <div className="space-y-3">
               <label className="block text-sm font-medium text-stone-300">
-                Choose your AI provider
+                {t("setup.chooseProvider")}
               </label>
               <ProviderGrid
                 providers={providers}
@@ -191,7 +198,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   </div>
                 )}
                 <span>
-                  Connecting to <span className="text-amber-400 font-medium">{selected?.name}</span>
+                  {t("setup.connectingTo", { name: selected?.name ?? "" })}
                 </span>
               </div>
               <ApiKeyInput
@@ -202,7 +209,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 model={model || selected?.defaultModel}
               />
               <p className="text-xs text-stone-500">
-                Get your API key from the provider's dashboard. We verify the connection before saving.
+                {t("setup.apiKeyHint")}
               </p>
             </div>
           )}
@@ -217,9 +224,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 loading={loadingModels}
               />
               <div className="text-xs text-stone-500 bg-stone-900/50 border border-stone-800 rounded-lg p-3">
-                <p className="font-medium text-stone-400 mb-1">Summary</p>
-                <p>Provider: <span className="text-amber-400">{selected?.name}</span></p>
-                <p>Model: <span className="text-amber-400">{model || "Auto (recommended)"}</span></p>
+                <p className="font-medium text-stone-400 mb-1">{t("setup.summary")}</p>
+                <p>{t("setup.providerLabel")} <span className="text-amber-400">{selected?.name}</span></p>
+                <p>{t("setup.modelLabel")} <span className="text-amber-400">{model || t("setup.autoRecommended")}</span></p>
               </div>
             </div>
           )}
@@ -237,20 +244,20 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               disabled={submitting}
               className="px-5 py-2.5 text-stone-400 hover:text-stone-200 text-sm font-medium transition-colors"
             >
-              ← Back
+              ← {t("common.back")}
             </button>
           ) : (
             <div />
           )}
 
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <button
               type="button"
               onClick={() => setStep((s) => s + 1)}
               disabled={!canProceed()}
               className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
             >
-              Continue →
+              {t("common.continue")} →
             </button>
           ) : (
             <button
@@ -259,7 +266,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               disabled={submitting}
               className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
             >
-              {submitting ? "Saving..." : "Get Started"}
+              {submitting ? t("common.saving") : t("setup.getStarted")}
             </button>
           )}
         </div>

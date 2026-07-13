@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useLogStore } from "../stores/log-store";
 import { getWsClient } from "../lib/ws-client";
 import { getTodayDateStr } from "../stores/log-store";
@@ -18,6 +19,7 @@ interface LogDrawerProps {
 }
 
 export function LogDrawer({ height, onHeightChange }: LogDrawerProps) {
+  const { t } = useTranslation();
   const logs = useLogStore((s) => s.logs);
   const clearUnread = useLogStore((s) => s.clearUnread);
   const selectedDate = useLogStore((s) => s.selectedDate);
@@ -104,7 +106,7 @@ export function LogDrawer({ height, onHeightChange }: LogDrawerProps) {
         <button
           onClick={() => onHeightChange("collapsed")}
           className="text-stone-500 hover:text-stone-300 text-xs px-1"
-          title="Close"
+          title={t("common.close")}
         >
           ▼
         </button>
@@ -114,7 +116,7 @@ export function LogDrawer({ height, onHeightChange }: LogDrawerProps) {
           onChange={(e) => handleDateChange(e.target.value)}
           className="bg-stone-800 border border-stone-700 rounded px-2 py-1 text-xs text-stone-300"
         >
-          <option value="__today__">Today</option>
+          <option value="__today__">{t("common.today")}</option>
           {dates
             .filter((d) => d !== todayStr)
             .map((d) => (
@@ -128,17 +130,17 @@ export function LogDrawer({ height, onHeightChange }: LogDrawerProps) {
           onChange={(e) => setLevelFilter(e.target.value)}
           className="bg-stone-800 border border-stone-700 rounded px-2 py-1 text-xs text-stone-300"
         >
-          <option value="">All</option>
-          <option value="debug">Debug</option>
-          <option value="info">Info</option>
-          <option value="warn">Warn</option>
-          <option value="error">Error</option>
+          <option value="">{t("common.all")}</option>
+          <option value="debug">{t("logs.debug")}</option>
+          <option value="info">{t("logs.info")}</option>
+          <option value="warn">{t("logs.warn")}</option>
+          <option value="error">{t("logs.error")}</option>
         </select>
         <input
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter..."
+          placeholder={t("logs.filter")}
           className="flex-1 bg-stone-800 border border-stone-700 rounded px-2 py-1 text-xs text-stone-100 placeholder-stone-500"
         />
         <span className="text-xs text-stone-600">{filteredLogs.length}</span>
@@ -146,7 +148,7 @@ export function LogDrawer({ height, onHeightChange }: LogDrawerProps) {
           onClick={() => setAutoScroll(true)}
           className={`text-xs px-2 py-1 rounded ${autoScroll ? "bg-amber-600/20 text-amber-400" : "text-stone-500"}`}
         >
-          Auto
+          {t("common.auto")}
         </button>
         <button
           onClick={() => onHeightChange(height === "half" ? "full" : "half")}
@@ -164,7 +166,7 @@ export function LogDrawer({ height, onHeightChange }: LogDrawerProps) {
       >
         {selectedDate && (
           <div className="text-amber-400/70 text-center py-1 border-b border-stone-800 mb-1">
-            Viewing: {selectedDate}
+            {t("logs.viewing", { date: selectedDate })}
           </div>
         )}
         {filteredLogs.map((log) => (

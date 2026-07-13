@@ -1,4 +1,5 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronRight, Check, X } from "lucide-react";
 import { formatDurationMs } from "./activity-labels";
 
@@ -8,7 +9,6 @@ export type ActivityCardProps = {
   durationMs?: number;
   stepCount?: number;
   badge?: string;
-  /** Always visible below header (e.g. file deliverables) */
   deliverables?: ReactNode;
   children: ReactNode;
 };
@@ -22,6 +22,7 @@ function ActivityCardInner({
   deliverables,
   children,
 }: ActivityCardProps) {
+  const { t } = useTranslation();
   const isRunning = status === "running";
   const [expanded, setExpanded] = useState(isRunning);
 
@@ -37,7 +38,7 @@ function ActivityCardInner({
   const timeLabel = formatDurationMs(durationMs);
   const summary =
     !isRunning && stepCount != null && stepCount > 0
-      ? `${stepCount} 步`
+      ? t("activity.steps", { count: stepCount })
       : null;
 
   return (

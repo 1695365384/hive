@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FileText,
   Presentation,
@@ -10,26 +11,27 @@ import {
 import { usePreviewStore, type Preview } from "../../stores/preview-store";
 import { PreviewCanvas } from "./PreviewCanvas";
 
-function previewTypeMeta(type: Preview["type"] | undefined) {
+function previewTypeMeta(type: Preview["type"] | undefined, t: (key: string) => string) {
   switch (type) {
     case "ppt":
-      return { label: "演示文稿", icon: Presentation };
+      return { label: t("preview.type.ppt"), icon: Presentation };
     case "doc":
-      return { label: "文档", icon: FileText };
+      return { label: t("preview.type.doc"), icon: FileText };
     case "pdf":
-      return { label: "PDF", icon: FileText };
+      return { label: t("preview.type.pdf"), icon: FileText };
     case "xlsx":
-      return { label: "表格", icon: FileSpreadsheet };
+      return { label: t("preview.type.xlsx"), icon: FileSpreadsheet };
     case "svg":
-      return { label: "SVG", icon: FileImage };
+      return { label: t("preview.type.svg"), icon: FileImage };
     case "html":
-      return { label: "HTML", icon: FileCode };
+      return { label: t("preview.type.html"), icon: FileCode };
     default:
-      return { label: "预览", icon: FileText };
+      return { label: t("preview.title"), icon: FileText };
   }
 }
 
 export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
+  const { t } = useTranslation();
   const { isOpen, previews, activeId, close, setActive } = usePreviewStore();
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
     ? previews.find((p) => p.id === activeId) ?? null
     : null;
 
-  const meta = previewTypeMeta(activePreview?.type);
+  const meta = previewTypeMeta(activePreview?.type, t);
   const TypeIcon = meta.icon;
 
   return (
@@ -53,7 +55,7 @@ export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
       className={`preview-sidebar ${isOpen ? "preview-sidebar--open" : ""}`}
       style={{ width: isOpen ? "var(--preview-width)" : 0 }}
       aria-hidden={!isOpen}
-      aria-label="文档预览"
+      aria-label={t("preview.documentPreview")}
     >
       <div className="preview-sidebar__inner">
         <header className="preview-sidebar__header">
@@ -72,7 +74,7 @@ export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
             type="button"
             onClick={close}
             className="preview-sidebar__close app-no-drag"
-            title="关闭预览 (Esc)"
+            title={t("preview.close")}
           >
             <PanelRightClose className="w-4 h-4" />
           </button>

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { ArtifactFileMenu } from "./ArtifactFileMenu";
 import { encodeFilesUrl, resolveArtifactPreviewSrc } from "../../lib/artifact-file";
 import { isPreviewableFile } from "../preview/detect-preview";
@@ -21,6 +22,7 @@ export function FileAttachmentBlock({
   servedPath,
   src,
 }: FileAttachmentBlockProps) {
+  const { t } = useTranslation();
   const isImage = mimeType?.startsWith("image/");
   const previewType = !isImage ? isPreviewableFile(name) : null;
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -57,10 +59,10 @@ export function FileAttachmentBlock({
         });
       }
     } catch {
-      setPreviewError("预览加载失败");
+      setPreviewError(t("file.previewLoadFailed"));
     }
     setPreviewLoading(false);
-  }, [src, name, path, servedPath, previewType, previewSrc, openFor]);
+  }, [src, name, path, servedPath, previewType, previewSrc, openFor, t]);
 
   if (isImage && src) {
     return (
@@ -92,7 +94,7 @@ export function FileAttachmentBlock({
             disabled={previewLoading}
             className="px-2 py-1 text-[10px] rounded text-amber-400/80 hover:text-amber-300 hover:bg-amber-500/10 transition-colors disabled:opacity-50 shrink-0"
           >
-            {previewLoading ? "..." : "Preview"}
+            {previewLoading ? "..." : t("preview.button")}
           </button>
         )}
       </div>

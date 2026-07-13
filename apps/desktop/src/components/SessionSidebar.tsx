@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useSessionStore } from "../stores/session-store";
 import type { Session } from "../types/chat";
+import { formatRelativeTime } from "../lib/session-utils";
 import {
   Plus,
   MessageSquare,
@@ -16,6 +18,7 @@ interface SessionSidebarProps {
 }
 
 export function SessionSidebar({ collapsed, onToggle }: SessionSidebarProps) {
+  const { t } = useTranslation();
   const sessions = useSessionStore((s) => s.sessions);
   const currentId = useSessionStore((s) => s.currentId);
   const selectSession = useSessionStore((s) => s.selectSession);
@@ -95,10 +98,10 @@ export function SessionSidebar({ collapsed, onToggle }: SessionSidebarProps) {
   const handleRenameConfirm = useCallback(async () => {
     const id = editingId;
     if (!id) return;
-    const title = editValue.trim() || "New Chat";
+    const title = editValue.trim() || t("session.newChat");
     await renameSession(id, title);
     setEditingId(null);
-  }, [editingId, editValue, renameSession]);
+  }, [editingId, editValue, renameSession, t]);
 
   const handleRenameCancel = useCallback(() => {
     setEditingId(null);
@@ -115,19 +118,19 @@ export function SessionSidebar({ collapsed, onToggle }: SessionSidebarProps) {
       {/* Header */}
       <div className="flex items-center gap-1 px-3 h-11 border-b border-stone-800 shrink-0">
         <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider flex-1">
-          Sessions
+          {t("session.sessions")}
         </span>
         <button
           onClick={handleNew}
           className="p-1 rounded-md text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
-          title="New session"
+          title={t("session.newSession")}
         >
           <Plus className="w-4 h-4" />
         </button>
         <button
           onClick={onToggle}
           className="p-1 rounded-md text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
-          title="Collapse sidebar"
+          title={t("session.collapseSidebar")}
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -140,7 +143,7 @@ export function SessionSidebar({ collapsed, onToggle }: SessionSidebarProps) {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search sessions..."
+            placeholder={t("session.searchSessions")}
             className="flex-1 bg-transparent outline-none text-stone-300 placeholder-stone-600"
           />
           {search && (
@@ -162,14 +165,14 @@ export function SessionSidebar({ collapsed, onToggle }: SessionSidebarProps) {
         {!loading && filtered.length === 0 && (
           <div className="text-center py-8 px-4">
             <p className="text-xs text-stone-600">
-              {search ? "No matching sessions" : "No sessions yet"}
+              {search ? t("session.noMatchingSessions") : t("session.noSessions")}
             </p>
             {!search && (
               <button
                 onClick={handleNew}
                 className="mt-2 text-xs text-amber-500 hover:text-amber-400 transition-colors"
               >
-                Create your first session
+                {t("session.createFirstSession")}
               </button>
             )}
           </div>
@@ -225,6 +228,7 @@ function SessionItem({
   onDelete,
   editRef,
 }: SessionItemProps) {
+  const { t } = useTranslation();
   const ago = formatRelativeTime(session.updatedAt);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -263,8 +267,8 @@ function SessionItem({
         )}
         <p className="text-[10px] text-stone-600 mt-0.5">
           {session.messageCount > 0
-            ? `${session.messageCount} message${session.messageCount !== 1 ? "s" : ""}`
-            : "Empty"}
+            ? t("session.messageCount", { count: session.messageCount })
+            : t("common.empty")}
           <span className="mx-1">&middot;</span>
           {ago}
         </p>
@@ -276,14 +280,14 @@ function SessionItem({
           <button
             onClick={onRenameStart}
             className="p-0.5 rounded text-stone-600 hover:text-stone-300 hover:bg-stone-800"
-            title="Rename"
+            title={t("common.rename")}
           >
             <Pencil className="w-3 h-3" />
           </button>
           <button
             onClick={onDelete}
             className="p-0.5 rounded text-stone-600 hover:text-red-400 hover:bg-stone-800"
-            title="Delete"
+            title={t("common.delete")}
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -291,24 +295,4 @@ function SessionItem({
       )}
     </div>
   );
-}
-
-// ── Helpers ──
-
-function formatRelativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 4) return `${weeks}w ago`;
-  return new Date(ts).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
 }

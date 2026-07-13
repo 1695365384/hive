@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { init } from "pptx-preview";
 import { PreviewErrorFallback } from "./PreviewErrorFallback";
 import { PreviewEmbed } from "./PreviewEmbed";
@@ -10,6 +11,7 @@ interface PptxRendererProps extends ArtifactOpenMeta {
 }
 
 export function PptxRenderer({ src, title, name, path, servedPath, artifactSrc, officeCliHint }: PptxRendererProps) {
+  const { t } = useTranslation();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<ReturnType<typeof init> | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -88,7 +90,7 @@ export function PptxRenderer({ src, title, name, path, servedPath, artifactSrc, 
       {status === "loading" && (
         <div className="preview-state preview-state--loading">
           <span className="preview-state__spinner" aria-hidden />
-          <span>加载预览中…</span>
+          <span>{t("preview.loading")}</span>
         </div>
       )}
       <div

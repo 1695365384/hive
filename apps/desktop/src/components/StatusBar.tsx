@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useWsClient } from "../hooks/use-ws-client";
 import { useLogStore } from "../stores/log-store";
 import { useServerStore } from "../stores/server-store";
@@ -10,10 +11,19 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ drawerHeight, onToggle }: StatusBarProps) {
+  const { t } = useTranslation();
   const unreadCount = useLogStore((s) => s.unreadCount);
   const errorCount = useLogStore((s) => s.errorCount);
   const { state } = useWsClient();
   const restarting = useServerStore((s) => s.restarting);
+
+  const wsLabel = restarting
+    ? t("ws.restarting")
+    : state === "connected"
+      ? t("ws.connected")
+      : state === "reconnecting"
+        ? t("ws.reconnecting")
+        : t("ws.failed");
 
   return (
     <div className="flex items-center justify-between px-3 py-1 border-t border-stone-800 bg-stone-900 text-xs text-stone-500 shrink-0 select-none">
@@ -30,7 +40,7 @@ export function StatusBar({ drawerHeight, onToggle }: StatusBarProps) {
                 : "bg-red-500"
             }`}
           />
-          <span className="capitalize">{restarting ? "restarting" : state}</span>
+          <span className="capitalize">{wsLabel}</span>
         </div>
       </div>
       <button
@@ -38,12 +48,14 @@ export function StatusBar({ drawerHeight, onToggle }: StatusBarProps) {
         className="flex items-center gap-2 hover:text-stone-300 transition-colors"
       >
         {errorCount > 0 && (
-          <span className="text-red-400">{errorCount} error{errorCount > 1 ? "s" : ""}</span>
+          <span className="text-red-400">{t("logs.errorCount", { count: errorCount })}</span>
         )}
         {unreadCount > 0 && (
-          <span className="text-amber-400">{unreadCount} new</span>
+          <span className="text-amber-400">{t("logs.newCount", { count: unreadCount })}</span>
         )}
-        <span>Logs {drawerHeight !== "collapsed" ? "▼" : "▲"}</span>
+        <span>
+          {t("logs.title")} {drawerHeight !== "collapsed" ? "▼" : "▲"}
+        </span>
       </button>
     </div>
   );

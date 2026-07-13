@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import i18n from "../i18n";
 
 export type ActivityPhase = "idle" | "working" | "waiting";
 
@@ -50,7 +51,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
       runStartedAt: Date.now(),
       rollup: {
         phase: "working",
-        title: "处理中",
+        title: i18n.t("activity.processing"),
         startedAt: Date.now(),
       },
     }),
@@ -71,7 +72,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
       return {
         rollup: {
           phase: "working",
-          title: opts?.title ?? state.rollup.title ?? "处理中",
+          title: opts?.title ?? state.rollup.title ?? i18n.t("activity.processing"),
           detail: opts?.detail,
           startedAt: opts?.startedAt ?? state.rollup.startedAt ?? state.runStartedAt ?? Date.now(),
           lastCompleted: state.rollup.lastCompleted,

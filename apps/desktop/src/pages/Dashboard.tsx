@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useLogPolling } from "../hooks/use-log-polling";
 import { useSessionStore } from "../stores/session-store";
 import { ConfigPage } from "./ConfigPage";
@@ -25,6 +26,7 @@ type SettingsTab = "config" | "status" | "plugins";
 type DrawerHeight = "collapsed" | "half" | "full";
 
 export function Dashboard() {
+  const { t } = useTranslation();
   const [drawerHeight, setDrawerHeight] = useState<DrawerHeight>("collapsed");
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   useLogPolling();
@@ -69,7 +71,7 @@ export function Dashboard() {
               className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-stone-100 text-xs font-medium transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-              New Chat
+              {t("session.newChat")}
             </button>
           </div>
 
@@ -80,7 +82,7 @@ export function Dashboard() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search..."
+                placeholder={t("session.search")}
                 className="flex-1 bg-transparent outline-none text-stone-300 placeholder-stone-600"
               />
               {search && (
@@ -102,7 +104,7 @@ export function Dashboard() {
             {!loading && filtered.length === 0 && (
               <div className="text-center py-8 px-4">
                 <p className="text-xs text-stone-600">
-                  {search ? "No matching sessions" : "No sessions yet"}
+                  {search ? t("session.noMatchingSessions") : t("session.noSessions")}
                 </p>
               </div>
             )}
@@ -117,7 +119,7 @@ export function Dashboard() {
                 onEditValueChange={setEditValue}
                 onRenameConfirm={async () => {
                   if (editingId) {
-                    await renameSession(editingId, editValue.trim() || "New Chat");
+                    await renameSession(editingId, editValue.trim() || t("session.newChat"));
                     setEditingId(null);
                   }
                 }}
@@ -142,7 +144,7 @@ export function Dashboard() {
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors text-xs"
             >
               <Settings className="w-3.5 h-3.5" />
-              Settings
+              {t("settings.title")}
             </button>
           </div>
         </aside>
@@ -199,6 +201,7 @@ function SessionItem({
   onRenameStart,
   onDelete,
 }: SessionItemProps) {
+  const { t } = useTranslation();
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") onRenameConfirm();
     if (e.key === "Escape") onRenameCancel();
@@ -232,8 +235,8 @@ function SessionItem({
         )}
         <p className="text-[10px] text-stone-600 mt-0.5">
           {session.messageCount > 0
-            ? `${session.messageCount} msg`
-            : "Empty"}
+            ? t("session.messageCount", { count: session.messageCount })
+            : t("common.empty")}
           <span className="mx-1">·</span>
           {formatRelativeTime(session.updatedAt)}
         </p>
@@ -243,14 +246,14 @@ function SessionItem({
           <button
             onClick={(e) => { e.stopPropagation(); onRenameStart(); }}
             className="p-0.5 rounded text-stone-600 hover:text-stone-300 hover:bg-stone-700"
-            title="Rename"
+            title={t("common.rename")}
           >
             <Pencil className="w-3 h-3" />
           </button>
           <button
             onClick={onDelete}
             className="p-0.5 rounded text-stone-600 hover:text-red-400 hover:bg-stone-700"
-            title="Delete"
+            title={t("common.delete")}
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -273,10 +276,11 @@ function SettingsModal({
   onTabChange: (t: SettingsTab) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { id: "config", label: "Provider", icon: <Settings className="w-3.5 h-3.5" /> },
-    { id: "status", label: "Status", icon: <Activity className="w-3.5 h-3.5" /> },
-    { id: "plugins", label: "Plugins", icon: <Puzzle className="w-3.5 h-3.5" /> },
+    { id: "config", label: t("settings.provider"), icon: <Settings className="w-3.5 h-3.5" /> },
+    { id: "status", label: t("settings.status"), icon: <Activity className="w-3.5 h-3.5" /> },
+    { id: "plugins", label: t("settings.plugins"), icon: <Puzzle className="w-3.5 h-3.5" /> },
   ];
 
   return (

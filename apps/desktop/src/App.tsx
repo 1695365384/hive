@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useWsClient } from "./hooks/use-ws-client";
 import { getWsClient } from "./lib/ws-client";
 import { SetupWizard } from "./pages/SetupWizard";
@@ -6,6 +7,7 @@ import { Dashboard } from "./pages/Dashboard";
 import "./App.css";
 
 export default function App() {
+  const { t } = useTranslation();
   const { state } = useWsClient();
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
 
@@ -30,9 +32,9 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-full bg-stone-900 text-stone-400">
         <div className="text-center">
-          <img src="/logo.svg" alt="Hive" className="w-16 h-16 mx-auto mb-6 opacity-60" />
+          <img src="/logo.svg" alt={t("app.name")} className="w-16 h-16 mx-auto mb-6 opacity-60" />
           <div className="animate-spin h-8 w-8 border-2 border-stone-700 border-t-amber-500 rounded-full mx-auto mb-4" />
-          <p>Connecting to Hive Server...</p>
+          <p>{t("connect.connectingServer")}</p>
         </div>
       </div>
     );
@@ -43,14 +45,14 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-full bg-stone-900 text-stone-400">
         <div className="text-center">
-          <img src="/logo.svg" alt="Hive" className="w-16 h-16 mx-auto mb-6 opacity-60" />
-          <p className="text-red-400 mb-2">Failed to connect to Hive Server</p>
-          <p className="text-sm text-stone-500 mb-4">Please check that the server is running on port 4450</p>
+          <img src="/logo.svg" alt={t("app.name")} className="w-16 h-16 mx-auto mb-6 opacity-60" />
+          <p className="text-red-400 mb-2">{t("connect.failed")}</p>
+          <p className="text-sm text-stone-500 mb-4">{t("connect.hint")}</p>
           <button
             onClick={() => getWsClient().reconnect()}
             className="px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded text-sm transition-colors"
           >
-            Retry
+            {t("common.retry")}
           </button>
         </div>
       </div>

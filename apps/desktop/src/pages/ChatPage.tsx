@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { useChatWsClient } from "../hooks/use-chat-ws-client";
 import { getChatWsClient } from "../lib/ws-client";
 import { useFileUpload } from "../hooks/use-file-upload";
@@ -17,7 +19,7 @@ import { useActivityStore } from "../stores/activity-store";
 import * as db from "../lib/db";
 import type { ChatMessage, ContentPart } from "../types/chat";
 import { AskUserCard } from "../components/AskUserCard";
-import { Send, Square, Paperclip } from "lucide-react";
+import { ArrowUp, Plus, Square } from "lucide-react";
 
 function truncateActivityLabel(text: string, max = 48): string {
   const t = text.trim().replace(/\s+/g, " ");
@@ -25,11 +27,25 @@ function truncateActivityLabel(text: string, max = 48): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+/** Match .chat-composer__input line-height (1.25rem @ 16px root) */
+const COMPOSER_INPUT_LINE_PX = 20;
+
+/** ThinkingCard collapse animation (~450ms) + markdown/table layout settle */
+const SCROLL_SETTLE_MS = [0, 80, 200, 480, 900];
+
+function syncComposerInputHeight(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${Math.max(COMPOSER_INPUT_LINE_PX, Math.min(el.scrollHeight, 200))}px`;
+  const multiline = el.scrollHeight > COMPOSER_INPUT_LINE_PX + 2;
+  el.closest(".chat-composer")?.classList.toggle("chat-composer--multiline", multiline);
+}
+
 // ============================================
 // Chat Page
 // ============================================
 
 export function ChatPage() {
+  const { t } = useTranslation();
   const { state: chatState, request, onEvent } = useChatWsClient();
   const { pendingFiles, uploading, addFiles, removeFile, clearFiles } = useFileUpload();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -46,6 +62,10 @@ export function ChatPage() {
   } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const messagesRailRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const wasRunningRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeThreadIdRef = useRef<string | null>(null);
   const lastTextSeqRef = useRef(0);
@@ -106,12 +126,61 @@ export function ChatPage() {
     }
   }, [storeLoading, sessions.length, createSession]);
 
-  // Auto scroll to bottom
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const anchor = scrollAnchorRef.current;
+    const scroller = scrollRef.current;
+    const apply = () => {
+      if (anchor) {
+        anchor.scrollIntoView({ block: "end", behavior });
+      } else if (scroller) {
+        scroller.scrollTop = scroller.scrollHeight;
+      }
+    };
+    apply();
+    requestAnimationFrame(() => {
+      apply();
+      requestAnimationFrame(apply);
+    });
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distance < 96;
+  }, []);
+
+  // Stick to bottom while streaming when user hasn't scrolled up
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!stickToBottomRef.current && !isRunning) return;
+    scrollToBottom();
+  }, [messages, isRunning, scrollToBottom]);
+
+  // Response finished: layout still shifts (collapse, tables, dock) without new messages
+  useEffect(() => {
+    const completed = wasRunningRef.current && !isRunning;
+    if (completed) {
+      stickToBottomRef.current = true;
+      const ids = SCROLL_SETTLE_MS.map((ms) => window.setTimeout(() => scrollToBottom(), ms));
+      wasRunningRef.current = isRunning;
+      return () => ids.forEach((id) => window.clearTimeout(id));
     }
-  }, [messages]);
+    wasRunningRef.current = isRunning;
+  }, [isRunning, scrollToBottom]);
+
+  // ResizeObserver — catch streamdown/table height changes after complete
+  useEffect(() => {
+    const rail = messagesRailRef.current;
+    if (!rail) return;
+
+    const ro = new ResizeObserver(() => {
+      if (stickToBottomRef.current || isRunning) {
+        scrollToBottom();
+      }
+    });
+    ro.observe(rail);
+    return () => ro.disconnect();
+  }, [isRunning, scrollToBottom, messages.length]);
 
   // Lightbox event listener (for GroupedContentRenderer which has no direct state access)
   useEffect(() => {
@@ -210,10 +279,10 @@ export function ChatPage() {
 
       return [
         ...prev.slice(0, -1),
-        { ...last, content: [{ type: "text", text: `处理失败：${message}` }] },
+        { ...last, content: [{ type: "text", text: t("chat.processFailed", { detail: message }) }] },
       ];
     });
-  }, [activitySetIdle]);
+  }, [activitySetIdle, t]);
 
   // Stable WS event handlers — useCallback ensures dedup in WsClient Set
   // across React.StrictMode double-mount cycles
@@ -221,7 +290,7 @@ export function ChatPage() {
     if (data.threadId !== activeThreadIdRef.current) return;
     if (data.seq <= lastReasoningSeqRef.current) return;
     lastReasoningSeqRef.current = data.seq;
-    activitySetWorking({ detail: "思考中" });
+    activitySetWorking({ detail: i18n.t("activity.thinking") });
     appendPart({ type: "reasoning", text: data.text, workerId: data.workerId, workerType: data.workerType });
   }, [appendPart, activitySetWorking]);
 
@@ -243,7 +312,7 @@ export function ChatPage() {
       const previewStore = usePreviewStore.getState();
       previewStore.openFor({
         id: `office-live-${data.threadId}`,
-        title: "Office 文档",
+        title: i18n.t("preview.officeDoc"),
         type: "ppt",
         content: "",
         src: "",
@@ -285,18 +354,18 @@ export function ChatPage() {
     activeThreadIdRef.current = null;
     activitySetIdle();
     if (data.cancelled) {
-      appendPart({ type: "text", text: "\n\n*Execution cancelled*" });
+      appendPart({ type: "text", text: t("chat.executionCancelled") });
     } else if (data.success === false && data.error) {
       setError(data.error);
-      appendPart({ type: "text", text: `处理失败：${data.error}` });
+      appendPart({ type: "text", text: t("chat.processFailed", { detail: data.error }) });
     }
     // Ensure the assistant message is never left empty after completion
     setMessages((prev) => {
       const lastMsg = prev[prev.length - 1];
       if (lastMsg?.role === "assistant" && lastMsg.content.length === 0) {
         const fallbackText = data.success === false && data.error
-          ? `处理失败：${data.error}`
-          : (data as { text?: string }).text ?? "任务完成，未产生可见输出。";
+          ? t("chat.processFailed", { detail: data.error })
+          : (data as { text?: string }).text ?? t("chat.taskNoOutput");
         return [
           ...prev.slice(0, -1),
           {
@@ -319,7 +388,7 @@ export function ChatPage() {
         });
       }, 400);
     }
-  }, [appendPart, activitySetIdle, persistAssistantContent]);
+  }, [appendPart, activitySetIdle, persistAssistantContent, t]);
 
   const handleFile = useCallback((data: { threadId: string; name: string; path: string; servedPath?: string; size: number; mimeType: string; type: string; src?: string }) => {
     const threadId = activeThreadIdRef.current ?? assistantThreadIdRef.current;
@@ -379,9 +448,9 @@ export function ChatPage() {
   // Ask-user handler
   const handleAskUser = useCallback((data: { askId: string; threadId: string; question: string; options: Array<{ label: string; description?: string }> }) => {
     if (data.threadId !== activeThreadIdRef.current) return;
-    activitySetWaiting(`等待确认 · ${truncateActivityLabel(data.question)}`);
+    activitySetWaiting(t("chat.waitingDetail", { question: truncateActivityLabel(data.question) }));
     setAskUserData({ askId: data.askId, question: data.question, options: data.options });
-  }, [activitySetWaiting]);
+  }, [activitySetWaiting, t]);
 
   // Listen to WS events
   useEffect(() => {
@@ -423,14 +492,15 @@ export function ChatPage() {
 
   const handleAskUserDismiss = useCallback(() => {
     if (!askUserData) return;
-    request("chat.answerAskUser", { askId: askUserData.askId, answer: "(已忽略)" }).catch(() => {});
+    request("chat.answerAskUser", { askId: askUserData.askId, answer: t("chat.ignored") }).catch(() => {});
     setAskUserData(null);
     if (isRunning) activityClearWaiting();
-  }, [askUserData, request, isRunning, activityClearWaiting]);
+  }, [askUserData, request, isRunning, activityClearWaiting, t]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if ((!text && pendingFiles.length === 0) || isRunning) return;
+    stickToBottomRef.current = true;
 
     setError(null);
 
@@ -494,7 +564,8 @@ export function ChatPage() {
       }
 
       if (inputRef.current) {
-        inputRef.current.style.height = "auto";
+        inputRef.current.style.height = `${COMPOSER_INPUT_LINE_PX}px`;
+        inputRef.current.closest(".chat-composer")?.classList.remove("chat-composer--multiline");
       }
 
       const attachments = pendingFiles.map(f => ({ type: f.type, path: f.path, name: f.name, size: f.size, mimeType: f.mimeType }));
@@ -504,7 +575,7 @@ export function ChatPage() {
         ? err.message
         : typeof err === "string"
           ? err
-          : `Failed to send: ${JSON.stringify(err)}`;
+          : t("chat.sendFailed", { detail: JSON.stringify(err) });
       failPendingRun(errorMessage);
     }
   }, [input, pendingFiles, isRunning, request, clearFiles, currentId, createSession, autoTitle, failPendingRun, activityBeginRun]);
@@ -518,9 +589,7 @@ export function ChatPage() {
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    const el = e.target;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    syncComposerInputHeight(e.target);
   };
 
   const handleFileSelect = useCallback(async () => {
@@ -528,7 +597,7 @@ export function ChatPage() {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
         multiple: true,
-        title: "Select files",
+        title: t("chat.selectFiles"),
       });
       if (selected && selected.length > 0) {
         addFiles(selected as unknown as File[]);
@@ -554,11 +623,11 @@ export function ChatPage() {
 
   return (
     <div className="chat-stage chat-shell">
-      <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin">
+      <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin" onScroll={handleScroll}>
         {isEmpty ? (
           <EmptyState />
         ) : (
-          <div className="chat-rail py-6 space-y-6">
+          <div ref={messagesRailRef} className="chat-rail chat-rail--messages py-6 space-y-6">
             {messages.map((msg) => (
               <MessageBubble
                 key={msg.id}
@@ -574,13 +643,14 @@ export function ChatPage() {
               !messages[messages.length - 1].content.some(
                 (p) => p.type === "worker-start" || p.type === "tool-call" || p.type === "reasoning"
               ) && <ColdStartPulse />}
+            <div ref={scrollAnchorRef} className="chat-scroll-anchor" aria-hidden />
           </div>
         )}
       </div>
 
       <div className="chat-stage__footer">
         {error && (
-          <div className="chat-rail pt-2">
+          <div className="chat-composer-shell pt-2">
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               <span>{error}</span>
               <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300 app-no-drag">&times;</button>
@@ -589,19 +659,19 @@ export function ChatPage() {
         )}
 
         {chatState !== "connected" && (
-          <div className="chat-rail pb-2 pt-2">
+          <div className="chat-composer-shell pb-2 pt-2">
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
               <span>
                 {chatState === "failed"
-                  ? "Chat service disconnected. Reconnecting…"
-                  : "Connecting to chat service…"}
+                  ? t("chat.disconnected")
+                  : t("chat.connecting")}
               </span>
             </div>
           </div>
         )}
 
         {askUserData ? (
-          <div className="chat-rail py-4">
+          <div className="chat-composer-shell">
             <ActivityDock />
             <AskUserCard
               question={askUserData.question}
@@ -611,7 +681,7 @@ export function ChatPage() {
             />
           </div>
         ) : (
-          <div className="chat-rail py-4">
+          <div className="chat-composer-shell">
             <ActivityDock />
             {pendingFiles.length > 0 && (
               <div className="mb-2">
@@ -619,47 +689,51 @@ export function ChatPage() {
               </div>
             )}
             <div
-              className="relative flex items-end gap-2 bg-stone-900 border border-stone-800 rounded-2xl px-3 py-2.5 focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20 transition-all duration-200"
+              className="chat-composer"
               onDrop={handleDrop}
               onDragOver={handleDragOver}
             >
               <button
+                type="button"
                 onClick={handleFileSelect}
-                className="app-no-drag shrink-0 self-center p-1 rounded-lg text-stone-500 hover:text-stone-300 hover:bg-stone-800 transition-colors"
-                title="Attach files"
+                disabled={isRunning || uploading || chatState !== "connected"}
+                className="chat-composer__attach app-no-drag"
+                title={t("chat.attachFiles")}
               >
-                <Paperclip className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
               </button>
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask Hive anything..."
+                placeholder={t("chat.placeholder")}
                 rows={1}
-                className="flex-1 bg-transparent text-stone-100 placeholder-stone-500 text-base resize-none outline-none leading-relaxed max-h-[200px] py-0.5"
+                className="chat-composer__input app-no-drag"
                 disabled={isRunning || uploading || chatState !== "connected"}
               />
               <button
+                type="button"
                 onClick={isRunning ? handleCancel : handleSend}
                 disabled={(!isRunning && (!input.trim() && pendingFiles.length === 0)) || uploading || (!isRunning && chatState !== "connected")}
-                className={`app-no-drag shrink-0 p-2 rounded-xl transition-all duration-200 ${
+                className={`chat-composer__send app-no-drag ${
                   isRunning
-                    ? "bg-amber-500/20 text-amber-400"
-                    : input.trim()
-                      ? "bg-amber-500 text-stone-950 hover:bg-amber-400 shadow-lg shadow-amber-500/20"
-                      : "bg-stone-800 text-stone-600"
+                    ? "chat-composer__send--running"
+                    : input.trim() || pendingFiles.length > 0
+                      ? "chat-composer__send--ready"
+                      : "chat-composer__send--idle"
                 }`}
+                title={isRunning ? t("chat.stop") : t("chat.send")}
               >
                 {isRunning ? (
-                  <Square className="w-4 h-4" fill="currentColor" />
+                  <Square className="w-3.5 h-3.5" fill="currentColor" />
                 ) : (
-                  <Send className="w-4 h-4" />
+                  <ArrowUp className="w-3.5 h-3.5" strokeWidth={2.25} />
                 )}
               </button>
             </div>
-            <p className="text-center text-[11px] text-stone-700 mt-2">
-              Hive may produce inaccurate information. Press Shift+Enter for new line.
+            <p className="chat-composer__hint">
+              {t("chat.disclaimer")}
             </p>
           </div>
         )}
@@ -673,11 +747,12 @@ export function ChatPage() {
 }
 
 function EmptyState() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center h-full px-4 select-none">
       <div className="flex flex-col items-center gap-4">
-        <img src="/logo.svg" alt="Hive" className="w-10 h-10 opacity-40" />
-        <p className="text-sm text-stone-600">Send a message to get started</p>
+        <img src="/logo.svg" alt={t("app.name")} className="w-10 h-10 opacity-40" />
+        <p className="text-sm text-stone-600">{t("chat.empty")}</p>
       </div>
     </div>
   );

@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { buildOfficePreviewQuery } from "../../lib/artifact-file";
 import { enhanceOfficePreviewHtml } from "./preview-html";
 import { PreviewEmbed } from "./PreviewEmbed";
-
-const OFFICECLI_HINT =
-  "未安装 officecli，正在使用备用预览。安装高保真预览：npm i -g @officecli/officecli";
 
 interface OfficeCliRendererProps {
   src: string;
@@ -27,6 +25,7 @@ export function OfficeCliRenderer({
   isRunning,
   onFallbackHint,
 }: OfficeCliRendererProps) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<Status>("loading");
   const [html, setHtml] = useState<string>("");
   const [fallbackHint, setFallbackHint] = useState<string | undefined>();
@@ -51,8 +50,9 @@ export function OfficeCliRenderer({
       const res = await fetch(`http://127.0.0.1:4450/api/preview/html?${queryParams}`);
 
       if (res.status === 503) {
-        setFallbackHint(OFFICECLI_HINT);
-        onFallbackHint?.(OFFICECLI_HINT);
+        const hint = t("preview.officecliMissing");
+        setFallbackHint(hint);
+        onFallbackHint?.(hint);
         setStatus("fallback");
         return;
       }
@@ -98,7 +98,7 @@ export function OfficeCliRenderer({
     return (
       <div className="preview-state preview-state--loading">
         <span className="preview-live-badge__dot" />
-        <span>正在生成文档，预览即将出现…</span>
+        <span>{t("preview.generating")}</span>
       </div>
     );
   }
@@ -118,7 +118,7 @@ export function OfficeCliRenderer({
     return (
       <div className="preview-state preview-state--loading">
         <span className="preview-state__spinner" aria-hidden />
-        <span>加载预览中…</span>
+        <span>{t("preview.loading")}</span>
       </div>
     );
   }
@@ -128,7 +128,7 @@ export function OfficeCliRenderer({
       {isRunning && (
         <div className="preview-live-badge">
           <span className="preview-live-badge__dot" aria-hidden />
-          Live
+          {t("common.live")}
         </div>
       )}
       <PreviewEmbed iframeSrcDoc={html} iframeTitle={title} />

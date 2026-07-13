@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getWsClient } from "../lib/ws-client";
 import { useServerStore } from "../stores/server-store";
 import { ProviderGrid } from "../components/provider-setup/ProviderGrid";
 import { ApiKeyInput } from "../components/provider-setup/ApiKeyInput";
 import { ModelSelector } from "../components/provider-setup/ModelSelector";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { type ProviderInfo, type ModelInfo } from "../types/provider";
 
 interface ServerConfig {
@@ -22,6 +24,7 @@ interface ConfigUpdateRequest {
 }
 
 export function ConfigPage() {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const restarting = useServerStore((s) => s.restarting);
   const startRestart = useServerStore((s) => s.startRestart);
@@ -115,7 +118,7 @@ export function ConfigPage() {
       applyDraftToLocalConfig(providerChanged || apiKeyChanged);
       setSavedMaskedApiKey(providerChanged || apiKeyChanged ? draftApiKey : savedMaskedApiKey);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save configuration";
+      const msg = err instanceof Error ? err.message : t("setup.saveFailed");
       setError(msg);
     } finally {
       setSaving(false);
@@ -139,39 +142,40 @@ export function ConfigPage() {
   const selected = providers.find((p) => p.id === draftProvider);
 
   if (!config) {
-    return <div className="p-6 text-stone-400">Loading...</div>;
+    return <div className="p-6 text-stone-400">{t("common.loading")}</div>;
   }
 
   return (
     <div className="h-full p-6 space-y-6 overflow-y-auto">
+      <LanguageSwitcher />
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Configuration</h2>
+        <h2 className="text-xl font-semibold">{t("config.title")}</h2>
         <button
           onClick={() => {
             startRestart().catch((err) => {
               console.error("[restart_server] failed:", err);
-              setError(err instanceof Error ? err.message : "Restart failed");
+              setError(err instanceof Error ? err.message : t("config.restartFailed"));
             });
           }}
           disabled={restarting}
           className="px-4 py-2 bg-stone-800 hover:bg-stone-700 disabled:bg-stone-800 disabled:cursor-not-allowed rounded text-sm transition-colors"
         >
-          {restarting ? "Restarting..." : "Restart Server"}
+          {restarting ? t("config.restarting") : t("config.restartServer")}
         </button>
       </div>
 
       {/* Provider */}
       <div className="bg-stone-900 rounded-lg p-4 space-y-4 border border-stone-800">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">Provider</h3>
-          {isDirty && <span className="text-xs text-amber-400">Unsaved changes</span>}
+          <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">{t("settings.provider")}</h3>
+          {isDirty && <span className="text-xs text-amber-400">{t("config.unsaved")}</span>}
         </div>
 
         <div className="space-y-4">
           {/* Provider Grid */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-stone-400">AI Provider</label>
+              <label className="text-sm text-stone-400">{t("config.aiProvider")}</label>
               <div className="flex items-center gap-1.5 text-sm text-stone-300">
                 {selected?.logo ? (
                   <div className="w-4 h-4 rounded bg-white/10 p-0.5">
@@ -223,14 +227,14 @@ export function ConfigPage() {
                 disabled={saving || !draftProvider || (requiresApiKey && !draftApiKey)}
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
               >
-                {saving ? "Saving..." : "Save Changes"}
+                {saving ? t("common.saving") : t("config.saveChanges")}
               </button>
               <button
                 onClick={handleCancel}
                 disabled={saving}
                 className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-stone-300 text-sm rounded transition-colors"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           )}
@@ -239,18 +243,18 @@ export function ConfigPage() {
 
       {/* Server */}
       <div className="bg-stone-900 rounded-lg p-4 space-y-4 border border-stone-800">
-        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">Server</h3>
+        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">{t("config.server")}</h3>
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm text-stone-400 mb-1">Port</label>
+            <label className="block text-sm text-stone-400 mb-1">{t("config.port")}</label>
             <span className="text-sm">{config.server.port}</span>
           </div>
           <div>
-            <label className="block text-sm text-stone-400 mb-1">Host</label>
+            <label className="block text-sm text-stone-400 mb-1">{t("config.host")}</label>
             <span className="text-sm">{config.server.host}</span>
           </div>
           <div>
-            <label className="block text-sm text-stone-400 mb-1">Log Level</label>
+            <label className="block text-sm text-stone-400 mb-1">{t("config.logLevel")}</label>
             <span className="text-sm">{config.server.logLevel}</span>
           </div>
         </div>
@@ -258,16 +262,16 @@ export function ConfigPage() {
 
       {/* Heartbeat */}
       <div className="bg-stone-900 rounded-lg p-4 space-y-4 border border-stone-800">
-        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">Heartbeat</h3>
+        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">{t("config.heartbeat")}</h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-stone-500">Enabled</span>
+            <span className="text-stone-500">{t("config.enabled")}</span>
             <span className={`ml-2 ${config.heartbeat.enabled ? "text-green-400" : "text-stone-500"}`}>
-              {config.heartbeat.enabled ? "Yes" : "No"}
+              {config.heartbeat.enabled ? t("common.yes") : t("common.no")}
             </span>
           </div>
           <div>
-            <span className="text-stone-500">Interval</span>
+            <span className="text-stone-500">{t("config.interval")}</span>
             <span className="ml-2">{config.heartbeat.intervalMs / 1000}s</span>
           </div>
         </div>
