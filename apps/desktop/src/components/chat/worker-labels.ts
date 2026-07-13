@@ -1,41 +1,40 @@
-/**
- * Worker / 场景用户可见标签（不暴露内部 agent type）
- *
- * scenario 标签与 core routing 契约对齐 — 见 packages/core/tests/contracts/scenario-labels.contract.test.ts
- */
+import i18n from "../../i18n";
 
-const WORKER_TYPE_LABELS: Record<string, string> = {
-  office: 'Office 文档',
-  explore: '探索',
-  plan: '规划',
-  general: '执行',
-  schedule: '定时任务',
+const WORKER_TYPE_KEYS: Record<string, string> = {
+  office: "activity.worker.office",
+  explore: "activity.worker.explore",
+  plan: "activity.worker.plan",
+  general: "activity.worker.general",
+  schedule: "activity.worker.schedule",
 };
 
-/** 与 @bundy-lmw/hive-core routing 保持同步（契约测试锁死） */
-const SCENARIO_LABELS: Record<string, string> = {
-  'office-document': 'Office 文档',
-  'recurring-task': '定时任务',
+const SCENARIO_KEYS: Record<string, string> = {
+  "office-document": "activity.worker.scenarioOffice",
+  "recurring-task": "activity.worker.scenarioRecurring",
 };
 
-/** 折叠块标题：优先 description，其次 scenario，最后 workerType 映射 */
-export function formatWorkerTitle(workerType: string, description?: string, scenarioId?: string): string {
-  if (description?.trim()) {
-    return description.trim();
-  }
-  if (scenarioId) {
-    const scenarioLabel = formatScenarioLabel(scenarioId);
-    if (scenarioLabel) return scenarioLabel;
-  }
-  return WORKER_TYPE_LABELS[workerType] ?? workerType;
-}
-
-export function formatScenarioLabel(scenarioId?: string): string | undefined {
-  if (!scenarioId) return undefined;
-  return SCENARIO_LABELS[scenarioId] ?? scenarioId;
-}
-
-/** 供契约测试：Desktop 侧 label map */
+/** Desktop scenario labels — must stay in sync with core routing labels (same keys, translated values). */
 export function getDesktopScenarioLabels(): Record<string, string> {
-  return { ...SCENARIO_LABELS };
+  return Object.fromEntries(
+    Object.entries(SCENARIO_KEYS).map(([id, key]) => [id, i18n.t(key)])
+  );
+}
+
+export function formatScenarioLabel(scenarioId: string | undefined): string | undefined {
+  if (!scenarioId) return undefined;
+  const key = SCENARIO_KEYS[scenarioId];
+  return key ? i18n.t(key) : scenarioId;
+}
+
+export function formatWorkerTitle(
+  workerType: string,
+  description?: string,
+  scenarioId?: string
+): string {
+  const trimmed = description?.trim();
+  if (trimmed) return trimmed;
+  const scenario = formatScenarioLabel(scenarioId);
+  if (scenario) return scenario;
+  const key = WORKER_TYPE_KEYS[workerType];
+  return key ? i18n.t(key) : workerType;
 }

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 
@@ -17,6 +18,7 @@ interface PdfRendererProps extends ArtifactOpenMeta {
 }
 
 export function PdfRenderer({ src, title, name, path, servedPath, artifactSrc }: PdfRendererProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [numPages, setNumPages] = useState(0);
@@ -130,7 +132,7 @@ export function PdfRenderer({ src, title, name, path, servedPath, artifactSrc }:
     <div className="flex flex-col h-full">
       {status === "loading" && (
         <div className="flex items-center justify-center h-[300px] text-stone-500 text-sm">
-          Loading PDF...
+          {t("preview.loadingPdf")}
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { AppWindow, ChevronDown, FolderOpen, Save } from "lucide-react";
 import {
   type ArtifactFileRef,
@@ -8,6 +9,7 @@ import {
   revealArtifactInFolder,
   saveArtifactAs,
 } from "../../lib/artifact-file";
+import { revealInFolderLabel } from "../../lib/i18n-format";
 import { fetchOpenTargets, type OpenTarget } from "../../lib/artifact-open-apps";
 
 type ArtifactFileMenuProps = ArtifactFileRef & {
@@ -20,13 +22,6 @@ type MenuAnchor = {
   right: number;
 };
 
-function revealLabel(): string {
-  const p = navigator.platform.toLowerCase();
-  if (p.includes("mac")) return "在 Finder 中显示";
-  if (p.includes("win")) return "在资源管理器中显示";
-  return "在文件夹中显示";
-}
-
 export function ArtifactFileMenu({
   name,
   path,
@@ -35,6 +30,7 @@ export function ArtifactFileMenu({
   variant = "compact",
   className = "",
 }: ArtifactFileMenuProps) {
+  const { t } = useTranslation();
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -107,12 +103,12 @@ export function ArtifactFileMenu({
       const result = await action();
       setBusy(false);
       if (!result.ok) {
-        setError(result.error ?? "操作失败");
+        setError(result.error ?? t("file.operationFailed"));
         return;
       }
       setOpen(false);
     },
-    [],
+    [t],
   );
 
   const isPanel = variant === "panel";
@@ -133,7 +129,7 @@ export function ArtifactFileMenu({
               className="artifact-file-menu__item"
               onClick={() => void run(() => openArtifactDefault(ref))}
             >
-              用默认应用打开
+              {t("file.openDefault")}
             </button>
 
           {apps.map((app) => (
@@ -149,7 +145,7 @@ export function ArtifactFileMenu({
               ) : (
                 <AppWindow className="artifact-file-menu__app-icon-fallback" aria-hidden />
               )}
-              <span>用 {app.label} 打开</span>
+              <span>{t("file.openWith", { label: app.label })}</span>
             </button>
           ))}
 
@@ -162,7 +158,7 @@ export function ArtifactFileMenu({
               onClick={() => void run(() => revealArtifactInFolder(ref))}
             >
               <FolderOpen className="w-3.5 h-3.5 shrink-0 opacity-70" />
-              {revealLabel()}
+              {revealInFolderLabel()}
             </button>
             <button
               type="button"
@@ -171,7 +167,7 @@ export function ArtifactFileMenu({
               onClick={() => void run(() => saveArtifactAs(ref))}
             >
               <Save className="w-3.5 h-3.5 shrink-0 opacity-70" />
-              另存为…
+              {t("file.saveAs")}
             </button>
           </div>,
           document.body,
@@ -187,7 +183,7 @@ export function ArtifactFileMenu({
           onClick={() => void run(() => openArtifactDefault(ref))}
           className={`artifact-file-menu__primary ${isPanel ? "artifact-file-menu__primary--panel" : ""}`}
         >
-          {busy ? "…" : "打开"}
+          {busy ? "…" : t("chat.open")}
         </button>
         <button
           type="button"
@@ -197,7 +193,7 @@ export function ArtifactFileMenu({
           aria-controls={menuId}
           onClick={() => setOpen((v) => !v)}
           className={`artifact-file-menu__caret ${isPanel ? "artifact-file-menu__caret--panel" : ""}`}
-          title="更多打开方式"
+          title={t("chat.moreOpenOptions")}
         >
           <ChevronDown className="w-3 h-3" />
         </button>

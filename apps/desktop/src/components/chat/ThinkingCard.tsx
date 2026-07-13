@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 import { formatDurationMs } from "./activity-labels";
 
@@ -8,6 +9,7 @@ export type ThinkingCardProps = {
 };
 
 function ThinkingCardInner({ text, isStreaming = false }: ThinkingCardProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(isStreaming);
   const startedAtRef = useRef(Date.now());
   const [durationMs, setDurationMs] = useState<number | undefined>(undefined);
@@ -27,7 +29,11 @@ function ThinkingCardInner({ text, isStreaming = false }: ThinkingCardProps) {
   if (!text) return null;
 
   const timeLabel = formatDurationMs(durationMs);
-  const headerLabel = isStreaming ? "思考中" : timeLabel ? `已思考 · ${timeLabel}` : "已思考";
+  const headerLabel = isStreaming
+    ? t("activity.thinking")
+    : timeLabel
+      ? t("activity.thoughtDuration", { time: timeLabel })
+      : t("activity.thoughtDone");
 
   return (
     <div className={`thinking-card ${isStreaming ? "thinking-card--streaming" : ""}`}>

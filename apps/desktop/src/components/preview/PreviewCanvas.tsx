@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { FileSearch } from "lucide-react";
 import type { Preview } from "../../stores/preview-store";
 import { SandboxedIframe } from "./SandboxedIframe";
@@ -17,10 +18,11 @@ interface PreviewCanvasProps {
 }
 
 function PreviewEmpty() {
+  const { t } = useTranslation();
   return (
     <div className="preview-state preview-state--empty">
       <FileSearch className="w-8 h-8 text-stone-600 mb-3" strokeWidth={1.5} />
-      <p className="text-sm text-stone-500">选择附件或点击 Preview 查看</p>
+      <p className="text-sm text-stone-500">{t("preview.selectAttachment")}</p>
     </div>
   );
 }

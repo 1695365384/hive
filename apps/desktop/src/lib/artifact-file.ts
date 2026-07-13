@@ -1,3 +1,5 @@
+import i18n from "../i18n";
+
 const SERVER = "http://127.0.0.1:4450";
 
 export type OpenArtifactResult = { ok: true } | { ok: false; error: string };
@@ -94,7 +96,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 async function fetchArtifactBlob(ref: ArtifactFileRef): Promise<Blob> {
   const httpUrl = resolveArtifactHttpUrl(undefined, ref.src);
-  if (!httpUrl) throw new Error("没有可用的文件源");
+  if (!httpUrl) throw new Error(i18n.t("file.noSource"));
   const res = await fetch(httpUrl);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.blob();
@@ -105,7 +107,7 @@ async function openPathWith(
   appName?: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!filePath || filePath.startsWith("http")) {
-    return { ok: false, error: "无效路径" };
+    return { ok: false, error: i18n.t("file.invalidPath") };
   }
   try {
     if (isTauriRuntime()) {
@@ -133,7 +135,7 @@ export async function openArtifactDefault(ref: ArtifactFileRef): Promise<OpenArt
   if (!isTauriRuntime()) {
     return downloadArtifactAsBrowser(ref);
   }
-  return { ok: false, error: "找不到本地文件，请使用「另存为」" };
+  return { ok: false, error: i18n.t("file.notFoundUseSaveAs") };
 }
 
 /** Open with a specific app (e.g. WPS Office, Microsoft Word). */
@@ -143,7 +145,7 @@ export async function openArtifactWithApp(
 ): Promise<OpenArtifactResult> {
   const local = resolveArtifactLocalPath(ref);
   if (!local) {
-    return { ok: false, error: "找不到本地文件" };
+    return { ok: false, error: i18n.t("file.notFound") };
   }
   return openPathWith(local, appName);
 }
@@ -152,7 +154,7 @@ export async function openArtifactWithApp(
 export async function revealArtifactInFolder(ref: ArtifactFileRef): Promise<OpenArtifactResult> {
   const local = resolveArtifactLocalPath(ref);
   if (!local) {
-    return { ok: false, error: "找不到本地文件" };
+    return { ok: false, error: i18n.t("file.notFound") };
   }
   try {
     if (isTauriRuntime()) {
@@ -179,10 +181,10 @@ export async function saveArtifactAs(ref: ArtifactFileRef): Promise<OpenArtifact
     const { save } = await import("@tauri-apps/plugin-dialog");
     const target = await save({
       defaultPath: ref.name,
-      title: "另存为",
+      title: i18n.t("file.saveAsTitle"),
     });
     if (!target) {
-      return { ok: false, error: "已取消" };
+      return { ok: false, error: i18n.t("file.cancelled") };
     }
 
     const local = resolveArtifactLocalPath(ref);
@@ -198,7 +200,7 @@ export async function saveArtifactAs(ref: ArtifactFileRef): Promise<OpenArtifact
     return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `另存为失败：${msg}` };
+    return { ok: false, error: i18n.t("file.saveAsFailed", { detail: msg }) };
   }
 }
 
@@ -209,7 +211,7 @@ async function downloadArtifactAsBrowser(ref: ArtifactFileRef): Promise<OpenArti
     return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `无法下载文件：${msg}` };
+    return { ok: false, error: i18n.t("file.downloadFailed", { detail: msg }) };
   }
 }
 

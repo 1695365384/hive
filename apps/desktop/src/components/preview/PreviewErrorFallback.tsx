@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { ArtifactFileMenu } from "../chat/ArtifactFileMenu";
 
 export type PreviewErrorFallbackProps = {
@@ -17,14 +18,15 @@ export function PreviewErrorFallback({
   artifactSrc,
   hint,
 }: PreviewErrorFallbackProps) {
+  const { t } = useTranslation();
   return (
     <div className="preview-state preview-state--empty">
-      <span className="text-sm text-stone-400">无法预览 {title}</span>
+      <span className="text-sm text-stone-400">{t("preview.failed", { title })}</span>
       {hint && (
         <p className="text-xs text-stone-500 text-center max-w-[280px] leading-relaxed mt-1">{hint}</p>
       )}
       <p className="text-[11px] text-stone-500 text-center max-w-[300px] mt-2 leading-relaxed">
-        可在应用内预览，或使用系统应用（如 Word、WPS）打开
+        {t("preview.fallbackHint")}
       </p>
       <ArtifactFileMenu
         name={name}

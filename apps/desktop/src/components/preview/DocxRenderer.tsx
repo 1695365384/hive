@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { renderAsync } from "docx-preview";
 import { PreviewErrorFallback } from "./PreviewErrorFallback";
 import type { ArtifactOpenMeta } from "./artifact-open-meta";
@@ -9,6 +10,7 @@ interface DocxRendererProps extends ArtifactOpenMeta {
 }
 
 export function DocxRenderer({ src, title, name, path, servedPath, artifactSrc, officeCliHint }: DocxRendererProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
@@ -65,7 +67,7 @@ export function DocxRenderer({ src, title, name, path, servedPath, artifactSrc, 
     <div className="overflow-y-auto">
       {status === "loading" && (
         <div className="flex items-center justify-center h-[300px] text-stone-500 text-sm">
-          Loading document...
+          {t("preview.loadingDocument")}
         </div>
       )}
       <div

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import * as XLSX from "xlsx";
 import { PreviewErrorFallback } from "./PreviewErrorFallback";
 import type { ArtifactOpenMeta } from "./artifact-open-meta";
@@ -14,6 +15,7 @@ interface SheetTab {
 }
 
 export function XlsxRenderer({ src, title, name, path, servedPath, artifactSrc, officeCliHint }: XlsxRendererProps) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sheets, setSheets] = useState<SheetTab[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
@@ -94,7 +96,7 @@ export function XlsxRenderer({ src, title, name, path, servedPath, artifactSrc, 
     <div className="flex flex-col h-full">
       {status === "loading" && (
         <div className="flex items-center justify-center h-[300px] text-stone-500 text-sm">
-          Loading spreadsheet...
+          {t("preview.loadingSpreadsheet")}
         </div>
       )}
 

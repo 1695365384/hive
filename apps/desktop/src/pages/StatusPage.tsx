@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useWsClient } from "../hooks/use-ws-client";
 
 interface ServerStatus {
@@ -23,6 +24,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function StatusPage() {
+  const { t } = useTranslation();
   const { request } = useWsClient();
   const [status, setStatus] = useState<ServerStatus | null>(null);
 
@@ -37,33 +39,33 @@ export function StatusPage() {
   };
 
   if (!status) {
-    return <div className="p-6 text-stone-400">Loading...</div>;
+    return <div className="p-6 text-stone-400">{t("common.loading")}</div>;
   }
 
   return (
     <div className="h-full p-6 space-y-6 overflow-y-auto">
-      <h2 className="text-xl font-semibold">Server Status</h2>
+      <h2 className="text-xl font-semibold">{t("status.title")}</h2>
 
       {/* Server Info */}
       <div className="bg-stone-900 rounded-lg p-4 space-y-3 border border-stone-800">
-        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">Server</h3>
+        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">{t("status.server")}</h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-stone-500">State</span>
+            <span className="text-stone-500">{t("status.state")}</span>
             <span className={`ml-2 ${status.server.state === "running" ? "text-green-400" : "text-amber-400"}`}>
-              {status.server.state}
+              {status.server.state === "running" ? t("status.running") : status.server.state}
             </span>
           </div>
           <div>
-            <span className="text-stone-500">Port</span>
+            <span className="text-stone-500">{t("status.port")}</span>
             <span className="ml-2">{status.server.port}</span>
           </div>
           <div>
-            <span className="text-stone-500">Uptime</span>
+            <span className="text-stone-500">{t("status.uptime")}</span>
             <span className="ml-2">{formatUptime(status.server.uptime)}</span>
           </div>
           <div>
-            <span className="text-stone-500">Version</span>
+            <span className="text-stone-500">{t("status.version")}</span>
             <span className="ml-2">{status.server.version}</span>
           </div>
         </div>
@@ -71,26 +73,26 @@ export function StatusPage() {
 
       {/* Agent Info */}
       <div className="bg-stone-900 rounded-lg p-4 space-y-3 border border-stone-800">
-        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">Agent</h3>
+        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">{t("status.agent")}</h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-stone-500">Initialized</span>
+            <span className="text-stone-500">{t("status.initialized")}</span>
             <span className={`ml-2 ${status.agent.initialized ? "text-green-400" : "text-red-400"}`}>
-              {status.agent.initialized ? "Yes" : "No"}
+              {status.agent.initialized ? t("common.yes") : t("common.no")}
             </span>
           </div>
           <div>
-            <span className="text-stone-500">Provider Ready</span>
+            <span className="text-stone-500">{t("status.providerReady")}</span>
             <span className={`ml-2 ${status.agent.providerReady ? "text-green-400" : "text-red-400"}`}>
-              {status.agent.providerReady ? "Yes" : "No"}
+              {status.agent.providerReady ? t("common.yes") : t("common.no")}
             </span>
           </div>
           <div>
-            <span className="text-stone-500">Current Provider</span>
-            <span className="ml-2">{status.agent.currentProvider ?? "None"}</span>
+            <span className="text-stone-500">{t("status.currentProvider")}</span>
+            <span className="ml-2">{status.agent.currentProvider ?? t("common.none")}</span>
           </div>
           <div>
-            <span className="text-stone-500">Active Plugins</span>
+            <span className="text-stone-500">{t("status.activePlugins")}</span>
             <span className="ml-2">{status.agent.activePlugins.length}</span>
           </div>
         </div>
@@ -98,22 +100,22 @@ export function StatusPage() {
 
       {/* System Info */}
       <div className="bg-stone-900 rounded-lg p-4 space-y-3 border border-stone-800">
-        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">System</h3>
+        <h3 className="text-sm font-medium text-stone-500 uppercase tracking-wider">{t("status.system")}</h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-stone-500">RSS</span>
+            <span className="text-stone-500">{t("status.rss")}</span>
             <span className="ml-2">{formatBytes(status.system.memory.rss)}</span>
           </div>
           <div>
-            <span className="text-stone-500">Heap Used</span>
+            <span className="text-stone-500">{t("status.heapUsed")}</span>
             <span className="ml-2">{formatBytes(status.system.memory.heapUsed)}</span>
           </div>
           <div>
-            <span className="text-stone-500">Node</span>
+            <span className="text-stone-500">{t("status.node")}</span>
             <span className="ml-2">{status.system.nodeVersion}</span>
           </div>
           <div>
-            <span className="text-stone-500">Platform</span>
+            <span className="text-stone-500">{t("status.platform")}</span>
             <span className="ml-2">{status.system.platform}</span>
           </div>
         </div>

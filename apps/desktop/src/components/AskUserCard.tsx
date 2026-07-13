@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 
 interface AskUserOption {
@@ -14,6 +15,7 @@ interface AskUserCardProps {
 }
 
 export function AskUserCard({ question, options, onAnswer, onDismiss }: AskUserCardProps) {
+  const { t } = useTranslation();
   const [customInput, setCustomInput] = useState("");
 
   return (
@@ -59,7 +61,7 @@ export function AskUserCard({ question, options, onAnswer, onDismiss }: AskUserC
           onKeyDown={(e) => {
             if (e.key === "Enter" && customInput.trim()) onAnswer(customInput.trim());
           }}
-          placeholder="Other..."
+          placeholder={t("askUser.otherPlaceholder")}
           className="flex-1 bg-transparent text-sm text-stone-200 placeholder-stone-600 outline-none"
           autoFocus
         />
