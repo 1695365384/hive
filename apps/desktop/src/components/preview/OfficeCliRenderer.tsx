@@ -1,63 +1,87 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
+import { buildOfficePreviewQuery } from "../../lib/artifact-file";
+import { enhanceOfficePreviewHtml } from "./preview-html";
+import { PreviewEmbed } from "./PreviewEmbed";
+
+const OFFICECLI_HINT =
+  "未安装 officecli，正在使用备用预览。安装高保真预览：npm i -g @officecli/officecli";
 
 interface OfficeCliRendererProps {
   src: string;
+  servedPath?: string;
+  filePath?: string;
   title: string;
   fallback: ReactNode;
-  /** 是否正在运行（agent 还在执行），为 true 时自动轮询刷新预览 */
   isRunning?: boolean;
+  onFallbackHint?: (hint: string | undefined) => void;
 }
 
 type Status = "loading" | "ready" | "fallback";
 
-export function OfficeCliRenderer({ src, title, fallback, isRunning }: OfficeCliRendererProps) {
+export function OfficeCliRenderer({
+  src,
+  servedPath,
+  filePath,
+  title,
+  fallback,
+  isRunning,
+  onFallbackHint,
+}: OfficeCliRendererProps) {
   const [status, setStatus] = useState<Status>("loading");
   const [html, setHtml] = useState<string>("");
+  const [fallbackHint, setFallbackHint] = useState<string | undefined>();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadPreview = async () => {
-    if (!src) return;
+    if (!src && !servedPath && !filePath) return;
     try {
-      let queryParams: string;
-      if (src.startsWith("/files/")) {
-        const fileName = src.split("/files/").pop() ?? "";
-        if (!fileName) { setStatus("fallback"); return; }
-        queryParams = `file=${encodeURIComponent(fileName)}`;
-      } else {
-        queryParams = `path=${encodeURIComponent(src)}`;
+      const queryParams = buildOfficePreviewQuery({
+        src,
+        servedPath,
+        filePath,
+        live: isRunning,
+      });
+      if (!queryParams) {
+        setFallbackHint(undefined);
+        onFallbackHint?.(undefined);
+        setStatus("fallback");
+        return;
       }
 
-      const liveParam = isRunning ? "&live=1" : "";
-      const res = await fetch(
-        `http://127.0.0.1:4450/api/preview/html?${queryParams}${liveParam}`
-      );
+      const res = await fetch(`http://127.0.0.1:4450/api/preview/html?${queryParams}`);
 
       if (res.status === 503) {
+        setFallbackHint(OFFICECLI_HINT);
+        onFallbackHint?.(OFFICECLI_HINT);
         setStatus("fallback");
         return;
       }
 
       if (!res.ok) {
+        setFallbackHint(undefined);
+        onFallbackHint?.(undefined);
         setStatus("fallback");
         return;
       }
 
-      const htmlContent = await res.text();
+      const htmlContent = enhanceOfficePreviewHtml(await res.text());
       setHtml(htmlContent);
+      setFallbackHint(undefined);
+      onFallbackHint?.(undefined);
       setStatus("ready");
     } catch {
+      setFallbackHint(undefined);
+      onFallbackHint?.(undefined);
       setStatus("fallback");
     }
   };
 
-  // Initial load + refresh on src change
   useEffect(() => {
     loadPreview();
-  }, [src]);
+  }, [src, servedPath, filePath]);
 
-  // Auto-refresh while agent is running (poll every 3s)
   useEffect(() => {
-    if (isRunning && src) {
+    if (isRunning && (src || servedPath || filePath)) {
       pollRef.current = setInterval(loadPreview, 3000);
       return () => {
         if (pollRef.current) clearInterval(pollRef.current);
@@ -68,43 +92,46 @@ export function OfficeCliRenderer({ src, title, fallback, isRunning }: OfficeCli
         pollRef.current = null;
       }
     }
-  }, [isRunning, status, src]);
+  }, [isRunning, status, src, servedPath, filePath]);
 
-  if (!src) {
+  if (!src && !servedPath && !filePath) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 h-[300px] text-stone-500 text-sm px-4 text-center">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60 animate-pulse" />
+      <div className="preview-state preview-state--loading">
+        <span className="preview-live-badge__dot" />
         <span>正在生成文档，预览即将出现…</span>
       </div>
     );
   }
 
   if (status === "fallback") {
-    return <>{fallback}</>;
+    return (
+      <div className="preview-fallback-wrap">
+        {fallbackHint && (
+          <p className="preview-fallback-wrap__hint">{fallbackHint}</p>
+        )}
+        {fallback}
+      </div>
+    );
   }
 
   if (status === "loading") {
     return (
-      <div className="flex items-center justify-center h-[300px] text-stone-500 text-sm">
-        Loading preview...
+      <div className="preview-state preview-state--loading">
+        <span className="preview-state__spinner" aria-hidden />
+        <span>加载预览中…</span>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-hidden relative">
+    <div className="preview-embed-host">
       {isRunning && (
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] bg-stone-900/80 text-stone-400 border border-stone-700/50">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60 animate-pulse" />
-          live
+        <div className="preview-live-badge">
+          <span className="preview-live-badge__dot" aria-hidden />
+          Live
         </div>
       )}
-      <iframe
-        srcDoc={html}
-        sandbox="allow-scripts allow-same-origin"
-        title={title}
-        className="w-full h-full border-0 bg-white"
-      />
+      <PreviewEmbed iframeSrcDoc={html} iframeTitle={title} />
     </div>
   );
 }

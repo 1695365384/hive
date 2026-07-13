@@ -28,7 +28,7 @@ export default function App() {
   // 重连中
   if (state === "reconnecting" && providerReady === null) {
     return (
-      <div className="flex items-center justify-center h-screen bg-stone-900 text-stone-400">
+      <div className="flex items-center justify-center h-full bg-stone-900 text-stone-400">
         <div className="text-center">
           <img src="/logo.svg" alt="Hive" className="w-16 h-16 mx-auto mb-6 opacity-60" />
           <div className="animate-spin h-8 w-8 border-2 border-stone-700 border-t-amber-500 rounded-full mx-auto mb-4" />
@@ -41,7 +41,7 @@ export default function App() {
   // 连接失败，提供重试
   if (state === "failed") {
     return (
-      <div className="flex items-center justify-center h-screen bg-stone-900 text-stone-400">
+      <div className="flex items-center justify-center h-full bg-stone-900 text-stone-400">
         <div className="text-center">
           <img src="/logo.svg" alt="Hive" className="w-16 h-16 mx-auto mb-6 opacity-60" />
           <p className="text-red-400 mb-2">Failed to connect to Hive Server</p>

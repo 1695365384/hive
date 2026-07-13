@@ -20,6 +20,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
 tokio = { version = "1", features = ["process", "time", "io-util", "rt", "sync", "macros"] }
 reqwest = "0.12"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }

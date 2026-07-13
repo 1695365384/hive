@@ -2,10 +2,10 @@
 export type ContentPart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string; startedAt?: number; durationMs?: number }
   | { type: "worker-start"; workerId: string; workerType: string; description?: string; scenarioId?: string }
   | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }
-  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
+  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; servedPath?: string; src?: string };
 
 export interface ChatMessage {
   id: string;
@@ -17,9 +17,9 @@ export interface ChatMessage {
 export type GroupedContent =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string; workerId?: string; workerType?: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown; isError?: boolean; workerId?: string; startedAt?: number; durationMs?: number }
   | { type: "worker"; workerId: string; workerType: string; description?: string; scenarioId?: string; children: GroupedContent[]; status: "running" | "completed" | "failed"; duration?: number; error?: string }
-  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; src?: string };
+  | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; servedPath?: string; src?: string };
 
 /** Session record */
 export interface Session {

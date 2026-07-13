@@ -7,11 +7,22 @@
     "core:default",
     "dialog:default",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$HOME/**", "app": true },
+        { "path": "$DOCUMENT/**", "app": true },
+        { "path": "$DOWNLOAD/**", "app": true },
+        { "path": "$DESKTOP/**", "app": true },
+        { "path": "$TEMP/**", "app": true },
+        { "path": "$APPCACHE/**", "app": true },
+        { "path": "$APPDATA/**", "app": true }
+      ]
+    },
     "notification:default",
     "sql:default",
     "sql:allow-execute",
     "core:window:allow-minimize",
-    "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-start-dragging"
   ]

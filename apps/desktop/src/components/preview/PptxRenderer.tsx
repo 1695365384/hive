@@ -1,32 +1,47 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { init } from "pptx-preview";
+import { PreviewErrorFallback } from "./PreviewErrorFallback";
+import { PreviewEmbed } from "./PreviewEmbed";
+import type { ArtifactOpenMeta } from "./artifact-open-meta";
 
-interface PptxRendererProps {
+interface PptxRendererProps extends ArtifactOpenMeta {
   src: string;
   title: string;
 }
 
-export function PptxRenderer({ src, title }: PptxRendererProps) {
+export function PptxRenderer({ src, title, name, path, servedPath, artifactSrc, officeCliHint }: PptxRendererProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<ReturnType<typeof init> | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const bufRef = useRef<ArrayBuffer | null>(null);
+
+  const renderAtWidth = useCallback((width: number) => {
+    const el = wrapperRef.current;
+    const buf = bufRef.current;
+    if (!el || !buf) return;
+
+    while (el.firstChild) el.removeChild(el.firstChild);
+    const w = Math.max(280, width);
+    const h = Math.round((w * 9) / 16);
+    viewerRef.current = init(el, { width: w, height: h });
+    viewerRef.current.preview(buf);
+  }, []);
 
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
 
-    let viewer: ReturnType<typeof init> | null = null;
     let cancelled = false;
 
     const load = async () => {
       try {
-        viewer = init(el, { width: 960, height: 540 });
-
         const res = await fetch(src);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         if (cancelled) return;
-
-        viewer.preview(buf);
+        bufRef.current = buf;
+        const width = el.clientWidth || el.parentElement?.clientWidth || 720;
+        renderAtWidth(width);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");
@@ -37,38 +52,49 @@ export function PptxRenderer({ src, title }: PptxRendererProps) {
 
     return () => {
       cancelled = true;
-      // Remove any slides the library appended
+      viewerRef.current = null;
       while (el.firstChild) el.removeChild(el.firstChild);
     };
-  }, [src]);
+  }, [src, renderAtWidth]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? el.clientWidth;
+      if (w > 0) renderAtWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [status, renderAtWidth]);
 
   if (status === "error") {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 p-8 text-stone-500">
-        <span className="text-sm">Failed to preview {title}</span>
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-amber-400/80 hover:text-amber-300 underline"
-        >
-          Open file directly
-        </a>
-      </div>
+      <PreviewErrorFallback
+        title={title}
+        name={name || title}
+        path={path}
+        servedPath={servedPath}
+        artifactSrc={artifactSrc}
+        hint={officeCliHint}
+      />
     );
   }
 
   return (
-    <div className="p-2">
+    <PreviewEmbed>
       {status === "loading" && (
-        <div className="flex items-center justify-center h-[300px] text-stone-500 text-sm">
-          Loading preview...
+        <div className="preview-state preview-state--loading">
+          <span className="preview-state__spinner" aria-hidden />
+          <span>加载预览中…</span>
         </div>
       )}
       <div
         ref={wrapperRef}
-        className={`flex items-start justify-center ${status === "loading" ? "hidden" : ""}`}
+        className={`preview-embed__content ${status === "loading" ? "hidden" : ""}`}
       />
-    </div>
+    </PreviewEmbed>
   );
 }

@@ -1,12 +1,37 @@
 import { useEffect } from "react";
-import { usePreviewStore } from "../../stores/preview-store";
+import {
+  FileText,
+  Presentation,
+  FileSpreadsheet,
+  FileImage,
+  FileCode,
+  PanelRightClose,
+} from "lucide-react";
+import { usePreviewStore, type Preview } from "../../stores/preview-store";
 import { PreviewCanvas } from "./PreviewCanvas";
-import { X } from "lucide-react";
+
+function previewTypeMeta(type: Preview["type"] | undefined) {
+  switch (type) {
+    case "ppt":
+      return { label: "演示文稿", icon: Presentation };
+    case "doc":
+      return { label: "文档", icon: FileText };
+    case "pdf":
+      return { label: "PDF", icon: FileText };
+    case "xlsx":
+      return { label: "表格", icon: FileSpreadsheet };
+    case "svg":
+      return { label: "SVG", icon: FileImage };
+    case "html":
+      return { label: "HTML", icon: FileCode };
+    default:
+      return { label: "预览", icon: FileText };
+  }
+}
 
 export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
   const { isOpen, previews, activeId, close, setActive } = usePreviewStore();
 
-  // Close on Escape
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
@@ -20,58 +45,68 @@ export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
     ? previews.find((p) => p.id === activeId) ?? null
     : null;
 
+  const meta = previewTypeMeta(activePreview?.type);
+  const TypeIcon = meta.icon;
+
   return (
-    <div
-      className={`
-        overflow-hidden transition-all duration-300 ease-in-out
-        ${isOpen ? "w-96 border-l border-stone-800" : "w-0 border-l-0"}
-      `}
+    <aside
+      className={`preview-sidebar ${isOpen ? "preview-sidebar--open" : ""}`}
+      style={{ width: isOpen ? "var(--preview-width)" : 0 }}
+      aria-hidden={!isOpen}
+      aria-label="文档预览"
     >
-      {/* Fixed-width inner container — slides in/out with wrapper */}
-      <div className="w-96 h-full bg-stone-900 flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-stone-800 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-stone-400">Preview</span>
+      <div className="preview-sidebar__inner">
+        <header className="preview-sidebar__header">
+          <div className="preview-sidebar__title-row">
+            <span className="preview-sidebar__type-badge" aria-hidden>
+              <TypeIcon className="w-3.5 h-3.5" />
+              <span>{meta.label}</span>
+            </span>
             {activePreview && (
-              <span className="text-[11px] text-stone-600 font-mono truncate max-w-[180px]">
+              <h2 className="preview-sidebar__filename" title={activePreview.title}>
                 {activePreview.title}
-              </span>
+              </h2>
             )}
           </div>
           <button
+            type="button"
             onClick={close}
-            className="p-1 rounded-md text-stone-600 hover:text-stone-300 hover:bg-stone-800 transition-colors"
-            title="Close preview (Esc)"
+            className="preview-sidebar__close app-no-drag"
+            title="关闭预览 (Esc)"
           >
-            <X className="w-3.5 h-3.5" />
+            <PanelRightClose className="w-4 h-4" />
           </button>
-        </div>
+        </header>
 
-        {/* Preview tabs (if multiple) */}
         {previews.length > 1 && (
-          <div className="flex gap-1 px-3 py-1.5 border-b border-stone-800/60 overflow-x-auto shrink-0">
-            {previews.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setActive(p.id)}
-                className={`text-[10px] px-2 py-0.5 rounded-md font-mono whitespace-nowrap transition-colors ${
-                  p.id === activeId
-                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                    : "text-stone-500 hover:text-stone-300 border border-transparent"
-                }`}
-              >
-                {p.title}
-              </button>
-            ))}
+          <div className="preview-sidebar__tabs" role="tablist">
+            {previews.map((p) => {
+              const active = p.id === activeId;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActive(p.id)}
+                  className={`preview-sidebar__tab ${active ? "preview-sidebar__tab--active" : ""}`}
+                  title={p.title}
+                >
+                  {p.title}
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* Canvas */}
-        <div className="flex-1 overflow-y-auto">
-          <PreviewCanvas preview={activePreview} isRunning={isRunning} />
+        <div className="preview-sidebar__stage">
+          <div className="preview-sidebar__canvas">
+            {isOpen ? (
+              <PreviewCanvas preview={activePreview} isRunning={isRunning} />
+            ) : null}
+          </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }

@@ -1,3 +1,5 @@
+import { useState, type ReactNode } from "react";
+import { FileSearch } from "lucide-react";
 import type { Preview } from "../../stores/preview-store";
 import { SandboxedIframe } from "./SandboxedIframe";
 import { SvgRenderer } from "./SvgRenderer";
@@ -6,65 +8,114 @@ import { DocxRenderer } from "./DocxRenderer";
 import { PdfRenderer } from "./PdfRenderer";
 import { XlsxRenderer } from "./XlsxRenderer";
 import { OfficeCliRenderer } from "./OfficeCliRenderer";
+import { resolveArtifactHttpUrl } from "../../lib/artifact-file";
+import type { ArtifactOpenMeta } from "./artifact-open-meta";
 
 interface PreviewCanvasProps {
   preview: Preview | null;
   isRunning?: boolean;
 }
 
+function PreviewEmpty() {
+  return (
+    <div className="preview-state preview-state--empty">
+      <FileSearch className="w-8 h-8 text-stone-600 mb-3" strokeWidth={1.5} />
+      <p className="text-sm text-stone-500">选择附件或点击 Preview 查看</p>
+    </div>
+  );
+}
+
+function PreviewFrame({ children, flush }: { children: ReactNode; flush?: boolean }) {
+  return (
+    <div className={`preview-frame ${flush ? "preview-frame--flush" : ""}`}>{children}</div>
+  );
+}
+
 export function PreviewCanvas({ preview, isRunning }: PreviewCanvasProps) {
+  const [officeCliHint, setOfficeCliHint] = useState<string | undefined>();
+
   if (!preview) {
     return (
-      <div className="flex items-center justify-center h-full text-stone-600 text-sm px-4 text-center">
-        Select a preview to display
+      <div className="preview-canvas">
+        <PreviewEmpty />
       </div>
     );
   }
 
-  const src = preview.src ? `http://127.0.0.1:4450${preview.src}` : "";
+  const httpSrc = resolveArtifactHttpUrl(undefined, preview.src) ?? "";
   const title = preview.title;
+
+  const artifactMeta: ArtifactOpenMeta = {
+    name: preview.title,
+    path: preview.filePath,
+    servedPath: preview.servedPath,
+    artifactSrc: preview.src,
+    officeCliHint,
+  };
+
+  const wrap = (node: ReactNode) => <div className="preview-canvas">{node}</div>;
 
   switch (preview.type) {
     case "html":
-      return (
-        <div className="p-2">
+      return wrap(
+        <PreviewFrame>
           <SandboxedIframe html={preview.content} />
-        </div>
+        </PreviewFrame>
       );
     case "svg":
-      return <SvgRenderer content={preview.content} />;
+      return wrap(
+        <PreviewFrame>
+          <SvgRenderer content={preview.content} />
+        </PreviewFrame>
+      );
     case "ppt":
-      return (
+      return wrap(
         <OfficeCliRenderer
           src={preview.src ?? ""}
+          servedPath={preview.servedPath}
+          filePath={preview.filePath}
           title={title}
           isRunning={isRunning}
-          fallback={<PptxRenderer src={src} title={title} />}
+          onFallbackHint={setOfficeCliHint}
+          fallback={<PptxRenderer src={httpSrc} title={title} {...artifactMeta} />}
         />
       );
     case "doc":
-      return (
+      return wrap(
         <OfficeCliRenderer
           src={preview.src ?? ""}
+          servedPath={preview.servedPath}
+          filePath={preview.filePath}
           title={title}
           isRunning={isRunning}
-          fallback={<DocxRenderer src={src} title={title} />}
+          onFallbackHint={setOfficeCliHint}
+          fallback={
+            <PreviewFrame>
+              <DocxRenderer src={httpSrc} title={title} {...artifactMeta} />
+            </PreviewFrame>
+          }
         />
       );
     case "pdf":
-      return (
-        <PdfRenderer
-          src={src}
-          title={title}
-        />
+      return wrap(
+        <PreviewFrame flush>
+          <PdfRenderer src={httpSrc} title={title} {...artifactMeta} />
+        </PreviewFrame>
       );
     case "xlsx":
-      return (
+      return wrap(
         <OfficeCliRenderer
           src={preview.src ?? ""}
+          servedPath={preview.servedPath}
+          filePath={preview.filePath}
           title={title}
           isRunning={isRunning}
-          fallback={<XlsxRenderer src={src} title={title} />}
+          onFallbackHint={setOfficeCliHint}
+          fallback={
+            <PreviewFrame flush>
+              <XlsxRenderer src={httpSrc} title={title} {...artifactMeta} />
+            </PreviewFrame>
+          }
         />
       );
   }

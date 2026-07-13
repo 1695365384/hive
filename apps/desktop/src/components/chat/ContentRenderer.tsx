@@ -1,30 +1,32 @@
 import { memo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { TextBlock } from "../TextBlock";
-import { ReasoningBlock } from "./ReasoningBlock";
+import { ThinkingCard } from "./ThinkingCard";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { FileAttachmentBlock } from "./FileAttachmentBlock";
+import { ActivityCard } from "./ActivityCard";
+import { formatToolLabel } from "./activity-labels";
 import { formatWorkerTitle, formatScenarioLabel } from "./worker-labels";
 import type { GroupedContent } from "./types";
 
 export type GroupedContentRendererProps = {
   part: GroupedContent;
-  activeToolTime: number | null;
   sourceMessageId?: string;
   autoPreview?: boolean;
   isStreaming?: boolean;
+  isReasoningStreaming?: boolean;
 };
 
 export function GroupedContentRenderer({
   part,
-  activeToolTime,
   sourceMessageId,
   autoPreview,
   isStreaming,
+  isReasoningStreaming,
 }: GroupedContentRendererProps) {
   switch (part.type) {
     case "reasoning":
-      return <ReasoningBlock text={part.text} />;
+      return <ThinkingCard text={part.text} isStreaming={isReasoningStreaming} />;
     case "text":
       return (
         <TextBlock
@@ -36,15 +38,18 @@ export function GroupedContentRenderer({
       );
     case "tool-call":
       return (
-        <ToolCallBlock
-          toolCallId={part.toolCallId}
-          toolName={part.toolName}
-          args={part.args}
-          result={part.result}
-          isError={part.isError}
-          elapsedSeconds={activeToolTime}
-          workerId={part.workerId}
-        />
+        <div className="activity-standalone">
+          <ToolCallBlock
+            toolCallId={part.toolCallId}
+            toolName={part.toolName}
+            args={part.args}
+            result={part.result}
+            isError={part.isError}
+            workerId={part.workerId}
+            startedAt={part.startedAt}
+            durationMs={part.durationMs}
+          />
+        </div>
       );
     case "tool-batch":
       return <ToolBatchBlock toolName={part.toolName} count={part.count} children={part.children} />;
@@ -67,6 +72,7 @@ export function GroupedContentRenderer({
           size={part.size}
           mimeType={part.mimeType}
           path={part.path}
+          servedPath={part.servedPath}
           src={part.src}
         />
       );
@@ -83,24 +89,39 @@ function ToolBatchBlock({
   children: GroupedContent[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const label = formatToolLabel(toolName, (children[0] as { args?: unknown })?.args);
 
   return (
-    <div>
+    <div className="activity-standalone">
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 text-xs w-full text-left hover:text-stone-300"
+        className="activity-step__row activity-step__row--clickable w-full"
       >
-        <span className="text-stone-500 font-mono">{toolName}</span>
-        <span className="text-stone-600">×{count}</span>
+        <span className="activity-step__label">{label}</span>
+        <span className="activity-step__time">×{count}</span>
         <ChevronRight
-          className={`w-3 h-3 text-stone-700 shrink-0 transition-transform ml-auto ${isOpen ? "rotate-90" : ""}`}
+          className={`activity-step__chevron w-3.5 h-3.5 shrink-0 transition-transform duration-200 ml-auto ${isOpen ? "rotate-90" : ""}`}
         />
       </button>
       {isOpen && (
-        <div className="ml-3 pl-2 border-l border-stone-800/50 space-y-0">
-          {children.map((child, idx) => (
-            <GroupedContentRenderer key={idx} part={child} activeToolTime={null} />
-          ))}
+        <div className="activity-card__steps">
+          {children.map((child, idx) => {
+            if (child.type !== "tool-call") return null;
+            return (
+              <ToolCallBlock
+                key={child.toolCallId || idx}
+                toolCallId={child.toolCallId}
+                toolName={child.toolName}
+                args={child.args}
+                result={child.result}
+                isError={child.isError}
+                startedAt={child.startedAt}
+                durationMs={child.durationMs}
+                nested
+              />
+            );
+          })}
         </div>
       )}
     </div>
@@ -123,46 +144,72 @@ function WorkerBlockInner({
   duration?: number;
   error?: string;
 }) {
-  const isRunning = status === "running";
-  const [isOpen, setIsOpen] = useState(false);
-  const timeStr = duration != null ? `${(duration / 1000).toFixed(1)}s` : "";
   const title = formatWorkerTitle(workerType, description, scenarioId);
   const scenarioLabel = scenarioId ? formatScenarioLabel(scenarioId) : undefined;
-  const toolNames = children
-    .filter((c) => c.type === "tool-call")
-    .map((c) => (c as { toolName: string }).toolName)
-    .join(", ");
+  const toolSteps = children.filter((c) => c.type === "tool-call");
+  const deliverables = children.filter((c) => c.type === "file-attachment");
+  const steps = children.filter((c) => c.type !== "file-attachment");
+  const isRunning = status === "running";
+
+  const deliverableNodes =
+    deliverables.length > 0
+      ? deliverables.map((child, idx) => (
+          <FileAttachmentBlock
+            key={`${child.path}-${child.name}-${idx}`}
+            name={child.name}
+            size={child.size}
+            mimeType={child.mimeType}
+            path={child.path}
+            servedPath={child.servedPath}
+            src={child.src}
+          />
+        ))
+      : undefined;
 
   return (
-    <div>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 text-xs w-full text-left hover:text-stone-300"
-      >
-        <span className="text-stone-500">{title}</span>
-        {scenarioLabel && description?.trim() && (
-          <span className="text-[10px] px-1 py-0.5 rounded bg-amber-900/30 text-amber-400/80 shrink-0">
-            {scenarioLabel}
-          </span>
-        )}
-        {isRunning && <span className="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse" />}
-        {!isRunning && timeStr && <span className="text-stone-700">{timeStr}</span>}
-        {!isRunning && toolNames && <span className="text-stone-700 truncate">{toolNames}</span>}
-        {children.length > 0 && (
-          <ChevronRight
-            className={`w-3 h-3 text-stone-700 shrink-0 transition-transform ${isOpen ? "rotate-90" : ""}`}
-          />
-        )}
-      </button>
-
-      {isOpen && children.length > 0 && (
-        <div className="ml-3 pl-2 border-l border-stone-800/50 space-y-0">
-          {children.map((child, idx) => (
-            <GroupedContentRenderer key={idx} part={child} activeToolTime={null} />
-          ))}
-        </div>
-      )}
-    </div>
+    <ActivityCard
+      title={title}
+      status={status}
+      durationMs={duration}
+      stepCount={toolSteps.length}
+      badge={scenarioLabel && description?.trim() ? scenarioLabel : workerType}
+      deliverables={deliverableNodes}
+    >
+      {steps.map((child, idx) => {
+        if (child.type === "tool-call") {
+          return (
+            <ToolCallBlock
+              key={child.toolCallId || idx}
+              toolCallId={child.toolCallId}
+              toolName={child.toolName}
+              args={child.args}
+              result={child.result}
+              isError={child.isError}
+              startedAt={child.startedAt}
+              durationMs={child.durationMs}
+              nested
+            />
+          );
+        }
+        if (child.type === "reasoning") {
+          return (
+            <ThinkingCard
+              key={idx}
+              text={child.text}
+              isStreaming={isRunning && idx === children.length - 1}
+            />
+          );
+        }
+        if (child.type === "text") {
+          return (
+            <div key={idx} className="activity-step__text text-sm text-stone-400 whitespace-pre-wrap px-2 py-1">
+              {child.text}
+            </div>
+          );
+        }
+        return null;
+      })}
+    </ActivityCard>
   );
 }
 

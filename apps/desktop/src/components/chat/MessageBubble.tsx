@@ -2,18 +2,25 @@ import { FileText } from "lucide-react";
 import type { ChatMessage } from "../../types/chat";
 import { groupContentParts } from "../../lib/group-content-parts";
 import { GroupedContentRenderer } from "./ContentRenderer";
+import type { GroupedContent } from "./types";
 
 type MessageBubbleProps = {
   message: ChatMessage;
   isLast: boolean;
   isRunning: boolean;
-  activeToolTime: number | null;
   onOpenImage: (src: string) => void;
 };
 
-function findLastTextPartIndex(parts: ReturnType<typeof groupContentParts>): number {
+function findLastTextPartIndex(parts: GroupedContent[]): number {
   for (let i = parts.length - 1; i >= 0; i--) {
     if (parts[i].type === "text") return i;
+  }
+  return -1;
+}
+
+function findLastReasoningPartIndex(parts: GroupedContent[]): number {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type === "reasoning") return i;
   }
   return -1;
 }
@@ -22,18 +29,17 @@ export function MessageBubble({
   message,
   isLast,
   isRunning,
-  activeToolTime,
   onOpenImage,
 }: MessageBubbleProps) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] group">
+        <div className="max-w-[92%] sm:max-w-[88%] group">
           <div className="flex items-center gap-2 justify-end mb-1">
-            <span className="text-[11px] text-stone-600">
+            <span className="text-xs text-stone-500">
               {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
-            <span className="text-[11px] font-medium text-stone-500">You</span>
+            <span className="text-xs font-medium text-stone-400">You</span>
           </div>
           <div className="px-4 py-2.5 rounded-2xl rounded-tr-md bg-stone-800/80 border border-stone-700/50">
             {message.content.map((part, idx) => {
@@ -66,7 +72,7 @@ export function MessageBubble({
               return null;
             })}
             {message.content.some((p) => p.type === "text") && (
-              <p className="text-sm text-stone-200 whitespace-pre-wrap leading-relaxed">
+              <p className="text-base text-stone-100 whitespace-pre-wrap leading-relaxed">
                 {(message.content.find((p) => p.type === "text") as { type: "text"; text: string })?.text}
               </p>
             )}
@@ -78,13 +84,14 @@ export function MessageBubble({
 
   const grouped = groupContentParts(message.content);
   const lastTextIdx = findLastTextPartIndex(grouped);
+  const lastReasoningIdx = findLastReasoningPartIndex(grouped);
 
   return (
     <div className="flex justify-start">
-      <div className="w-full min-w-0 max-w-[68ch]">
+      <div className="w-full min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-[11px] font-medium text-stone-500">Hive</span>
-          <span className="text-[11px] text-stone-700">
+          <span className="text-xs font-medium text-stone-400">Hive</span>
+          <span className="text-xs text-stone-500">
             {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
@@ -97,7 +104,9 @@ export function MessageBubble({
               sourceMessageId={message.id}
               autoPreview={isLast && isRunning && part.type === "text"}
               isStreaming={isLast && isRunning && part.type === "text" && idx === lastTextIdx}
-              activeToolTime={isLast && isRunning ? activeToolTime : null}
+              isReasoningStreaming={
+                isLast && isRunning && part.type === "reasoning" && idx === lastReasoningIdx
+              }
             />
           ))}
         </div>

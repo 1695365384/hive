@@ -10,6 +10,13 @@ describe("preprocessFileLinks", () => {
     );
   });
 
+  it("encodes CJK filenames in file URLs", () => {
+    const input = "See [File: 汇报.pptx] /workspace/out/汇报.pptx for details.";
+    const output = preprocessFileLinks(input);
+    expect(output).toContain(encodeURIComponent("汇报.pptx"));
+    expect(output).not.toContain("/files/汇报");
+  });
+
   it("leaves normal markdown unchanged", () => {
     const input = "[link](https://example.com)";
     expect(preprocessFileLinks(input)).toBe(input);

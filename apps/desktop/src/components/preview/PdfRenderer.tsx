@@ -8,12 +8,15 @@ GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-interface PdfRendererProps {
+import { PreviewErrorFallback } from "./PreviewErrorFallback";
+import type { ArtifactOpenMeta } from "./artifact-open-meta";
+
+interface PdfRendererProps extends ArtifactOpenMeta {
   src: string;
   title: string;
 }
 
-export function PdfRenderer({ src, title }: PdfRendererProps) {
+export function PdfRenderer({ src, title, name, path, servedPath, artifactSrc }: PdfRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [numPages, setNumPages] = useState(0);
@@ -113,17 +116,13 @@ export function PdfRenderer({ src, title }: PdfRendererProps) {
 
   if (status === "error") {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 p-8 text-stone-500">
-        <span className="text-sm">Failed to preview {title}</span>
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-amber-400/80 hover:text-amber-300 underline"
-        >
-          Open file directly
-        </a>
-      </div>
+      <PreviewErrorFallback
+        title={title}
+        name={name || title}
+        path={path}
+        servedPath={servedPath}
+        artifactSrc={artifactSrc}
+      />
     );
   }
 

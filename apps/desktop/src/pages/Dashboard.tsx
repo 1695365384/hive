@@ -7,7 +7,6 @@ import { StatusPage } from "./StatusPage";
 import { ChatPage } from "./ChatPage";
 import { LogDrawer } from "../components/LogDrawer";
 import { StatusBar } from "../components/StatusBar";
-import { TitleBar } from "../components/TitleBar";
 import {
   Plus,
   Search,
@@ -59,11 +58,10 @@ export function Dashboard() {
     setDrawerHeight((h) => (h === "collapsed" ? "half" : "collapsed"));
 
   return (
-    <div className="flex flex-col h-screen bg-stone-900 text-stone-100">
-      <TitleBar />
-      <div className="flex flex-1 min-h-0">
+    <div className="app-shell bg-stone-900 text-stone-100">
+      <div className="app-shell__workspace">
         {/* ---- Unified sidebar ---- */}
-        <aside className="w-64 bg-stone-900 border-r border-stone-800 flex flex-col">
+        <aside className="app-shell__sidebar bg-stone-900 border-r border-stone-800 flex flex-col">
           {/* New chat */}
           <div className="px-3 py-2.5">
             <button
@@ -150,8 +148,8 @@ export function Dashboard() {
         </aside>
 
         {/* ---- Main content ---- */}
-        <main className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-hidden">
+        <main className="app-shell__main">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <ChatPage />
           </div>
           <LogDrawer height={drawerHeight} onHeightChange={setDrawerHeight} />

@@ -5,7 +5,9 @@ export interface Preview {
   title: string;
   type: "html" | "svg" | "ppt" | "doc" | "pdf" | "xlsx";
   content: string;
-  src?: string; // URL to fetch (for file-based types like pptx)
+  src?: string;
+  filePath?: string;
+  servedPath?: string;
   sourceMessageId: string;
 }
 

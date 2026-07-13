@@ -76,4 +76,61 @@ describe("groupContentParts", () => {
     const grouped = groupContentParts(parts);
     expect(grouped).toEqual([{ type: "text", text: "visible" }]);
   });
+
+  it("dedupes live file updates and nests deliverables under worker", () => {
+    const pptPath = "/workspace/AI制作PPT能力展示.pptx";
+    const parts: ContentPart[] = [
+      {
+        type: "worker-start",
+        workerId: "w1",
+        workerType: "office",
+        description: "创建PPT",
+      },
+      { type: "worker-complete", workerId: "w1", workerType: "office", success: true, duration: 392500 },
+      {
+        type: "file-attachment",
+        name: "slide1.png",
+        size: 1200,
+        mimeType: "image/png",
+        path: "/workspace/slide1.png",
+        src: "/files/uuid_slide1.png",
+      },
+      {
+        type: "file-attachment",
+        name: "AI制作PPT能力展示.pptx",
+        size: 8900,
+        mimeType: "application/octet-stream",
+        path: pptPath,
+        src: "/files/uuid_v1.pptx",
+      },
+      {
+        type: "file-attachment",
+        name: "AI制作PPT能力展示.pptx",
+        size: 17600,
+        mimeType: "application/octet-stream",
+        path: pptPath,
+        src: "/files/uuid_v2.pptx",
+      },
+      {
+        type: "file-attachment",
+        name: "AI制作PPT能力展示.pptx",
+        size: 20300,
+        mimeType: "application/octet-stream",
+        path: pptPath,
+        src: "/files/uuid_v3.pptx",
+      },
+      { type: "text", text: "PPT 已创建完成" },
+    ];
+
+    const grouped = groupContentParts(parts);
+    expect(grouped).toHaveLength(2);
+    expect(grouped[0].type).toBe("worker");
+    if (grouped[0].type === "worker") {
+      const files = grouped[0].children.filter((c) => c.type === "file-attachment");
+      expect(files).toHaveLength(2);
+      const ppt = files.find((f) => f.type === "file-attachment" && f.name.endsWith(".pptx"));
+      expect(ppt?.type === "file-attachment" && ppt.size).toBe(20300);
+    }
+    expect(grouped[1]).toEqual({ type: "text", text: "PPT 已创建完成" });
+  });
 });

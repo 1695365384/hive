@@ -1,12 +1,14 @@
 import { useRef, useEffect, useState } from "react";
 import { renderAsync } from "docx-preview";
+import { PreviewErrorFallback } from "./PreviewErrorFallback";
+import type { ArtifactOpenMeta } from "./artifact-open-meta";
 
-interface DocxRendererProps {
+interface DocxRendererProps extends ArtifactOpenMeta {
   src: string;
   title: string;
 }
 
-export function DocxRenderer({ src, title }: DocxRendererProps) {
+export function DocxRenderer({ src, title, name, path, servedPath, artifactSrc, officeCliHint }: DocxRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
@@ -48,17 +50,14 @@ export function DocxRenderer({ src, title }: DocxRendererProps) {
 
   if (status === "error") {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 p-8 text-stone-500">
-        <span className="text-sm">Failed to preview {title}</span>
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-amber-400/80 hover:text-amber-300 underline"
-        >
-          Open file directly
-        </a>
-      </div>
+      <PreviewErrorFallback
+        title={title}
+        name={name || title}
+        path={path}
+        servedPath={servedPath}
+        artifactSrc={artifactSrc}
+        hint={officeCliHint}
+      />
     );
   }
 

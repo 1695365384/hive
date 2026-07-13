@@ -7,6 +7,8 @@ use tauri::{
     AppHandle, Emitter, Manager,
 };
 
+mod open_targets;
+
 // ============================================
 // Constants
 // ============================================
@@ -192,19 +194,21 @@ async fn spawn_server(state: &ServerState, force: bool) -> Result<(), String> {
     }
 
     // Resolve server binary:
-    // - Bundled app: use bundled Node.js binary to run main.js, cwd = bundle/server dir
-    // - Dev mode: use system node to run entry script
+    // - Release / bundled app: use bundled Node SEA + main.js under resources/server
+    // - Dev (debug build): ALWAYS use apps/server/dist/main.js — target/debug/server
+    //   may contain a stale copy from tauri resources and must not override live dist.
     let spawn_info = {
         let res_root = state.resource_root.lock().unwrap();
-        // In dev mode (cargo run), resource_root resolves to target/debug/
-        // but resources from tauri.conf.json are only bundled in production builds.
-        // Check if bundled server exists; if not, fall back to dev mode (system node).
-        let use_bundled = match &*res_root {
-            Some(ref root) => std::path::PathBuf::from(root)
-                .join("server")
-                .join("main.js")
-                .exists(),
-            None => false,
+        let use_bundled = if cfg!(debug_assertions) {
+            false
+        } else {
+            match &*res_root {
+                Some(ref root) => std::path::PathBuf::from(root)
+                    .join("server")
+                    .join("main.js")
+                    .exists(),
+                None => false,
+            }
         };
         if use_bundled {
             let res_root = res_root.as_ref().unwrap();
@@ -228,6 +232,10 @@ async fn spawn_server(state: &ServerState, force: bool) -> Result<(), String> {
             let node_bin = server_dir.join("node-win-x64").to_string_lossy().to_string();
             (node_bin, vec!["main.js"], server_dir_str)
         } else {
+            eprintln!(
+                "[hive] Dev server entry: {} (cwd: {})",
+                state.entry, state.project_root
+            );
             (
                 "node".to_string(),
                 vec![state.entry.as_str()],
@@ -439,6 +447,46 @@ async fn watch_server(app: AppHandle, state: Arc<ServerState>) {
 // ============================================
 
 #[tauri::command]
+fn copy_artifact_file(from: String, to: String) -> Result<(), String> {
+    std::fs::copy(&from, &to).map_err(|e| format!("复制失败: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn write_artifact_bytes(path: String, data: Vec<u8>) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    std::fs::write(&path, data).map_err(|e| format!("写入失败: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_open_targets(ext: String) -> Vec<open_targets::OpenTargetInfo> {
+    open_targets::installed_for_extension(&ext)
+}
+
+/// Open a local file with the system default or a named app (bypasses opener plugin ACL).
+#[tauri::command]
+fn open_local_file(path: String, with: Option<String>) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("文件不存在: {path}"));
+    }
+    tauri_plugin_opener::open_path(p, with.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Reveal a file in Finder / Explorer (bypasses opener plugin ACL).
+#[tauri::command]
+fn reveal_local_file(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("文件不存在: {path}"));
+    }
+    tauri_plugin_opener::reveal_item_in_dir(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn show_notification(app: AppHandle, title: String, body: String) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
     app.notification()
@@ -594,7 +642,16 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_sql::Builder::new().build())
         .manage(server_state)
-        .invoke_handler(tauri::generate_handler![get_server_status, restart_server, show_notification])
+        .invoke_handler(tauri::generate_handler![
+            get_server_status,
+            restart_server,
+            show_notification,
+            copy_artifact_file,
+            write_artifact_bytes,
+            get_open_targets,
+            open_local_file,
+            reveal_local_file,
+        ])
         .setup(move |app| {
             if let Err(e) = build_tray(app.handle()) {
                 eprintln!("[hive] Failed to build tray: {}", e);

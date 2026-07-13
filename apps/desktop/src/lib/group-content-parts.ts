@@ -47,7 +47,80 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
     }
   }
 
-  return mergeToolBatches(mergeReasoning(result));
+  return dedupeTopLevelFileAttachments(attachDeliverablesToWorkers(mergeToolBatches(mergeReasoning(result))));
+}
+
+function fileAttachmentKey(part: { path: string; name: string }): string {
+  return part.path || part.name;
+}
+
+function dedupeFileAttachments(files: GroupedContent[]): GroupedContent[] {
+  const byKey = new Map<string, GroupedContent>();
+  for (const file of files) {
+    if (file.type !== "file-attachment") continue;
+    byKey.set(fileAttachmentKey(file), file);
+  }
+  return Array.from(byKey.values());
+}
+
+/** Move consecutive deliverables after a worker into that worker card (deduped). */
+function attachDeliverablesToWorkers(items: GroupedContent[]): GroupedContent[] {
+  const out: GroupedContent[] = [];
+  let i = 0;
+
+  while (i < items.length) {
+    const item = items[i];
+    if (item.type !== "worker") {
+      out.push(item);
+      i++;
+      continue;
+    }
+
+    const files: GroupedContent[] = [];
+    let j = i + 1;
+    while (j < items.length && items[j].type === "file-attachment") {
+      files.push(items[j]);
+      j++;
+    }
+
+    if (files.length > 0) {
+      const deduped = dedupeFileAttachments(files);
+      out.push({
+        ...item,
+        children: [...item.children, ...deduped],
+      });
+      i = j;
+    } else {
+      out.push(item);
+      i++;
+    }
+  }
+
+  return out;
+}
+
+/** Collapse consecutive duplicate file rows at top level (e.g. live Office updates). */
+function dedupeTopLevelFileAttachments(items: GroupedContent[]): GroupedContent[] {
+  const out: GroupedContent[] = [];
+  let fileRun: GroupedContent[] = [];
+
+  const flushFiles = () => {
+    if (fileRun.length === 0) return;
+    out.push(...dedupeFileAttachments(fileRun));
+    fileRun = [];
+  };
+
+  for (const item of items) {
+    if (item.type === "file-attachment") {
+      fileRun.push(item);
+    } else {
+      flushFiles();
+      out.push(item);
+    }
+  }
+  flushFiles();
+
+  return out;
 }
 
 function mergeReasoning(items: GroupedContent[]): GroupedContent[] {

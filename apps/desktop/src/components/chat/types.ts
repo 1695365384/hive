@@ -9,6 +9,8 @@ export type GroupedContent =
       result?: unknown;
       isError?: boolean;
       workerId?: string;
+      startedAt?: number;
+      durationMs?: number;
     }
   | { type: "tool-batch"; toolName: string; count: number; children: GroupedContent[] }
   | {
@@ -28,5 +30,6 @@ export type GroupedContent =
       size: number;
       mimeType: string;
       path: string;
+      servedPath?: string;
       src?: string;
     };

@@ -168,6 +168,7 @@ export class ChatWsHandler extends EventEmitter {
           threadId: tid,
           name: staged.name,
           path: staged.originalPath,
+          servedPath: staged.servedPath,
           size: stat.size,
           mimeType: isImage ? `image/${staged.name.split('.').pop()}` : 'application/octet-stream',
           type: isImage ? 'image' : 'file',

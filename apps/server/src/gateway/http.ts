@@ -63,14 +63,36 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
 
   // Middleware
   app.use('*', hiveLoggerMiddleware(hiveLogger ?? null))
-  const allowedOrigins = process.env.CORS_ORIGINS
+  const envOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
-    : ['http://localhost:3000'];
+    : null
+
+  const defaultOrigins = [
+    'http://localhost:3000',
+    'http://localhost:1420', // Tauri dev (vite)
+    'http://tauri.localhost',
+    'https://tauri.localhost',
+    'tauri://localhost',
+  ]
 
   app.use(
     '*',
     cors({
-      origin: allowedOrigins,
+      origin: (origin) => {
+        if (!origin) return (envOrigins ?? defaultOrigins)[0]
+        if (envOrigins?.includes(origin)) return origin
+        if (!envOrigins && defaultOrigins.includes(origin)) return origin
+        // Desktop dev may use any localhost port; Tauri prod uses tauri:// / tauri.localhost
+        if (/^http:\/\/localhost:\d+$/.test(origin)) return origin
+        if (
+          origin === 'tauri://localhost' ||
+          origin.startsWith('http://tauri.localhost') ||
+          origin.startsWith('https://tauri.localhost')
+        ) {
+          return origin
+        }
+        return (envOrigins ?? defaultOrigins)[0]
+      },
       allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Content-Type', 'Authorization'],
     })
@@ -135,7 +157,12 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
 
   // GET /files/:name — serve uploaded files (for image preview etc.)
   app.get('/files/:name', async (c) => {
-    const name = c.req.param('name')
+    let name = c.req.param('name')
+    try {
+      name = decodeURIComponent(name)
+    } catch {
+      /* keep raw param */
+    }
     // Prevent path traversal
     if (name.includes('..') || name.includes('/') || name.includes('\\')) {
       return c.json({ error: 'Invalid filename' }, 400)
@@ -177,8 +204,22 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
 
   /** GET /api/preview/html?file=<filename>&path=<abs_path> — 用 officecli 渲染 Office 文档为 HTML */
   app.get('/api/preview/html', async (c) => {
-    const file = c.req.query('file')
-    const absPath = c.req.query('path')
+    let file = c.req.query('file')
+    let absPath = c.req.query('path')
+    if (file) {
+      try {
+        file = decodeURIComponent(file)
+      } catch {
+        /* keep raw */
+      }
+    }
+    if (absPath) {
+      try {
+        absPath = decodeURIComponent(absPath)
+      } catch {
+        /* keep raw */
+      }
+    }
 
     let filePath: string
 

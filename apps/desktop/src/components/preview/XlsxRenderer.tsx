@@ -1,7 +1,9 @@
 import { useRef, useEffect, useState } from "react";
 import * as XLSX from "xlsx";
+import { PreviewErrorFallback } from "./PreviewErrorFallback";
+import type { ArtifactOpenMeta } from "./artifact-open-meta";
 
-interface XlsxRendererProps {
+interface XlsxRendererProps extends ArtifactOpenMeta {
   src: string;
   title: string;
 }
@@ -11,7 +13,7 @@ interface SheetTab {
   html: string;
 }
 
-export function XlsxRenderer({ src, title }: XlsxRendererProps) {
+export function XlsxRenderer({ src, title, name, path, servedPath, artifactSrc, officeCliHint }: XlsxRendererProps) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sheets, setSheets] = useState<SheetTab[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
@@ -28,10 +30,10 @@ export function XlsxRenderer({ src, title }: XlsxRendererProps) {
         if (cancelled) return;
 
         const workbook = XLSX.read(buf, { type: "array" });
-        const tabs: SheetTab[] = workbook.SheetNames.map((name) => {
-          const sheet = workbook.Sheets[name];
-          const html = XLSX.utils.sheet_to_html(sheet, { id: `sheet-${name}` });
-          return { name, html };
+        const tabs: SheetTab[] = workbook.SheetNames.map((sheetName) => {
+          const sheet = workbook.Sheets[sheetName];
+          const html = XLSX.utils.sheet_to_html(sheet, { id: `sheet-${sheetName}` });
+          return { name: sheetName, html };
         });
 
         if (!cancelled) {
@@ -50,14 +52,12 @@ export function XlsxRenderer({ src, title }: XlsxRendererProps) {
     };
   }, [src]);
 
-  // Inject active sheet HTML into container
   useEffect(() => {
     const el = containerRef.current;
     if (!el || sheets.length === 0) return;
     el.innerHTML = sheets[activeSheet]?.html ?? "";
   }, [sheets, activeSheet]);
 
-  // Style the generated table after render
   useEffect(() => {
     const el = containerRef.current;
     if (!el || status !== "ready") return;
@@ -79,17 +79,14 @@ export function XlsxRenderer({ src, title }: XlsxRendererProps) {
 
   if (status === "error") {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 p-8 text-stone-500">
-        <span className="text-sm">Failed to preview {title}</span>
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-amber-400/80 hover:text-amber-300 underline"
-        >
-          Open file directly
-        </a>
-      </div>
+      <PreviewErrorFallback
+        title={title}
+        name={name || title}
+        path={path}
+        servedPath={servedPath}
+        artifactSrc={artifactSrc}
+        hint={officeCliHint}
+      />
     );
   }
 
@@ -103,7 +100,6 @@ export function XlsxRenderer({ src, title }: XlsxRendererProps) {
 
       {status === "ready" && (
         <>
-          {/* Sheet tabs */}
           {sheets.length > 1 && (
             <div className="flex gap-1 px-2 py-1.5 border-b border-stone-800 overflow-x-auto shrink-0">
               {sheets.map((s, i) => (
@@ -122,13 +118,11 @@ export function XlsxRenderer({ src, title }: XlsxRendererProps) {
             </div>
           )}
 
-          {/* Sheet content */}
           <div
             ref={containerRef}
             className="overflow-auto p-2 [&_table]:w-full [&_td]:border [&_td]:border-stone-700 [&_td]:px-2 [&_td]:py-1 [&_td]:text-[12px] [&_td]:font-mono [&_th]:border [&_th]:border-stone-700 [&_th]:px-2 [&_th]:py-1 [&_th]:text-[12px] [&_th]:font-mono [&_th]:bg-stone-800 [&_th]:text-stone-300 [&_th]:font-semibold [&_th]:sticky [&_th]:top-0 [&_tr:nth-child(even)]:bg-white/[0.02]"
           />
 
-          {/* Status bar */}
           <div className="text-center text-[11px] text-stone-600 py-1 shrink-0 border-t border-stone-800">
             {sheets.length} sheet{sheets.length !== 1 ? "s" : ""}
           </div>
