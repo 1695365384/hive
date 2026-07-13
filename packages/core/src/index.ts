@@ -67,6 +67,36 @@ export type {
 } from './agents/index.js';
 
 // ============================================
+// 场景路由（ScenarioRouter）
+// ============================================
+
+export {
+  ScenarioRegistry,
+  TaskRouter,
+  createDefaultScenarioRegistry,
+  createDefaultTaskRouter,
+  defaultTaskRouter,
+  getScenarioLabel,
+  getAllScenarioLabels,
+  validateWorkerSpawn,
+  OFFICE_SCENARIO_ID,
+  OFFICE_SCENARIO_LABELS,
+  SCHEDULE_SCENARIO_ID,
+  SCHEDULE_SCENARIO_LABELS,
+  officeScenario,
+  scheduleScenario,
+  buildOfficeWorkerSpawn,
+  buildScheduleWorkerSpawn,
+} from './routing/index.js';
+
+export type {
+  WorkerSpawnInput,
+  ScenarioDefinition,
+  RouterDecision,
+  ScenarioLabels,
+} from './routing/index.js';
+
+// ============================================
 // 子 Agent（高级用户）
 // ============================================
 

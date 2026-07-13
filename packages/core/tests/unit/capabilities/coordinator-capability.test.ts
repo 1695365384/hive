@@ -153,7 +153,7 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
       expect(mockRuntimeStream).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: 'Implement a feature',
-          maxSteps: 15,
+          maxSteps: 200,
         }),
       );
     });
@@ -167,7 +167,7 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
       expect(callArgs.system.length).toBeGreaterThan(0);
     });
 
-    it('should only have coordinator tools (agent, task-stop, send-message, remember)', async () => {
+    it('should only have coordinator tools', async () => {
       let capturedTools: Record<string, any> = {};
       mockRuntimeStream.mockImplementation((config: any) => {
         capturedTools = config.tools;
@@ -176,7 +176,15 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
 
       await capability.run('test task');
 
-      expect(Object.keys(capturedTools)).toEqual(['agent', 'task-stop', 'send-message', 'remember']);
+      expect(Object.keys(capturedTools)).toEqual([
+        'agent',
+        'task-stop',
+        'send-message',
+        'ask-user',
+        'remember',
+        'skill-install',
+        'mcp-install',
+      ]);
     });
 
     it('should return empty result for empty task', async () => {
@@ -406,6 +414,23 @@ function mockRuntimeWithText(text: string, resultOverride?: Partial<typeof defau
 
       const callArgs = mockRuntimeStream.mock.calls[0][0];
       expect(callArgs.system).toContain('Implement a feature');
+    });
+
+    it('should include office worker in coordinator prompt', async () => {
+      const { buildCoordinatorSystemPrompt } = await import('../../contracts/contract-helpers.js');
+      const system = await buildCoordinatorSystemPrompt('Create a PPT about AI');
+
+      expect(system).toContain('"office"');
+      expect(system).toContain('Office Worker');
+      expect(system).toContain('officecli');
+    });
+
+    it('should not inject intelligent.md template into coordinator prompt', async () => {
+      const { buildCoordinatorSystemPrompt } = await import('../../contracts/contract-helpers.js');
+      const system = await buildCoordinatorSystemPrompt('Create a PPT');
+
+      expect(system).not.toContain('You are a capable assistant');
+      expect(system).not.toContain('## Response Guidelines');
     });
   });
 

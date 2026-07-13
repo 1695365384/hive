@@ -19,9 +19,12 @@ import type { AgentResult } from '../../agents/core/types.js';
 import type { TaskManager } from '../../agents/core/TaskManager.js';
 import type { ScheduleCapability } from '../../agents/capabilities/ScheduleCapability.js';
 import { createAgentRunner } from '../../agents/core/runner.js';
+import type { AgentRunner } from '../../agents/core/runner.js';
 import { createScheduleTool } from './schedule-tools.js';
 import { getDefaultRateLimiter } from '../harness/rate-limiter.js';
 import { createContextCompactor } from '../../agents/pipeline/ContextCompactor.js';
+import { DELEGATABLE_WORKER_TYPES } from '../../agents/core/worker-types.js';
+import { validateWorkerSpawn } from '../../routing/index.js';
 
 // ============================================
 // Schema
@@ -30,12 +33,13 @@ import { createContextCompactor } from '../../agents/pipeline/ContextCompactor.j
 const INPUT_SCHEMA = zodSchema(
   z.object({
     prompt: z.string().describe('The task to delegate to the Worker'),
-type: z.enum(['explore', 'plan', 'general', 'schedule', 'office']).describe(
+type: z.enum(DELEGATABLE_WORKER_TYPES).describe(
 'Worker type: "explore" for read-only research, "plan" for deep analysis, "general" for full-access execution, "schedule" for scheduled task management, "office" for Office document creation (PPT/Word/Excel)',
     ),
     model: z.string().optional().describe('Override model for this Worker'),
     maxTurns: z.number().int().min(1).max(50).optional().describe('Override max turns'),
     description: z.string().optional().describe('Human-readable description of this Worker'),
+    scenarioId: z.string().optional().describe('User-facing scenario id (e.g. office-document)'),
   }),
 );
 
@@ -207,6 +211,52 @@ function createStuckDetector(abortController: AbortController) {
   return { recordResult, reset };
 }
 
+/** 注册 schedule Worker 工具；失败返回错误信息（不静默空跑） */
+function registerScheduleWorkerTools(runner: AgentRunner, context: AgentContext): string | null {
+  try {
+    const scheduleCap = context.getCapability<ScheduleCapability>('schedule');
+    if (!scheduleCap) {
+      const message = 'ScheduleCapability is not registered';
+      console.warn(`[agent-tool] Schedule worker setup failed: ${message}`);
+      return message;
+    }
+    const registry = runner.getToolRegistry();
+    registry.register('schedule', createScheduleTool(scheduleCap));
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[agent-tool] Schedule worker setup failed: ${message}`);
+    return message;
+  }
+}
+
+/** 注册 office Worker MCP 工具；无 officecli 工具时失败（不静默空跑） */
+function registerOfficeWorkerMcpTools(runner: AgentRunner, context: AgentContext): string | null {
+  try {
+    const workerRegistry = runner.getToolRegistry();
+    const mcpTools = context.mcpManager.getAllTools();
+    let hasOfficeTool = false;
+    for (const [name, tool] of Object.entries(mcpTools)) {
+      if (!workerRegistry.getTool(name)) {
+        workerRegistry.register(name, tool);
+      }
+      if (name.toLowerCase().includes('office')) {
+        hasOfficeTool = true;
+      }
+    }
+    if (!hasOfficeTool) {
+      const message = 'officecli MCP tools are not available';
+      console.warn(`[agent-tool] Office worker setup failed: ${message}`);
+      return message;
+    }
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[agent-tool] Office worker MCP setup failed: ${message}`);
+    return message;
+  }
+}
+
 /**
  * 构建结构化 Worker 结果摘要
  *
@@ -314,6 +364,20 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
     ].join('\n'),
     inputSchema: INPUT_SCHEMA,
     execute: async (input): Promise<string> => {
+      const dispatchTask = context.currentDispatchTask ?? '';
+
+      const spawnValidationError = validateWorkerSpawn(dispatchTask, {
+        type: input.type,
+        prompt: input.prompt,
+        description: input.description,
+        scenarioId: input.scenarioId,
+        model: input.model,
+        maxTurns: input.maxTurns,
+      });
+      if (spawnValidationError) {
+        return spawnValidationError;
+      }
+
       const workerId = randomUUID();
       const startTime = Date.now();
       const sessionId = context.hookRegistry.getSessionId();
@@ -333,6 +397,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
         workerId,
         workerType: input.type,
         description: input.description,
+        scenarioId: input.scenarioId,
         sessionId,
         timestamp: new Date(),
       });
@@ -382,27 +447,35 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
 
         // Schedule Worker 需要动态注册 schedule 工具（因为白名单为空，工具需要闭包持有 ScheduleCapability）
         if (input.type === 'schedule') {
-          try {
-            const scheduleCap = context.getCapability<ScheduleCapability>('schedule');
-            const registry = runner.getToolRegistry();
-            registry.register('schedule', createScheduleTool(scheduleCap));
-          } catch {
-            // ScheduleCapability 未注册，schedule Worker 将无工具可用
+          const setupError = registerScheduleWorkerTools(runner, context);
+          if (setupError) {
+            rateLimiter.release();
+            emitComplete(false, setupError);
+            taskManager.unregister(workerId);
+            return buildWorkerResultSummary({
+              type: input.type,
+              result: { text: '', tools: [], success: false, error: setupError },
+              accumulatedText: '',
+              duration: Date.now() - startTime,
+              shouldBlockRetry,
+            });
           }
         }
 
         // Office Worker 需要 MCP 工具（officecli 等）
         if (input.type === 'office') {
-          try {
-            const workerRegistry = runner.getToolRegistry();
-            const mcpTools = context.mcpManager.getAllTools();
-            for (const [name, tool] of Object.entries(mcpTools)) {
-              if (!workerRegistry.getTool(name)) {
-                workerRegistry.register(name, tool);
-              }
-            }
-          } catch {
-            // MCP not available — worker uses built-in tools only
+          const setupError = registerOfficeWorkerMcpTools(runner, context);
+          if (setupError) {
+            rateLimiter.release();
+            emitComplete(false, setupError);
+            taskManager.unregister(workerId);
+            return buildWorkerResultSummary({
+              type: input.type,
+              result: { text: '', tools: [], success: false, error: setupError },
+              accumulatedText: '',
+              duration: Date.now() - startTime,
+              shouldBlockRetry,
+            });
           }
         }
 

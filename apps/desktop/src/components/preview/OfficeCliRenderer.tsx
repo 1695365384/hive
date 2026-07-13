@@ -16,6 +16,7 @@ export function OfficeCliRenderer({ src, title, fallback, isRunning }: OfficeCli
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadPreview = async () => {
+    if (!src) return;
     try {
       let queryParams: string;
       if (src.startsWith("/files/")) {
@@ -26,8 +27,9 @@ export function OfficeCliRenderer({ src, title, fallback, isRunning }: OfficeCli
         queryParams = `path=${encodeURIComponent(src)}`;
       }
 
+      const liveParam = isRunning ? "&live=1" : "";
       const res = await fetch(
-        `http://127.0.0.1:4450/api/preview/html?${queryParams}`
+        `http://127.0.0.1:4450/api/preview/html?${queryParams}${liveParam}`
       );
 
       if (res.status === 503) {
@@ -55,7 +57,7 @@ export function OfficeCliRenderer({ src, title, fallback, isRunning }: OfficeCli
 
   // Auto-refresh while agent is running (poll every 3s)
   useEffect(() => {
-    if (isRunning && status === "ready") {
+    if (isRunning && src) {
       pollRef.current = setInterval(loadPreview, 3000);
       return () => {
         if (pollRef.current) clearInterval(pollRef.current);
@@ -67,6 +69,15 @@ export function OfficeCliRenderer({ src, title, fallback, isRunning }: OfficeCli
       }
     }
   }, [isRunning, status, src]);
+
+  if (!src) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 h-[300px] text-stone-500 text-sm px-4 text-center">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60 animate-pulse" />
+        <span>正在生成文档，预览即将出现…</span>
+      </div>
+    );
+  }
 
   if (status === "fallback") {
     return <>{fallback}</>;

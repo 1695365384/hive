@@ -201,6 +201,9 @@ export interface AgentContext {
   /** 当前对话的用户 ID（由 ServerImpl 在 dispatch 前设置） */
   currentUserId?: string;
 
+  /** 当前 Coordinator 正在处理的用户任务（用于 agent 工具路由校验） */
+  currentDispatchTask?: string;
+
   /** 文件型记忆存储实例（由 ServerImpl 在 dispatch 前设置） */
   fileMemory?: FileMemory;
 

@@ -22,9 +22,14 @@ vi.mock('ai', () => ({
 
 // Mock AgentRunner
 const mockExecuteStreaming = vi.fn();
+const mockToolRegistry = {
+  register: vi.fn(),
+  getTool: vi.fn(() => undefined),
+};
 vi.mock('../../../src/agents/core/runner.js', () => ({
   createAgentRunner: () => ({
     executeStreaming: mockExecuteStreaming,
+    getToolRegistry: () => mockToolRegistry,
   }),
 }));
 
@@ -42,8 +47,28 @@ describe('AgentTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExecuteStreaming.mockReset();
+    mockToolRegistry.register.mockReset();
+    mockToolRegistry.getTool.mockReset();
+    mockToolRegistry.getTool.mockReturnValue(undefined);
     context = createMockAgentContext();
+    vi.mocked(context.mcpManager.getAllTools).mockReturnValue({});
     taskManager = new TaskManager();
+  });
+
+  describe('worker routing guards', () => {
+    it('rejects non-office workers for office document tasks', async () => {
+      context.currentDispatchTask = '帮我做一个 PPT';
+      const tool = createAgentTool(context, taskManager);
+
+      const output = await tool.execute!(
+        { prompt: 'make ppt', type: 'general' },
+        {} as any,
+      );
+
+      expect(output).toContain('FAILED');
+      expect(output).toContain('type="office"');
+      expect(mockExecuteStreaming).not.toHaveBeenCalled();
+    });
   });
 
   describe('createAgentTool()', () => {
@@ -139,6 +164,50 @@ describe('AgentTool', () => {
 
       const completeCtx = workerCompleteCalls[0][1] as any;
       expect(completeCtx.success).toBe(true);
+    });
+
+    it('should forward scenarioId in worker:start hook', async () => {
+      mockExecuteStreaming.mockResolvedValue(successResult());
+      vi.mocked(context.mcpManager.getAllTools).mockReturnValue({
+        officecli_create: { description: 'mock office tool' },
+      });
+
+      const tool = createAgentTool(context, taskManager);
+      await tool.execute!(
+        { prompt: 'test', type: 'office', scenarioId: 'office-document' },
+        {} as any,
+      );
+
+      const emitCalls = vi.mocked(context.hookRegistry.emit).mock.calls;
+      const workerStartCalls = emitCalls.filter(c => c[0] === 'worker:start');
+      expect(workerStartCalls.length).toBe(1);
+      expect((workerStartCalls[0][1] as { scenarioId?: string }).scenarioId).toBe('office-document');
+    });
+
+    it('should fail office worker when officecli MCP tools are missing', async () => {
+      vi.mocked(context.mcpManager.getAllTools).mockReturnValue({});
+
+      const tool = createAgentTool(context, taskManager);
+      const output = await tool.execute!(
+        { prompt: 'make ppt', type: 'office' },
+        {} as any,
+      );
+
+      expect(output).toContain('Status: FAILED');
+      expect(output).toContain('officecli MCP tools are not available');
+      expect(mockExecuteStreaming).not.toHaveBeenCalled();
+    });
+
+    it('should fail schedule worker when ScheduleCapability is missing', async () => {
+      const tool = createAgentTool(context, taskManager);
+      const output = await tool.execute!(
+        { prompt: 'every day remind me', type: 'schedule' },
+        {} as any,
+      );
+
+      expect(output).toContain('Status: FAILED');
+      expect(output).toContain('ScheduleCapability is not registered');
+      expect(mockExecuteStreaming).not.toHaveBeenCalled();
     });
 
     it('should emit worker:tool-call and worker:tool-result hooks', async () => {

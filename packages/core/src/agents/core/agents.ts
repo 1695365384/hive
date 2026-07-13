@@ -75,7 +75,7 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule' | '
   office: {
     type: 'office',
     description: 'Office document specialist for creating PowerPoint, Word, and Excel documents using officecli.',
-    tools: ['bash', 'file', 'glob', 'grep', 'env'],
+    tools: ['bash', 'file', 'glob', 'grep', 'send-file', 'env'],
     maxTurns: 50,
   },
 };

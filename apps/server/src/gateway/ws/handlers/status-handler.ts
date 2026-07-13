@@ -12,6 +12,7 @@ import type { Server as HttpServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { HIVE_HOME } from '../../../config.js'
+import { isOfficeCliAvailable, isOfficeCliMcpRegistered } from '../../../officecli-setup.js'
 
 export class StatusHandler extends WsDomainHandler {
   private startTime: number
@@ -37,10 +38,11 @@ export class StatusHandler extends WsDomainHandler {
     ])
   }
 
-  private handleStatusGet(_params: unknown, id: string) {
+  private async handleStatusGet(_params: unknown, id: string) {
     const server = this.ctx.getServer()
     const provider = server?.agent?.currentProvider
     const providerReady = !!provider?.apiKey && provider.apiKey.length > 0
+    const officecliAvailable = await isOfficeCliAvailable()
 
     const status: ServerStatus = {
       server: {
@@ -64,6 +66,13 @@ export class StatusHandler extends WsDomainHandler {
         },
         nodeVersion: process.version,
         platform: `${process.platform} ${process.arch}`,
+      },
+      capabilities: {
+        officecli: {
+          available: officecliAvailable,
+          mcpRegistered: isOfficeCliMcpRegistered(),
+          scenarioId: 'office-document',
+        },
       },
     }
 

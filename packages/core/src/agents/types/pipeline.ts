@@ -83,4 +83,6 @@ export interface PromptBuildContext {
   scheduleSummary?: string;
   /** 当前 Agent 可用工具描述（可选，动态注入到 prompt 中） */
   toolDescriptions?: Array<{ name: string; description: string }>;
+  /** 跳过 base 角色模板（Coordinator 等已有独立模板时使用） */
+  skipBaseTemplate?: boolean;
 }

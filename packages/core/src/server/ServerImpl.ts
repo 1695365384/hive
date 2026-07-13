@@ -28,6 +28,7 @@ import { setSendFileCallback } from '../tools/built-in/send-file-tool.js';
 import { FileMemory } from '../memory/FileMemory.js';
 import { setRememberCallback } from '../tools/built-in/remember-tool.js';
 import { SessionId } from './SessionId.js';
+import { ArtifactEmitter } from '../artifacts/ArtifactEmitter.js';
 import type {
   Server,
   ServerOptions,
@@ -94,6 +95,7 @@ class ServerImpl implements Server {
   private activeAbortControllers: Map<string, AbortController> = new Map();
   private streamingHandlers: Set<StreamingHandler> = new Set();
   private fileHandlers: Set<FileHandler> = new Set();
+  private artifactEmitter: ArtifactEmitter;
 
   /** Reasoning 防抖状态：sessionId → { buffer, timer, workerId?, workerType? } */
   private reasoningBuffers: Map<string, { buffer: string; timer: ReturnType<typeof setTimeout>; workerId?: string; workerType?: string }> = new Map();
@@ -112,6 +114,10 @@ class ServerImpl implements Server {
     this.agent = agent;
     this.logger = logger;
     this.channelContext = channelContext;
+    this.artifactEmitter = new ArtifactEmitter(
+      (event) => this.emitFileEvent(event),
+      logger,
+    );
   }
 
   // ============================================
@@ -487,7 +493,14 @@ class ServerImpl implements Server {
       workerHookIds.push(
         this.agent.context.hookRegistry.on('worker:start', (ctx: any) => {
           this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} started${ctx.description ? `: ${ctx.description}` : ''}`);
-          this.emitStreaming({ sessionId: sessionKey, type: 'worker-start', workerId: ctx.workerId, workerType: ctx.workerType, description: ctx.description });
+          this.emitStreaming({
+            sessionId: sessionKey,
+            type: 'worker-start',
+            workerId: ctx.workerId,
+            workerType: ctx.workerType,
+            description: ctx.description,
+            scenarioId: ctx.scenarioId,
+          });
           return { proceed: true };
         }),
       );
@@ -502,6 +515,18 @@ class ServerImpl implements Server {
       workerHookIds.push(
         this.agent.context.hookRegistry.on('worker:tool-result', (ctx: any) => {
           this.forwardToolResult(sessionKey, ctx.toolName, ctx.output, ctx.workerId, ctx.workerType);
+          if (ctx.toolName) {
+            this.artifactEmitter.scanToolResult(sessionKey, ctx.toolName, ctx.input, ctx.output);
+          }
+          return { proceed: true };
+        }),
+      );
+
+      workerHookIds.push(
+        this.agent.context.hookRegistry.on('tool:after', (ctx: any) => {
+          if (ctx.sessionId === sessionKey && ctx.toolName) {
+            this.artifactEmitter.scanToolResult(sessionKey, ctx.toolName, ctx.input, ctx.output);
+          }
           return { proceed: true };
         }),
       );
@@ -564,6 +589,7 @@ class ServerImpl implements Server {
         for (const hookId of workerHookIds) {
           this.agent.context.hookRegistry.off(hookId);
         }
+        this.artifactEmitter.clearSession(sessionKey);
         this.activeAbortControllers.delete(sessionKey);
       }
     } catch (error) {

@@ -198,28 +198,33 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
       return c.json({ error: 'Missing ?file= or ?path= parameter' }, 400)
     }
 
+    const live = c.req.query('live') === '1'
+
     // 检查 officecli 是否可用
     const available = await isOfficeCliAvailable()
     if (!available) {
       return c.json({ error: 'OfficeCLI not installed. Run: npm install -g @officecli/officecli' }, 503)
     }
 
-    // 检查缓存（用路径做 key）
-    const cacheKey = filePath
-    const cached = previewCache.get(cacheKey)
-    if (cached && Date.now() - cached.ts < PREVIEW_CACHE_TTL) {
-      return c.html(cached.html)
+    // 确认文件存在 + mtime for cache key
+    const { stat: statFn } = await import('node:fs/promises')
+    let fileStat: Awaited<ReturnType<typeof statFn>>
+    try {
+      fileStat = await statFn(filePath)
+    } catch {
+      return c.json({ error: 'File not found' }, 404)
+    }
+
+    // 检查缓存（路径 + mtime；live=1 跳过缓存以便轮询预览）
+    const cacheKey = `${filePath}:${fileStat.mtimeMs}`
+    if (!live) {
+      const cached = previewCache.get(cacheKey)
+      if (cached && Date.now() - cached.ts < PREVIEW_CACHE_TTL) {
+        return c.html(cached.html)
+      }
     }
 
     try {
-      // 确认文件存在
-      const { stat } = await import('node:fs/promises')
-      try {
-        await stat(filePath)
-      } catch {
-        return c.json({ error: 'File not found' }, 404)
-      }
-
       // 运行 officecli view <file> html，输出到临时文件
       const tmpOutput = path.join(TEMP_DIR, `${path.basename(filePath)}.preview.html`)
       const cmd = getOfficeCliCommand()

@@ -20,6 +20,10 @@
     "./vertical": {
       "import": "./dist/vertical/index.js",
       "types": "./dist/vertical/index.d.ts"
+    },
+    "./routing": {
+      "import": "./dist/routing/index.js",
+      "types": "./dist/routing/index.d.ts"
     }
   },
   "bin": {

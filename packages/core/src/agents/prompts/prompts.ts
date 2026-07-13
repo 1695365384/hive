@@ -6,6 +6,7 @@
  */
 
 import { getPromptTemplate } from './PromptTemplate.js';
+import { OUTPUT_STYLE_GUIDELINES } from './style-guidelines.js';
 import type { ThoroughnessLevel } from '../types.js';
 
 // ============================================
@@ -38,11 +39,11 @@ function getLanguageInstruction(task: string): string {
  */
 export function buildExplorePrompt(task: string, thoroughness: ThoroughnessLevel = 'medium'): string {
   const template = getPromptTemplate();
-  return template.render('explore', {
+  return `${OUTPUT_STYLE_GUIDELINES}\n\n${template.render('explore', {
     thoroughness: THOROUGHNESS_PROMPTS[thoroughness],
     task,
     languageInstruction: getLanguageInstruction(task),
-  });
+  })}`;
 }
 
 /**
@@ -50,8 +51,8 @@ export function buildExplorePrompt(task: string, thoroughness: ThoroughnessLevel
  */
 export function buildPlanSystemPrompt(task: string): string {
   const template = getPromptTemplate();
-  return template.render('plan', {
+  return `${OUTPUT_STYLE_GUIDELINES}\n\n${template.render('plan', {
     task,
     languageInstruction: getLanguageInstruction(task),
-  });
+  })}`;
 }

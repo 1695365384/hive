@@ -13,6 +13,8 @@ import { LLMRuntime, AGENT_PRESETS } from '../runtime/LLMRuntime.js';
 import { getAgentConfig } from './agents.js';
 import { buildExplorePrompt } from '../prompts/prompts.js';
 import { getPromptTemplate } from '../prompts/PromptTemplate.js';
+import { OUTPUT_STYLE_GUIDELINES } from '../prompts/style-guidelines.js';
+import { stripDecorativeEmoji } from '../../utils/sanitize-output.js';
 import { ToolRegistry, type AgentType as ToolAgentType } from '../../tools/tool-registry.js';
 
 // ============================================
@@ -278,6 +280,7 @@ export class AgentRunner {
           : "CRITICAL: You must respond in English, matching the user's language.";
         const workerContext = [
           '\n## Worker Context',
+          OUTPUT_STYLE_GUIDELINES,
           'You are being called as a sub-agent. Execute the task immediately — do NOT narrate your reasoning.',
           'Call the relevant tool as your first action. No preamble like "Let me..." or "I will..."',
           'Your output will be relayed to the user — provide complete, well-formatted results.',

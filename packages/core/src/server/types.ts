@@ -20,7 +20,7 @@ export type StreamingEventUnion =
   | { type: 'text-delta'; sessionId: string; text: string }
   | { type: 'tool-call'; sessionId: string; tool: string; input: unknown; workerId?: string; workerType?: string }
   | { type: 'tool-result'; sessionId: string; tool: string; output: unknown; workerId?: string; workerType?: string }
-  | { type: 'worker-start'; sessionId: string; workerId: string; workerType: string; description?: string }
+  | { type: 'worker-start'; sessionId: string; workerId: string; workerType: string; description?: string; scenarioId?: string }
   | { type: 'worker-complete'; sessionId: string; workerId: string; workerType: string; success: boolean; error?: string; duration: number }
   | { type: 'complete'; sessionId: string; success: boolean; cancelled?: boolean; error?: string; text?: string };
 

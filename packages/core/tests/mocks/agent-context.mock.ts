@@ -245,6 +245,12 @@ export function createMockAgentContext(options: MockAgentContextOptions = {}): A
   });
   const hookRegistry = createMockHookRegistry(options.sessionId);
   const timeoutCap = createMockTimeoutCapability();
+  const mcpManager = {
+    onToolRegistered: undefined as ((toolName: string, tool: unknown) => void) | undefined,
+    onToolUnregistered: undefined as ((toolName: string) => void) | undefined,
+    getAllTools: vi.fn(() => ({})),
+    addServer: vi.fn(),
+  };
 
   const context = {
     providerManager,
@@ -253,6 +259,7 @@ export function createMockAgentContext(options: MockAgentContextOptions = {}): A
     agentRegistry,
     hookRegistry,
     timeoutCap, // 直接作为属性
+    mcpManager,
 
     // 便捷访问器
     getActiveProvider: vi.fn(() => options.activeProvider ?? null),

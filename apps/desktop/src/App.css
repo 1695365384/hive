@@ -279,6 +279,15 @@
   line-height: 1.6;
 }
 
+.md-body :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  background: var(--md-bg-elevated);
+  color: var(--md-accent);
+  font-size: 0.9em;
+  font-family: ui-monospace, monospace;
+}
+
 /* ---- streamdown 组件圆角覆盖 ---- */
 
 .md-body [class*="rounded-lg"],

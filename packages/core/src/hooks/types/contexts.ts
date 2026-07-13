@@ -192,6 +192,8 @@ export interface WorkerHookContext {
   workerType?: string;
   /** 任务描述 */
   description?: string;
+  /** 用户可见场景 ID（如 office-document） */
+  scenarioId?: string;
   /** 工具名称（tool-call/tool-result） */
   toolName?: string;
   /** 工具输入（tool-call） */

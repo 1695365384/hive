@@ -82,11 +82,12 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'env', factory: () => createEnvTool() },
   ],
   office: [
-    // Office agent gets code-shell (bash) + file read + env
+    // Office agent gets code-shell (bash) + file read + env + send-file for explicit delivery
     { name: 'bash', factory: () => createCodeShellShellTool({ allowed: true }) },
     { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
     { name: 'glob', factory: () => createGlobTool() },
     { name: 'grep', factory: () => createGrepTool() },
+    { name: 'send-file', factory: () => createSendFileTool() },
     { name: 'env', factory: () => createEnvTool() },
   ],
 };

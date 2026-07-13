@@ -67,29 +67,36 @@ cp apps/server/hive.config.example.json apps/server/hive.config.json
 
 ## Architecture
 
-### 核心设计：能力委托模式
+### 核心设计：能力委托 + 场景路由
 
-Agent 是唯一入口，所有功能委托给能力模块：
+Agent 是唯一入口，基础设施委托给 Capability，用户可见能力委托给 Scenario：
 
 ```
-Agent
-├── ProviderCapability  - LLM 提供商管理
-├── SkillCapability     - 技能管理（模块化扩展）
-├── ChatCapability      - 对话
-├── SubAgentCapability  - 子 Agent（Explore/Plan/General）
-├── WorkflowCapability  - 工作流引擎（explore → plan → execute）
-├── SessionCapability   - 会话持久化（SQLite）
-├── ScheduleCapability  - 定时任务（node-cron）
-└── TimeoutCapability   - 心跳与超时监控
+Agent（进程入口）
+├── ProviderCapability    — LLM 提供商
+├── SkillCapability       — 技能管理
+├── SessionCapability     — 会话持久化（SQLite）
+├── CoordinatorCapability — 对话 + Worker 委派
+├── ScheduleCapability    — 定时任务服务（node-cron）
+└── TimeoutCapability     — 心跳与超时
+
+TaskRouter（Coordinator 内唯一路由入口）
+└── ScenarioRegistry
+    ├── office-document  → office Worker（officecli MCP + bash）
+    └── recurring-task   → schedule Worker
 ```
 
-### 子 Agent 系统（Claude Code 风格）
+**术语**：Agent = 入口类；Worker = 委派执行单元；Scenario = 用户可见能力包；Capability = 基础设施模块。
 
-| Agent | 工具 | 用途 |
-|-------|------|------|
-| Explore | 只读 (file+glob+grep+web) | 文件发现、代码搜索 |
-| Plan | 只读 (file+glob+grep+web) | 计划研究、收集上下文 |
-| General | 全部 (7 个内置工具) | 复杂任务、代码修改 |
+### Worker 类型
+
+| Worker | 工具 | 用途 |
+|--------|------|------|
+| explore | 只读 (file+glob+grep+web) | 文件发现、代码搜索 |
+| plan | 只读 | 计划研究、收集上下文 |
+| general | 全部内置工具 | 复杂任务、代码修改 |
+| office | bash + officecli MCP | PPT / Word / Excel |
+| schedule | schedule 工具 | 定时任务管理 |
 
 ### Server 网关
 

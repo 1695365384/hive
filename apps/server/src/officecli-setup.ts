@@ -32,8 +32,14 @@ const NPM_MIRROR_REGISTRY = 'https://registry.npmmirror.com'
 
 /** officecli 可用性缓存 */
 let _available: boolean | null = null
+/** officecli MCP 是否已成功注册 */
+let _mcpRegistered = false
 /** 解析后的二进制命令缓存 */
 let _command: { command: string; baseArgs: string[] } | null = null
+
+export function isOfficeCliMcpRegistered(): boolean {
+  return _mcpRegistered
+}
 
 /**
  * 解析 officecli 二进制命令。
@@ -182,6 +188,7 @@ async function registerMcp(agent: Agent): Promise<void> {
       command: cmd.command,
       args: [...cmd.baseArgs, 'mcp'],
     })
+    _mcpRegistered = true
     console.log('[officecli] MCP server registered')
   } catch (error) {
     console.warn('[officecli] MCP registration failed:', error instanceof Error ? error.message : error)

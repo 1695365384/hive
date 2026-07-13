@@ -40,6 +40,18 @@ import { CompressionService } from '../../compression/CompressionService.js';
 import type { PipelineCompressionResult } from '../../compression/CompressionService.js';
 import { AdversarialHarness } from '../harness/AdversarialHarness.js';
 import type { AdversarialConfig, HarnessResult } from '../harness/types.js';
+import {
+  TaskTraceCollector,
+  createCompletionVerifierService,
+  type CompletionVerifyResult,
+} from '../completion/index.js';
+import { stripDecorativeEmoji } from '../../utils/sanitize-output.js';
+import {
+  defaultTaskRouter,
+  type TaskRouter,
+  type WorkerSpawnInput,
+} from '../../routing/index.js';
+import { getAgentWorkerTypes, getSpawnedWorkerTypes } from '../completion/TaskTrace.js';
 
 // ============================================
 // 类型
@@ -97,6 +109,8 @@ export interface DispatchResult {
   error?: string;
   /** 执行步骤详情（可选） */
   steps?: import('../runtime/types.js').StepResult[];
+  /** 任务完成判定结果（可选） */
+  verification?: CompletionVerifyResult;
 }
 
 // ============================================
@@ -113,6 +127,10 @@ export class CoordinatorCapability implements AgentCapability {
   private promptTemplate!: PromptTemplate;
   private coordinatorTools: Record<string, Tool> = {};
   private taskManager = new TaskManager();
+  private taskTrace = new TaskTraceCollector();
+  private completionVerifier = createCompletionVerifierService();
+  private taskRouter: TaskRouter = defaultTaskRouter;
+  private workerStartHookId?: string;
 
   private static readonly DEFAULT_MAX_TURNS = 200;
 
@@ -157,6 +175,17 @@ export class CoordinatorCapability implements AgentCapability {
       'skill-install': createSkillInstallTool(),
       'mcp-install': createMcpInstallTool(),
     };
+
+    // 记录 Worker spawn 轨迹（用于完成判定）
+    if (this.workerStartHookId) {
+      this.context.hookRegistry.off(this.workerStartHookId);
+    }
+    this.workerStartHookId = context.hookRegistry.on('worker:start', (ctx) => {
+      if (ctx.workerType) {
+        this.taskTrace.recordWorkerSpawn(ctx.workerType, ctx.description);
+      }
+      return { proceed: true };
+    });
   }
 
   /**
@@ -190,6 +219,9 @@ export class CoordinatorCapability implements AgentCapability {
 
     let previousPhase: string | undefined;
     const abortController = new AbortController();
+    this.taskTrace.reset(task);
+    const previousDispatchTask = this.context.currentDispatchTask;
+    this.context.currentDispatchTask = task;
 
     try {
       // 确保 session 已切换到正确的 chatId
@@ -210,6 +242,43 @@ export class CoordinatorCapability implements AgentCapability {
 
         previousPhase = 'start';
         await this.emitPhase(sessionId, 'execute', '执行任务...', previousPhase, options);
+
+        // 场景路由：确定性短路（TaskRouter 唯一入口）
+        const routeDecision = this.taskRouter.resolve(task);
+        if (routeDecision.action === 'inquiry') {
+          const reply = stripDecorativeEmoji(routeDecision.reply);
+          const duration = Date.now() - startTime;
+          return await this.finalizeTask(
+            task, reply, reply, undefined, options, sessionId, duration, true,
+            { passed: true, results: [] },
+          );
+        }
+
+        if (routeDecision.action === 'delegate') {
+          await this.emitNotification(
+            sessionId, 'info', routeDecision.notificationTitle, routeDecision.notificationBody,
+          );
+          const spawnResult = await this.autoSpawnWorker(routeDecision.spawn);
+          const duration = Date.now() - startTime;
+          if (spawnResult.success) {
+            const resultText = stripDecorativeEmoji(spawnResult.output);
+            const verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+            return await this.finalizeTask(
+              task, resultText, resultText, undefined, options, sessionId, duration,
+              verification.passed, verification,
+            );
+          }
+          const errorText = stripDecorativeEmoji(
+            `[Worker spawn failed: ${spawnResult.error}]`,
+          );
+          return await this.finalizeTask(
+            task, errorText, errorText, undefined, options, sessionId, duration, false,
+            {
+              passed: false,
+              results: [{ verifierId: 'worker-spawn', passed: false, message: spawnResult.error }],
+            },
+          );
+        }
 
         // 构建 system prompt
         const systemPrompt = await this.buildSystemPrompt(task, options?.systemPrompt);
@@ -235,10 +304,53 @@ export class CoordinatorCapability implements AgentCapability {
         );
 
         const final = qualityResult ?? result;
-        const isSuccess = (harnessResult?.success ?? runtimeResult?.success) ?? true;
+        let isSuccess = (harnessResult?.success ?? runtimeResult?.success) ?? true;
+
+        this.taskTrace.setResponseText(final);
+        let resultText = stripDecorativeEmoji(final);
+        let verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+        if (!verification.passed) {
+          isSuccess = false;
+        }
+
+        // 场景任务未派正确 Worker 时自动补救
+        const recoveryDecision = this.taskRouter.resolve(task);
+        if (
+          !verification.passed
+          && recoveryDecision.action === 'delegate'
+        ) {
+          const routed = [
+            ...getAgentWorkerTypes(this.taskTrace.getTrace()),
+            ...getSpawnedWorkerTypes(this.taskTrace.getTrace()),
+          ];
+          const expectedType = recoveryDecision.spawn.type;
+          if (!routed.includes(expectedType)) {
+            const recovered = await this.autoSpawnWorker(recoveryDecision.spawn);
+            if (recovered.success) {
+              resultText = stripDecorativeEmoji(recovered.output);
+              this.taskTrace.setResponseText(recovered.output);
+              verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+              isSuccess = verification.passed;
+            }
+          }
+        }
+
+        if (!verification.passed) {
+          const reasons = verification.results
+            .filter(r => !r.passed)
+            .map(r => r.message)
+            .join('; ');
+          resultText = stripDecorativeEmoji(
+            final
+              ? `${final}\n\n[Task incomplete: ${reasons}]`
+              : `[Task incomplete: ${reasons}]`,
+          );
+        }
 
         // 收尾：通知 + 持久化 + 返回
-        return await this.finalizeTask(task, final, finalText, runtimeResult, options, sessionId, duration, isSuccess);
+        return await this.finalizeTask(
+          task, resultText, finalText, runtimeResult, options, sessionId, duration, isSuccess, verification,
+        );
       } finally {
         this.context.timeoutCap.stopHeartbeat();
         this.taskManager.abortAll();
@@ -257,6 +369,33 @@ export class CoordinatorCapability implements AgentCapability {
         error: errorMsg,
         duration: Date.now() - startTime,
       };
+    } finally {
+      this.context.currentDispatchTask = previousDispatchTask;
+    }
+  }
+
+  /** 场景委派：直接派 Worker（spawn 失败显式返回，不静默 fallback） */
+  private async autoSpawnWorker(
+    spawn: WorkerSpawnInput,
+  ): Promise<{ success: true; output: string } | { success: false; error: string }> {
+    const agentTool = this.coordinatorTools.agent as {
+      execute?: (input: unknown) => Promise<string>;
+    };
+    if (!agentTool?.execute) {
+      return { success: false, error: 'Agent tool not available' };
+    }
+
+    try {
+      this.taskTrace.recordToolCall('agent', spawn);
+      const output = await agentTool.execute(spawn);
+      this.taskTrace.recordToolResult('agent', output);
+      if (output.startsWith('Status: FAILED')) {
+        return { success: false, error: output };
+      }
+      return { success: true, output };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
     }
   }
 
@@ -296,11 +435,14 @@ export class CoordinatorCapability implements AgentCapability {
 
     for await (const event of events) {
       switch (event.type) {
-        case 'text-delta':
-          text += event.text;
-          options?.onText?.(event.text);
+        case 'text-delta': {
+          const cleaned = stripDecorativeEmoji(event.text, { trim: false });
+          text += cleaned;
+          options?.onText?.(cleaned);
           break;
+        }
         case 'tool-call':
+          this.taskTrace.recordToolCall(event.toolName, event.input);
           this.emitToolBefore(sessionId, event.toolName, event.input).catch(
             (err) => this.context.hookRegistry.emit('notification:push', {
               sessionId, type: 'warning', title: 'Hook Error',
@@ -312,6 +454,7 @@ export class CoordinatorCapability implements AgentCapability {
           break;
         case 'tool-result':
           lastToolResultIndex = text.length;
+          this.taskTrace.recordToolResult(event.toolName, event.output);
           this.emitToolAfter(sessionId, event.toolName, event.output).catch(
             (err) => this.context.hookRegistry.emit('notification:push', {
               sessionId, type: 'warning', title: 'Hook Error',
@@ -394,6 +537,7 @@ export class CoordinatorCapability implements AgentCapability {
     sessionId: string,
     duration: number,
     success: boolean,
+    verification?: CompletionVerifyResult,
   ): Promise<DispatchResult> {
     await this.emitPhase(sessionId, 'complete', success ? '任务完成' : '任务失败', 'execute', options);
 
@@ -427,7 +571,7 @@ export class CoordinatorCapability implements AgentCapability {
 
     return {
       text: result,
-      finalText,
+      finalText: finalText ? stripDecorativeEmoji(finalText) : finalText,
       tools: runtimeResult?.tools ?? [],
       success,
       error: runtimeResult?.error,
@@ -442,6 +586,7 @@ export class CoordinatorCapability implements AgentCapability {
       ),
       steps: runtimeResult?.steps,
       duration,
+      verification,
     };
   }
 
@@ -482,6 +627,7 @@ export class CoordinatorCapability implements AgentCapability {
       task: '',
       priorResults: [],
       agentType: 'general',
+      skipBaseTemplate: true,
       environmentContext: this.context.environmentContext,
       scheduleSummary,
       toolDescriptions,
@@ -509,6 +655,20 @@ export class CoordinatorCapability implements AgentCapability {
 
     if (extraSections.trim()) {
       parts.push(extraSections);
+    }
+
+    const routingDirective = this.taskRouter.getRoutingHint(task);
+    if (routingDirective) {
+      parts.push(routingDirective);
+    }
+
+    for (const blurb of this.taskRouter.getCoordinatorBlurbs(task)) {
+      parts.push(blurb);
+    }
+
+    const mcpToolNames = Object.keys(this.context.mcpManager?.getAllTools?.() ?? {});
+    if (mcpToolNames.some(name => name.toLowerCase().includes('office'))) {
+      parts.push(`[MCP Tools] officecli MCP tools registered: ${mcpToolNames.filter(n => n.toLowerCase().includes('office')).join(', ')}`);
     }
 
     return parts.join('\n\n');

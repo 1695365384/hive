@@ -449,5 +449,20 @@ describe('DynamicPromptBuilder', () => {
       // Task should still be present
       expect(prompt).toContain('Test task');
     });
+
+    it('should skip base template when skipBaseTemplate is true', () => {
+      const context: PromptBuildContext = {
+        task: 'Create a presentation',
+        priorResults: [],
+        agentType: 'general',
+        skipBaseTemplate: true,
+        toolDescriptions: [{ name: 'agent', description: 'Spawn a Worker' }],
+      };
+
+      const prompt = builder.buildPrompt(context);
+      expect(prompt).toContain('Spawn a Worker');
+      expect(prompt).not.toContain('You are a capable assistant');
+      expect(prompt).not.toContain('## Your Role');
+    });
   });
 });

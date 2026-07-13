@@ -20,6 +20,7 @@ import type {
 import { createSuccessResponse, createErrorResponse, createEvent } from './types.js'
 import type { HiveLogger } from '../../logging/hive-logger.js'
 import crypto from 'node:crypto'
+import { stageArtifactFile } from '../artifact-staging.js'
 
 // ============================================
 // 类型
@@ -154,22 +155,23 @@ export class ChatWsHandler extends EventEmitter {
       if (!ws || ws.readyState !== ws.OPEN) return
 
       try {
+        const staged = await stageArtifactFile(sessionId, filePath)
+        if (!staged) return
+
         const fs = await import('node:fs/promises')
-        const nodePath = await import('node:path')
-        const stat = await fs.stat(filePath).catch(() => null)
+        const stat = await fs.stat(staged.servedPath).catch(() => null)
         if (!stat) return
 
-        const fileName = nodePath.basename(filePath)
-        const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(fileName)
+        const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(staged.name)
 
         ws.send(JSON.stringify(createEvent('agent.file', {
           threadId: tid,
-          name: fileName,
-          path: filePath,
+          name: staged.name,
+          path: staged.originalPath,
           size: stat.size,
-          mimeType: isImage ? `image/${fileName.split('.').pop()}` : 'application/octet-stream',
+          mimeType: isImage ? `image/${staged.name.split('.').pop()}` : 'application/octet-stream',
           type: isImage ? 'image' : 'file',
-          src: `/files/${fileName}`,
+          src: staged.src,
         })))
       } catch (err) {
         console.warn('[chat-handler] agent:file error:', err)
@@ -241,7 +243,8 @@ export class ChatWsHandler extends EventEmitter {
 
       case 'worker-start':
         ws.send(JSON.stringify(createEvent('agent.worker-start', {
-          threadId, workerId: event.workerId, workerType: event.workerType, description: event.description,
+          threadId, workerId: event.workerId, workerType: event.workerType,
+          description: event.description, scenarioId: event.scenarioId,
         })))
         break
 

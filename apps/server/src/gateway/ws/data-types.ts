@@ -32,6 +32,13 @@ export interface ServerStatus {
     nodeVersion: string
     platform: string
   }
+  capabilities?: {
+    officecli: {
+      available: boolean
+      mcpRegistered: boolean
+      scenarioId: string
+    }
+  }
 }
 
 // ============================================

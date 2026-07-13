@@ -58,8 +58,10 @@ export class DynamicPromptBuilder {
     const sections = new Map<string, string>();
 
     // 1. Base role template (highest priority)
-    const baseTemplate = this.loadBaseTemplate(context.agentType);
-    sections.set('base', baseTemplate);
+    if (!context.skipBaseTemplate) {
+      const baseTemplate = this.loadBaseTemplate(context.agentType);
+      sections.set('base', baseTemplate);
+    }
 
     // 2. Tool descriptions (dynamically injected from ToolRegistry)
     if (context.toolDescriptions && context.toolDescriptions.length > 0) {

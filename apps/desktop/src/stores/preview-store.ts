@@ -37,9 +37,14 @@ export const usePreviewStore = create<PreviewState>((set) => ({
 
   openFor: (preview) =>
     set((state) => {
-      const exists = state.previews.some((x) => x.id === preview.id);
+      const idx = state.previews.findIndex((x) => x.id === preview.id);
+      if (idx >= 0) {
+        const previews = [...state.previews];
+        previews[idx] = { ...previews[idx], ...preview };
+        return { previews, activeId: preview.id, isOpen: true };
+      }
       return {
-        previews: exists ? state.previews : [...state.previews, preview],
+        previews: [...state.previews, preview],
         activeId: preview.id,
         isOpen: true,
       };

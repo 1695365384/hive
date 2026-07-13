@@ -57,7 +57,8 @@ describe('Agent 模块', () => {
       expect(coreAgents).toContain('schedule');
       expect(coreAgents).toContain('critic');
       expect(coreAgents).toContain('arbiter');
-      expect(coreAgents).toHaveLength(6);
+      expect(coreAgents).toContain('office');
+      expect(coreAgents).toHaveLength(7);
     });
   });
 
