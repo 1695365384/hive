@@ -36,3 +36,37 @@ jobs:
 
       - name: Type check desktop
         run: pnpm --filter @bundy-lmw/hive-desktop exec tsc --noEmit
+
+  build-desktop-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - run: pnpm install
+
+      - name: Build core
+        run: pnpm --filter @bundy-lmw/hive-core build
+
+      - name: Build server
+        run: pnpm --filter @bundy-lmw/hive-server build
+
+      - name: Bundle server (SEA)
+        run: node apps/server/scripts/bundle.mjs
+
+      - name: Build Tauri app (Windows)
+        run: pnpm --filter @bundy-lmw/hive-desktop tauri build
+        env:
+          CI: true
