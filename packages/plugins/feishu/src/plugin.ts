@@ -14,6 +14,7 @@ import type {
 } from '@bundy-lmw/hive-core'
 import { FeishuChannel } from './channel.js'
 import type { FeishuPluginConfig, FeishuAppConfig, IFeishuChannel } from './types.js'
+import { isFeishuAppConfigValid } from './feishu-config.js'
 
 /**
  * 飞书插件
@@ -45,10 +46,31 @@ export class FeishuPlugin implements IPlugin {
     this.logger = logger
     this.workspaceDir = context?.workspaceDir ?? null
 
-    logger.info(`[FeishuPlugin] Initializing with ${this.config.apps.length} app(s)`)
+    if (this.config.enabled === false) {
+      logger.info('[FeishuPlugin] Plugin disabled via config (enabled: false)')
+      return
+    }
 
-    for (const appConfig of this.config.apps) {
-      const channel = new FeishuChannel(appConfig, messageHandler, logger, this.workspaceDir)
+    const apps = this.config.apps.filter(isFeishuAppConfigValid)
+    const skipped = this.config.apps.length - apps.length
+    if (skipped > 0) {
+      logger.warn(`[FeishuPlugin] Skipped ${skipped} app(s) with missing/placeholder/disabled credentials`)
+    }
+    if (apps.length === 0) {
+      logger.warn('[FeishuPlugin] No valid Feishu apps — plugin inactive')
+      return
+    }
+
+    logger.info(`[FeishuPlugin] Initializing with ${apps.length} app(s)`)
+
+    for (const appConfig of apps) {
+      const channel = new FeishuChannel(
+        appConfig,
+        messageHandler,
+        logger,
+        this.workspaceDir,
+        this.config.connectionMode,
+      )
       this.channels.set(channel.id, channel)
       registerChannel(channel)
     }

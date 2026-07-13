@@ -7,7 +7,7 @@ import { FeishuChannel } from '../src/channel.js'
 import type { ILogger } from '@bundy-lmw/hive-core'
 
 // Mock lark SDK - use vi.hoisted for proper hoisting
-const { mockCreate, mockReply } = vi.hoisted(() => {
+const { mockCreate, mockReply, mockTenantToken } = vi.hoisted(() => {
   const mockCreate = vi.fn().mockResolvedValue({
     code: 0,
     msg: 'success',
@@ -18,7 +18,13 @@ const { mockCreate, mockReply } = vi.hoisted(() => {
     msg: 'success',
     data: { message_id: 'msg_456' },
   })
-  return { mockCreate, mockReply }
+  const mockTenantToken = vi.fn().mockResolvedValue({
+    code: 0,
+    msg: 'ok',
+    tenant_access_token: 't',
+    expire: 7200,
+  })
+  return { mockCreate, mockReply, mockTenantToken }
 })
 
 vi.mock('@larksuiteoapi/node-sdk', () => {
@@ -29,6 +35,13 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
           message: {
             create: mockCreate,
             reply: mockReply,
+          },
+        },
+      }
+      auth = {
+        v3: {
+          tenantAccessToken: {
+            internal: mockTenantToken,
           },
         },
       }
@@ -151,6 +164,22 @@ describe('FeishuChannel', () => {
 
       expect(result.success).toBe(true)
       expect(result.messageId).toBe('msg_456')
+    })
+  })
+
+  describe('start', () => {
+    it('should skip WebSocket in webhook mode', async () => {
+      const webhookChannel = new FeishuChannel(
+        testConfig,
+        mockMessageHandler,
+        mockLogger,
+        null,
+        'webhook',
+      )
+      await webhookChannel.start()
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('webhook mode'),
+      )
     })
   })
 

@@ -30,12 +30,26 @@ export interface FeishuAppConfig {
   verificationToken?: string
   /** 自定义飞书域名（私有部署时使用） */
   domain?: string
+  /** 是否启用此应用（默认 true） */
+  enabled?: boolean
+  /**
+   * 连接模式：
+   * - websocket：长连接收事件（默认，需开发者后台开启长连接）
+   * - webhook：仅 HTTP 发消息 + /webhook 收事件，不启动 WS
+   */
+  connectionMode?: FeishuConnectionMode
 }
+
+export type FeishuConnectionMode = 'websocket' | 'webhook'
 
 /**
  * 飞书插件配置
  */
 export interface FeishuPluginConfig {
+  /** 全局开关（默认 true） */
+  enabled?: boolean
+  /** 默认连接模式，可被 apps[].connectionMode 覆盖 */
+  connectionMode?: FeishuConnectionMode
   /** 飞书应用配置列表（支持多租户） */
   apps: FeishuAppConfig[]
 }

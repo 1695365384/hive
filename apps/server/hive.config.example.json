@@ -12,6 +12,8 @@
   },
   "plugins": {
     "feishu": {
+      "enabled": true,
+      "connectionMode": "websocket",
       "apps": [
         {
           "appId": "your-app-id",

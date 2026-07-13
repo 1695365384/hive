@@ -22,9 +22,12 @@ import type {
   FeishuAppConfig,
   FeishuChallengeRequest,
   FeishuChallengeResponse,
+  FeishuConnectionMode,
   FeishuMessageEvent,
   IFeishuChannel,
 } from './types.js'
+import { createFeishuHttpInstance } from './feishu-http.js'
+import { resolveFeishuDomain, resolveConnectionMode } from './feishu-config.js'
 
 /**
  * 飞书 WebSocket 事件数据结构
@@ -62,32 +65,46 @@ export class FeishuChannel implements IFeishuChannel {
   private messageHandler: MessageHandler
   private logger: ILogger
   private config: FeishuAppConfig
+  private readonly connectionMode: FeishuConnectionMode
+  private readonly httpInstance = createFeishuHttpInstance()
+  private wsStarted = false
   /** 文件接收存储目录 */
   private readonly receivedDir: string
 
-  constructor(config: FeishuAppConfig, messageHandler: MessageHandler, logger: ILogger, workspaceDir?: string | null) {
+  constructor(
+    config: FeishuAppConfig,
+    messageHandler: MessageHandler,
+    logger: ILogger,
+    workspaceDir?: string | null,
+    pluginConnectionMode?: FeishuConnectionMode,
+  ) {
     this.appId = config.appId
     this.id = `feishu:${config.appId}`
     this.name = `Feishu Channel (${config.appId.slice(0, 8)})`
     this.config = config
+    this.connectionMode = resolveConnectionMode(config, pluginConnectionMode)
     this.messageHandler = messageHandler
     this.logger = logger
 
-    // HTTP API 客户端（发消息用）
+    const domain = resolveFeishuDomain(config.domain)
+
+    // HTTP API 客户端（发消息用）— proxy:false 避免本地 HTTP_PROXY 导致重定向死循环
     this.client = new lark.Client({
       appId: config.appId,
       appSecret: config.appSecret,
       appType: lark.AppType.SelfBuild,
-      domain: config.domain || lark.Domain.Feishu,
+      domain,
+      httpInstance: this.httpInstance,
     })
 
     // WebSocket 客户端（接收事件用）
     this.wsClient = new lark.WSClient({
       appId: config.appId,
       appSecret: config.appSecret,
-      domain: config.domain || lark.Domain.Feishu,
+      domain,
+      httpInstance: this.httpInstance,
       autoReconnect: true,
-      loggerLevel: lark.LoggerLevel.info,
+      loggerLevel: lark.LoggerLevel.warn,
     })
 
     // 事件分发器，注册消息接收事件
@@ -116,24 +133,82 @@ export class FeishuChannel implements IFeishuChannel {
   }
 
   /**
-   * 启动通道 — 建立 WebSocket 长连接
+   * 启动通道 — 建立 WebSocket 长连接（webhook 模式跳过）
    */
   async start(): Promise<void> {
+    if (this.connectionMode === 'webhook') {
+      this.logger.info(
+        `[FeishuChannel] App ${this.appId}: webhook mode — WebSocket long connection disabled. ` +
+        'Configure /webhook/feishu/:appId on your server for inbound events.',
+      )
+      return
+    }
+
+    const authOk = await this.verifyCredentials()
+    if (!authOk) {
+      this.logger.error(
+        `[FeishuChannel] App ${this.appId}: skipping WebSocket — credential check failed. ` +
+        'Fix appId/appSecret or set connectionMode to "webhook" to silence WS retries. ' +
+        'If you use a local HTTP proxy, Hive now bypasses it for Feishu APIs.',
+      )
+      return
+    }
+
     this.logger.info(`[FeishuChannel] Starting WebSocket connection for app ${this.appId}...`)
 
-    await this.wsClient.start({
-      eventDispatcher: this.dispatcher,
-    })
+    try {
+      await this.wsClient.start({
+        eventDispatcher: this.dispatcher,
+      })
+      this.wsStarted = true
+      this.logger.info(`[FeishuChannel] WebSocket connection established for app ${this.appId}`)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      this.logger.error(`[FeishuChannel] WebSocket start failed for app ${this.appId}: ${msg}`)
+      try {
+        this.wsClient.close({ force: true })
+      } catch {
+        // ignore close errors
+      }
+    }
+  }
 
-    this.logger.info(`[FeishuChannel] WebSocket connection established for app ${this.appId}`)
+  /** Preflight: obtain tenant_access_token before opening infinite WS reconnect loop */
+  private async verifyCredentials(): Promise<boolean> {
+    try {
+      const response = await this.client.auth.v3.tenantAccessToken.internal({
+        data: {
+          app_id: this.config.appId,
+          app_secret: this.config.appSecret,
+        },
+      })
+      if (response.code === 0) return true
+      this.logger.warn(
+        `[FeishuChannel] Auth failed for app ${this.appId}: code=${response.code} msg=${response.msg ?? 'unknown'}`,
+      )
+      return false
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      if (msg.includes('redirect')) {
+        this.logger.error(
+          `[FeishuChannel] Auth redirect loop for app ${this.appId}. ` +
+          'Check HTTP_PROXY / VPN or set plugins.feishu.connectionMode to "webhook".',
+        )
+      } else {
+        this.logger.error(`[FeishuChannel] Auth error for app ${this.appId}: ${msg}`)
+      }
+      return false
+    }
   }
 
   /**
    * 停止通道 — 关闭 WebSocket 连接
    */
   async stop(): Promise<void> {
+    if (!this.wsStarted) return
     this.logger.info(`[FeishuChannel] Stopping WebSocket connection for app ${this.appId}...`)
     this.wsClient.close({ force: false })
+    this.wsStarted = false
     this.logger.info(`[FeishuChannel] WebSocket connection closed for app ${this.appId}`)
   }
 
