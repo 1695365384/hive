@@ -35,7 +35,7 @@ jobs:
                 repo: context.repo.repo,
                 tag_name: tag,
                 name: `Hive ${tag}`,
-                body: `## Hive ${tag}\n\n### macOS 安装说明\n\n如果双击安装包提示"已损坏"，请：\n1. 右键点击 Hive.app → 选择"打开"\n2. 在弹出的对话框中点击"打开"\n\n或终端执行：\n\`\`\`bash\nxattr -cr /Applications/Hive.app\n\`\`\``,
+                body: `## Hive ${tag}\n\n### macOS 安装说明\n\n如果双击安装包提示"已损坏"，请：\n1. 右键点击 Hive.app → 选择"打开"\n2. 在弹出的对话框中点击"打开"\n\n或终端执行：\n\`\`\`bash\nxattr -cr /Applications/Hive.app\n\`\`\`\n\n### Windows 安装说明\n\n若 SmartScreen 提示未知发布者，点击「更多信息」→「仍要运行」。安装包当前未做代码签名。`,
                 draft: true,
                 prerelease: false
               })
@@ -50,9 +50,8 @@ jobs:
         include:
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
-          # TODO: Re-enable Windows build after fixing CI compilation issues
-          # - platform: windows-latest
-          #   args: ''
+          - platform: windows-latest
+            args: ''
 
     runs-on: ${{ matrix.platform }}
 
@@ -106,8 +105,7 @@ jobs:
         run: pnpm --filter @bundy-lmw/hive-server build
 
       - name: Bundle server (SEA)
-        run: bash apps/server/scripts/bundle.sh
-        shell: bash
+        run: node apps/server/scripts/bundle.mjs
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0.6
