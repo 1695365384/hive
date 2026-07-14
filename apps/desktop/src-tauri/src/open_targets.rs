@@ -32,6 +32,7 @@ fn office_candidates(ext: &str) -> Vec<Candidate> {
 
     match ext {
         "doc" | "docx" => {
+            #[allow(unused_mut)]
             let mut list = vec![
                 Candidate {
                     label: "Microsoft Word",
@@ -50,6 +51,7 @@ fn office_candidates(ext: &str) -> Vec<Candidate> {
             list
         }
         "ppt" | "pptx" => {
+            #[allow(unused_mut)]
             let mut list = vec![
                 Candidate {
                     label: "Microsoft PowerPoint",
@@ -68,6 +70,7 @@ fn office_candidates(ext: &str) -> Vec<Candidate> {
             list
         }
         "xls" | "xlsx" => {
+            #[allow(unused_mut)]
             let mut list = vec![
                 Candidate {
                     label: "Microsoft Excel",
@@ -339,15 +342,14 @@ fn windows_wps_paths_for(exe_name: &str) -> Vec<PathBuf> {
 #[cfg(target_os = "windows")]
 fn windows_office_exe(filename: &str) -> Option<PathBuf> {
     for root in windows_program_roots() {
-        for parts in [
-            ["Microsoft Office", "root", "Office16", filename],
-            ["Microsoft Office", "Root", "Office16", filename],
-            ["Microsoft Office", "Office16", filename],
-            ["Microsoft Office", "root", "Office15", filename],
-        ] {
-            let path: PathBuf = std::iter::once(root.as_str())
-                .chain(parts.iter().copied())
-                .collect();
+        let candidates = [
+            format!(r"{root}\Microsoft Office\root\Office16\{filename}"),
+            format!(r"{root}\Microsoft Office\Root\Office16\{filename}"),
+            format!(r"{root}\Microsoft Office\Office16\{filename}"),
+            format!(r"{root}\Microsoft Office\root\Office15\{filename}"),
+        ];
+        for path in candidates {
+            let path = PathBuf::from(path);
             if path.exists() {
                 return Some(path);
             }
