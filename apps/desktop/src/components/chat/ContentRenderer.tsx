@@ -1,10 +1,12 @@
 import { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 import { TextBlock } from "../TextBlock";
 import { ThinkingCard } from "./ThinkingCard";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { FileAttachmentBlock } from "./FileAttachmentBlock";
 import { ActivityCard } from "./ActivityCard";
+import { RouteChip } from "./RouteChip";
 import { formatToolLabel } from "./activity-labels";
 import { formatWorkerTitle, formatScenarioLabel } from "./worker-labels";
 import type { GroupedContent } from "./types";
@@ -25,6 +27,15 @@ export function GroupedContentRenderer({
   isReasoningStreaming,
 }: GroupedContentRendererProps) {
   switch (part.type) {
+    case "route":
+      return (
+        <RouteChip
+          mode={part.mode}
+          scenarioId={part.scenarioId}
+          workerType={part.workerType}
+          title={part.title}
+        />
+      );
     case "reasoning":
       return <ThinkingCard text={part.text} isStreaming={isReasoningStreaming} />;
     case "text":
@@ -74,7 +85,25 @@ export function GroupedContentRenderer({
           path={part.path}
           servedPath={part.servedPath}
           src={part.src}
+          sourceMessageId={sourceMessageId}
         />
+      );
+    case "image-gallery":
+      return (
+        <div className="image-gallery" role="list">
+          {part.images.map((img, idx) => (
+            <FileAttachmentBlock
+              key={`${img.path}-${img.name}-${idx}`}
+              name={img.name}
+              size={img.size}
+              mimeType={img.mimeType}
+              path={img.path}
+              servedPath={img.servedPath}
+              src={img.src}
+              sourceMessageId={sourceMessageId}
+            />
+          ))}
+        </div>
       );
   }
 }
@@ -88,8 +117,17 @@ function ToolBatchBlock({
   count: number;
   children: GroupedContent[];
 }) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const label = formatToolLabel(toolName, (children[0] as { args?: unknown })?.args);
+  const firstArgs = (children[0] as { args?: unknown } | undefined)?.args;
+  const isFileOps = toolName === "file-ops" || toolName === "__file-ops__";
+  const detail = isFileOps
+    ? t("activity.tool.fileOps", { count })
+    : formatToolLabel(toolName, firstArgs);
+  const label =
+    !isFileOps && count > 1
+      ? t("activity.tool.batch", { label: detail, count })
+      : detail;
 
   return (
     <div className="activity-standalone">
@@ -99,7 +137,6 @@ function ToolBatchBlock({
         className="activity-step__row activity-step__row--clickable w-full"
       >
         <span className="activity-step__label">{label}</span>
-        <span className="activity-step__time">×{count}</span>
         <ChevronRight
           className={`activity-step__chevron w-3.5 h-3.5 shrink-0 transition-transform duration-200 ml-auto ${isOpen ? "rotate-90" : ""}`}
         />
@@ -128,6 +165,15 @@ function ToolBatchBlock({
   );
 }
 
+function countWorkerSteps(children: GroupedContent[]): number {
+  let n = 0;
+  for (const child of children) {
+    if (child.type === "tool-call") n += 1;
+    else if (child.type === "tool-batch") n += child.count;
+  }
+  return n;
+}
+
 function WorkerBlockInner({
   workerType,
   description,
@@ -135,6 +181,7 @@ function WorkerBlockInner({
   children,
   status,
   duration,
+  error,
 }: {
   workerType: string;
   description?: string;
@@ -146,10 +193,13 @@ function WorkerBlockInner({
 }) {
   const title = formatWorkerTitle(workerType, description, scenarioId);
   const scenarioLabel = scenarioId ? formatScenarioLabel(scenarioId) : undefined;
-  const toolSteps = children.filter((c) => c.type === "tool-call");
+  const stepCount = countWorkerSteps(children);
   const deliverables = children.filter((c) => c.type === "file-attachment");
   const steps = children.filter((c) => c.type !== "file-attachment");
   const isRunning = status === "running";
+  // Explore/plan flood file ops — keep compact unless user expands
+  const defaultCollapsed =
+    workerType === "explore" || workerType === "plan" || stepCount >= 8;
 
   const deliverableNodes =
     deliverables.length > 0
@@ -171,8 +221,9 @@ function WorkerBlockInner({
       title={title}
       status={status}
       durationMs={duration}
-      stepCount={toolSteps.length}
-      badge={scenarioLabel && description?.trim() ? scenarioLabel : workerType}
+      stepCount={stepCount}
+      badge={scenarioLabel && title !== scenarioLabel ? scenarioLabel : undefined}
+      defaultCollapsed={defaultCollapsed}
       deliverables={deliverableNodes}
     >
       {steps.map((child, idx) => {
@@ -188,6 +239,16 @@ function WorkerBlockInner({
               startedAt={child.startedAt}
               durationMs={child.durationMs}
               nested
+            />
+          );
+        }
+        if (child.type === "tool-batch") {
+          return (
+            <ToolBatchBlock
+              key={`batch-${child.toolName}-${idx}`}
+              toolName={child.toolName}
+              count={child.count}
+              children={child.children}
             />
           );
         }
@@ -209,6 +270,9 @@ function WorkerBlockInner({
         }
         return null;
       })}
+      {status === "failed" && error ? (
+        <div className="px-2 py-1.5 text-xs text-red-400/90 whitespace-pre-wrap">{error}</div>
+      ) : null}
     </ActivityCard>
   );
 }

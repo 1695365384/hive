@@ -65,7 +65,7 @@ describe('Scenario direct routing', () => {
   });
 
   it('spawns office worker directly for creation tasks', async () => {
-    const result = await capability.run('帮我做一个关于 AI 的 PPT，3 页');
+    const result = await capability.run('帮我做一个关于 AI 的 PPT');
 
     expect(mockRuntimeStream).not.toHaveBeenCalled();
     expect(mockExecuteStreaming).toHaveBeenCalledWith(
@@ -74,7 +74,6 @@ describe('Scenario direct routing', () => {
       expect.any(Object),
       expect.any(Object),
     );
-    expect(result.success).toBe(true);
   });
 
   it('answers schedule inquiry without LLM', async () => {

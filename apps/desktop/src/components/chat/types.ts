@@ -14,6 +14,13 @@ export type GroupedContent =
     }
   | { type: "tool-batch"; toolName: string; count: number; children: GroupedContent[] }
   | {
+      type: "route";
+      mode: "direct" | "inquiry" | "delegate" | "hint";
+      scenarioId?: string;
+      workerType?: string;
+      title?: string;
+    }
+  | {
       type: "worker";
       workerId: string;
       workerType: string;
@@ -32,4 +39,15 @@ export type GroupedContent =
       path: string;
       servedPath?: string;
       src?: string;
+    }
+  | {
+      type: "image-gallery";
+      images: Array<{
+        name: string;
+        size: number;
+        mimeType: string;
+        path: string;
+        servedPath?: string;
+        src?: string;
+      }>;
     };

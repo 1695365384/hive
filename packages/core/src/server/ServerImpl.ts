@@ -93,6 +93,7 @@ class ServerImpl implements Server {
   private started = false;
   private dbManager: ReturnType<typeof createDatabase> | undefined;
   private activeAbortControllers: Map<string, AbortController> = new Map();
+  private activeDispatchSessionId: string | null = null;
   private streamingHandlers: Set<StreamingHandler> = new Set();
   private fileHandlers: Set<FileHandler> = new Set();
   private artifactEmitter: ArtifactEmitter;
@@ -145,6 +146,10 @@ class ServerImpl implements Server {
       this.agent.taskManager.abortAll();
       this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
     }
+  }
+
+  getActiveDispatchSessionId(): string | null {
+    return this.activeDispatchSessionId;
   }
 
   onStreamingEvent(handler: StreamingHandler): () => void {
@@ -476,6 +481,11 @@ class ServerImpl implements Server {
       });
     }
 
+    // Force-push Office docs into Desktop chat (Preview card) even if send-file was skipped
+    this.agent.context.onDeliverArtifacts = (filePaths: string[]) => {
+      this.artifactEmitter.deliverPaths(sessionKey, filePaths);
+    };
+
     // 设置记忆上下文（用于 dispatch 前后注入/保存记忆）
     const userId = channelMessage.from?.id;
     if (userId && this._fileMemory) {
@@ -486,6 +496,7 @@ class ServerImpl implements Server {
     try {
       const abortController = new AbortController();
       this.activeAbortControllers.set(sessionKey, abortController);
+      this.activeDispatchSessionId = sessionKey;
 
       // 订阅 Worker 事件并转发到流式回调
       const workerHookIds: string[] = [];
@@ -557,6 +568,21 @@ class ServerImpl implements Server {
           onPhase: (phase, message) => {
             this.logger.info(`[agent] [${phase}] ${message}`);
           },
+          onRoute: (route) => {
+            this.logger.info(
+              `[agent] [route] ${route.mode}` +
+                `${route.scenarioId ? ` scenario=${route.scenarioId}` : ''}` +
+                `${route.workerType ? ` worker=${route.workerType}` : ''}`,
+            );
+            this.emitStreaming({
+              sessionId: sessionKey,
+              type: 'route',
+              mode: route.mode,
+              scenarioId: route.scenarioId,
+              workerType: route.workerType,
+              title: route.title,
+            });
+          },
           onReasoning: (text) => {
             this.emitReasoningDebounced(sessionKey, text);
           },
@@ -590,7 +616,11 @@ class ServerImpl implements Server {
           this.agent.context.hookRegistry.off(hookId);
         }
         this.artifactEmitter.clearSession(sessionKey);
+        this.agent.context.onDeliverArtifacts = undefined;
         this.activeAbortControllers.delete(sessionKey);
+        if (this.activeDispatchSessionId === sessionKey) {
+          this.activeDispatchSessionId = null;
+        }
       }
     } catch (error) {
       this.logger.error(`[server] Agent workflow failed:`, error);

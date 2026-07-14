@@ -16,6 +16,15 @@ import type { EnvironmentContext } from '../environment/types.js';
 /** 流式事件联合类型（替代 MessageBus agent:streaming topic） */
 export type StreamingEventUnion =
   | { type: 'start'; sessionId: string }
+  | {
+      type: 'route';
+      sessionId: string;
+      /** pass→直接回答；inquiry→能力说明短路；delegate→场景委派；hint→提示后进 Coordinator */
+      mode: 'direct' | 'inquiry' | 'delegate' | 'hint';
+      scenarioId?: string;
+      workerType?: string;
+      title?: string;
+    }
   | { type: 'reasoning'; sessionId: string; text: string; workerId?: string; workerType?: string }
   | { type: 'text-delta'; sessionId: string; text: string }
   | { type: 'tool-call'; sessionId: string; tool: string; input: unknown; workerId?: string; workerType?: string }
@@ -96,6 +105,9 @@ export interface Server {
 
   /** 中止指定 session 的 Agent 执行 */
   abort(sessionId: string): void;
+
+  /** 当前正在 dispatch 的 session（用于 ask-user 路由到正确 thread） */
+  getActiveDispatchSessionId(): string | null;
 
   /** 注册流式事件回调，返回取消注册函数 */
   onStreamingEvent(handler: StreamingHandler): () => void;

@@ -1,4 +1,5 @@
-import { memo, useMemo, useRef, useEffect, isValidElement } from "react";
+import { memo, useMemo, isValidElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Streamdown, CodeBlock } from "streamdown";
 import type { Components } from "streamdown";
 import { code } from "@streamdown/code";
@@ -10,24 +11,16 @@ import { preprocessFileLinks } from "../lib/preprocess-file-links";
 export interface TextBlockProps {
   text: string;
   sourceMessageId?: string;
+  /** @deprecated Preview is always user-initiated; kept for call-site compat */
   autoPreview?: boolean;
   isStreaming?: boolean;
 }
 
-function TextBlockInner({ text, sourceMessageId, autoPreview, isStreaming }: TextBlockProps) {
+function TextBlockInner({ text, sourceMessageId, isStreaming }: TextBlockProps) {
+  const { t } = useTranslation();
   const openFor = usePreviewStore((s) => s.openFor);
-  const autoPreviewedRef = useRef(false);
 
-  useEffect(() => {
-    if (autoPreview && sourceMessageId && !autoPreviewedRef.current) {
-      const candidates = detectPreviews(text);
-      if (candidates.length > 0) {
-        openFor(candidateToPreview(candidates[0], sourceMessageId));
-        autoPreviewedRef.current = true;
-      }
-    }
-  }, [autoPreview, sourceMessageId, text, openFor]);
-
+  // Preview is opt-in via the Preview button on code blocks / attachments.
   const processed = useMemo(() => preprocessFileLinks(text), [text]);
 
   const previewComponents: Components = useMemo(
@@ -65,7 +58,7 @@ function TextBlockInner({ text, sourceMessageId, autoPreview, isStreaming }: Tex
                 }}
                 className="absolute top-2 right-2 z-10 px-2 py-0.5 text-[10px] font-medium rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 opacity-0 group-hover:opacity-100 hover:bg-amber-500/30 transition-all duration-200"
               >
-                ▶ Preview
+                {t("preview.button")}
               </button>
             </div>
           );
@@ -74,7 +67,7 @@ function TextBlockInner({ text, sourceMessageId, autoPreview, isStreaming }: Tex
         return <CodeBlock code={codeText} language={lang} />;
       },
     }),
-    [openFor, sourceMessageId]
+    [openFor, sourceMessageId, t]
   );
 
   if (!text) return null;

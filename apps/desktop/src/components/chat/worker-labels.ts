@@ -31,10 +31,11 @@ export function formatWorkerTitle(
   description?: string,
   scenarioId?: string
 ): string {
-  const trimmed = description?.trim();
-  if (trimmed) return trimmed;
+  // Prefer scenario label for known scenarios so tool noise never owns the title
   const scenario = formatScenarioLabel(scenarioId);
   if (scenario) return scenario;
+  const trimmed = description?.trim();
+  if (trimmed) return trimmed;
   const key = WORKER_TYPE_KEYS[workerType];
   return key ? i18n.t(key) : workerType;
 }

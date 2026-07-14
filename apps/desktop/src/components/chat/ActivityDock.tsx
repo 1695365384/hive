@@ -51,9 +51,13 @@ function ActivityDockInner() {
   const timeLabel = elapsed != null ? formatDurationMs(elapsed) : null;
   const processingTitle = t("activity.processing");
 
-  const line = [prefix, rollup.title !== processingTitle ? rollup.title : null, detail]
-    .filter(Boolean)
-    .join(" · ");
+  const line = isIdleFade
+    ? [prefix, rollup.lastCompleted?.label ?? rollup.title].filter(Boolean).join(" · ")
+    : phase === "waiting"
+      ? [prefix, detail].filter(Boolean).join(" · ")
+      : [prefix, rollup.title !== processingTitle ? rollup.title : null, detail]
+          .filter(Boolean)
+          .join(" · ");
 
   return (
     <div

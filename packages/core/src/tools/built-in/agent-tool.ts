@@ -403,6 +403,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       });
 
       let accumulatedText = '';
+      let lastWorkerToolInput: unknown;
       const isAborted = () => abortController.signal.aborted;
 
       // 构建 abort 结果
@@ -489,6 +490,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
             },
             onToolCall: (toolName: string, toolInput?: unknown) => {
               if (isAborted()) return;
+              lastWorkerToolInput = toolInput;
               context.hookRegistry.emit('worker:tool-call', {
                 workerId,
                 workerType: input.type,
@@ -515,6 +517,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
                 workerId,
                 workerType: input.type,
                 toolName,
+                input: lastWorkerToolInput,
                 output,
                 sessionId,
                 timestamp: new Date(),

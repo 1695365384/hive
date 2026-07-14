@@ -14,7 +14,7 @@ const OFFICE_CREATION_STRONG_RE =
 const OFFICE_CREATION_WEAK_RE = /\b(make|create|generate|build|produce)\b/i;
 
 const OFFICE_INQUIRY_RE =
-  /(能|可以|会不会|能不能|支持|会帮|could you|can you|do you)/i;
+  /(能|可以|会不会|能不能|支持|会帮|技能|有没有|是否有|could you|can you|do you|have you)/i;
 
 export function isOfficeTask(task: string): boolean {
   return OFFICE_TASK_RE.test(task);

@@ -233,7 +233,11 @@ describe('AgentTool', () => {
       expect(toolCallCalls[0][1]).toMatchObject({ toolName: 'glob', workerType: 'explore' });
 
       expect(toolResultCalls.length).toBe(1);
-      expect(toolResultCalls[0][1]).toMatchObject({ toolName: 'glob', workerType: 'explore' });
+      expect(toolResultCalls[0][1]).toMatchObject({
+        toolName: 'glob',
+        workerType: 'explore',
+        input: { pattern: '**/*.ts' },
+      });
     });
 
     it('should emit worker:reasoning hook', async () => {

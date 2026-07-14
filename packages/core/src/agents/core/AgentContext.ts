@@ -56,6 +56,9 @@ export class AgentContextImpl implements AgentContext {
   /** 文件型记忆存储实例（由 ServerImpl 在 dispatch 前设置） */
   fileMemory?: FileMemory;
 
+  /** Push deliverable paths into Desktop chat (set by ServerImpl during dispatch) */
+  onDeliverArtifacts?: (filePaths: string[]) => void;
+
   private initialized: boolean = false;
 
   constructor(options: AgentContextOptions = {}) {

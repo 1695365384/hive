@@ -37,12 +37,14 @@ describe('officeCompletionVerifier', () => {
     expect(result.message).toContain('office Worker');
   });
 
-  it('passes when office worker spawned via agent tool', async () => {
+  it('fails when office worker spawned but no artifact delivered', async () => {
     const result = await officeCompletionVerifier.verify(trace({
       task: 'Create a PPT',
       toolCalls: [{ toolName: 'agent', input: { type: 'office' } }],
+      workerSpawns: [{ workerType: 'office' }],
     }));
-    expect(result.passed).toBe(true);
+    expect(result.passed).toBe(false);
+    expect(result.message).toContain('send-file');
   });
 
   it('fails when artifact path is missing on disk', async () => {
@@ -53,6 +55,25 @@ describe('officeCompletionVerifier', () => {
     }));
     expect(result.passed).toBe(false);
     expect(result.message).toContain('not found');
+  });
+
+  it('fails when only screenshots exist (no Office document)', async () => {
+    const dir = join(tmpdir(), `hive-completion-png-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const png = join(dir, 'slide1.png');
+    await writeFile(png, 'fake-png');
+
+    try {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: 'Create a PPT',
+        workerSpawns: [{ workerType: 'office' }],
+        artifacts: [png],
+      }));
+      expect(result.passed).toBe(false);
+      expect(result.message).toMatch(/Screenshots alone|send-file/i);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('passes when artifact exists on disk', async () => {

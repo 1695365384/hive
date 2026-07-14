@@ -97,7 +97,9 @@
       "agentGeneral": "委派执行任务",
       "agentSchedule": "委派定时任务",
       "agentDefault": "委派子任务",
-      "web": "获取网页内容"
+      "web": "获取网页内容",
+      "batch": "{{label}} · {{count}} 次",
+      "fileOps": "文件探索 · {{count}} 步"
     },
     "worker": {
       "office": "Office 文档",
@@ -107,6 +109,18 @@
       "schedule": "定时任务",
       "scenarioOffice": "Office 文档",
       "scenarioRecurring": "定时任务"
+    },
+    "route": {
+      "direct": "直接回答",
+      "inquiry": "能力说明 · {{scenario}}",
+      "delegate": "正在处理 · {{worker}}",
+      "hint": "按需协作 · {{scenario}}",
+      "genericScenario": "相关能力",
+      "genericWorker": "专项任务",
+      "dockDirect": "直接回答",
+      "dockInquiry": "能力说明",
+      "dockDelegate": "专项处理",
+      "dockHint": "协调中"
     }
   },
   "file": {
@@ -125,7 +139,8 @@
     "cancelled": "已取消",
     "saveAsFailed": "另存为失败：{{detail}}",
     "downloadFailed": "无法下载文件：{{detail}}",
-    "previewLoadFailed": "预览加载失败"
+    "previewLoadFailed": "预览加载失败",
+    "deliverableReady": "文档已就绪 · 点击预览"
   },
   "preview": {
     "title": "预览",
@@ -145,7 +160,9 @@
     "officeDoc": "Office 文档",
     "generating": "正在生成文档，预览即将出现…",
     "officecliMissing": "未安装 officecli，正在使用备用预览。安装高保真预览：npm i -g @officecli/officecli",
-    "button": "▶ 预览",
+    "button": "预览",
+    "artifacts": "产物",
+    "artifactsHint": "点击打开预览",
     "type": {
       "ppt": "演示文稿",
       "doc": "文档",
@@ -159,6 +176,7 @@
     "title": "设置",
     "provider": "提供商",
     "status": "状态",
+    "skills": "技能",
     "plugins": "插件",
     "language": "界面语言",
     "languageZh": "简体中文",
@@ -230,6 +248,29 @@
     "uninstallFailed": "卸载失败",
     "saveFailed": "保存失败"
   },
+  "skills": {
+    "title": "技能",
+    "subtitle": "目录：{{source}}（agentskills 兼容，当前 {{count}} 项）",
+    "catalog": "市场 ({{count}})",
+    "refresh": "刷新",
+    "searchPlaceholder": "搜索技能名称…",
+    "allCategories": "全部分类",
+    "loading": "加载目录中…",
+    "noCatalog": "未找到技能",
+    "install": "安装",
+    "installing": "安装中…",
+    "installed": "已安装",
+    "installedCount": "已安装 ({{count}})",
+    "noInstalled": "暂无已安装技能",
+    "remove": "移除",
+    "builtin": "内置",
+    "scopeUser": "用户",
+    "scopeBuiltin": "内置",
+    "showMore": "显示更多（剩余 {{remaining}}）",
+    "loadFailed": "加载目录失败",
+    "installFailed": "安装失败",
+    "removeFailed": "移除失败"
+  },
   "provider": {
     "apiKey": "API 密钥",
     "valid": "有效",
@@ -277,6 +318,11 @@
     "serverRestartTimeout": "服务重启超时"
   },
   "askUser": {
-    "otherPlaceholder": "其他…"
+    "title": "需要你确认",
+    "dismiss": "关闭",
+    "options": "可选操作",
+    "otherPlaceholder": "或输入其他回复…",
+    "submit": "发送",
+    "skipAnswer": "先跳过"
   }
 }
