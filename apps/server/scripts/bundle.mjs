@@ -160,12 +160,12 @@ if (existsSync(templatesSrc)) {
 console.log('[bundle] Step 4: Downloading Node.js binary...');
 
 const nodeVersion = execSync('node -v', { encoding: 'utf-8' }).trim().replace(/^v/, '');
-const nodeSideName = `node-${NODE_ARCH}`;
+const isWindows = plat === 'win32';
+// Windows CreateProcess appends .exe when path has no extension — ship as node-win-x64.exe
+const nodeSideName = isWindows ? `node-${NODE_ARCH}.exe` : `node-${NODE_ARCH}`;
 const tmpDir = resolve(OUT_DIR, '..', '.tmp-bundle');
 
 mkdirSync(tmpDir, { recursive: true });
-
-const isWindows = plat === 'win32';
 
 let nodeBinPath;
 if (isWindows) {

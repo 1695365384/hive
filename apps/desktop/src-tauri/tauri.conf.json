@@ -33,6 +33,11 @@
     "macOS": {
       "signingIdentity": "-"
     },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "resources": {
       "../../server/bundle": "server"
     },

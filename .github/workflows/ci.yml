@@ -37,8 +37,19 @@ jobs:
       - name: Type check desktop
         run: pnpm --filter @bundy-lmw/hive-desktop exec tsc --noEmit
 
-  build-desktop-windows:
-    runs-on: windows-latest
+  # Native builds on each OS — matches Tauri docs (do not cross-compile SQLite/WebView).
+  # https://v2.tauri.app/distribute/pipelines/github
+  build-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +65,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
       - run: pnpm install
 
@@ -66,7 +79,12 @@ jobs:
       - name: Bundle server (SEA)
         run: node apps/server/scripts/bundle.mjs
 
-      - name: Build Tauri app (Windows)
-        run: pnpm --filter @bundy-lmw/hive-desktop tauri build
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0.6
         env:
           CI: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          args: ${{ matrix.args }}
+          # No releaseId → build only (verify compile + package on each OS)
