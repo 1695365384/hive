@@ -229,7 +229,16 @@ async fn spawn_server(state: &ServerState, force: bool) -> Result<(), String> {
                 server_dir.join("node-linux-arm64").to_string_lossy().to_string()
             };
             #[cfg(target_os = "windows")]
-            let node_bin = server_dir.join("node-win-x64").to_string_lossy().to_string();
+            let node_bin = {
+                let with_ext = server_dir.join("node-win-x64.exe");
+                let without_ext = server_dir.join("node-win-x64");
+                if with_ext.exists() {
+                    with_ext.to_string_lossy().to_string()
+                } else {
+                    // Fallback for older bundles that omitted the .exe suffix
+                    without_ext.to_string_lossy().to_string()
+                }
+            };
             (node_bin, vec!["main.js"], server_dir_str)
         } else {
             eprintln!(

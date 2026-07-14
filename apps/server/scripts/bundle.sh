@@ -131,6 +131,7 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; t
     unzip -qo "$NODE_ZIP" -d /tmp/
     rm -f "$NODE_ZIP"
   fi
+  NODE_SIDE_NAME="node-${NODE_ARCH}.exe"
 else
   NODE_TAR="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz"
   NODE_BIN="/tmp/node-v${NODE_VERSION}-${NODE_ARCH}/bin/node"
@@ -141,10 +142,13 @@ else
     tar -xf "$NODE_TAR" -C /tmp/
     rm -f "$NODE_TAR"
   fi
+  NODE_SIDE_NAME="node-${NODE_ARCH}"
 fi
 
 cp "$NODE_BIN" "$OUT_DIR/$NODE_SIDE_NAME"
-chmod +x "$OUT_DIR/$NODE_SIDE_NAME"
+if [[ "$OSTYPE" != "msys" && "$OSTYPE" != "cygwin" && "$OSTYPE" != "win32" ]]; then
+  chmod +x "$OUT_DIR/$NODE_SIDE_NAME"
+fi
 
 BINARY_SIZE=$(du -h "$OUT_DIR/$NODE_SIDE_NAME" | cut -f1)
 TOTAL_SIZE=$(du -sh "$OUT_DIR" | cut -f1)
