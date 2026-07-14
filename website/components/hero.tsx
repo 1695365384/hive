@@ -14,6 +14,16 @@ export async function Hero() {
   };
 
   for (const asset of assets) {
+    const current = assetsByPlatform[asset.platform];
+    // Prefer installer exe over msi when both exist
+    if (
+      asset.platform === 'windows' &&
+      current.url &&
+      current.name?.endsWith('.exe') &&
+      asset.name.endsWith('.msi')
+    ) {
+      continue;
+    }
     assetsByPlatform[asset.platform] = { url: asset.url, name: asset.name };
   }
 

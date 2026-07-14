@@ -83,12 +83,44 @@ export function TerminalInstall({ assets, tagName, installCommand }: TerminalIns
         )}
 
         {/* Windows Tab */}
-        {activeTab === 'windows' && (
+        {activeTab === 'windows' && assets.windows.url && (
+          <a
+            href={assets.windows.url}
+            className="group flex items-center gap-3 rounded-xl bg-amber-500 px-5 py-3.5 font-semibold text-black transition-all hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/20"
+          >
+            <Download size={18} className="shrink-0" />
+            <div className="flex flex-1 items-baseline gap-2">
+              <span>{assets.windows.name ?? 'Hive-setup.exe'}</span>
+              {tagName && (
+                <span className="text-sm font-normal opacity-60">{tagName}</span>
+              )}
+            </div>
+            <Package size={14} className="opacity-50" />
+          </a>
+        )}
+
+        {activeTab === 'windows' && !assets.windows.url && (
           <div className="py-2 text-center text-sm text-text-muted">{t('comingSoon')}</div>
         )}
 
         {/* Linux Tab */}
-        {activeTab === 'linux' && (
+        {activeTab === 'linux' && assets.linux.url && (
+          <a
+            href={assets.linux.url}
+            className="group flex items-center gap-3 rounded-xl bg-amber-500 px-5 py-3.5 font-semibold text-black transition-all hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/20"
+          >
+            <Download size={18} className="shrink-0" />
+            <div className="flex flex-1 items-baseline gap-2">
+              <span>{assets.linux.name ?? 'Hive.AppImage'}</span>
+              {tagName && (
+                <span className="text-sm font-normal opacity-60">{tagName}</span>
+              )}
+            </div>
+            <Package size={14} className="opacity-50" />
+          </a>
+        )}
+
+        {activeTab === 'linux' && !assets.linux.url && (
           <div className="py-2 text-center text-sm text-text-muted">{t('comingSoon')}</div>
         )}
       </div>
