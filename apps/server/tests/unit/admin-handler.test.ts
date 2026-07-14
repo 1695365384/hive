@@ -28,6 +28,11 @@ vi.mock('../../src/plugin-manager/registry.js', () => ({
   hasPlugin: vi.fn(),
 }))
 
+vi.mock('../../src/officecli-setup.js', () => ({
+  isOfficeCliAvailable: vi.fn().mockResolvedValue(false),
+  isOfficeCliMcpRegistered: vi.fn().mockReturnValue(false),
+}))
+
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { searchPlugins, installPlugin, removePlugin } from '../../src/plugin-manager/index.js'
 import { loadRegistry } from '../../src/plugin-manager/registry.js'
@@ -81,10 +86,16 @@ async function sendAndWait(
   const messageHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'message')?.[1]
   if (!messageHandler) throw new Error('No message handler registered')
 
+  const before = ctx.getSentMessages().length
   messageHandler({ toString: () => JSON.stringify(req) })
-  await new Promise(resolve => setTimeout(resolve, 0))
 
-  return ctx.getSentMessages()
+  // status.get (and other domain handlers) may await IO before responding
+  for (let i = 0; i < 50; i++) {
+    await new Promise(resolve => setTimeout(resolve, 0))
+    if (ctx.getSentMessages().length > before) break
+  }
+
+  return ctx.getSentMessages().slice(before)
 }
 
 /**
