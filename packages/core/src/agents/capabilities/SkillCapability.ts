@@ -93,4 +93,11 @@ export class SkillCapability implements AgentCapability {
   get size(): number {
     return this.context.skillRegistry.size;
   }
+
+  /**
+   * 热重载技能注册表（安装/卸载后调用）
+   */
+  reload(): void {
+    this.context.skillRegistry.reload();
+  }
 }

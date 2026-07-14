@@ -120,30 +120,55 @@ export function validateCloneUrl(url: string): void {
 }
 
 /**
- * 克隆仓库到临时目录
+ * 克隆仓库到临时目录（国内优先镜像，失败回退 GitHub）
  */
 export async function cloneRepo(url: string): Promise<string> {
   validateCloneUrl(url);
 
   const tempDir = path.join(tmpdir(), `hive-skill-install-${randomBytes(8).toString('hex')}`);
+  const candidates = githubCloneMirrors(url);
+  const errors: string[] = [];
+
+  registerCleanupHandler(tempDir);
 
   try {
-    registerCleanupHandler(tempDir);
+    for (const candidate of candidates) {
+      validateCloneUrl(candidate);
+      try {
+        execSync(`git clone --depth 1 --single-branch "${candidate}" "${tempDir}"`, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 90_000,
+        });
+        return tempDir;
+      } catch (error) {
+        cleanup(tempDir);
+        errors.push(
+          `${candidate}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
 
-    execSync(`git clone --depth 1 "${url}" "${tempDir}"`, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 60_000,
-    });
-
-    return tempDir;
-  } catch (error) {
-    cleanup(tempDir);
     throw new Error(
-      `Failed to clone repository: ${url}\n${error instanceof Error ? error.message : String(error)}`
+      `Failed to clone repository: ${url}\n${errors.join('\n')}`,
     );
   } finally {
     unregisterCleanupHandler();
   }
+}
+
+/** GitHub clone URL → 国内镜像候选列表 */
+export function githubCloneMirrors(url: string): string[] {
+  const m = url.match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?/);
+  if (!m) return [url];
+  const owner = m[1];
+  const repo = m[2];
+  const githubHttps = `https://github.com/${owner}/${repo}.git`;
+  return [
+    // ghfast / gitclone 等公益加速（国内常见可用）
+    `https://ghfast.top/https://github.com/${owner}/${repo}.git`,
+    `https://gitclone.com/github.com/${owner}/${repo}`,
+    githubHttps,
+  ];
 }
 
 // ============================================
@@ -205,7 +230,6 @@ export function discoverSkills(repoDir: string): DiscoveredSkill[] {
         skillMdPath: rootSkillMd,
       });
     } catch {
-      // frontmatter 解析失败时用目录名兜底
       found.set('root', {
         name: 'root',
         sourceDir: repoDir,
@@ -214,13 +238,11 @@ export function discoverSkills(repoDir: string): DiscoveredSkill[] {
     }
   }
 
-  // 递归兜底搜索
-  if (found.size === 0) {
-    const walkResults = recursiveFindSkillMd(repoDir, repoDir);
-    for (const result of walkResults) {
-      if (!found.has(result.name)) {
-        found.set(result.name, result);
-      }
+  // 始终递归补全（everything-skills 等卷式布局不在标准路径下）
+  const walkResults = recursiveFindSkillMd(repoDir, repoDir);
+  for (const result of walkResults) {
+    if (!found.has(result.name)) {
+      found.set(result.name, result);
     }
   }
 
@@ -236,11 +258,17 @@ function recursiveFindSkillMd(baseDir: string, currentDir: string): DiscoveredSk
     const fullPath = path.join(currentDir, entry.name);
 
     if (entry.isDirectory()) {
+      // Skip VCS / junk
+      if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '.claude-plugin') {
+        continue;
+      }
       results.push(...recursiveFindSkillMd(baseDir, fullPath));
       continue;
     }
 
     if (entry.isFile() && entry.name === 'SKILL.md') {
+      // 根目录 SKILL.md 已由 discoverSkills 单独处理
+      if (currentDir === baseDir) continue;
       const parentName = path.basename(currentDir);
       results.push({
         name: parentName,

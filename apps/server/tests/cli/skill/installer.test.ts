@@ -9,6 +9,7 @@ import {
   installSkills,
   cleanup,
   validateCloneUrl,
+  githubCloneMirrors,
   type DiscoveredSkill,
 } from '../../../src/cli/commands/skill/installer.js';
 import * as fs from 'node:fs';
@@ -77,6 +78,23 @@ describe('validateCloneUrl', () => {
       .toThrow('special characters');
     expect(() => validateCloneUrl('https://github.com/owner/repo`id`'))
       .toThrow('special characters');
+  });
+});
+
+describe('githubCloneMirrors', () => {
+  it('应为 GitHub URL 生成国内镜像候选', () => {
+    const mirrors = githubCloneMirrors('https://github.com/findscripter/everything-skills');
+    expect(mirrors[0]).toContain('ghfast.top');
+    expect(mirrors[1]).toContain('gitclone.com');
+    expect(mirrors[mirrors.length - 1]).toBe(
+      'https://github.com/findscripter/everything-skills.git',
+    );
+  });
+
+  it('非 GitHub URL 原样返回', () => {
+    expect(githubCloneMirrors('https://gitlab.com/a/b.git')).toEqual([
+      'https://gitlab.com/a/b.git',
+    ]);
   });
 });
 

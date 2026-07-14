@@ -290,6 +290,11 @@ export class Agent {
     this.skillCap.register(skill);
   }
 
+  /** 热重载技能目录（安装/卸载后使新技能立即生效） */
+  reloadSkills(): void {
+    this.skillCap.reload();
+  }
+
   generateSkillInstruction(skill: Skill): string {
     return this.skillCap.generateInstruction(skill);
   }

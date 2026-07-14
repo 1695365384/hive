@@ -24,6 +24,7 @@ import {
   ConfigHandler,
   StatusHandler,
   PluginHandler,
+  SkillHandler,
   LogHandler,
   SessionHandler,
 } from './handlers/index.js'
@@ -59,6 +60,7 @@ export class AdminWsHandler extends EventEmitter {
       new ConfigHandler(ctx),
       this.statusHandler,
       this.pluginHandler,
+      new SkillHandler(ctx),
       new LogHandler(ctx),
       new SessionHandler(ctx),
     ]
