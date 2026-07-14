@@ -1,4 +1,4 @@
-/** Patch officecli HTML so slides fill the embed width and rescale on host resize. */
+/** Patch officecli HTML so slides fit the embed by letterboxing (preserve aspect ratio). */
 export function enhanceOfficePreviewHtml(html: string): string {
   let out = addHiveEmbedClass(html);
   out = patchOfficeCliScaleLogic(out);
@@ -10,40 +10,60 @@ html.hive-embed, html.hive-embed body {
   width: 100% !important;
   margin: 0 !important;
   box-sizing: border-box !important;
+  background: #1a1a2e !important;
 }
 html.hive-embed body {
   min-height: 0 !important;
   overflow: hidden !important;
   display: flex !important;
-  flex-direction: row !important;
+  flex-direction: column !important;
 }
 html.hive-embed .sidebar,
 html.hive-embed .sidebar-toggle,
 html.hive-embed .toggle-zone { display: none !important; }
+/* Horizontal filmstrip — slides scroll sideways, not stacked vertically */
 html.hive-embed .main {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   flex: 1 1 auto !important;
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
-  padding: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  padding: 12px 16px !important;
   margin: 0 !important;
-  gap: 12px !important;
-  align-items: stretch !important;
+  gap: 14px !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
   box-sizing: border-box !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scroll-snap-type: x mandatory !important;
+  -webkit-overflow-scrolling: touch !important;
 }
 html.hive-embed .slide-container {
-  width: 100% !important;
-  max-width: 100% !important;
-  align-items: stretch !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  max-width: none !important;
+  height: 100% !important;
+  align-items: center !important;
+  justify-content: center !important;
   margin: 0 !important;
+  scroll-snap-align: center !important;
 }
 html.hive-embed .slide-wrapper {
-  width: 100% !important;
-  max-width: 100% !important;
+  width: auto !important;
+  max-width: none !important;
   margin: 0 !important;
   padding: 0 !important;
   display: flex !important;
   justify-content: center !important;
+  align-items: center !important;
+}
+html.hive-embed .slide {
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35) !important;
 }
 </style>`;
 
@@ -51,25 +71,32 @@ html.hive-embed .slide-wrapper {
 (function() {
   document.documentElement.classList.add("hive-embed");
   window.__hivePreviewWidth = 0;
+  window.__hivePreviewHeight = 0;
 
   var rescaleScheduled = false;
   var rescaleRunning = false;
 
-  function getAvailWidth() {
+  function getAvail() {
     var hostW = window.__hivePreviewWidth;
-    if (hostW > 0) return hostW;
+    var hostH = window.__hivePreviewHeight;
     var main = document.querySelector(".main");
-    return main ? main.clientWidth : 0;
+    var pad = 24;
+    var w = (hostW > 0 ? hostW : (main ? main.clientWidth : window.innerWidth)) - pad;
+    var h = (hostH > 0 ? hostH : (main ? main.clientHeight : window.innerHeight)) - pad;
+    return { w: Math.max(0, w), h: Math.max(0, h) };
   }
 
   function hiveFitSlides() {
     if (rescaleRunning) return;
     rescaleRunning = true;
     try {
-      var availW = getAvailWidth();
-      if (availW <= 0) return;
+      var avail = getAvail();
+      // Width is required; height may be 0 before first host postMessage — fall back to width-only
+      if (avail.w <= 0) return;
 
       var slides = document.querySelectorAll(".main > .slide-container .slide");
+      // Leave a peek of the next slide so the strip reads as horizontal, not a single page
+      var maxSlideW = avail.w > 0 ? avail.w * 0.88 : 0;
       slides.forEach(function(slide) {
         slide.style.transform = "none";
         slide.style.margin = "0";
@@ -78,19 +105,21 @@ html.hive-embed .slide-wrapper {
         var designH = slide.offsetHeight;
         if (designW <= 0 || designH <= 0) return;
 
-        var s = availW / designW;
+        // Fit height first; cap width so neighbors stay visible in the strip
+        var s = avail.h > 0 ? avail.h / designH : avail.w / designW;
+        if (maxSlideW > 0 && designW * s > maxSlideW) {
+          s = maxSlideW / designW;
+        }
         slide.style.transform = "scale(" + s + ")";
-        slide.style.transformOrigin = "top center";
+        slide.style.transformOrigin = "center center";
 
         var wrapper = slide.parentElement;
-        var container = wrapper && wrapper.parentElement;
         if (wrapper) {
-          wrapper.style.width = "100%";
-          wrapper.style.maxWidth = availW + "px";
+          wrapper.style.width = Math.ceil(designW * s) + "px";
+          wrapper.style.maxWidth = "none";
           wrapper.style.height = Math.ceil(designH * s) + "px";
-        }
-        if (container) {
-          container.style.width = "100%";
+          wrapper.style.marginLeft = "0";
+          wrapper.style.marginRight = "0";
         }
       });
     } finally {
@@ -113,6 +142,7 @@ html.hive-embed .slide-wrapper {
   window.addEventListener("message", function(e) {
     if (e.data && e.data.type === "hive-preview-resize") {
       if (e.data.width > 0) window.__hivePreviewWidth = e.data.width;
+      if (e.data.height > 0) window.__hivePreviewHeight = e.data.height;
       scheduleRescale();
     }
   });
@@ -147,22 +177,17 @@ function addHiveEmbedClass(html: string): string {
     if (/\bclass\s*=/.test(attrs)) {
       return match.replace(
         /class\s*=\s*(["'])([^"']*)\1/i,
-        (_m, q, classes) => `class=${q}${classes} hive-embed${q}`,
+        (_m, q, cls) => `class=${q}${cls.includes("hive-embed") ? cls : `${cls} hive-embed`.trim()}${q}`,
       );
     }
-    return `<html${attrs} class="hive-embed">`;
+    return `<html class="hive-embed"${attrs || ""}>`;
   });
 }
 
-/** Make officecli scaleSlides always fill width in hive-embed (even its own resize handler). */
-function patchOfficeCliScaleLogic(html: string): string {
-  return html
-    .replace(
-      "const availW = main.clientWidth - (headless ? 0 : 40);",
-      'const availW = ((window.__hivePreviewWidth > 0 ? window.__hivePreviewWidth : main.clientWidth)) - (document.documentElement.classList.contains("hive-embed") || headless ? 0 : 40);',
-    )
-    .replace(
-      "const fill = headless && slides.length === 1;",
-      'const fill = document.documentElement.classList.contains("hive-embed") || (headless && slides.length === 1);',
-    );
+/** officecli may set fill=true for single slides; embed mode prefers contain (no stretch). */
+export function patchOfficeCliScaleLogic(html: string): string {
+  return html.replace(
+    /const fill = headless && slides\.length === 1;/g,
+    'const fill = document.documentElement.classList.contains("hive-embed") ? false : (headless && slides.length === 1);',
+  );
 }

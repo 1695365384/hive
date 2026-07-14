@@ -2,9 +2,8 @@
  * TaskTrace 构建器 — 在 Coordinator 执行期间收集轨迹
  */
 
+import { detectArtifactsFromToolCall, extractArtifactPathsFromText } from '../../artifacts/artifact-detector.js';
 import type { TaskTrace, TraceToolCall, TraceWorkerSpawn } from './types.js';
-
-const ARTIFACT_PATH_RE = /(?:[A-Za-z0-9_./~-]+)\.(pptx|docx|xlsx|pdf)/gi;
 
 export function createEmptyTaskTrace(task = ''): TaskTrace {
   return {
@@ -50,6 +49,19 @@ export class TaskTraceCollector {
     this.extractArtifactsFromValue(text);
   }
 
+  /** Record deliverable paths from a Worker tool call (send-file, bash, etc.) */
+  recordArtifactsFromToolCall(toolName: string, input: unknown, output: unknown): void {
+    for (const filePath of detectArtifactsFromToolCall(toolName, input, output)) {
+      this.recordArtifact(filePath);
+    }
+  }
+
+  recordArtifact(filePath: string): void {
+    if (filePath && !this.trace.artifacts.includes(filePath)) {
+      this.trace.artifacts.push(filePath);
+    }
+  }
+
   getTrace(): TaskTrace {
     return {
       ...this.trace,
@@ -61,11 +73,8 @@ export class TaskTraceCollector {
 
   private extractArtifactsFromValue(value: unknown): void {
     const text = typeof value === 'string' ? value : JSON.stringify(value ?? '');
-    for (const match of text.matchAll(ARTIFACT_PATH_RE)) {
-      const path = match[0];
-      if (path && !this.trace.artifacts.includes(path)) {
-        this.trace.artifacts.push(path);
-      }
+    for (const filePath of extractArtifactPathsFromText(text)) {
+      this.recordArtifact(filePath);
     }
   }
 }

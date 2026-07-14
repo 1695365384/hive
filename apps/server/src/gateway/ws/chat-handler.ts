@@ -211,6 +211,16 @@ export class ChatWsHandler extends EventEmitter {
         ws.send(JSON.stringify(createEvent('agent.start', { threadId, agentType: 'general' })))
         break
 
+      case 'route':
+        ws.send(JSON.stringify(createEvent('agent.route', {
+          threadId,
+          mode: event.mode,
+          scenarioId: event.scenarioId,
+          workerType: event.workerType,
+          title: event.title,
+        })))
+        break
+
       case 'reasoning':
         ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: event.text, seq: this.nextSeq(threadId), workerId: event.workerId, workerType: event.workerType })))
         break
@@ -442,11 +452,19 @@ export class ChatWsHandler extends EventEmitter {
       return new Promise<string>((resolve) => {
         const askId = crypto.randomUUID()
 
-        // 通过第一个可用线程 ID 发送事件（如果有的话）
+        // Prefer the thread currently executing; fall back to first open mapping
+        const preferredThread = this.server?.getActiveDispatchSessionId?.() ?? null
         const threadIds = Array.from(this.threadClientMap.entries())
+        const ordered = preferredThread
+          ? [
+              ...threadIds.filter(([id]) => id === preferredThread),
+              ...threadIds.filter(([id]) => id !== preferredThread),
+            ]
+          : threadIds
+
         let sent = false
 
-        for (const [threadId, ws] of threadIds) {
+        for (const [threadId, ws] of ordered) {
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify(createEvent('agent.ask-user', {
               askId,
@@ -456,15 +474,25 @@ export class ChatWsHandler extends EventEmitter {
             })))
             sent = true
 
-            // 超时保底：2 分钟后自动回答 "(未选择)"
+            // 超时保底：2 分钟后自动回答，并通知客户端关掉确认卡
             const timer = setTimeout(() => {
               this.pendingAskUser.delete(askId)
               resolve('(未选择)')
+              try {
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify(createEvent('agent.ask-user-timeout', {
+                    askId,
+                    threadId,
+                  })))
+                }
+              } catch {
+                /* ignore */
+              }
             }, 120_000)
 
             this.pendingAskUser.set(askId, { resolve, timer })
 
-            // 只发给第一个活跃线程
+            // 只发给正确/首选线程
             break
           }
         }

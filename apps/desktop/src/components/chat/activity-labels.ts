@@ -58,6 +58,16 @@ export function formatToolLabel(toolName: string, args: unknown): string {
       : i18n.t("activity.tool.sendFile");
   }
 
+  if (name === "officecli" || name.includes("officecli")) {
+    const command = typeof obj.command === "string"
+      ? obj.command
+      : Array.isArray(obj.command)
+        ? obj.command.filter((p): p is string => typeof p === "string").join(" ")
+        : "";
+    const line = command.split("\n").find((l) => l.trim())?.trim() ?? "";
+    return line ? truncate(`officecli ${line}`) : "officecli";
+  }
+
   if (name === "agent") {
     const type = typeof obj.type === "string" ? obj.type : "";
     const keys: Record<string, string> = {

@@ -12,9 +12,10 @@ import { usePreviewStore } from "../stores/preview-store";
 import { useSessionStore } from "../stores/session-store";
 import { MessageBubble } from "../components/chat/MessageBubble";
 import { ActivityDock } from "../components/chat/ActivityDock";
+import { ArtifactsStrip } from "../components/chat/ArtifactsStrip";
 import { ColdStartPulse } from "../components/chat/ColdStartPulse";
 import { formatToolLabel } from "../components/chat/activity-labels";
-import { formatWorkerTitle } from "../components/chat/worker-labels";
+import { formatWorkerTitle, formatScenarioLabel } from "../components/chat/worker-labels";
 import { useActivityStore } from "../stores/activity-store";
 import * as db from "../lib/db";
 import type { ChatMessage, ContentPart } from "../types/chat";
@@ -99,9 +100,18 @@ export function ChatPage() {
     initStore();
   }, [initStore]);
 
-  // When session changes (or first load), load messages from DB
+  // When session changes (or first load), load messages and reset ephemeral chat UI
   useEffect(() => {
     if (!currentId) return;
+    setAskUserData(null);
+    setIsRunning(false);
+    setError(null);
+    activeThreadIdRef.current = null;
+    assistantMsgIdRef.current = null;
+    assistantThreadIdRef.current = null;
+    useActivityStore.getState().reset();
+    usePreviewStore.getState().clear();
+
     const load = async () => {
       try {
         const rows = await db.listMessages(currentId);
@@ -301,24 +311,46 @@ export function ChatPage() {
     appendPart({ type: "text", text: data.text });
   }, [appendPart]);
 
+  const handleRoute = useCallback((data: {
+    threadId: string;
+    mode: "direct" | "inquiry" | "delegate" | "hint";
+    scenarioId?: string;
+    workerType?: string;
+    title?: string;
+  }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+
+    const dockTitle =
+      data.mode === "inquiry"
+        ? i18n.t("activity.route.dockInquiry")
+        : data.mode === "delegate"
+          ? i18n.t("activity.route.dockDelegate")
+          : data.mode === "hint"
+            ? i18n.t("activity.route.dockHint")
+            : i18n.t("activity.route.dockDirect");
+
+    const detail =
+      data.title?.trim() ||
+      (data.workerType
+        ? formatWorkerTitle(data.workerType, undefined, data.scenarioId)
+        : formatScenarioLabel(data.scenarioId));
+
+    activitySetWorking({ title: dockTitle, detail: detail || undefined });
+    appendPart({
+      type: "route",
+      mode: data.mode,
+      scenarioId: data.scenarioId,
+      workerType: data.workerType,
+      title: data.title,
+    });
+  }, [appendPart, activitySetWorking]);
+
   const handleWorkerStart = useCallback((data: { threadId: string; workerId: string; workerType: string; description?: string; scenarioId?: string }) => {
     if (data.threadId !== activeThreadIdRef.current) return;
     const title = formatWorkerTitle(data.workerType, data.description, data.scenarioId);
     activitySetWorking({ title, detail: undefined });
     appendPart({ type: "worker-start", workerId: data.workerId, workerType: data.workerType, description: data.description, scenarioId: data.scenarioId });
-
-    // Office Worker: open preview sidebar immediately for live preview as file materializes
-    if (data.workerType === "office") {
-      const previewStore = usePreviewStore.getState();
-      previewStore.openFor({
-        id: `office-live-${data.threadId}`,
-        title: i18n.t("preview.officeDoc"),
-        type: "ppt",
-        content: "",
-        src: "",
-        sourceMessageId: data.threadId,
-      });
-    }
+    // Preview sidebar is user-initiated only (Codex-style) — do not auto-open on worker start
   }, [appendPart, activitySetWorking]);
 
   const handleWorkerComplete = useCallback((data: { threadId: string; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }) => {
@@ -351,6 +383,7 @@ export function ChatPage() {
     const tid = activeThreadIdRef.current ?? assistantThreadIdRef.current;
     if (data.threadId && tid && data.threadId !== tid) return;
     setIsRunning(false);
+    setAskUserData(null);
     activeThreadIdRef.current = null;
     activitySetIdle();
     if (data.cancelled) {
@@ -407,34 +440,40 @@ export function ChatPage() {
     if (!previewType) return;
 
     const previewStore = usePreviewStore.getState();
-    const liveId = `office-live-${data.threadId}`;
-    const fileId = `file-${data.threadId}-${data.name}`;
-    const previewSrc = data.src?.startsWith("/files/") ? data.src : (data.path || data.src || "");
-    if (!previewSrc) return;
+    // Codex-style: never auto-open; only live-refresh when sidebar already open on this file
+    if (!previewStore.isOpen || !previewStore.activeId) return;
 
-    const previewPayload = {
-      title: data.name,
-      type: previewType as "ppt" | "doc" | "pdf" | "xlsx" | "html" | "svg",
-      content: "",
-      src: previewSrc,
-      filePath: data.path,
-      servedPath: data.servedPath,
-      sourceMessageId: data.threadId,
-    };
+    const fileId = `file-${data.path || data.name}`;
+    const activeId = previewStore.activeId;
+    const active = previewStore.previews.find((p) => p.id === activeId);
+    const sameTurn =
+      activeId === fileId ||
+      active?.sourceMessageId === data.threadId ||
+      (typeof activeId === "string" && (activeId.endsWith(data.name) || activeId.includes(data.path)));
+    if (!sameTurn) return;
+
+    const previewSrc = data.src?.startsWith("/files/") ? data.src : (data.path || data.src || "");
+    if (!previewSrc && previewType !== "html" && previewType !== "svg") return;
 
     if (previewType === "ppt" || previewType === "doc" || previewType === "pdf" || previewType === "xlsx") {
-      // Update live Office preview tab if worker already opened it
-      if (previewStore.previews.some((p) => p.id === liveId)) {
-        previewStore.openFor({ id: liveId, ...previewPayload });
-      } else {
-        previewStore.openFor({ id: fileId, ...previewPayload });
-      }
+      previewStore.upsertPreview({
+        id: activeId,
+        title: data.name,
+        type: previewType,
+        content: "",
+        src: previewSrc,
+        filePath: data.path,
+        servedPath: data.servedPath,
+        sourceMessageId: data.threadId,
+      });
     } else if (data.src) {
       fetch(`http://127.0.0.1:4450${data.src}`)
         .then((r) => r.text())
         .then((content) => {
-          previewStore.openFor({
-            id: fileId,
+          const latest = usePreviewStore.getState();
+          if (!latest.isOpen || latest.activeId !== activeId) return;
+          latest.upsertPreview({
+            id: activeId,
             title: data.name,
             type: previewType as "html" | "svg",
             content,
@@ -445,18 +484,26 @@ export function ChatPage() {
     }
   }, [upsertFilePart]);
 
-  // Ask-user handler
+  // Ask-user handler — keep question in the transcript
   const handleAskUser = useCallback((data: { askId: string; threadId: string; question: string; options: Array<{ label: string; description?: string }> }) => {
     if (data.threadId !== activeThreadIdRef.current) return;
-    activitySetWaiting(t("chat.waitingDetail", { question: truncateActivityLabel(data.question) }));
+    activitySetWaiting(truncateActivityLabel(data.question));
     setAskUserData({ askId: data.askId, question: data.question, options: data.options });
-  }, [activitySetWaiting, t]);
+    appendPart({ type: "text", text: data.question });
+  }, [activitySetWaiting, appendPart]);
+
+  const handleAskUserTimeout = useCallback((data: { askId: string; threadId: string }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    setAskUserData((prev) => (prev?.askId === data.askId ? null : prev));
+    if (isRunning) activityClearWaiting();
+  }, [isRunning, activityClearWaiting]);
 
   // Listen to WS events
   useEffect(() => {
     const unsubs = [
       onEvent("agent.reasoning", handleReasoning),
       onEvent("agent.text-delta", handleTextDelta),
+      onEvent("agent.route", handleRoute),
       onEvent("agent.worker-start", handleWorkerStart),
       onEvent("agent.worker-complete", handleWorkerComplete),
       onEvent("agent.tool-call", handleToolCall),
@@ -464,9 +511,10 @@ export function ChatPage() {
       onEvent("agent.complete", handleComplete),
       onEvent("agent.file", handleFile),
       onEvent("agent.ask-user", handleAskUser),
+      onEvent("agent.ask-user-timeout", handleAskUserTimeout),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [onEvent, handleReasoning, handleTextDelta, handleWorkerStart, handleWorkerComplete, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser]);
+  }, [onEvent, handleReasoning, handleTextDelta, handleRoute, handleWorkerStart, handleWorkerComplete, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
 
   const handleCancel = useCallback(async () => {
     const threadId = activeThreadIdRef.current;
@@ -478,24 +526,48 @@ export function ChatPage() {
     }
   }, [request]);
 
-  // Submit ask-user answer back to server
+  // Submit ask-user answer — leave it in the transcript as a user turn
   const handleAskUserSubmit = useCallback(async (answer: string) => {
     if (!askUserData) return;
+    const q = askUserData;
     try {
-      await request("chat.answerAskUser", { askId: askUserData.askId, answer });
+      await request("chat.answerAskUser", { askId: q.askId, answer });
     } catch {
       // Ignore — server may have timed out
     }
     setAskUserData(null);
     if (isRunning) activityClearWaiting();
-  }, [askUserData, request, isRunning, activityClearWaiting]);
+
+    const sessionId = currentId;
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: [{ type: "text", text: answer }],
+      createdAt: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    if (sessionId) {
+      db.insertMessage(userMsg.id, sessionId, "user", JSON.stringify(userMsg.content), userMsg.createdAt).catch(() => {});
+    }
+  }, [askUserData, request, isRunning, activityClearWaiting, currentId]);
 
   const handleAskUserDismiss = useCallback(() => {
     if (!askUserData) return;
-    request("chat.answerAskUser", { askId: askUserData.askId, answer: t("chat.ignored") }).catch(() => {});
+    const skip = t("askUser.skipAnswer");
+    request("chat.answerAskUser", { askId: askUserData.askId, answer: skip }).catch(() => {});
     setAskUserData(null);
     if (isRunning) activityClearWaiting();
-  }, [askUserData, request, isRunning, activityClearWaiting, t]);
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: [{ type: "text", text: skip }],
+      createdAt: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    if (currentId) {
+      db.insertMessage(userMsg.id, currentId, "user", JSON.stringify(userMsg.content), userMsg.createdAt).catch(() => {});
+    }
+  }, [askUserData, request, isRunning, activityClearWaiting, t, currentId]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -620,9 +692,10 @@ export function ChatPage() {
   }, []);
 
   const isEmpty = messages.length === 0;
+  const previewOpen = usePreviewStore((s) => s.isOpen);
 
   return (
-    <div className="chat-stage chat-shell">
+    <div className={`chat-stage chat-shell${previewOpen ? " chat-stage--preview-open" : ""}`}>
       <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin" onScroll={handleScroll}>
         {isEmpty ? (
           <EmptyState />
@@ -639,9 +712,13 @@ export function ChatPage() {
             ))}
             {isRunning &&
               messages[messages.length - 1]?.role === "assistant" &&
-              messages[messages.length - 1].content.length === 0 &&
               !messages[messages.length - 1].content.some(
-                (p) => p.type === "worker-start" || p.type === "tool-call" || p.type === "reasoning"
+                (p) =>
+                  p.type === "worker-start" ||
+                  p.type === "tool-call" ||
+                  p.type === "reasoning" ||
+                  p.type === "text" ||
+                  p.type === "route",
               ) && <ColdStartPulse />}
             <div ref={scrollAnchorRef} className="chat-scroll-anchor" aria-hidden />
           </div>
@@ -672,6 +749,7 @@ export function ChatPage() {
 
         {askUserData ? (
           <div className="chat-composer-shell">
+            <ArtifactsStrip messages={messages} isRunning={isRunning} />
             <ActivityDock />
             <AskUserCard
               question={askUserData.question}
@@ -679,9 +757,23 @@ export function ChatPage() {
               onAnswer={handleAskUserSubmit}
               onDismiss={handleAskUserDismiss}
             />
+            {isRunning && (
+              <div className="ask-user__stop-row">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="ask-user__stop-btn app-no-drag"
+                  title={t("chat.stop")}
+                >
+                  <Square className="w-3.5 h-3.5" fill="currentColor" />
+                  <span>{t("chat.stop")}</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="chat-composer-shell">
+            <ArtifactsStrip messages={messages} isRunning={isRunning} />
             <ActivityDock />
             {pendingFiles.length > 0 && (
               <div className="mb-2">

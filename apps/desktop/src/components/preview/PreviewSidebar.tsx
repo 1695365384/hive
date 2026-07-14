@@ -37,7 +37,10 @@ export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key !== "Escape") return;
+      // Ask-user confirmation owns Esc while open
+      if (document.querySelector(".ask-user")) return;
+      close();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

@@ -20,6 +20,15 @@ describe('OfficeScenario', () => {
     }
   });
 
+  it('resolves skill inquiry (你有PPT技能吗)', () => {
+    const action = resolveOfficeScenarioAction('你有PPT技能吗？');
+    expect(action.kind).toBe('inquiry');
+    if (action.kind === 'inquiry') {
+      expect(action.reply).toContain('officecli');
+      expect(action.reply).toContain('office Worker');
+    }
+  });
+
   it('resolves creation with worker description', () => {
     const action = resolveOfficeScenarioAction('帮我做一个关于 AI 的 PPT');
     expect(action.kind).toBe('creation');

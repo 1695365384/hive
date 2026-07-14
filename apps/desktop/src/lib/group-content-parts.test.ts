@@ -11,7 +11,7 @@ describe("groupContentParts", () => {
 
     const grouped = groupContentParts(parts);
     expect(grouped).toHaveLength(1);
-    expect(grouped[0]).toMatchObject({ type: "tool-batch", toolName: "Glob", count: 2 });
+    expect(grouped[0]).toMatchObject({ type: "tool-batch", toolName: "file-ops", count: 2 });
   });
 
   it("preserves scenarioId on worker group", () => {
@@ -32,6 +32,16 @@ describe("groupContentParts", () => {
       expect(grouped[0].scenarioId).toBe("office-document");
       expect(grouped[0].description).toBe("制作 AI 主题 PPT");
     }
+  });
+
+  it("keeps route chip as top-level part", () => {
+    const parts: ContentPart[] = [
+      { type: "route", mode: "direct" },
+      { type: "text", text: "你好" },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped[0]).toMatchObject({ type: "route", mode: "direct" });
+    expect(grouped[1]).toMatchObject({ type: "text", text: "你好" });
   });
 
   it("nests tool calls under active worker", () => {
@@ -77,7 +87,7 @@ describe("groupContentParts", () => {
     expect(grouped).toEqual([{ type: "text", text: "visible" }]);
   });
 
-  it("dedupes live file updates and nests deliverables under worker", () => {
+  it("keeps deliverables top-level after worker (with live pptx dedupe)", () => {
     const pptPath = "/workspace/AI制作PPT能力展示.pptx";
     const parts: ContentPart[] = [
       {
@@ -123,14 +133,89 @@ describe("groupContentParts", () => {
     ];
 
     const grouped = groupContentParts(parts);
-    expect(grouped).toHaveLength(2);
+    expect(grouped.map((g) => g.type)).toEqual([
+      "worker",
+      "file-attachment",
+      "file-attachment",
+      "text",
+    ]);
+    const ppt = grouped.find(
+      (g) => g.type === "file-attachment" && g.name.endsWith(".pptx"),
+    );
+    expect(ppt?.type === "file-attachment" && ppt.size).toBe(20300);
+    expect(grouped[grouped.length - 1]).toEqual({ type: "text", text: "PPT 已创建完成" });
+  });
+
+  it("groups consecutive screenshots into a horizontal image-gallery", () => {
+    const parts: ContentPart[] = [
+      {
+        type: "file-attachment",
+        name: "slide1.png",
+        size: 100,
+        mimeType: "image/png",
+        path: "/tmp/slide1.png",
+        src: "/files/slide1.png",
+      },
+      {
+        type: "file-attachment",
+        name: "slide2.png",
+        size: 120,
+        mimeType: "image/png",
+        path: "/tmp/slide2.png",
+        src: "/files/slide2.png",
+      },
+      {
+        type: "file-attachment",
+        name: "deck.pptx",
+        size: 200,
+        mimeType: "application/octet-stream",
+        path: "/tmp/deck.pptx",
+      },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped.map((g) => g.type)).toEqual(["image-gallery", "file-attachment"]);
+    expect(grouped[0].type === "image-gallery" && grouped[0].images).toHaveLength(2);
+  });
+
+  it("batches Read/Glob/Grep under explore into one file-ops strip", () => {
+    const parts: ContentPart[] = [
+      { type: "worker-start", workerId: "w1", workerType: "explore", description: "查找相关文件" },
+      { type: "tool-call", toolCallId: "1", toolName: "Glob", args: { pattern: "**/*.ts" }, workerId: "w1" },
+      { type: "reasoning", text: "next", workerId: "w1" },
+      { type: "tool-call", toolCallId: "2", toolName: "Read", args: { path: "a.ts" }, workerId: "w1" },
+      { type: "tool-call", toolCallId: "3", toolName: "Grep", args: { pattern: "foo" }, workerId: "w1" },
+      { type: "worker-complete", workerId: "w1", workerType: "explore", success: true, duration: 900 },
+    ];
+
+    const grouped = groupContentParts(parts);
+    expect(grouped).toHaveLength(1);
     expect(grouped[0].type).toBe("worker");
     if (grouped[0].type === "worker") {
-      const files = grouped[0].children.filter((c) => c.type === "file-attachment");
-      expect(files).toHaveLength(2);
-      const ppt = files.find((f) => f.type === "file-attachment" && f.name.endsWith(".pptx"));
-      expect(ppt?.type === "file-attachment" && ppt.size).toBe(20300);
+      expect(grouped[0].status).toBe("completed");
+      expect(grouped[0].children).toHaveLength(1);
+      expect(grouped[0].children[0]).toMatchObject({
+        type: "tool-batch",
+        toolName: "file-ops",
+        count: 3,
+      });
     }
-    expect(grouped[1]).toEqual({ type: "text", text: "PPT 已创建完成" });
+  });
+
+  it("nests tool calls that arrive after worker-complete", () => {
+    const parts: ContentPart[] = [
+      { type: "worker-start", workerId: "w1", workerType: "explore" },
+      { type: "worker-complete", workerId: "w1", workerType: "explore", success: true, duration: 10 },
+      { type: "tool-call", toolCallId: "late", toolName: "Glob", args: {}, workerId: "w1" },
+      { type: "tool-call", toolCallId: "late2", toolName: "Read", args: {}, workerId: "w1" },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped).toHaveLength(1);
+    if (grouped[0].type === "worker") {
+      expect(grouped[0].children[0]).toMatchObject({
+        type: "tool-batch",
+        toolName: "file-ops",
+        count: 2,
+      });
+    }
   });
 });

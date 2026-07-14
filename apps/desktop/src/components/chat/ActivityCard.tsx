@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Check, X } from "lucide-react";
 import { formatDurationMs } from "./activity-labels";
@@ -9,6 +9,8 @@ export type ActivityCardProps = {
   durationMs?: number;
   stepCount?: number;
   badge?: string;
+  /** Codex-like: keep body collapsed even while running (explore/plan file floods). */
+  defaultCollapsed?: boolean;
   deliverables?: ReactNode;
   children: ReactNode;
 };
@@ -19,27 +21,28 @@ function ActivityCardInner({
   durationMs,
   stepCount,
   badge,
+  defaultCollapsed = false,
   deliverables,
   children,
 }: ActivityCardProps) {
   const { t } = useTranslation();
   const isRunning = status === "running";
-  const [expanded, setExpanded] = useState(isRunning);
+  // Expand while working unless this worker type prefers a compact strip
+  const [expanded, setExpanded] = useState(isRunning && !defaultCollapsed);
+  const userToggledRef = useRef(false);
 
   useEffect(() => {
-    if (isRunning) {
-      setExpanded(true);
+    if (userToggledRef.current) return;
+    if (defaultCollapsed || !isRunning) {
+      setExpanded(false);
       return;
     }
-    const timer = window.setTimeout(() => setExpanded(false), 450);
-    return () => window.clearTimeout(timer);
-  }, [isRunning, status]);
+    setExpanded(true);
+  }, [isRunning, status, defaultCollapsed]);
 
   const timeLabel = formatDurationMs(durationMs);
   const summary =
-    !isRunning && stepCount != null && stepCount > 0
-      ? t("activity.steps", { count: stepCount })
-      : null;
+    stepCount != null && stepCount > 0 ? t("activity.steps", { count: stepCount }) : null;
 
   return (
     <div
@@ -47,7 +50,10 @@ function ActivityCardInner({
     >
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => {
+          userToggledRef.current = true;
+          setExpanded(!expanded);
+        }}
         className="activity-card__header"
       >
         <span className="activity-card__status-icon" aria-hidden>

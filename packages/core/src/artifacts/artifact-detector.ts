@@ -15,13 +15,56 @@ export const ARTIFACT_EXTENSIONS = new Set([
   '.csv', '.json', '.md',
 ]);
 
-const ARTIFACT_PATH_RE = /(?:[A-Za-z0-9_./~-]+)\.(pptx|docx|xlsx|pdf|html?|svg|png|jpe?g|gif|webp|csv|json|md)\b/gi;
+/** Unicode-safe path tail before extension (supports CJK filenames like 项目汇报.pptx) */
+const ARTIFACT_PATH_RE = /[^\s"'<>|\n]+\.(pptx|docx|xlsx|pdf|html?|svg|png|jpe?g|gif|webp|csv|json|md)\b/gi;
 
-const OFFICECLI_CREATE_RE = /officecli\s+create\s+(\S+\.(?:pptx|docx|xlsx))/i;
+/** officecli create — bash form and MCP form (command without "officecli " prefix) */
+const OFFICECLI_CREATE_RE =
+  /(?:^|\s)(?:officecli\s+)?create\s+(\S+\.(?:pptx|docx|xlsx))\b/i;
+
+/** Explicit screenshot / export output: -o out.png / --output path */
+const OFFICECLI_OUTPUT_RE =
+  /(?:^|\s)(?:-o|--output|--out)\s+(\S+\.(?:png|jpe?g|webp|gif|pdf|html?|svg))\b/gi;
 
 export function isArtifactExtension(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return ARTIFACT_EXTENSIONS.has(ext);
+}
+
+/** Final Office deliverables that unlock chat Preview (not screenshots). */
+export function isOfficeDocumentPath(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return ext === '.pptx' || ext === '.docx' || ext === '.xlsx';
+}
+
+/**
+ * Extensions auto-pushed into Desktop chat without an explicit send-file.
+ * Intermediate screenshots / preview HTML stay out of the transcript.
+ */
+export const CHAT_AUTO_EMIT_EXTENSIONS = new Set([
+  '.pptx', '.docx', '.xlsx', '.pdf',
+]);
+
+const CHAT_NOISE_BASENAME_RE =
+  /(^|[_-])(preview|screenshot|thumb)([_-]|\.|$)|_preview\.(png|jpe?g|webp|gif|html?)$|\.preview\.(html?|png)$/i;
+
+/** True for primary user deliverables (.pptx/.docx/.xlsx/.pdf), excluding preview byproducts. */
+export function isChatAutoEmitPath(filePath: string): boolean {
+  const base = path.basename(filePath);
+  if (CHAT_NOISE_BASENAME_RE.test(base)) return false;
+  const ext = path.extname(filePath).toLowerCase();
+  return CHAT_AUTO_EMIT_EXTENSIONS.has(ext);
+}
+
+/**
+ * Whether a detected path should appear as a chat file card.
+ * - send-file: always (user-facing delivery, including intentional images)
+ * - everything else: only primary Office/PDF documents
+ */
+export function shouldEmitArtifactToChat(toolName: string, filePath: string): boolean {
+  if (!filePath) return false;
+  if (toolName.toLowerCase() === 'send-file') return true;
+  return isChatAutoEmitPath(filePath);
 }
 
 export function isExistingArtifactFile(filePath: string): boolean {
@@ -47,13 +90,13 @@ export function extractArtifactPathsFromText(text: string): string[] {
   return found;
 }
 
-function stringifyOutput(output: unknown): string {
-  if (typeof output === 'string') return output;
-  if (output == null) return '';
+function stringifyPayload(payload: unknown): string {
+  if (typeof payload === 'string') return payload;
+  if (payload == null) return '';
   try {
-    return JSON.stringify(output);
+    return JSON.stringify(payload);
   } catch {
-    return String(output);
+    return String(payload);
   }
 }
 
@@ -75,13 +118,52 @@ function pathsFromSendFileInput(input: unknown): string[] {
   return typeof filePath === 'string' ? [filePath] : [];
 }
 
-function pathsFromBashInput(input: unknown): string[] {
-  if (!input || typeof input !== 'object') return [];
+/** Normalize bash / officecli MCP `command` field (string or argv array). */
+export function normalizeToolCommand(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
   const command = (input as Record<string, unknown>).command;
-  if (typeof command !== 'string') return [];
+  if (typeof command === 'string') return command;
+  if (Array.isArray(command)) {
+    return command
+      .filter((part): part is string => typeof part === 'string')
+      .join(' ');
+  }
+  return '';
+}
+
+/**
+ * Paths referenced by an officecli / bash command line.
+ * Covers create targets, -o screenshot outputs, and any artifact path tokens.
+ */
+export function pathsFromOfficeCommand(command: string): string[] {
+  if (!command) return [];
+  const found: string[] = [];
+
   const createMatch = command.match(OFFICECLI_CREATE_RE);
-  if (createMatch?.[1]) return [createMatch[1]];
-  return [];
+  if (createMatch?.[1] && !found.includes(createMatch[1])) {
+    found.push(createMatch[1]);
+  }
+
+  for (const match of command.matchAll(OFFICECLI_OUTPUT_RE)) {
+    const p = match[1];
+    if (p && !found.includes(p)) found.push(p);
+  }
+
+  for (const p of extractArtifactPathsFromText(command)) {
+    if (!found.includes(p)) found.push(p);
+  }
+
+  return found;
+}
+
+function isShellOrOfficeCliTool(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return (
+    name === 'bash' ||
+    name === 'shell' ||
+    name === 'officecli' ||
+    name.includes('officecli')
+  );
 }
 
 /**
@@ -97,11 +179,19 @@ export function detectArtifactsFromToolCall(
 
   for (const p of pathsFromSendFileInput(input)) candidates.add(p);
   for (const p of pathsFromFileToolInput(input)) candidates.add(p);
-  if (toolName === 'bash' || toolName === 'Bash') {
-    for (const p of pathsFromBashInput(input)) candidates.add(p);
+
+  if (isShellOrOfficeCliTool(toolName)) {
+    for (const p of pathsFromOfficeCommand(normalizeToolCommand(input))) {
+      candidates.add(p);
+    }
   }
 
-  const outputText = stringifyOutput(output);
+  // Always scan input + output text (MCP payloads often embed paths only once)
+  for (const p of extractArtifactPathsFromText(stringifyPayload(input))) {
+    candidates.add(p);
+  }
+
+  const outputText = stringifyPayload(output);
   for (const p of extractArtifactPathsFromText(outputText)) candidates.add(p);
 
   // send-file success message embeds filename

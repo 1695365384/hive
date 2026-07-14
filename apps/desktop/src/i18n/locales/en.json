@@ -97,7 +97,9 @@
       "agentGeneral": "Delegate execution task",
       "agentSchedule": "Delegate scheduled task",
       "agentDefault": "Delegate subtask",
-      "web": "Fetch web content"
+      "web": "Fetch web content",
+      "batch": "{{label}} · {{count}}×",
+      "fileOps": "File exploration · {{count}} steps"
     },
     "worker": {
       "office": "Office document",
@@ -107,6 +109,18 @@
       "schedule": "Scheduled task",
       "scenarioOffice": "Office document",
       "scenarioRecurring": "Scheduled task"
+    },
+    "route": {
+      "direct": "Direct reply",
+      "inquiry": "Capability · {{scenario}}",
+      "delegate": "Working · {{worker}}",
+      "hint": "Coordinating · {{scenario}}",
+      "genericScenario": "related capability",
+      "genericWorker": "specialized task",
+      "dockDirect": "Direct reply",
+      "dockInquiry": "Capability",
+      "dockDelegate": "Specialized task",
+      "dockHint": "Coordinating"
     }
   },
   "file": {
@@ -125,7 +139,8 @@
     "cancelled": "Cancelled",
     "saveAsFailed": "Save as failed: {{detail}}",
     "downloadFailed": "Download failed: {{detail}}",
-    "previewLoadFailed": "Preview failed to load"
+    "previewLoadFailed": "Preview failed to load",
+    "deliverableReady": "Document ready · click Preview"
   },
   "preview": {
     "title": "Preview",
@@ -145,7 +160,9 @@
     "officeDoc": "Office document",
     "generating": "Generating document, preview coming soon…",
     "officecliMissing": "officecli not installed, using fallback preview. Install: npm i -g @officecli/officecli",
-    "button": "▶ Preview",
+    "button": "Preview",
+    "artifacts": "Artifacts",
+    "artifactsHint": "Click to preview",
     "type": {
       "ppt": "Presentation",
       "doc": "Document",
@@ -159,6 +176,7 @@
     "title": "Settings",
     "provider": "Provider",
     "status": "Status",
+    "skills": "Skills",
     "plugins": "Plugins",
     "language": "Language",
     "languageZh": "简体中文",
@@ -230,6 +248,29 @@
     "uninstallFailed": "Uninstall failed",
     "saveFailed": "Save failed"
   },
+  "skills": {
+    "title": "Skills",
+    "subtitle": "Catalog: {{source}} (agentskills-compatible, {{count}} items)",
+    "catalog": "Marketplace ({{count}})",
+    "refresh": "Refresh",
+    "searchPlaceholder": "Search skills…",
+    "allCategories": "All categories",
+    "loading": "Loading catalog…",
+    "noCatalog": "No skills found",
+    "install": "Install",
+    "installing": "Installing…",
+    "installed": "Installed",
+    "installedCount": "Installed ({{count}})",
+    "noInstalled": "No skills installed",
+    "remove": "Remove",
+    "builtin": "Built-in",
+    "scopeUser": "User",
+    "scopeBuiltin": "Built-in",
+    "showMore": "Show more ({{remaining}} left)",
+    "loadFailed": "Failed to load catalog",
+    "installFailed": "Installation failed",
+    "removeFailed": "Remove failed"
+  },
   "provider": {
     "apiKey": "API Key",
     "valid": "Valid",
@@ -277,6 +318,11 @@
     "serverRestartTimeout": "Server restart timed out"
   },
   "askUser": {
-    "otherPlaceholder": "Other…"
+    "title": "Needs your confirmation",
+    "dismiss": "Dismiss",
+    "options": "Options",
+    "otherPlaceholder": "Or type another reply…",
+    "submit": "Send",
+    "skipAnswer": "Skip for now"
   }
 }

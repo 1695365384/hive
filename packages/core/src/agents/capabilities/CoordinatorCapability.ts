@@ -52,6 +52,10 @@ import {
   type WorkerSpawnInput,
 } from '../../routing/index.js';
 import { getAgentWorkerTypes, getSpawnedWorkerTypes } from '../completion/TaskTrace.js';
+import { isOfficeDocumentPath } from '../../artifacts/artifact-detector.js';
+import { isOfficeTask } from '../../routing/scenarios/office.scenario.js';
+import { resolve as resolvePath } from 'node:path';
+import { existsSync } from 'node:fs';
 
 // ============================================
 // 类型
@@ -73,6 +77,16 @@ export interface DispatchOptions {
   systemPrompt?: string;
   /** 阶段回调 */
   onPhase?: (phase: string, message: string) => void;
+  /**
+   * 路由决策回调（TaskRouter resolve 之后立刻触发）
+   * 用于交互层展示「直接回答 / 委派 Worker / 能力说明」
+   */
+  onRoute?: (route: {
+    mode: 'direct' | 'inquiry' | 'delegate' | 'hint';
+    scenarioId?: string;
+    workerType?: string;
+    title?: string;
+  }) => void;
   /** 文本输出回调 */
   onText?: (text: string) => void;
   /** 工具调用回调 */
@@ -131,6 +145,7 @@ export class CoordinatorCapability implements AgentCapability {
   private completionVerifier = createCompletionVerifierService();
   private taskRouter: TaskRouter = defaultTaskRouter;
   private workerStartHookId?: string;
+  private workerToolResultHookId?: string;
 
   private static readonly DEFAULT_MAX_TURNS = 200;
 
@@ -147,16 +162,9 @@ export class CoordinatorCapability implements AgentCapability {
       delete this.coordinatorTools[toolName];
     };
 
-    // 注册 skill-install 工具的回调
+    // 注册 skill-install 工具的回调：热重载注册表
     setReloadSkillsCallback(() => {
-      // 通过 hook 触发 reload；实际 reload 由 SkillCapability 的 hook 处理
-      context.hookRegistry.emit('notification:push', {
-        sessionId: context.hookRegistry.getSessionId(),
-        type: 'info',
-        title: 'Skills Reloaded',
-        message: 'New skills installed, please reload skill registry',
-        timestamp: new Date(),
-      });
+      context.skillRegistry.reload();
     });
 
     // 注册 mcp-install 工具的 MCP Manager 访问
@@ -183,6 +191,16 @@ export class CoordinatorCapability implements AgentCapability {
     this.workerStartHookId = context.hookRegistry.on('worker:start', (ctx) => {
       if (ctx.workerType) {
         this.taskTrace.recordWorkerSpawn(ctx.workerType, ctx.description);
+      }
+      return { proceed: true };
+    });
+
+    if (this.workerToolResultHookId) {
+      this.context.hookRegistry.off(this.workerToolResultHookId);
+    }
+    this.workerToolResultHookId = context.hookRegistry.on('worker:tool-result', (ctx) => {
+      if (ctx.toolName) {
+        this.taskTrace.recordArtifactsFromToolCall(ctx.toolName, ctx.input, ctx.output);
       }
       return { proceed: true };
     });
@@ -247,6 +265,13 @@ export class CoordinatorCapability implements AgentCapability {
         const routeDecision = this.taskRouter.resolve(task);
         if (routeDecision.action === 'inquiry') {
           const reply = stripDecorativeEmoji(routeDecision.reply);
+          options?.onRoute?.({
+            mode: 'inquiry',
+            scenarioId: routeDecision.scenarioId,
+            title: routeDecision.notificationTitle,
+          });
+          // 短路回复也走 onText，避免 UI 长时间 ColdStart 空白
+          options?.onText?.(reply);
           const duration = Date.now() - startTime;
           return await this.finalizeTask(
             task, reply, reply, undefined, options, sessionId, duration, true,
@@ -255,14 +280,28 @@ export class CoordinatorCapability implements AgentCapability {
         }
 
         if (routeDecision.action === 'delegate') {
+          options?.onRoute?.({
+            mode: 'delegate',
+            scenarioId: routeDecision.scenarioId,
+            workerType: routeDecision.spawn.type,
+            title: routeDecision.notificationTitle,
+          });
           await this.emitNotification(
             sessionId, 'info', routeDecision.notificationTitle, routeDecision.notificationBody,
           );
           const spawnResult = await this.autoSpawnWorker(routeDecision.spawn);
           const duration = Date.now() - startTime;
           if (spawnResult.success) {
-            const resultText = stripDecorativeEmoji(spawnResult.output);
+            let resultText = stripDecorativeEmoji(spawnResult.output);
+            this.flushOfficeArtifactsToUi();
             const verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+            if (!verification.passed) {
+              const reasons = verification.results
+                .filter(r => !r.passed)
+                .map(r => r.message)
+                .join('; ');
+              resultText = this.formatOfficeIncompleteMessage(task, reasons);
+            }
             return await this.finalizeTask(
               task, resultText, resultText, undefined, options, sessionId, duration,
               verification.passed, verification,
@@ -278,6 +317,16 @@ export class CoordinatorCapability implements AgentCapability {
               results: [{ verifierId: 'worker-spawn', passed: false, message: spawnResult.error }],
             },
           );
+        }
+
+        // 无确定性委派：进入 Coordinator LLM（简单查询通常直接回答，不 spawn Worker）
+        if (routeDecision.action === 'hint') {
+          options?.onRoute?.({
+            mode: 'hint',
+            scenarioId: routeDecision.scenarioId,
+          });
+        } else {
+          options?.onRoute?.({ mode: 'direct' });
         }
 
         // 构建 system prompt
@@ -308,6 +357,7 @@ export class CoordinatorCapability implements AgentCapability {
 
         this.taskTrace.setResponseText(final);
         let resultText = stripDecorativeEmoji(final);
+        this.flushOfficeArtifactsToUi();
         let verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
         if (!verification.passed) {
           isSuccess = false;
@@ -329,6 +379,7 @@ export class CoordinatorCapability implements AgentCapability {
             if (recovered.success) {
               resultText = stripDecorativeEmoji(recovered.output);
               this.taskTrace.setResponseText(recovered.output);
+              this.flushOfficeArtifactsToUi();
               verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
               isSuccess = verification.passed;
             }
@@ -340,11 +391,7 @@ export class CoordinatorCapability implements AgentCapability {
             .filter(r => !r.passed)
             .map(r => r.message)
             .join('; ');
-          resultText = stripDecorativeEmoji(
-            final
-              ? `${final}\n\n[Task incomplete: ${reasons}]`
-              : `[Task incomplete: ${reasons}]`,
-          );
+          resultText = this.formatOfficeIncompleteMessage(task, reasons, final);
         }
 
         // 收尾：通知 + 持久化 + 返回
@@ -526,6 +573,38 @@ export class CoordinatorCapability implements AgentCapability {
   // ============================================
   // Task Finalization
   // ============================================
+
+  /**
+   * Push Office docs (.pptx/.docx/.xlsx) into Desktop chat before we claim completion.
+   * Screenshots alone are ignored — Preview unlocks from the Office file itself.
+   */
+  private flushOfficeArtifactsToUi(): void {
+    const deliver = this.context.onDeliverArtifacts;
+    if (!deliver) return;
+
+    const paths = this.taskTrace.getTrace().artifacts
+      .filter(isOfficeDocumentPath)
+      .map((p) => resolvePath(p))
+      .filter((p) => existsSync(p));
+
+    if (paths.length === 0) return;
+    deliver(paths);
+  }
+
+  /** User-facing failure copy — never keep LLM “screenshots shown / file path” fibs. */
+  private formatOfficeIncompleteMessage(task: string, reasons: string, priorText?: string): string {
+    if (isOfficeTask(task)) {
+      return stripDecorativeEmoji(
+        [
+          '文档还没有投递到对话，因此无法预览。',
+          '请对最终的 .pptx / .docx / .xlsx 调用 send-file（不要只写磁盘路径，也不要只发截图冒充交付）。',
+          `原因：${reasons}`,
+        ].join('\n'),
+      );
+    }
+    const base = priorText?.trim() ? `${stripDecorativeEmoji(priorText)}\n\n` : '';
+    return stripDecorativeEmoji(`${base}[Task incomplete: ${reasons}]`);
+  }
 
   /** 收尾：通知完成、持久化会话、保存记忆、计算成本、返回结果 */
   private async finalizeTask(

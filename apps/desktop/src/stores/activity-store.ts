@@ -86,6 +86,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
       rollup: {
         ...state.rollup,
         phase: "waiting",
+        title: i18n.t("activity.waitingConfirm"),
         detail,
         fadeIdleAt: undefined,
       },

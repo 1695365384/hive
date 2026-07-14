@@ -207,6 +207,12 @@ export interface AgentContext {
   /** 文件型记忆存储实例（由 ServerImpl 在 dispatch 前设置） */
   fileMemory?: FileMemory;
 
+  /**
+   * Push deliverable paths into Desktop chat (agent.file).
+   * Set by ServerImpl for the duration of a dispatch.
+   */
+  onDeliverArtifacts?: (filePaths: string[]) => void;
+
   // ============================================
   // 类型安全的能力访问器
   // ============================================
