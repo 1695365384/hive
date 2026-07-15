@@ -7,7 +7,13 @@ import { isOfficeDocumentPath } from '../../../artifacts/artifact-detector.js';
 import { isOfficeTask } from '../../../routing/scenarios/office.scenario.js';
 import type { CompletionVerifier, TaskTrace, VerifyResult } from '../types.js';
 import { getAgentWorkerTypes, getSpawnedWorkerTypes } from '../TaskTrace.js';
-import { countPptxSlides, extractExpectedSlideCount } from '../office-slide-count.js';
+import { extractExpectedSlideCount, inspectPptxZip } from '../office-slide-count.js';
+import {
+  FAKE_CHART_PREFIX,
+  LAYOUT_ISSUES_PREFIX,
+  findLayoutIssueInTrace,
+  hasDataVisualIntent,
+} from '../office-visual-contract.js';
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -63,7 +69,8 @@ export const officeCompletionVerifier: CompletionVerifier = {
 
     const pptx = docs.find(a => a.toLowerCase().endsWith('.pptx'));
     if (pptx) {
-      const actual = await countPptxSlides(pptx);
+      const zip = await inspectPptxZip(pptx);
+      const actual = zip.ok ? zip.slideCount : null;
       const expected = extractExpectedSlideCount(trace.task);
 
       if (actual != null && actual < 2) {
@@ -89,6 +96,38 @@ export const officeCompletionVerifier: CompletionVerifier = {
             message: `PPT slide count mismatch: user asked for ${expected} pages but file has ${actual} slides. Add missing slides before claiming completion.`,
           };
         }
+      }
+
+      if (hasDataVisualIntent(trace.task)) {
+        if (!zip.ok) {
+          return {
+            verifierId: 'office',
+            passed: false,
+            message:
+              `${FAKE_CHART_PREFIX} Could not inspect ${pptx} for charts/media. `
+              + 'Ensure the file is a valid pptx with a real chart or picture, then send-file again.',
+          };
+        }
+        if (!(zip.hasChart || zip.hasMedia)) {
+          return {
+            verifierId: 'office',
+            passed: false,
+            message:
+              `${FAKE_CHART_PREFIX} Data/visual task requires a real chart (ppt/charts) or embedded picture (ppt/media). `
+              + 'Do not use colored rectangles as fake bars. Add chart or SVG/PNG via picture, then send-file.',
+          };
+        }
+      }
+
+      const layoutHit = findLayoutIssueInTrace(trace);
+      if (layoutHit) {
+        return {
+          verifierId: 'office',
+          passed: false,
+          message:
+            `${LAYOUT_ISSUES_PREFIX} Layout problem detected in officecli view output (${layoutHit}). `
+            + 'Fix overlapping shapes using layout slots, re-run view, then send-file.',
+        };
       }
 
       if (actual != null) {
