@@ -2,14 +2,16 @@
  * CompletionVerifier 单元测试
  */
 
-import { describe, it, expect } from 'vitest';
-import { writeFile, mkdir, rm } from 'node:fs/promises';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { writeFile, mkdir, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CompletionVerifierService } from '../../../src/agents/completion/CompletionVerifier.js';
 import { officeCompletionVerifier } from '../../../src/agents/completion/verifiers/office.js';
 import { scheduleCompletionVerifier } from '../../../src/agents/completion/verifiers/schedule.js';
+import { FAKE_CHART_PREFIX, LAYOUT_ISSUES_PREFIX } from '../../../src/agents/completion/office-visual-contract.js';
 import type { TaskTrace } from '../../../src/agents/completion/types.js';
+import { buildPptxFixture } from './pptx-fixture.js';
 
 function trace(overrides: Partial<TaskTrace>): TaskTrace {
   return {
@@ -92,6 +94,100 @@ describe('officeCompletionVerifier', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  describe('visual contract', () => {
+    let root = '';
+    let bare = '';
+    let withMedia = '';
+    let withChart = '';
+
+    beforeAll(async () => {
+      root = join(tmpdir(), `hive-completion-visual-${Date.now()}`);
+      await mkdir(root, { recursive: true });
+      bare = await buildPptxFixture(root, 'bare', { slides: 2 });
+      withMedia = await buildPptxFixture(root, 'media', { slides: 2, media: true });
+      withChart = await buildPptxFixture(root, 'chart', { slides: 2, charts: true });
+    });
+
+    afterAll(async () => {
+      await rm(root, { recursive: true, force: true });
+    });
+
+    it('fails FAKE_CHART when data intent and no media', async () => {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一份带 KPI 趋势数据的 PPT',
+        workerSpawns: [{ workerType: 'office' }],
+        artifacts: [bare],
+      }));
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain(FAKE_CHART_PREFIX);
+    });
+
+    it('fails FAKE_CHART when unzip cannot inspect pptx', async () => {
+      const junk = join(root, 'junk.pptx');
+      await writeFile(junk, 'not-a-zip');
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一份带 KPI 数据的 PPT',
+        workerSpawns: [{ workerType: 'office' }],
+        artifacts: [junk],
+      }));
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain(FAKE_CHART_PREFIX);
+      expect(result.message).toMatch(/Could not inspect/i);
+    });
+
+    it('passes data intent when media present', async () => {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一份带 KPI 趋势数据的 PPT',
+        workerSpawns: [{ workerType: 'office' }],
+        artifacts: [withMedia],
+      }));
+      expect(result.passed).toBe(true);
+    });
+
+    it('passes data intent when chart present without media', async () => {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一份带数据图表的 PPT',
+        workerSpawns: [{ workerType: 'office' }],
+        artifacts: [withChart],
+      }));
+      expect(result.passed).toBe(true);
+    });
+
+    it('does not require media for non-data agenda PPT', async () => {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '纯文字提纲议程 PPT',
+        workerSpawns: [{ workerType: 'office' }],
+        artifacts: [bare],
+      }));
+      expect(result.passed).toBe(true);
+    });
+
+    it('fails LAYOUT_ISSUES when view output reports overlap', async () => {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: 'Create a PPT',
+        workerSpawns: [{ workerType: 'office' }],
+        artifacts: [withMedia],
+        toolCalls: [{
+          toolName: 'bash',
+          input: { command: 'officecli view deck.pptx issues' },
+          output: 'Found overlap on slide 1',
+        }],
+      }));
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain(LAYOUT_ISSUES_PREFIX);
+    });
+  });
+
+  it('office.md forbids fake colored-rectangle charts', async () => {
+    const md = await readFile(
+      new URL('../../../src/agents/prompts/templates/office.md', import.meta.url),
+      'utf8',
+    );
+    expect(md.toLowerCase()).not.toContain('colored rectangles as bars');
+    expect(md).toMatch(/Visual contract|真 chart|picture/i);
+    expect(md).toMatch(/Layout slots/i);
   });
 });
 

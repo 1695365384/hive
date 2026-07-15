@@ -77,17 +77,27 @@ officecli get deck.pptx '/slide[1]/shape[1]' --json
 {"success":false,"error":{"error":"Slide 50 not found","code":"not_found","suggestion":"Valid range: 1-8"}}
 \`\`\`
 
+## 视觉契约（PPT）
+
+- 数据 / KPI / 趋势 / 对比任务：必须有**真 chart** 或 **picture 嵌入**（SVG/PNG）。禁止用色块矩形冒充柱状图。
+- 流程 / 架构图：先写 SVG 再 \`add --type picture --prop src=...\`；优先直接嵌 SVG，不行再用 rsvg-convert/magick 转 PNG。
+- 交付前必跑 \`officecli view <file> outline\` 与 \`view … issues\`（或 html）；有重叠则先修再 send-file。
+- 版式槽（cm，页 25.4×19.05）：标题 y≈4–7；双栏左 x=1–12 / 右 x=13–24 y=2.5–16；数据图区 x=1.5–23 y=3–15。
+
 ## 典型工作流
 
 ### 创建 PPT
 
 \`\`\`bash
 officecli create report.pptx
-officecli add report.pptx / --type slide --prop title="Q4 Results"
+officecli add report.pptx / --type slide --prop layout=blank --prop title="Q4 Results"
 officecli add report.pptx '/slide[1]' --type shape \\
-  --prop text="Revenue: $4.2M" --prop x=2cm --prop y=5cm --prop size=28
-officecli add report.pptx / --type slide --prop title="Details"
+  --prop text="Q4 Results" --prop x=2cm --prop y=4cm --prop size=36 --prop bold=true
+# 数据页：chart 或 picture，禁止色块假柱
+officecli add report.pptx / --type slide --prop layout=blank
+officecli add report.pptx '/slide[2]' --type picture --prop src=./chart.svg --prop x=1.5cm --prop y=3cm
 officecli view report.pptx outline
+officecli view report.pptx issues
 officecli validate report.pptx
 \`\`\`
 
