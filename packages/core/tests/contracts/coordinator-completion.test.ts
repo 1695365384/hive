@@ -2,12 +2,15 @@
  * Coordinator 完成判定集成（契约层）
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   createMockAgentContext,
   createTestProviderConfig,
 } from '../mocks/agent-context.mock.js';
-import { OFFICE_PPT_FIXTURE } from './fixtures/trajectory-fixtures.js';
+import { buildPptxFixture } from '../unit/completion/pptx-fixture.js';
 
 const mockExecuteStreaming = vi.fn();
 
@@ -38,13 +41,21 @@ import { configureWorkerSetupMocks } from './contract-helpers.js';
 
 describe('Coordinator Completion Verification', () => {
   let capability: CoordinatorCapability;
+  let fixtureRoot: string;
+  let pptxPath: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    mockExecuteStreaming.mockResolvedValue({
-      text: 'Created deck.pptx via officecli',
-      tools: ['bash'],
-      success: true,
+    fixtureRoot = await mkdtemp(join(tmpdir(), 'hive-coord-completion-'));
+    pptxPath = await buildPptxFixture(fixtureRoot, 'ai-deck', { slides: 3 });
+
+    mockExecuteStreaming.mockImplementation(async (_type, _prompt, hooks) => {
+      hooks?.onText?.(`Created ${pptxPath} via officecli`);
+      return {
+        text: `Created ${pptxPath} via officecli`,
+        tools: ['bash'],
+        success: true,
+      };
     });
 
     capability = new CoordinatorCapability();
@@ -54,6 +65,10 @@ describe('Coordinator Completion Verification', () => {
     });
     configureWorkerSetupMocks(context);
     capability.initialize(context);
+  });
+
+  afterEach(async () => {
+    await rm(fixtureRoot, { recursive: true, force: true });
   });
 
   it('direct-routes PPT creation to office worker without Coordinator LLM', async () => {
