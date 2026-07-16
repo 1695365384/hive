@@ -74,6 +74,30 @@ describe('Scenario direct routing', () => {
       expect.any(Object),
       expect.any(Object),
     );
+    expect(result).toBeDefined();
+  });
+
+  it('runs explore then office with research notes for research-heavy PPT', async () => {
+    const routeEvents: Array<{ workerTypes?: string[] }> = [];
+    mockExecuteStreaming.mockImplementation(async (type: string, prompt: string, hooks?: { onText?: (t: string) => void }) => {
+      const text = type === 'explore'
+        ? 'Outline: market share, pricing, risks'
+        : `Office built with notes len=${prompt.length}`;
+      hooks?.onText?.(text);
+      return { text, tools: ['bash'], success: true };
+    });
+
+    await capability.run('帮我调研竞品并做一个 8 页 PPT', {
+      onRoute: (route) => routeEvents.push(route),
+    });
+
+    expect(mockRuntimeStream).not.toHaveBeenCalled();
+    const types = mockExecuteStreaming.mock.calls.map((c) => c[0] as string);
+    expect(types).toEqual(['explore', 'office']);
+    const officePrompt = mockExecuteStreaming.mock.calls[1]![1] as string;
+    expect(officePrompt).toContain('Research notes from explore Worker');
+    expect(officePrompt).toContain('market share');
+    expect(routeEvents.some((e) => e.workerTypes?.includes('explore') && e.workerTypes?.includes('office'))).toBe(true);
   });
 
   it('answers schedule inquiry without LLM', async () => {

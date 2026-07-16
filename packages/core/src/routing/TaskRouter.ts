@@ -75,10 +75,13 @@ export class TaskRouter {
           notificationTitle: scenario.labels.inquiryNotification,
         };
       case 'delegate':
+        if (resolved.spawns.length === 0) {
+          return { action: 'pass' };
+        }
         return {
           action: 'delegate',
           scenarioId: scenario.id,
-          spawn: resolved.spawn,
+          spawns: resolved.spawns,
           notificationTitle: scenario.labels.creationNotification,
           notificationBody: scenario.labels.workerRunning,
         };

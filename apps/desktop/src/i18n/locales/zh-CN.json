@@ -55,6 +55,7 @@
     "moreOpenOptions": "更多打开方式",
     "open": "打开",
     "disclaimer": "Hive 可能产生不准确信息 · Shift+Enter 换行",
+    "turnBusyHint": "本轮执行中：可点停止取消；结束后再发下一条（当前不支持同会话旁路提问）",
     "empty": "发送消息开始对话",
     "selectFiles": "选择文件",
     "executionCancelled": "\n\n*已取消执行*",
@@ -114,6 +115,7 @@
       "direct": "直接回答",
       "inquiry": "能力说明 · {{scenario}}",
       "delegate": "正在处理 · {{worker}}",
+      "delegateParallel": "多 Agent 协作 · {{workers}}",
       "hint": "按需协作 · {{scenario}}",
       "genericScenario": "相关能力",
       "genericWorker": "专项任务",
@@ -121,6 +123,10 @@
       "dockInquiry": "能力说明",
       "dockDelegate": "专项处理",
       "dockHint": "协调中"
+    },
+    "workerLane": {
+      "running": "协作中 · {{count}} 个 Worker 并行",
+      "done": "协作完成 · {{count}} 个 Worker"
     }
   },
   "file": {

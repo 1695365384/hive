@@ -79,8 +79,9 @@ const OFFICE_ROUTING_HINT = [
   '## MANDATORY Routing (Office Task)',
   '',
   'This user message is an **Office document task**.',
-  '- You MUST call agent() exactly ONCE with type="office".',
-  '- Do NOT call explore, plan, or general workers.',
+  '- You MUST call agent(type="office") exactly once (required deliverable Worker).',
+  '- For research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages): call agent(type="explore") first, then agent(type="office") with the research (or call both — system direct-route runs explore then injects notes into office).',
+  '- Do NOT call plan or general workers.',
   '- Do NOT run env() or research how to make PPT — officecli is already installed.',
   '- Do NOT mention python-pptx, AppleScript, or manual PowerPoint automation.',
   '- Do NOT answer with capability menus or "what would you like?" — delegate immediately.',
@@ -89,7 +90,7 @@ const OFFICE_ROUTING_HINT = [
 
 const OFFICE_COORDINATOR_BLURB =
   '[Installed Capability] **officecli** is bundled and available. '
-  + 'For PPT/Word/Excel tasks, spawn agent(type="office") — the office Worker runs officecli via bash. '
+  + 'For PPT/Word/Excel tasks, spawn agent(type="office") — optionally parallel agent(type="explore") for research-heavy decks. '
   + 'Do NOT research python-pptx, AppleScript, or env() for Office tasks.';
 
 export const officeScenarioCopy: ScenarioCopy = {
@@ -147,12 +148,69 @@ export function buildOfficeWorkerSpawn(task: string, description?: string): Work
   };
 }
 
+/**
+ * Research-heavy Office tasks → explore then office (notes injected into office prompt).
+ * Avoid bare 「研究/research」 topical matches (e.g. 研究机构、research paper theme).
+ */
+export function needsOfficeResearchAssist(task: string): boolean {
+  if (
+    /(调研|进行研究|研究一下|研究并|收集资料|竞品|市场分析|行业分析|收集素材|competitor|market\s+analysis|do\s+research|research\s+(and|on|for))/i
+      .test(task)
+  ) {
+    return true;
+  }
+  // Explicit multi-page creation (not "改第5页…")
+  if (/(改|修改|调整|更新).{0,8}\d+\s*页/.test(task)) {
+    return false;
+  }
+  const pageMatch = task.match(/(?:做|制作|创建|生成|写).{0,24}?(\d+)\s*(页|页PPT|slides?|pages?)/i)
+    ?? task.match(/(\d+)\s*(页|页PPT|slides?|pages?).{0,12}?(?:的)?(?:PPT|ppt|演示|汇报)/i);
+  if (pageMatch && Number(pageMatch[1]) >= 5) {
+    return true;
+  }
+  return false;
+}
+
+export function buildOfficeExploreAssistSpawn(task: string): WorkerSpawnInput {
+  return {
+    type: 'explore',
+    prompt: [
+      'Research assist for an Office document task.',
+      'Collect factual bullets, suggested outline, and key talking points.',
+      'Do NOT create PPT/Word/Excel files — read-only research only.',
+      'Keep the answer concise (bullets).',
+      '',
+      `User request:\n${task}`,
+    ].join('\n'),
+    description: '协作调研：收集大纲与要点',
+    scenarioId: OFFICE_SCENARIO_ID,
+  };
+}
+
+/** Inject explore notes so office Worker can use them (sequential collaborate path). */
+export function withOfficeResearchNotes(
+  officeSpawn: WorkerSpawnInput,
+  researchNotes: string,
+): WorkerSpawnInput {
+  const notes = researchNotes.trim().slice(0, 6000);
+  if (!notes) return officeSpawn;
+  return {
+    ...officeSpawn,
+    prompt: [
+      officeSpawn.prompt,
+      '',
+      '## Research notes from explore Worker (use these facts/outline in the document)',
+      notes,
+    ].join('\n'),
+  };
+}
+
 function officeSpawnValidationError(workerType: string): string {
   return [
     `Status: FAILED`,
     `Worker type "${workerType}" is NOT allowed for Office document tasks.`,
-    `You MUST retry with agent(type="office", prompt="...full requirements...").`,
-    `Do NOT use explore, plan, or general. officecli is already installed.`,
+    `You MUST use agent(type="office") for the deliverable; optional parallel agent(type="explore") for research.`,
+    `Do NOT use plan or general. officecli is already installed.`,
   ].join('\n');
 }
 
@@ -161,7 +219,7 @@ export const officeScenario: ScenarioDefinition = {
   priority: 100,
   labels: OFFICE_SCENARIO_LABELS,
   copy: officeScenarioCopy,
-  allowedWorkers: ['office'],
+  allowedWorkers: ['office', 'explore'],
   match: isOfficeTask,
   resolve(task: string) {
     const action = resolveOfficeScenarioAction(task);
@@ -169,9 +227,16 @@ export const officeScenario: ScenarioDefinition = {
       return { kind: 'inquiry', reply: action.reply };
     }
     if (action.kind === 'creation') {
+      const officeSpawn = buildOfficeWorkerSpawn(action.prompt, action.description);
+      if (needsOfficeResearchAssist(task)) {
+        return {
+          kind: 'delegate',
+          spawns: [buildOfficeExploreAssistSpawn(task), officeSpawn],
+        };
+      }
       return {
         kind: 'delegate',
-        spawn: buildOfficeWorkerSpawn(action.prompt, action.description),
+        spawns: [officeSpawn],
       };
     }
     if (isOfficeTask(task)) {
@@ -181,9 +246,9 @@ export const officeScenario: ScenarioDefinition = {
   },
   validateSpawn(task, spawn) {
     if (!isOfficeTask(task)) return null;
-    if (spawn.type !== 'office') {
-      return officeSpawnValidationError(spawn.type);
+    if (spawn.type === 'office' || spawn.type === 'explore') {
+      return null;
     }
-    return null;
+    return officeSpawnValidationError(spawn.type);
   },
 };

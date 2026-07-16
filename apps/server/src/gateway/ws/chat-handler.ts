@@ -217,6 +217,7 @@ export class ChatWsHandler extends EventEmitter {
           mode: event.mode,
           scenarioId: event.scenarioId,
           workerType: event.workerType,
+          workerTypes: event.workerTypes,
           title: event.title,
         })))
         break

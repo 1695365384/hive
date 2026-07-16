@@ -18,6 +18,7 @@ export type GroupedContent =
       mode: "direct" | "inquiry" | "delegate" | "hint";
       scenarioId?: string;
       workerType?: string;
+      workerTypes?: string[];
       title?: string;
     }
   | {
@@ -30,6 +31,11 @@ export type GroupedContent =
       status: "running" | "completed" | "failed";
       duration?: number;
       error?: string;
+    }
+  | {
+      type: "worker-lane";
+      workers: Array<GroupedContent & { type: "worker" }>;
+      runningCount: number;
     }
   | {
       type: "office-progress";

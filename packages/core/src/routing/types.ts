@@ -54,7 +54,7 @@ export interface ScenarioDefinition {
 export type ScenarioResolveResult =
   | { kind: 'none' }
   | { kind: 'inquiry'; reply: string }
-  | { kind: 'delegate'; spawn: WorkerSpawnInput }
+  | { kind: 'delegate'; spawns: WorkerSpawnInput[] }
   | { kind: 'hint'; directive: string };
 
 /** TaskRouter 对 Coordinator 的输出 */
@@ -69,7 +69,8 @@ export type RouterDecision =
   | {
       action: 'delegate';
       scenarioId: string;
-      spawn: WorkerSpawnInput;
+      /** ≥1；同 turn 多 spawn 时 Coordinator 并行执行 */
+      spawns: WorkerSpawnInput[];
       notificationTitle: string;
       notificationBody: string;
     }
@@ -78,3 +79,14 @@ export type RouterDecision =
       scenarioId: string;
       directive: string;
     };
+
+/** 交付主 Worker：优先 office/schedule，否则取第一个 */
+export function primaryDelegateSpawn(spawns: WorkerSpawnInput[]): WorkerSpawnInput {
+  if (spawns.length === 0) {
+    throw new Error('delegate spawns must not be empty');
+  }
+  return (
+    spawns.find((s) => s.type === 'office' || s.type === 'schedule')
+    ?? spawns[0]!
+  );
+}

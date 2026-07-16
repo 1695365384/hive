@@ -8,17 +8,21 @@ export type RouteChipProps = {
   mode: RouteMode;
   scenarioId?: string;
   workerType?: string;
+  workerTypes?: string[];
   title?: string;
 };
 
-function RouteChipInner({ mode, scenarioId, workerType, title }: RouteChipProps) {
+function RouteChipInner({ mode, scenarioId, workerType, workerTypes, title }: RouteChipProps) {
   const { t } = useTranslation();
 
   const scenario = formatScenarioLabel(scenarioId);
+  const types = workerTypes?.length ? workerTypes : workerType ? [workerType] : [];
   const worker =
-    workerType != null
-      ? formatWorkerTitle(workerType, undefined, scenarioId)
-      : undefined;
+    types.length > 1
+      ? types.map((wt) => formatWorkerTitle(wt, undefined, scenarioId)).join(" ∥ ")
+      : types.length === 1
+        ? formatWorkerTitle(types[0]!, undefined, scenarioId)
+        : undefined;
 
   let label: string;
   switch (mode) {
@@ -28,9 +32,15 @@ function RouteChipInner({ mode, scenarioId, workerType, title }: RouteChipProps)
       });
       break;
     case "delegate":
-      label = t("activity.route.delegate", {
-        worker: worker ?? title ?? t("activity.route.genericWorker"),
-      });
+      label =
+        types.length > 1
+          ? t("activity.route.delegateParallel", {
+              workers: worker ?? title ?? t("activity.route.genericWorker"),
+              count: types.length,
+            })
+          : t("activity.route.delegate", {
+              worker: worker ?? title ?? t("activity.route.genericWorker"),
+            });
       break;
     case "hint":
       label = t("activity.route.hint", {

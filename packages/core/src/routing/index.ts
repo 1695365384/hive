@@ -6,6 +6,8 @@ export type {
   RouterDecision,
 } from './types.js';
 
+export { primaryDelegateSpawn } from './types.js';
+
 export { ScenarioRegistry } from './ScenarioRegistry.js';
 export { TaskRouter } from './TaskRouter.js';
 export {
@@ -28,6 +30,9 @@ export {
   matchesOfficeScenario,
   resolveOfficeScenarioAction,
   buildOfficeWorkerSpawn,
+  buildOfficeExploreAssistSpawn,
+  withOfficeResearchNotes,
+  needsOfficeResearchAssist,
   isOfficeTask,
   isOfficeInquiryTask,
   isOfficeCreationTask,

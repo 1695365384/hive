@@ -55,6 +55,7 @@
     "moreOpenOptions": "More open options",
     "open": "Open",
     "disclaimer": "Hive may produce inaccurate information · Shift+Enter for new line",
+    "turnBusyHint": "Turn in progress: Stop to cancel. Send the next message after it finishes (no mid-turn side questions yet).",
     "empty": "Send a message to get started",
     "selectFiles": "Select files",
     "executionCancelled": "\n\n*Execution cancelled*",
@@ -114,6 +115,7 @@
       "direct": "Direct reply",
       "inquiry": "Capability · {{scenario}}",
       "delegate": "Working · {{worker}}",
+      "delegateParallel": "Multi-agent · {{workers}}",
       "hint": "Coordinating · {{scenario}}",
       "genericScenario": "related capability",
       "genericWorker": "specialized task",
@@ -121,6 +123,10 @@
       "dockInquiry": "Capability",
       "dockDelegate": "Specialized task",
       "dockHint": "Coordinating"
+    },
+    "workerLane": {
+      "running": "Collaborating · {{count}} workers in parallel",
+      "done": "Collaboration done · {{count}} workers"
     }
   },
   "file": {

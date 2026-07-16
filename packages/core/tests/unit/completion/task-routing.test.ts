@@ -29,7 +29,7 @@ describe('task-routing', () => {
     const directive = getTaskRoutingDirective('做一个 PPT');
     expect(directive).toContain('type="office"');
     expect(directive).toContain('officecli');
-    expect(directive).toContain('Do NOT call explore');
+    expect(directive).toContain('Do NOT call plan or general');
   });
 
   it('inquiry reply mentions officecli', () => {

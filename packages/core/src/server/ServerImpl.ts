@@ -691,7 +691,8 @@ class ServerImpl implements Server {
             this.logger.info(
               `[agent] [route] ${route.mode}` +
                 `${route.scenarioId ? ` scenario=${route.scenarioId}` : ''}` +
-                `${route.workerType ? ` worker=${route.workerType}` : ''}`,
+                `${route.workerType ? ` worker=${route.workerType}` : ''}` +
+                `${route.workerTypes?.length ? ` workers=${route.workerTypes.join('+')}` : ''}`,
             );
             this.emitStreaming({
               sessionId: sessionKey,
@@ -699,6 +700,7 @@ class ServerImpl implements Server {
               mode: route.mode,
               scenarioId: route.scenarioId,
               workerType: route.workerType,
+              workerTypes: route.workerTypes,
               title: route.title,
             });
             // routed progress is emitted via onOfficeProgress from Coordinator on office delegate

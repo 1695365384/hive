@@ -316,6 +316,7 @@ export function ChatPage() {
     mode: "direct" | "inquiry" | "delegate" | "hint";
     scenarioId?: string;
     workerType?: string;
+    workerTypes?: string[];
     title?: string;
   }) => {
     if (data.threadId !== activeThreadIdRef.current) return;
@@ -329,11 +330,18 @@ export function ChatPage() {
             ? i18n.t("activity.route.dockHint")
             : i18n.t("activity.route.dockDirect");
 
+    const types = data.workerTypes?.length
+      ? data.workerTypes
+      : data.workerType
+        ? [data.workerType]
+        : [];
     const detail =
       data.title?.trim() ||
-      (data.workerType
-        ? formatWorkerTitle(data.workerType, undefined, data.scenarioId)
-        : formatScenarioLabel(data.scenarioId));
+      (types.length > 1
+        ? types.map((wt) => formatWorkerTitle(wt, undefined, data.scenarioId)).join(" ∥ ")
+        : types.length === 1
+          ? formatWorkerTitle(types[0]!, undefined, data.scenarioId)
+          : formatScenarioLabel(data.scenarioId));
 
     activitySetWorking({ title: dockTitle, detail: detail || undefined });
     appendPart({
@@ -341,6 +349,7 @@ export function ChatPage() {
       mode: data.mode,
       scenarioId: data.scenarioId,
       workerType: data.workerType,
+      workerTypes: data.workerTypes,
       title: data.title,
     });
   }, [appendPart, activitySetWorking]);
@@ -866,7 +875,7 @@ export function ChatPage() {
               </button>
             </div>
             <p className="chat-composer__hint">
-              {t("chat.disclaimer")}
+              {isRunning ? t("chat.turnBusyHint") : t("chat.disclaimer")}
             </p>
           </div>
         )}
