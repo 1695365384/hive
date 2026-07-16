@@ -360,6 +360,46 @@ export function ChatPage() {
     appendPart({ type: "worker-complete", workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration });
   }, [appendPart, activitySetLastCompleted]);
 
+  const handleOfficeProgress = useCallback((data: {
+    threadId: string;
+    phase: "routed" | "creating" | "adding_slide" | "validating" | "delivering" | "blocked";
+    slide?: number;
+    slideTotal?: number;
+    message?: string;
+    workerId?: string;
+  }) => {
+    if (data.threadId !== activeThreadIdRef.current) return;
+    const detail =
+      data.phase === "blocked" && data.message
+        ? data.message
+        : data.phase === "adding_slide" && data.slide != null
+          ? (data.slideTotal != null ? `第 ${data.slide}/${data.slideTotal} 页` : `第 ${data.slide} 页`)
+          : undefined;
+    activitySetWorking({
+      title:
+        data.phase === "routed"
+          ? "已交给 Office"
+          : data.phase === "creating"
+            ? "正在建稿"
+            : data.phase === "validating"
+              ? "检查版式"
+              : data.phase === "delivering"
+                ? "正在交付"
+                : data.phase === "blocked"
+                  ? "需要修正"
+                  : "Office 进行中",
+      detail,
+    });
+    appendPart({
+      type: "office-progress",
+      phase: data.phase,
+      slide: data.slide,
+      slideTotal: data.slideTotal,
+      message: data.message,
+      workerId: data.workerId,
+    });
+  }, [appendPart, activitySetWorking]);
+
   const handleToolCall = useCallback((data: { threadId: string; toolCallId: string; toolName: string; args: unknown; workerId?: string; workerType?: string }) => {
     if (data.threadId !== activeThreadIdRef.current) return;
     activitySetWorking({ detail: formatToolLabel(data.toolName, data.args) });
@@ -506,6 +546,7 @@ export function ChatPage() {
       onEvent("agent.route", handleRoute),
       onEvent("agent.worker-start", handleWorkerStart),
       onEvent("agent.worker-complete", handleWorkerComplete),
+      onEvent("agent.office-progress", handleOfficeProgress),
       onEvent("agent.tool-call", handleToolCall),
       onEvent("agent.tool-result", handleToolResult),
       onEvent("agent.complete", handleComplete),
@@ -514,7 +555,7 @@ export function ChatPage() {
       onEvent("agent.ask-user-timeout", handleAskUserTimeout),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [onEvent, handleReasoning, handleTextDelta, handleRoute, handleWorkerStart, handleWorkerComplete, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
+  }, [onEvent, handleReasoning, handleTextDelta, handleRoute, handleWorkerStart, handleWorkerComplete, handleOfficeProgress, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
 
   const handleCancel = useCallback(async () => {
     const threadId = activeThreadIdRef.current;

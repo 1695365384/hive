@@ -8,6 +8,7 @@ describe("collectSessionArtifacts", () => {
       {
         id: "a1",
         role: "assistant",
+        createdAt: 1,
         content: [
           {
             type: "file-attachment",
@@ -29,6 +30,7 @@ describe("collectSessionArtifacts", () => {
       {
         id: "a2",
         role: "assistant",
+        createdAt: 2,
         content: [
           {
             type: "file-attachment",
@@ -59,6 +61,7 @@ describe("collectSessionArtifacts", () => {
       {
         id: "u1",
         role: "user",
+        createdAt: 1,
         content: [
           {
             type: "file-attachment",

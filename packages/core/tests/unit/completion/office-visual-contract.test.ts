@@ -8,6 +8,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   hasDataVisualIntent,
+  hasDiagramIntent,
+  isSimpleOfficeDeck,
+  inferOfficeProgressPhase,
   pptxHasVisualMedia,
   findLayoutIssueInTrace,
   hasScannableViewOutput,
@@ -45,6 +48,40 @@ describe('hasDataVisualIntent', () => {
 
   it('plain create PPT is not data intent', () => {
     expect(hasDataVisualIntent('Create a PPT')).toBe(false);
+  });
+});
+
+describe('hasDiagramIntent / isSimpleOfficeDeck', () => {
+  it('detects diagram intent', () => {
+    expect(hasDiagramIntent('画一个系统架构图 PPT')).toBe(true);
+    expect(hasDiagramIntent('flowchart overview')).toBe(true);
+  });
+
+  it('simple deck: explicit ≤3 pages, no data/diagram', () => {
+    expect(isSimpleOfficeDeck('做 3 页产品介绍 PPT')).toBe(true);
+    expect(isSimpleOfficeDeck('做一份 2 页议程 PPT')).toBe(true);
+  });
+
+  it('unspecified page count is not simple', () => {
+    expect(isSimpleOfficeDeck('做一份产品介绍 PPT')).toBe(false);
+  });
+
+  it('data or diagram is not simple', () => {
+    expect(isSimpleOfficeDeck('做 3 页带 KPI 趋势的 PPT')).toBe(false);
+    expect(isSimpleOfficeDeck('做 3 页架构图 PPT')).toBe(false);
+  });
+
+  it('more than 3 pages is not simple', () => {
+    expect(isSimpleOfficeDeck('做 5 页产品介绍 PPT')).toBe(false);
+  });
+});
+
+describe('inferOfficeProgressPhase', () => {
+  it('maps officecli/bash commands', () => {
+    expect(inferOfficeProgressPhase('bash', { command: 'officecli create a.pptx' })).toBe('creating');
+    expect(inferOfficeProgressPhase('bash', { command: 'officecli add a.pptx / --type slide' })).toBe('adding_slide');
+    expect(inferOfficeProgressPhase('bash', { command: 'officecli view a.pptx issues' })).toBe('validating');
+    expect(inferOfficeProgressPhase('send-file', { path: '/tmp/a.pptx' })).toBe('delivering');
   });
 });
 

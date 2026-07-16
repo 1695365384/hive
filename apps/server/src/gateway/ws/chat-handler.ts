@@ -265,6 +265,17 @@ export class ChatWsHandler extends EventEmitter {
         })))
         break
 
+      case 'office-progress':
+        ws.send(JSON.stringify(createEvent('agent.office-progress', {
+          threadId,
+          phase: event.phase,
+          slide: event.slide,
+          slideTotal: event.slideTotal,
+          message: event.message,
+          workerId: event.workerId,
+        })))
+        break
+
       case 'complete':
         ws.send(JSON.stringify(createEvent('agent.complete', {
           threadId,

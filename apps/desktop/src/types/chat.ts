@@ -12,6 +12,14 @@ export type ContentPart =
     }
   | { type: "worker-start"; workerId: string; workerType: string; description?: string; scenarioId?: string }
   | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }
+  | {
+      type: "office-progress";
+      phase: "routed" | "creating" | "adding_slide" | "validating" | "delivering" | "blocked";
+      slide?: number;
+      slideTotal?: number;
+      message?: string;
+      workerId?: string;
+    }
   | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; servedPath?: string; src?: string };
 
 export interface ChatMessage {
@@ -33,6 +41,14 @@ export type GroupedContent =
       title?: string;
     }
   | { type: "worker"; workerId: string; workerType: string; description?: string; scenarioId?: string; children: GroupedContent[]; status: "running" | "completed" | "failed"; duration?: number; error?: string }
+  | {
+      type: "office-progress";
+      phase: "routed" | "creating" | "adding_slide" | "validating" | "delivering" | "blocked";
+      slide?: number;
+      slideTotal?: number;
+      message?: string;
+      workerId?: string;
+    }
   | { type: "file-attachment"; name: string; size: number; mimeType: string; path: string; servedPath?: string; src?: string }
   | {
       type: "image-gallery";

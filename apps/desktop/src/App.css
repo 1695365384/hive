@@ -1606,6 +1606,23 @@ html.desktop-app * {
   opacity: 0.95;
 }
 
+.office-progress-banner {
+  display: block;
+  margin: 0 0 0.4rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: oklch(0.42 0.02 75);
+  background: oklch(0.97 0.005 75);
+  border-left: 2px solid oklch(0.72 0.04 145);
+}
+
+.office-progress-banner--blocked {
+  color: oklch(0.45 0.08 35);
+  border-left-color: oklch(0.65 0.12 35);
+  background: oklch(0.97 0.02 35);
+}
+
 .route-chip--hint .route-chip__mark {
   background: oklch(0.65 0.02 75);
 }
