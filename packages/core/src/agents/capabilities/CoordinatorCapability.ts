@@ -49,12 +49,17 @@ import { stripDecorativeEmoji } from '../../utils/sanitize-output.js';
 import {
   defaultTaskRouter,
   primaryDelegateSpawn,
+  buildOfficeWorkerSpawn,
+  withOfficeResearchNotes,
   type TaskRouter,
   type WorkerSpawnInput,
 } from '../../routing/index.js';
 import { getAgentWorkerTypes, getSpawnedWorkerTypes } from '../completion/TaskTrace.js';
 import { isOfficeDocumentPath } from '../../artifacts/artifact-detector.js';
-import { isOfficeTask } from '../../routing/scenarios/office.scenario.js';
+import {
+  isOfficeCreationTask,
+  isOfficeTask,
+} from '../../routing/scenarios/office.scenario.js';
 import { resolve as resolvePath } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -303,18 +308,13 @@ export class CoordinatorCapability implements AgentCapability {
           await this.emitNotification(
             sessionId, 'info', routeDecision.notificationTitle, routeDecision.notificationBody,
           );
-          // 同 turn 多 spawn → 真并行（explore∥office 等）
-          const settled = await Promise.all(
-            spawns.map(async (spawn) => ({
-              spawn,
-              result: await this.autoSpawnWorker(spawn),
-            })),
-          );
+          const { primaryResult, assistFailedNote } = await this.runDelegateSpawns(spawns, primary);
           const duration = Date.now() - startTime;
-          const primarySettled = settled.find((s) => s.spawn.type === primary.type) ?? settled[0]!;
-          const spawnResult = primarySettled.result;
-          if (spawnResult.success) {
-            let resultText = stripDecorativeEmoji(spawnResult.output);
+          if (primaryResult.success) {
+            let resultText = stripDecorativeEmoji(primaryResult.output);
+            if (assistFailedNote) {
+              resultText = `${resultText}\n\n(${assistFailedNote})`;
+            }
             this.flushOfficeArtifactsToUi();
             const verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
             if (!verification.passed) {
@@ -334,13 +334,13 @@ export class CoordinatorCapability implements AgentCapability {
             );
           }
           const errorText = stripDecorativeEmoji(
-            `[Worker spawn failed: ${spawnResult.error}]`,
+            `[Worker spawn failed: ${primaryResult.error}]`,
           );
           return await this.finalizeTask(
             task, errorText, errorText, undefined, options, sessionId, duration, false,
             {
               passed: false,
-              results: [{ verifierId: 'worker-spawn', passed: false, message: spawnResult.error }],
+              results: [{ verifierId: 'worker-spawn', passed: false, message: primaryResult.error }],
             },
           );
         }
@@ -389,27 +389,31 @@ export class CoordinatorCapability implements AgentCapability {
           isSuccess = false;
         }
 
-        // 场景任务未派正确 Worker 时自动补救（只补主交付 Worker，不重跑并行调研）
+        // 场景任务未派正确 Worker 时自动补救（只补主交付 Worker）
+        // Office 创建：即使 resolve 落在 hint（LLM 只派了 explore），也强制补 office
         const recoveryDecision = this.taskRouter.resolve(task);
+        const routed = [
+          ...getAgentWorkerTypes(this.taskTrace.getTrace()),
+          ...getSpawnedWorkerTypes(this.taskTrace.getTrace()),
+        ];
+        let recoverySpawn: WorkerSpawnInput | null = null;
+        if (recoveryDecision.action === 'delegate') {
+          recoverySpawn = primaryDelegateSpawn(recoveryDecision.spawns);
+        } else if (isOfficeCreationTask(task) && !routed.includes('office')) {
+          recoverySpawn = buildOfficeWorkerSpawn(task);
+        }
         if (
           !verification.passed
-          && recoveryDecision.action === 'delegate'
+          && recoverySpawn
+          && !routed.includes(recoverySpawn.type)
         ) {
-          const routed = [
-            ...getAgentWorkerTypes(this.taskTrace.getTrace()),
-            ...getSpawnedWorkerTypes(this.taskTrace.getTrace()),
-          ];
-          const expectedSpawn = primaryDelegateSpawn(recoveryDecision.spawns);
-          const expectedType = expectedSpawn.type;
-          if (!routed.includes(expectedType)) {
-            const recovered = await this.autoSpawnWorker(expectedSpawn);
-            if (recovered.success) {
-              resultText = stripDecorativeEmoji(recovered.output);
-              this.taskTrace.setResponseText(recovered.output);
-              this.flushOfficeArtifactsToUi();
-              verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
-              isSuccess = verification.passed;
-            }
+          const recovered = await this.autoSpawnWorker(recoverySpawn);
+          if (recovered.success) {
+            resultText = stripDecorativeEmoji(recovered.output);
+            this.taskTrace.setResponseText(recovered.output);
+            this.flushOfficeArtifactsToUi();
+            verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+            isSuccess = verification.passed;
           }
         }
 
@@ -452,6 +456,51 @@ export class CoordinatorCapability implements AgentCapability {
     } finally {
       this.context.currentDispatchTask = previousDispatchTask;
     }
+  }
+
+  /**
+   * 多 spawn 委派：
+   * - explore + office → 先调研再制作，并把 notes 注入 office prompt（真协作）
+   * - 其它组合 → Promise.all 真并行
+   */
+  private async runDelegateSpawns(
+    spawns: WorkerSpawnInput[],
+    primary: WorkerSpawnInput,
+  ): Promise<{
+    primaryResult: { success: true; output: string } | { success: false; error: string };
+    assistFailedNote?: string;
+  }> {
+    const exploreAssist = spawns.find((s) => s.type === 'explore');
+    if (primary.type === 'office' && exploreAssist) {
+      const exploreResult = await this.autoSpawnWorker(exploreAssist);
+      const officeSpawn = exploreResult.success
+        ? withOfficeResearchNotes(primary, exploreResult.output)
+        : primary;
+      const officeResult = await this.autoSpawnWorker(officeSpawn);
+      return {
+        primaryResult: officeResult,
+        assistFailedNote: exploreResult.success
+          ? undefined
+          : `协作调研未完成：${exploreResult.error.slice(0, 160)}`,
+      };
+    }
+
+    const settled = await Promise.all(
+      spawns.map(async (spawn) => ({
+        spawn,
+        result: await this.autoSpawnWorker(spawn),
+      })),
+    );
+    const primarySettled = settled.find((s) => s.spawn.type === primary.type) ?? settled[0]!;
+    const failedAssist = settled.find(
+      (s) => s.spawn.type !== primary.type && !s.result.success,
+    );
+    return {
+      primaryResult: primarySettled.result,
+      assistFailedNote: failedAssist && !failedAssist.result.success
+        ? `辅助 Worker(${failedAssist.spawn.type}) 失败：${failedAssist.result.error.slice(0, 160)}`
+        : undefined,
+    };
   }
 
   /** 场景委派：直接派 Worker（spawn 失败显式返回，不静默 fallback） */

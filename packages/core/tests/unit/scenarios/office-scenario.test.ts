@@ -50,4 +50,11 @@ describe('OfficeScenario', () => {
     expect(needsOfficeResearchAssist('帮我做一个 8 页 PPT')).toBe(true);
     expect(needsOfficeResearchAssist('帮我做一个关于 AI 的 PPT')).toBe(false);
   });
+
+  it('needsOfficeResearchAssist ignores topical/false-positive phrasing', () => {
+    expect(needsOfficeResearchAssist('做一个关于研究机构的 PPT')).toBe(false);
+    expect(needsOfficeResearchAssist('做一个 research paper 主题 PPT')).toBe(false);
+    expect(needsOfficeResearchAssist('改第5页标题')).toBe(false);
+    expect(needsOfficeResearchAssist('修改第8页的配图')).toBe(false);
+  });
 });

@@ -80,7 +80,7 @@ const OFFICE_ROUTING_HINT = [
   '',
   'This user message is an **Office document task**.',
   '- You MUST call agent(type="office") exactly once (required deliverable Worker).',
-  '- For research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages), ALSO call agent(type="explore") in the SAME response so research and document creation run in parallel.',
+  '- For research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages): call agent(type="explore") first, then agent(type="office") with the research (or call both — system direct-route runs explore then injects notes into office).',
   '- Do NOT call plan or general workers.',
   '- Do NOT run env() or research how to make PPT — officecli is already installed.',
   '- Do NOT mention python-pptx, AppleScript, or manual PowerPoint automation.',
@@ -148,15 +148,23 @@ export function buildOfficeWorkerSpawn(task: string, description?: string): Work
   };
 }
 
-/** Research-heavy Office tasks → explore∥office parallel delegate */
+/**
+ * Research-heavy Office tasks → explore then office (notes injected into office prompt).
+ * Avoid bare 「研究/research」 topical matches (e.g. 研究机构、research paper theme).
+ */
 export function needsOfficeResearchAssist(task: string): boolean {
   if (
-    /(调研|研究|收集资料|竞品|市场分析|行业分析|research|competitor|market\s+analysis|收集素材)/i
+    /(调研|进行研究|研究一下|研究并|收集资料|竞品|市场分析|行业分析|收集素材|competitor|market\s+analysis|do\s+research|research\s+(and|on|for))/i
       .test(task)
   ) {
     return true;
   }
-  const pageMatch = task.match(/(\d+)\s*(页|页PPT|slides?|pages?)/i);
+  // Explicit multi-page creation (not "改第5页…")
+  if (/(改|修改|调整|更新).{0,8}\d+\s*页/.test(task)) {
+    return false;
+  }
+  const pageMatch = task.match(/(?:做|制作|创建|生成|写).{0,24}?(\d+)\s*(页|页PPT|slides?|pages?)/i)
+    ?? task.match(/(\d+)\s*(页|页PPT|slides?|pages?).{0,12}?(?:的)?(?:PPT|ppt|演示|汇报)/i);
   if (pageMatch && Number(pageMatch[1]) >= 5) {
     return true;
   }
@@ -167,15 +175,33 @@ export function buildOfficeExploreAssistSpawn(task: string): WorkerSpawnInput {
   return {
     type: 'explore',
     prompt: [
-      'Parallel research assist for an Office document task.',
+      'Research assist for an Office document task.',
       'Collect factual bullets, suggested outline, and key talking points.',
       'Do NOT create PPT/Word/Excel files — read-only research only.',
       'Keep the answer concise (bullets).',
       '',
       `User request:\n${task}`,
     ].join('\n'),
-    description: '并行调研：收集大纲与要点',
+    description: '协作调研：收集大纲与要点',
     scenarioId: OFFICE_SCENARIO_ID,
+  };
+}
+
+/** Inject explore notes so office Worker can use them (sequential collaborate path). */
+export function withOfficeResearchNotes(
+  officeSpawn: WorkerSpawnInput,
+  researchNotes: string,
+): WorkerSpawnInput {
+  const notes = researchNotes.trim().slice(0, 6000);
+  if (!notes) return officeSpawn;
+  return {
+    ...officeSpawn,
+    prompt: [
+      officeSpawn.prompt,
+      '',
+      '## Research notes from explore Worker (use these facts/outline in the document)',
+      notes,
+    ].join('\n'),
   };
 }
 

@@ -31,6 +31,7 @@ export {
   resolveOfficeScenarioAction,
   buildOfficeWorkerSpawn,
   buildOfficeExploreAssistSpawn,
+  withOfficeResearchNotes,
   needsOfficeResearchAssist,
   isOfficeTask,
   isOfficeInquiryTask,

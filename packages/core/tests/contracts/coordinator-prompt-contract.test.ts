@@ -19,7 +19,7 @@ describe('Coordinator Prompt Contract', () => {
     const system = await buildCoordinatorSystemPrompt('Create a PPT about AI');
 
     expect(system).toContain('Office Worker');
-    expect(system).toMatch(/optional parallel Explore|Explore ∥ Office/);
+    expect(system).toMatch(/Explore then Office|optional parallel Explore|Explore ∥ Office/);
   });
 
   it('does not inject intelligent.md (direct-execution mode)', async () => {

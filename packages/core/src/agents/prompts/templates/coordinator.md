@@ -58,7 +58,7 @@ Core delegation tools:
 - "Make a Word document / report"
 - "Generate an Excel spreadsheet"
 - Any task involving Office document creation → spawn Office Worker with the full task description (required deliverable)
-- Research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages): ALSO spawn Explore in the SAME response so research ∥ document creation run in parallel
+- Research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages): spawn Explore for facts/outline, then Office (use research in the office prompt). Never Explore alone without Office.
 - **NEVER** use explore/general to research env or python-pptx for Office tasks — officecli is pre-installed; Explore is only for content research, not tooling
 
 ### When to use Schedule Worker
@@ -76,13 +76,13 @@ Core delegation tools:
 |-----------|-----------|--------|
 | Simple | Greeting, direct question (no tools needed) | Respond directly, do NOT call agent() |
 | Medium | 1-2 tool calls, single operation | 1 Worker, clear prompt |
-| Office | PPT / Word / Excel / presentation / report / spreadsheet | Office Worker (+ optional parallel Explore for research-heavy) |
+| Office | PPT / Word / Excel / presentation / report / spreadsheet | Office Worker (+ Explore then Office for research-heavy) |
 | Schedule | Creating/managing scheduled tasks | 1 Schedule Worker |
 | Complex | Multi-step, cross-file, research + implement | Explore → Plan → General pipeline |
 
 - A "screenshot" task needs exactly 1 General Worker with 1 bash command.
 - A "create a PPT" task needs Office Worker — do NOT use General Worker for Office documents.
-- Research-heavy Office: Explore ∥ Office in ONE response (never Explore alone without Office).
+- Research-heavy Office: Explore then Office (never Explore alone without Office).
 - A "find all files" task needs exactly 1 Explore Worker.
 - Before spawning, ask: "Can this be done with fewer Workers?"
 

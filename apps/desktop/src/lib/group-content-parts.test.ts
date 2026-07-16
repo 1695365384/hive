@@ -92,6 +92,27 @@ describe("groupContentParts", () => {
     }
   });
 
+  it("keeps a lane when route precedes consecutive workers", () => {
+    const parts: ContentPart[] = [
+      { type: "route", mode: "delegate", workerTypes: ["explore", "office"] },
+      { type: "worker-start", workerId: "w1", workerType: "explore" },
+      { type: "worker-start", workerId: "w2", workerType: "office" },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped[0]).toMatchObject({ type: "route" });
+    expect(grouped[1]?.type).toBe("worker-lane");
+  });
+
+  it("splits lane when office-progress lands between worker-starts", () => {
+    const parts: ContentPart[] = [
+      { type: "worker-start", workerId: "w1", workerType: "explore" },
+      { type: "office-progress", phase: "creating" },
+      { type: "worker-start", workerId: "w2", workerType: "office" },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped.map((g) => g.type)).toEqual(["worker", "office-progress", "worker"]);
+  });
+
   it("merges consecutive reasoning blocks inside worker", () => {
     const parts: ContentPart[] = [
       { type: "worker-start", workerId: "w1", workerType: "explore" },

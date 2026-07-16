@@ -3,6 +3,7 @@ import {
   createDefaultTaskRouter,
   OFFICE_SCENARIO_ID,
   SCHEDULE_SCENARIO_ID,
+  primaryDelegateSpawn,
   validateWorkerSpawn,
 } from '../../../src/routing/index.js';
 
@@ -28,13 +29,18 @@ describe('TaskRouter', () => {
     }
   });
 
-  it('resolves research-heavy office creation as explore∥office parallel', () => {
+  it('resolves research-heavy office creation as explore+office collaborate', () => {
     const decision = router.resolve('帮我调研竞品并做一个 8 页 PPT');
     expect(decision.action).toBe('delegate');
     if (decision.action === 'delegate') {
       expect(decision.spawns.map((s) => s.type).sort()).toEqual(['explore', 'office']);
       expect(decision.spawns.every((s) => s.scenarioId === OFFICE_SCENARIO_ID)).toBe(true);
+      expect(primaryDelegateSpawn(decision.spawns).type).toBe('office');
     }
+  });
+
+  it('primaryDelegateSpawn rejects empty list', () => {
+    expect(() => primaryDelegateSpawn([])).toThrow(/must not be empty/);
   });
 
   it('returns hint for ambiguous office task', () => {
