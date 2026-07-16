@@ -99,3 +99,4 @@ docs/superpowers/
 # Office artifacts
 *.pptx
 ~$*
+.gstack/
