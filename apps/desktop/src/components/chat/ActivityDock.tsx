@@ -1,14 +1,15 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatDurationMs } from "./activity-labels";
 import { useThrottledElapsed } from "../../hooks/use-throttled-elapsed";
+import { playMotion } from "../../motion";
 import { isDockVisible, useActivityStore } from "../../stores/activity-store";
 
 function ActivityDockInner() {
   const { t } = useTranslation();
   const rollup = useActivityStore((s) => s.rollup);
   const [visible, setVisible] = useState(false);
-  const [entered, setEntered] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const elapsed = useThrottledElapsed(
     rollup.phase === "working" || rollup.phase === "waiting" ? rollup.startedAt : undefined
   );
@@ -22,12 +23,12 @@ function ActivityDockInner() {
   useEffect(() => {
     const show = isDockVisible(rollup);
     setVisible(show);
-    if (show) {
-      const raf = requestAnimationFrame(() => setEntered(true));
-      return () => cancelAnimationFrame(raf);
-    }
-    setEntered(false);
   }, [rollup]);
+
+  useEffect(() => {
+    if (!visible) return;
+    playMotion("activity-dock-enter", rootRef.current);
+  }, [visible]);
 
   useEffect(() => {
     if (rollup.phase !== "idle" || !rollup.fadeIdleAt) return;
@@ -61,7 +62,8 @@ function ActivityDockInner() {
 
   return (
     <div
-      className={`activity-dock activity-dock--${phase} ${entered ? "activity-dock--entered" : ""}`}
+      ref={rootRef}
+      className={`activity-dock activity-dock--${phase} activity-dock--anime`}
       role="status"
       aria-live="polite"
     >

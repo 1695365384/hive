@@ -75,16 +75,19 @@ packages/app/dist/
 coverage/
 *.lcov
 
-.hive
+# Local workspace data (DB, etc.) — keep builtin skills tracked
+.hive/*
+!.hive/skills/
+!.hive/skills/**
+
+# User-installed skills (via hive skill add)
+.hive/skills.local/
 
 # Node.js compile cache
 node-compile-cache/
 
 # esbuild server bundle output
 apps/server/bundle/
-
-# User-installed skills (via hive skill add)
-.hive/skills.local/
 
 # Eval results (promptfoo)
 eval/results/

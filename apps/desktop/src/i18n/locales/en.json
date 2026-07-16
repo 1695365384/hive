@@ -184,6 +184,12 @@
     "mcp": "MCP",
     "skills": "Skills",
     "plugins": "Plugins",
+    "motion": "Motion preview",
+    "motionHint": "Anime.js spike on the desktop shell. Replay with the buttons below — keep only if it feels worth it.",
+    "motionReplayAll": "Replay all",
+    "motionDockSample": "Working · parallel workers · scanning repo",
+    "motionCardSample": "Scanning files…",
+    "motionNote": "Catalog + hive-motion skill landed. Shell: dock / route chip / worker enter / success pulse. HTML demo decks next — not Office PPT.",
     "language": "Language",
     "languageZh": "简体中文",
     "languageEn": "English"

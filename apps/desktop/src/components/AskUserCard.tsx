@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
+import { playMotion } from "../motion";
+import { playEnterUp } from "../motion/presets";
 
 interface AskUserOption {
   label: string;
@@ -17,9 +19,10 @@ interface AskUserCardProps {
 export function AskUserCard({ question, options, onAnswer, onDismiss }: AskUserCardProps) {
   const { t } = useTranslation();
   const [customInput, setCustomInput] = useState("");
-  const [entered, setEntered] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
 
   const handlePick = useCallback(
@@ -33,12 +36,10 @@ export function AskUserCard({ question, options, onAnswer, onDismiss }: AskUserC
   );
 
   useEffect(() => {
-    const raf = requestAnimationFrame(() => setEntered(true));
-    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 180);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearTimeout(focusTimer);
-    };
+    playEnterUp(panelRef.current, { duration: 460 });
+    playMotion("ask-user-options", optionsRef.current);
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 200);
+    return () => window.clearTimeout(focusTimer);
   }, []);
 
   useEffect(() => {
@@ -69,12 +70,12 @@ export function AskUserCard({ question, options, onAnswer, onDismiss }: AskUserC
 
   return (
     <div
-      className={`ask-user ${entered ? "ask-user--entered" : ""} ${submitting ? "ask-user--leaving" : ""}`}
+      className={`ask-user ask-user--anime ${submitting ? "ask-user--leaving" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="ask-user-question"
     >
-      <div className="ask-user__panel">
+      <div ref={panelRef} className="ask-user__panel">
         <header className="ask-user__header">
           <div className="ask-user__eyebrow">
             <span className="ask-user__pulse" aria-hidden />
@@ -95,14 +96,18 @@ export function AskUserCard({ question, options, onAnswer, onDismiss }: AskUserC
         </p>
 
         {options.length > 0 && (
-          <div className="ask-user__options" role="listbox" aria-label={t("askUser.options")}>
+          <div
+            ref={optionsRef}
+            className="ask-user__options"
+            role="listbox"
+            aria-label={t("askUser.options")}
+          >
             {options.map((opt, i) => (
               <button
                 key={`${opt.label}-${i}`}
                 type="button"
                 role="option"
                 className="ask-user__option"
-                style={{ animationDelay: `${60 + i * 40}ms` }}
                 onClick={() => handlePick(opt.label)}
                 disabled={submitting}
               >

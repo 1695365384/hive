@@ -6,6 +6,7 @@ import { ConfigPage } from "./ConfigPage";
 import { PluginPage } from "./PluginPage";
 import { SkillPage } from "./SkillPage";
 import { McpPage } from "./McpPage";
+import { MotionSpikePage } from "./MotionSpikePage";
 import { ChatPage } from "./ChatPage";
 import { LogDrawer } from "../components/LogDrawer";
 import { StatusBar } from "../components/StatusBar";
@@ -20,11 +21,12 @@ import {
   Plug,
   Puzzle,
   Sparkles,
+  Clapperboard,
 } from "lucide-react";
 import type { Session } from "../types/chat";
 import { formatRelativeTime } from "../lib/session-utils";
 
-type SettingsTab = "config" | "mcp" | "skills" | "plugins";
+type SettingsTab = "config" | "mcp" | "skills" | "plugins" | "motion";
 type DrawerHeight = "collapsed" | "half" | "full";
 
 export function Dashboard() {
@@ -284,6 +286,7 @@ function SettingsModal({
     { id: "mcp", label: t("settings.mcp"), icon: <Plug className="w-3.5 h-3.5" /> },
     { id: "skills", label: t("settings.skills"), icon: <Sparkles className="w-3.5 h-3.5" /> },
     { id: "plugins", label: t("settings.plugins"), icon: <Puzzle className="w-3.5 h-3.5" /> },
+    { id: "motion", label: t("settings.motion"), icon: <Clapperboard className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -327,6 +330,7 @@ function SettingsModal({
           {tab === "mcp" && <McpPage />}
           {tab === "skills" && <SkillPage />}
           {tab === "plugins" && <PluginPage />}
+          {tab === "motion" && <MotionSpikePage />}
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 import { TextBlock } from "../TextBlock";
@@ -9,6 +9,7 @@ import { ActivityCard } from "./ActivityCard";
 import { RouteChip } from "./RouteChip";
 import { formatToolLabel } from "./activity-labels";
 import { formatWorkerTitle, formatScenarioLabel } from "./worker-labels";
+import { playMotion } from "../../motion";
 import type { GroupedContent } from "./types";
 
 export type GroupedContentRendererProps = {
@@ -223,16 +224,24 @@ function WorkerLaneBlock({
   part: Extract<GroupedContent, { type: "worker-lane" }>;
 }) {
   const { t } = useTranslation();
+  const gridRef = useRef<HTMLDivElement>(null);
   const running = part.runningCount;
+  const workerKey = part.workers.map((w) => w.workerId).join("|");
   const label =
     running > 0
       ? t("activity.workerLane.running", { count: part.workers.length })
       : t("activity.workerLane.done", { count: part.workers.length });
 
+  useEffect(() => {
+    playMotion("worker-card-enter", gridRef.current, {
+      childSelector: ":scope > .worker-lane__cell",
+    });
+  }, [workerKey]);
+
   return (
     <div className="worker-lane" role="group" aria-label={label}>
       <div className="worker-lane__banner">{label}</div>
-      <div className="worker-lane__grid">
+      <div ref={gridRef} className="worker-lane__grid">
         {part.workers.map((worker) => (
           <div key={worker.workerId} className="worker-lane__cell">
             <WorkerBlock

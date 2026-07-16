@@ -431,6 +431,51 @@ html.desktop-app * {
   filter: blur(0);
 }
 
+.ask-user--anime {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  transition: none;
+}
+
+.ask-user--anime .ask-user__panel {
+  opacity: 0;
+}
+
+.ask-user--anime .ask-user__option {
+  opacity: 0;
+}
+
+.route-chip--anime {
+  opacity: 0;
+}
+
+.motion-spike__stage {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid oklch(0.32 0 0 / 0.6);
+  background: oklch(0.16 0 0 / 0.9);
+}
+
+.motion-spike__btn {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  background: oklch(0.72 0.12 70);
+  color: oklch(0.18 0 0);
+  font-weight: 500;
+}
+
+.motion-spike__btn:hover {
+  filter: brightness(1.05);
+}
+
+.motion-spike__btn--ghost {
+  background: oklch(0.28 0 0);
+  color: oklch(0.85 0 0);
+  border: 1px solid oklch(0.38 0 0);
+}
+
 .ask-user--leaving {
   opacity: 0.55;
   pointer-events: none;
@@ -1544,6 +1589,13 @@ html.desktop-app * {
 .activity-dock--entered {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* anime.js spike: JS owns enter; disable CSS transition fight */
+.activity-dock--anime {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: none;
 }
 
 .activity-dock--idle {

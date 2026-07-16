@@ -184,6 +184,12 @@
     "mcp": "MCP",
     "skills": "技能",
     "plugins": "插件",
+    "motion": "动效预览",
+    "motionHint": "这是 Anime.js 在桌面壳上的试装效果。点下面按钮反复播放，觉得好看再决定要不要正式接入。",
+    "motionReplayAll": "全部重播",
+    "motionDockSample": "处理中 · 多 Worker 并行 · 研究仓库",
+    "motionCardSample": "正在扫文件…",
+    "motionNote": "已接入预设目录 + hive-motion skill。壳层：Dock / 路由标签 / Worker 入场 / 完成脉冲。动态 HTML 演示稿下一期，不是 Office PPT。",
     "language": "界面语言",
     "languageZh": "简体中文",
     "languageEn": "English"

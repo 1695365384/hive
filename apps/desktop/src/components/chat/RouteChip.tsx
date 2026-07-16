@@ -1,5 +1,6 @@
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { playMotion } from "../../motion";
 import { formatScenarioLabel, formatWorkerTitle } from "./worker-labels";
 
 export type RouteMode = "direct" | "inquiry" | "delegate" | "hint";
@@ -14,6 +15,11 @@ export type RouteChipProps = {
 
 function RouteChipInner({ mode, scenarioId, workerType, workerTypes, title }: RouteChipProps) {
   const { t } = useTranslation();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    playMotion("route-chip-enter", rootRef.current);
+  }, [mode, scenarioId, workerType, workerTypes?.join("|"), title]);
 
   const scenario = formatScenarioLabel(scenarioId);
   const types = workerTypes?.length ? workerTypes : workerType ? [workerType] : [];
@@ -53,7 +59,8 @@ function RouteChipInner({ mode, scenarioId, workerType, workerTypes, title }: Ro
 
   return (
     <div
-      className={`route-chip route-chip--${mode}`}
+      ref={rootRef}
+      className={`route-chip route-chip--${mode} route-chip--anime`}
       role="status"
       aria-label={label}
     >
