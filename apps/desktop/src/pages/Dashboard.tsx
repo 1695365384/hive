@@ -317,7 +317,9 @@ function SettingsModal({
             ))}
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label={t("common.close")}
             className="p-1.5 rounded-md text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
           >
             <X className="w-4 h-4" />
