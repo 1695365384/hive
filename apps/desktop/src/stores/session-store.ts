@@ -67,6 +67,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // ── Sessions ──
 
   loadSessions: async () => {
+    if (!get().available) return;
     try {
       const list = await db.listSessions();
       set({ sessions: mapSessions(list) });
@@ -77,6 +78,23 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   createSession: async () => {
     const id = crypto.randomUUID();
+    // Browser / Vite preview: keep sessions in memory so chat still works
+    if (!get().available) {
+      const now = Date.now();
+      const session: Session = {
+        id,
+        title: "New Chat",
+        createdAt: now,
+        updatedAt: now,
+        messageCount: 0,
+      };
+      set((s) => ({
+        sessions: [session, ...s.sessions],
+        currentId: id,
+        error: null,
+      }));
+      return id;
+    }
     try {
       await db.createSession(id);
       await get().loadSessions();
@@ -89,9 +107,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   deleteSession: async (id: string) => {
+    const { available, currentId, sessions } = get();
+    if (!available) {
+      const remaining = sessions.filter((s) => s.id !== id);
+      const nextId = currentId === id ? (remaining[0]?.id ?? null) : currentId;
+      set({ sessions: remaining, currentId: nextId, error: null });
+      return;
+    }
     try {
       await db.deleteSession(id);
-      const { currentId, sessions } = get();
       // If deleting the current session, switch to the next one
       if (currentId === id) {
         const remaining = sessions.filter((s) => s.id !== id);
@@ -105,6 +129,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   renameSession: async (id: string, title: string) => {
+    if (!get().available) {
+      const now = Date.now();
+      set((s) => ({
+        sessions: s.sessions.map((session) =>
+          session.id === id ? { ...session, title, updatedAt: now } : session
+        ),
+        error: null,
+      }));
+      return;
+    }
     try {
       await db.renameSession(id, title);
       await get().loadSessions();
@@ -123,6 +157,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const truncated = text.length > 80
       ? text.slice(0, 80).replace(/\s+\S*$/, '')
       : text;
+    if (!get().available) {
+      await get().renameSession(id, truncated);
+      return;
+    }
     try {
       await db.renameSession(id, truncated);
       await get().loadSessions();
