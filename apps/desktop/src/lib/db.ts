@@ -1,11 +1,15 @@
 /**
- * db.ts — Local SQLite database service
+ * db.ts — Local session + message storage
  *
- * Uses @tauri-apps/plugin-sql for persistent session + message storage.
- * Falls back gracefully when running in browser (dev:ui) where Tauri APIs are unavailable.
+ * Tauri: @tauri-apps/plugin-sql (sqlite:hive.db)
+ * Browser / Vite preview: localStorage via browser-db (survives reload)
  */
 
 import type Database from "@tauri-apps/plugin-sql";
+import type { MessageRow, SessionRow } from "./db-types";
+import * as browser from "./browser-db";
+
+export type { MessageRow, SessionRow };
 
 let db: Database | null = null;
 let _isTauri = false;
@@ -15,7 +19,11 @@ function isTauriEnv(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** Get or initialize the database connection */
+function useBrowserStore(): boolean {
+  return !isTauriEnv();
+}
+
+/** Get or initialize the database connection (Tauri only) */
 async function getDb(): Promise<Database> {
   if (db) return db;
 
@@ -28,7 +36,6 @@ async function getDb(): Promise<Database> {
   const { default: SqlDatabase } = await import("@tauri-apps/plugin-sql");
   db = await SqlDatabase.load("sqlite:hive.db");
 
-  // Migrate: create tables
   await db.execute(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
@@ -61,15 +68,8 @@ async function getDb(): Promise<Database> {
 // Session CRUD
 // ============================================
 
-export interface SessionRow {
-  id: string;
-  title: string;
-  created_at: number;
-  updated_at: number;
-  message_count: number;
-}
-
 export async function listSessions(): Promise<SessionRow[]> {
+  if (useBrowserStore()) return browser.browserListSessions();
   const d = await getDb();
   return d.select<SessionRow[]>(
     `SELECT s.id, s.title, s.created_at, s.updated_at,
@@ -82,6 +82,7 @@ export async function listSessions(): Promise<SessionRow[]> {
 }
 
 export async function getSession(id: string): Promise<SessionRow | null> {
+  if (useBrowserStore()) return browser.browserGetSession(id);
   const d = await getDb();
   const rows = await d.select<SessionRow[]>(
     `SELECT s.id, s.title, s.created_at, s.updated_at,
@@ -96,6 +97,10 @@ export async function getSession(id: string): Promise<SessionRow | null> {
 }
 
 export async function createSession(id: string, title?: string): Promise<void> {
+  if (useBrowserStore()) {
+    browser.browserCreateSession(id, title);
+    return;
+  }
   const d = await getDb();
   const now = Date.now();
   await d.execute(
@@ -105,12 +110,20 @@ export async function createSession(id: string, title?: string): Promise<void> {
 }
 
 export async function deleteSession(id: string): Promise<void> {
+  if (useBrowserStore()) {
+    browser.browserDeleteSession(id);
+    return;
+  }
   const d = await getDb();
   await d.execute("DELETE FROM messages WHERE session_id = ?", [id]);
   await d.execute("DELETE FROM sessions WHERE id = ?", [id]);
 }
 
 export async function renameSession(id: string, title: string): Promise<void> {
+  if (useBrowserStore()) {
+    browser.browserRenameSession(id, title);
+    return;
+  }
   const d = await getDb();
   await d.execute(
     "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
@@ -119,6 +132,10 @@ export async function renameSession(id: string, title: string): Promise<void> {
 }
 
 export async function touchSession(id: string): Promise<void> {
+  if (useBrowserStore()) {
+    browser.browserTouchSession(id);
+    return;
+  }
   const d = await getDb();
   await d.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", [Date.now(), id]);
 }
@@ -127,15 +144,8 @@ export async function touchSession(id: string): Promise<void> {
 // Messages
 // ============================================
 
-export interface MessageRow {
-  id: string;
-  session_id: string;
-  role: string;
-  content: string;
-  created_at: number;
-}
-
 export async function listMessages(sessionId: string): Promise<MessageRow[]> {
+  if (useBrowserStore()) return browser.browserListMessages(sessionId);
   const d = await getDb();
   return d.select<MessageRow[]>(
     "SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC",
@@ -150,6 +160,10 @@ export async function insertMessage(
   contentJson: string,
   createdAt: number
 ): Promise<void> {
+  if (useBrowserStore()) {
+    browser.browserInsertMessage(id, sessionId, role, contentJson, createdAt);
+    return;
+  }
   const d = await getDb();
   await d.execute(
     "INSERT OR IGNORE INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -161,6 +175,10 @@ export async function updateMessageContent(
   messageId: string,
   contentJson: string
 ): Promise<void> {
+  if (useBrowserStore()) {
+    browser.browserUpdateMessageContent(messageId, contentJson);
+    return;
+  }
   const d = await getDb();
   await d.execute("UPDATE messages SET content = ? WHERE id = ?", [
     contentJson,
@@ -169,11 +187,15 @@ export async function updateMessageContent(
 }
 
 export async function deleteSessionMessages(sessionId: string): Promise<void> {
+  if (useBrowserStore()) {
+    browser.browserDeleteSessionMessages(sessionId);
+    return;
+  }
   const d = await getDb();
   await d.execute("DELETE FROM messages WHERE session_id = ?", [sessionId]);
 }
 
-/** Check if the database is available (Tauri mode) */
+/** True when Tauri SQLite is active (false in Vite preview — use browser-db instead). */
 export function isDbAvailable(): boolean {
   return _isTauri || isTauriEnv();
 }
