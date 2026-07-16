@@ -181,7 +181,7 @@
   "settings": {
     "title": "设置",
     "provider": "提供商",
-    "status": "状态",
+    "mcp": "MCP",
     "skills": "技能",
     "plugins": "插件",
     "language": "界面语言",
@@ -253,6 +253,28 @@
     "installFailed": "安装失败",
     "uninstallFailed": "卸载失败",
     "saveFailed": "保存失败"
+  },
+  "mcp": {
+    "title": "MCP 服务",
+    "subtitle": "{{title}} · {{count}} 项精选",
+    "catalog": "精选目录 ({{count}})",
+    "refresh": "刷新",
+    "loading": "加载目录中…",
+    "noCatalog": "暂无可用 MCP",
+    "enable": "启用",
+    "enabling": "启用中…",
+    "disable": "禁用",
+    "builtin": "内置",
+    "builtinOn": "已启用 · 内置",
+    "comingSoon": "即将上线",
+    "connected": "已连接 ({{count}})",
+    "noConnected": "暂无已连接服务",
+    "online": "在线",
+    "offline": "离线",
+    "toolCount": "{{count}} 个工具",
+    "loadFailed": "加载 MCP 目录失败",
+    "enableFailed": "启用失败",
+    "disableFailed": "禁用失败"
   },
   "skills": {
     "title": "技能",

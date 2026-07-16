@@ -5,7 +5,7 @@ import { useSessionStore } from "../stores/session-store";
 import { ConfigPage } from "./ConfigPage";
 import { PluginPage } from "./PluginPage";
 import { SkillPage } from "./SkillPage";
-import { StatusPage } from "./StatusPage";
+import { McpPage } from "./McpPage";
 import { ChatPage } from "./ChatPage";
 import { LogDrawer } from "../components/LogDrawer";
 import { StatusBar } from "../components/StatusBar";
@@ -17,14 +17,14 @@ import {
   X,
   MessageSquare,
   Settings,
-  Activity,
+  Plug,
   Puzzle,
   Sparkles,
 } from "lucide-react";
 import type { Session } from "../types/chat";
 import { formatRelativeTime } from "../lib/session-utils";
 
-type SettingsTab = "config" | "status" | "skills" | "plugins";
+type SettingsTab = "config" | "mcp" | "skills" | "plugins";
 type DrawerHeight = "collapsed" | "half" | "full";
 
 export function Dashboard() {
@@ -281,7 +281,7 @@ function SettingsModal({
   const { t } = useTranslation();
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: "config", label: t("settings.provider"), icon: <Settings className="w-3.5 h-3.5" /> },
-    { id: "status", label: t("settings.status"), icon: <Activity className="w-3.5 h-3.5" /> },
+    { id: "mcp", label: t("settings.mcp"), icon: <Plug className="w-3.5 h-3.5" /> },
     { id: "skills", label: t("settings.skills"), icon: <Sparkles className="w-3.5 h-3.5" /> },
     { id: "plugins", label: t("settings.plugins"), icon: <Puzzle className="w-3.5 h-3.5" /> },
   ];
@@ -324,7 +324,7 @@ function SettingsModal({
         {/* Modal content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           {tab === "config" && <ConfigPage />}
-          {tab === "status" && <StatusPage />}
+          {tab === "mcp" && <McpPage />}
           {tab === "skills" && <SkillPage />}
           {tab === "plugins" && <PluginPage />}
         </div>

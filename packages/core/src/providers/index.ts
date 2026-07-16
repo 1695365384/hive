@@ -21,6 +21,8 @@ export {
 export type {
   ProviderConfig,
   McpServerConfig,
+  McpStdioServerConfig,
+  McpHttpServerConfig,
   ModelSpec,
   ProviderPreset,
   ConfigSource,
@@ -31,6 +33,11 @@ export type {
   ProviderRegistration,
   PreprocessRule,
   ModelsDevProvider,
+} from './types.js';
+
+export {
+  isHttpMcpConfig,
+  normalizeMcpServerConfig,
 } from './types.js';
 
 // ============================================

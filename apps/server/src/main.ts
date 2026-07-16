@@ -63,6 +63,24 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     console.warn('[officecli] Setup failed:', err instanceof Error ? err.message : err);
   }
 
+  // ---- 1c. 加载用户持久化 MCP（跳过 officecli）----
+  try {
+    const { loadPersistedMcpServersIntoManager } = await import('@bundy-lmw/hive-core');
+    const result = await loadPersistedMcpServersIntoManager(context.agent.context.mcpManager, {
+      onError: (serverId, error) => {
+        console.warn(
+          `[mcp] Failed to restore '${serverId}':`,
+          error instanceof Error ? error.message : error,
+        );
+      },
+    });
+    if (result.loaded.length > 0) {
+      console.log(`[mcp] Restored persisted servers: ${result.loaded.join(', ')}`);
+    }
+  } catch (err) {
+    console.warn('[mcp] Persist reload failed:', err instanceof Error ? err.message : err);
+  }
+
   // ---- 2. Create WS Handlers (inject HiveLogger, no overrideConsole) ----
   const { WebSocketServer } = await import('ws')
   const { createAdminWsHandler } = await import('./gateway/ws/admin-handler.js')

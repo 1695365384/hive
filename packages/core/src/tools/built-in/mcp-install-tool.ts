@@ -16,13 +16,15 @@
 
 import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness } from '../harness/with-harness.js';
 import type { RawTool } from '../harness/with-harness.js';
-import { DEFAULT_WORKSPACE_DIR } from '../../workspace/index.js';
 import type { McpManager } from '../../mcp/McpManager.js';
+import {
+  loadPersistedMcpServers,
+  removePersistedMcpServer,
+  savePersistedMcpServers,
+} from '../../mcp/mcp-config-store.js';
 import type { InstallConfirmCallback } from './skill-install-tool.js';
 
 // ============================================
@@ -77,35 +79,6 @@ const mcpInstallInputSchema = z.object({
 export type McpInstallToolInput = z.infer<typeof mcpInstallInputSchema>;
 
 // ============================================
-// 配置存储
-// ============================================
-
-function getMcpConfigPath(): string {
-  return path.resolve(process.cwd(), DEFAULT_WORKSPACE_DIR, 'mcp-servers.json');
-}
-
-function loadMcpServersConfig(): Record<string, { command: string; args?: string[]; env?: Record<string, string> }> {
-  const configPath = getMcpConfigPath();
-  if (!fs.existsSync(configPath)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  } catch {
-    return {};
-  }
-}
-
-function saveMcpServersConfig(
-  servers: Record<string, { command: string; args?: string[]; env?: Record<string, string> }>,
-): void {
-  const configPath = getMcpConfigPath();
-  const dir = path.dirname(configPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(configPath, JSON.stringify(servers, null, 2), 'utf-8');
-}
-
-// ============================================
 // RawTool
 // ============================================
 
@@ -150,18 +123,17 @@ export function createRawMcpInstallTool(): RawTool<McpInstallToolInput> {
           }
 
           // 从配置中移除
-          const configs = loadMcpServersConfig();
+          const configs = loadPersistedMcpServers();
           if (!configs[serverId]) {
             return { ok: false, code: 'EXEC_ERROR', error: `MCP server "${serverId}" is not installed.` };
           }
 
-          delete configs[serverId];
-          saveMcpServersConfig(configs);
+          const remaining = removePersistedMcpServer(serverId);
 
           // 从运行中移除
           await mcpManager.removeServer(serverId);
 
-          mcpServersChangedCallback?.(configs);
+          mcpServersChangedCallback?.(remaining);
 
           return { ok: true, code: 'OK', data: `MCP server "${serverId}" removed.` };
         }
@@ -182,12 +154,12 @@ export function createRawMcpInstallTool(): RawTool<McpInstallToolInput> {
         }
 
         // 保存配置
-        const configs = loadMcpServersConfig();
-        configs[serverId] = { command, args, env };
-        saveMcpServersConfig(configs);
+        const configs = loadPersistedMcpServers();
+        configs[serverId] = { transport: 'stdio', command, args, env };
+        savePersistedMcpServers(configs);
 
         // 连接到 MCP 服务器
-        await mcpManager.addServer(serverId, { command, args, env });
+        await mcpManager.addServer(serverId, { transport: 'stdio', command, args, env });
 
         const serverInfo = mcpManager.getServerInfo(serverId);
         const toolNames = serverInfo?.tools.map((t) => t.name) ?? [];
