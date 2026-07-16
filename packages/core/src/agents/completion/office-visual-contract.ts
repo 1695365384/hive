@@ -4,10 +4,18 @@
  */
 
 import type { TaskTrace } from './types.js';
-import { inspectPptxZip } from './office-slide-count.js';
+import { extractExpectedSlideCount, inspectPptxZip } from './office-slide-count.js';
 
 export const FAKE_CHART_PREFIX = '[FAKE_CHART]';
 export const LAYOUT_ISSUES_PREFIX = '[LAYOUT_ISSUES]';
+
+export type OfficeProgressPhase =
+  | 'routed'
+  | 'creating'
+  | 'adding_slide'
+  | 'validating'
+  | 'delivering'
+  | 'blocked';
 
 /** Positive: task needs chart or embedded picture in the deck */
 const POSITIVE_PATTERNS: RegExp[] = [
@@ -67,6 +75,69 @@ export function hasDataVisualIntent(task: string): boolean {
   if (!task.trim()) return false;
   if (NEGATIVE_PATTERNS.some(re => re.test(task))) return false;
   return POSITIVE_PATTERNS.some(re => re.test(task));
+}
+
+const DIAGRAM_PATTERNS: RegExp[] = [
+  /架构图/,
+  /流程图/,
+  /时序图/,
+  /泳道/,
+  /roadmap\s*图/i,
+  /org\s*chart/i,
+  /\barchitecture\b/i,
+  /\bflowchart\b/i,
+  /sequence\s*diagram/i,
+];
+
+/** Architecture / process diagram intent — not a "simple text deck". */
+export function hasDiagramIntent(task: string): boolean {
+  if (!task.trim()) return false;
+  return DIAGRAM_PATTERNS.some(re => re.test(task));
+}
+
+/**
+ * Request-side simple deck: explicit ≤3 pages, no data/diagram intent.
+ * Unspecified page count is NOT simple (progress only, keep hard gates).
+ */
+export function isSimpleOfficeDeck(task: string): boolean {
+  const expected = extractExpectedSlideCount(task);
+  if (expected == null || expected < 1 || expected > 3) return false;
+  if (hasDataVisualIntent(task)) return false;
+  if (hasDiagramIntent(task)) return false;
+  return true;
+}
+
+/** Infer progress phase from a tool name + input (bash/officecli heuristics). */
+export function inferOfficeProgressPhase(
+  toolName: string,
+  input: unknown,
+): OfficeProgressPhase | null {
+  const name = toolName.toLowerCase();
+  if (name === 'send-file' || name.includes('send-file') || name.includes('sendfile')) {
+    return 'delivering';
+  }
+  const blob = `${name} ${safeString(input)}`.toLowerCase();
+  if (/\bofficecli\b/.test(blob) || /\.pptx\b/.test(blob) || name.includes('office')) {
+    if (/\bview\b/.test(blob) || /\bvalidate\b/.test(blob)) return 'validating';
+    if (/\bcreate\b/.test(blob)) return 'creating';
+    if (/\badd\b/.test(blob) && /\bslide\b/.test(blob)) return 'adding_slide';
+    if (/\badd\b/.test(blob)) return 'adding_slide';
+  }
+  if (name === 'bash' || name === 'shell') {
+    if (/\bofficecli\b/.test(blob) && /\bview\b/.test(blob)) return 'validating';
+    if (/\bofficecli\b/.test(blob) && /\bcreate\b/.test(blob)) return 'creating';
+    if (/\bofficecli\b/.test(blob) && /\badd\b/.test(blob)) return 'adding_slide';
+  }
+  return null;
+}
+
+export function isOfficeRouteProgress(
+  scenarioId?: string,
+  workerType?: string,
+): boolean {
+  if (workerType === 'office') return true;
+  if (!scenarioId) return false;
+  return /office/i.test(scenarioId);
 }
 
 /**

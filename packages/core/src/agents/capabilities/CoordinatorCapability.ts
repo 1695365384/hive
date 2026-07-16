@@ -87,6 +87,14 @@ export interface DispatchOptions {
     workerType?: string;
     title?: string;
   }) => void;
+  /** Office PPT 进度（routed / phases / blocked） */
+  onOfficeProgress?: (progress: {
+    phase: 'routed' | 'creating' | 'adding_slide' | 'validating' | 'delivering' | 'blocked';
+    slide?: number;
+    slideTotal?: number;
+    message?: string;
+    workerId?: string;
+  }) => void;
   /** 文本输出回调 */
   onText?: (text: string) => void;
   /** 工具调用回调 */
@@ -300,6 +308,10 @@ export class CoordinatorCapability implements AgentCapability {
                 .filter(r => !r.passed)
                 .map(r => r.message)
                 .join('; ');
+              options?.onOfficeProgress?.({
+                phase: 'blocked',
+                message: reasons.slice(0, 240) || '需要修正后才能完成',
+              });
               resultText = this.formatOfficeIncompleteMessage(task, reasons);
             }
             return await this.finalizeTask(
@@ -391,6 +403,12 @@ export class CoordinatorCapability implements AgentCapability {
             .filter(r => !r.passed)
             .map(r => r.message)
             .join('; ');
+          if (isOfficeTask(task)) {
+            options?.onOfficeProgress?.({
+              phase: 'blocked',
+              message: reasons.slice(0, 240) || '需要修正后才能完成',
+            });
+          }
           resultText = this.formatOfficeIncompleteMessage(task, reasons, final);
         }
 

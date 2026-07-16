@@ -29,6 +29,13 @@ import { FileMemory } from '../memory/FileMemory.js';
 import { setRememberCallback } from '../tools/built-in/remember-tool.js';
 import { SessionId } from './SessionId.js';
 import { ArtifactEmitter } from '../artifacts/ArtifactEmitter.js';
+import {
+  inferOfficeProgressPhase,
+} from '../agents/completion/office-visual-contract.js';
+import {
+  decideWorkerFinalizations,
+  type OpenWorker,
+} from '../agents/completion/office-worker-finalize.js';
 import type {
   Server,
   ServerOptions,
@@ -97,6 +104,14 @@ class ServerImpl implements Server {
   private streamingHandlers: Set<StreamingHandler> = new Set();
   private fileHandlers: Set<FileHandler> = new Set();
   private artifactEmitter: ArtifactEmitter;
+
+  /** Per-session open workers (awaiting worker-complete) */
+  private openWorkersBySession: Map<string, Map<string, OpenWorker>> = new Map();
+  /** Last streaming activity timestamp per session */
+  private sessionLastActivityAt: Map<string, number> = new Map();
+  /** Heartbeat pollers */
+  private sessionHeartbeatTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
+  private static readonly WORKER_SILENCE_MS = 30_000;
 
   /** Reasoning 防抖状态：sessionId → { buffer, timer, workerId?, workerType? } */
   private reasoningBuffers: Map<string, { buffer: string; timer: ReturnType<typeof setTimeout>; workerId?: string; workerType?: string }> = new Map();
@@ -386,9 +401,109 @@ class ServerImpl implements Server {
   // ============================================
 
   private emitStreaming(event: StreamingEventUnion): void {
+    this.sessionLastActivityAt.set(event.sessionId, Date.now());
     for (const handler of this.streamingHandlers) {
       try { handler(event); } catch (e) { this.logger.error('[server] StreamingHandler error:', e); }
     }
+  }
+
+  private emitOfficeProgress(
+    sessionId: string,
+    progress: {
+      phase: 'routed' | 'creating' | 'adding_slide' | 'validating' | 'delivering' | 'blocked';
+      slide?: number;
+      slideTotal?: number;
+      message?: string;
+      workerId?: string;
+    },
+  ): void {
+    this.logger.info(`[agent] [office-progress] ${progress.phase}${progress.message ? `: ${progress.message}` : ''}`);
+    this.emitStreaming({
+      sessionId,
+      type: 'office-progress',
+      phase: progress.phase,
+      slide: progress.slide,
+      slideTotal: progress.slideTotal,
+      message: progress.message,
+      workerId: progress.workerId,
+    });
+  }
+
+  private trackWorkerStart(sessionId: string, workerId: string, workerType: string): void {
+    let map = this.openWorkersBySession.get(sessionId);
+    if (!map) {
+      map = new Map();
+      this.openWorkersBySession.set(sessionId, map);
+    }
+    map.set(workerId, { workerId, workerType });
+  }
+
+  private trackWorkerComplete(sessionId: string, workerId: string): void {
+    this.openWorkersBySession.get(sessionId)?.delete(workerId);
+  }
+
+  private startSessionHeartbeat(sessionId: string): void {
+    this.clearSessionHeartbeat(sessionId);
+    this.sessionLastActivityAt.set(sessionId, Date.now());
+    const timer = setInterval(() => {
+      const last = this.sessionLastActivityAt.get(sessionId) ?? 0;
+      const silent = Date.now() - last >= ServerImpl.WORKER_SILENCE_MS;
+      const inFlight = this.activeAbortControllers.has(sessionId);
+      // Hang while dispatch alive but no stream for 30s → force-fail open workers
+      if (silent && inFlight) {
+        const open = [...(this.openWorkersBySession.get(sessionId)?.values() ?? [])];
+        if (open.length === 0) return;
+        this.logger.warn(`[server] worker heartbeat timeout for ${sessionId} (${open.length} open)`);
+        this.finalizeOpenWorkers(sessionId, 'heartbeat_timeout');
+      }
+    }, 5_000);
+    this.sessionHeartbeatTimers.set(sessionId, timer);
+  }
+
+  private clearSessionHeartbeat(sessionId: string): void {
+    const t = this.sessionHeartbeatTimers.get(sessionId);
+    if (t) clearInterval(t);
+    this.sessionHeartbeatTimers.delete(sessionId);
+  }
+
+  private finalizeOpenWorkers(
+    sessionId: string,
+    reason: 'turn_end' | 'heartbeat_timeout',
+    opts?: { turnError?: string; hasOfficeArtifact?: boolean },
+  ): void {
+    const map = this.openWorkersBySession.get(sessionId);
+    if (!map || map.size === 0) return;
+    const open = [...map.values()];
+    const decisions = decideWorkerFinalizations(open, {
+      reason,
+      turnError: opts?.turnError,
+      hasOfficeArtifact: opts?.hasOfficeArtifact,
+    });
+    for (const d of decisions) {
+      this.emitStreaming({
+        sessionId,
+        type: 'worker-complete',
+        workerId: d.workerId,
+        workerType: d.workerType,
+        success: d.success,
+        error: d.error,
+        duration: 0,
+      });
+      map.delete(d.workerId);
+    }
+  }
+
+  private maybeEmitOfficeToolProgress(
+    sessionId: string,
+    toolName: string,
+    input: unknown,
+    workerId?: string,
+    workerType?: string,
+  ): void {
+    if (workerType && workerType !== 'office') return;
+    const phase = inferOfficeProgressPhase(toolName, input);
+    if (!phase) return;
+    this.emitOfficeProgress(sessionId, { phase, workerId });
   }
 
   /**
@@ -400,6 +515,7 @@ class ServerImpl implements Server {
     const summary = formatToolInput(toolName, input);
     this.logger.info(`[agent] [tool] ${toolName} ${summary}`);
     this.emitStreaming({ sessionId, type: 'tool-call', tool: toolName, input, workerId, workerType } as StreamingEventUnion);
+    this.maybeEmitOfficeToolProgress(sessionId, toolName, input, workerId, workerType);
   }
 
   /**
@@ -504,6 +620,7 @@ class ServerImpl implements Server {
       workerHookIds.push(
         this.agent.context.hookRegistry.on('worker:start', (ctx: any) => {
           this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} started${ctx.description ? `: ${ctx.description}` : ''}`);
+          this.trackWorkerStart(sessionKey, ctx.workerId, ctx.workerType);
           this.emitStreaming({
             sessionId: sessionKey,
             type: 'worker-start',
@@ -553,6 +670,7 @@ class ServerImpl implements Server {
         this.agent.context.hookRegistry.on('worker:complete', (ctx: any) => {
           const status = ctx.success ? 'completed' : 'failed';
           this.logger.info(`[agent] [worker:${ctx.workerId}] ${ctx.workerType} ${status} (${ctx.duration}ms)${ctx.error ? ` — ${ctx.error}` : ''}`);
+          this.trackWorkerComplete(sessionKey, ctx.workerId);
           this.emitStreaming({ sessionId: sessionKey, type: 'worker-complete', workerId: ctx.workerId, workerType: ctx.workerType, success: ctx.success, error: ctx.error, duration: ctx.duration });
           return { proceed: true };
         }),
@@ -560,6 +678,7 @@ class ServerImpl implements Server {
 
       // Notify streaming subscribers that execution has started
       this.emitStreaming({ sessionId: sessionKey, type: 'start' });
+      this.startSessionHeartbeat(sessionKey);
 
       try {
         const result = await this.agent.dispatch(channelMessage.content, {
@@ -582,6 +701,10 @@ class ServerImpl implements Server {
               workerType: route.workerType,
               title: route.title,
             });
+            // routed progress is emitted via onOfficeProgress from Coordinator on office delegate
+          },
+          onOfficeProgress: (progress) => {
+            this.emitOfficeProgress(sessionKey, progress);
           },
           onReasoning: (text) => {
             this.emitReasoningDebounced(sessionKey, text);
@@ -607,11 +730,20 @@ class ServerImpl implements Server {
 
         await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, replyText, replyType);
 
+        this.finalizeOpenWorkers(sessionKey, 'turn_end', {
+          turnError: result.success ? undefined : (result.error || 'failed'),
+          hasOfficeArtifact: !!result.success,
+        });
+
         this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled: abortController.signal.aborted, error: result.error, text: replyText });
 
         this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
       } finally {
         this.flushAllReasoning(sessionKey);
+        this.clearSessionHeartbeat(sessionKey);
+        this.finalizeOpenWorkers(sessionKey, 'turn_end', { turnError: 'incomplete' });
+        this.openWorkersBySession.delete(sessionKey);
+        this.sessionLastActivityAt.delete(sessionKey);
         for (const hookId of workerHookIds) {
           this.agent.context.hookRegistry.off(hookId);
         }

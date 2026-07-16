@@ -36,6 +36,8 @@ export function GroupedContentRenderer({
           title={part.title}
         />
       );
+    case "office-progress":
+      return <OfficeProgressBanner part={part} />;
     case "reasoning":
       return <ThinkingCard text={part.text} isStreaming={isReasoningStreaming} />;
     case "text":
@@ -172,6 +174,44 @@ function countWorkerSteps(children: GroupedContent[]): number {
     else if (child.type === "tool-batch") n += child.count;
   }
   return n;
+}
+
+const OFFICE_PROGRESS_LABEL: Record<
+  "routed" | "creating" | "adding_slide" | "validating" | "delivering" | "blocked",
+  string
+> = {
+  routed: "已交给 Office",
+  creating: "正在建稿",
+  adding_slide: "正在加页",
+  validating: "检查版式",
+  delivering: "正在交付",
+  blocked: "需要修正",
+};
+
+function OfficeProgressBanner({
+  part,
+}: {
+  part: Extract<GroupedContent, { type: "office-progress" }>;
+}) {
+  const base = OFFICE_PROGRESS_LABEL[part.phase] ?? part.phase;
+  let label = base;
+  if (part.phase === "adding_slide" && part.slide != null) {
+    label =
+      part.slideTotal != null
+        ? `第 ${part.slide}/${part.slideTotal} 页`
+        : `第 ${part.slide} 页`;
+  }
+  if (part.phase === "blocked" && part.message) {
+    label = part.message;
+  }
+  return (
+    <div
+      className={`office-progress-banner${part.phase === "blocked" ? " office-progress-banner--blocked" : ""}`}
+      role="status"
+    >
+      {label}
+    </div>
+  );
 }
 
 function WorkerBlockInner({

@@ -26,6 +26,15 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
       };
       activeWorkers.set(part.workerId, group);
       result.push(group);
+    } else if (part.type === "office-progress") {
+      result.push({
+        type: "office-progress",
+        phase: part.phase,
+        slide: part.slide,
+        slideTotal: part.slideTotal,
+        message: part.message,
+        workerId: part.workerId,
+      });
     } else if (part.type === "worker-complete") {
       const group = activeWorkers.get(part.workerId);
       if (group) {

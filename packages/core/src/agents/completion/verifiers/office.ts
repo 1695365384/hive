@@ -13,6 +13,7 @@ import {
   LAYOUT_ISSUES_PREFIX,
   findLayoutIssueInTrace,
   hasDataVisualIntent,
+  isSimpleOfficeDeck,
 } from '../office-visual-contract.js';
 
 async function fileExists(path: string): Promise<boolean> {
@@ -98,7 +99,9 @@ export const officeCompletionVerifier: CompletionVerifier = {
         }
       }
 
-      if (hasDataVisualIntent(trace.task)) {
+      // Explicit ≤3-page text decks: skip FAKE_CHART (isSimpleOfficeDeck).
+      // Data/diagram decks still require real chart/media.
+      if (!isSimpleOfficeDeck(trace.task) && hasDataVisualIntent(trace.task)) {
         if (!zip.ok) {
           return {
             verifierId: 'office',

@@ -32,6 +32,14 @@ export type GroupedContent =
       error?: string;
     }
   | {
+      type: "office-progress";
+      phase: "routed" | "creating" | "adding_slide" | "validating" | "delivering" | "blocked";
+      slide?: number;
+      slideTotal?: number;
+      message?: string;
+      workerId?: string;
+    }
+  | {
       type: "file-attachment";
       name: string;
       size: number;

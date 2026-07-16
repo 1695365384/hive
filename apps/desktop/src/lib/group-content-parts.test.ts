@@ -44,6 +44,17 @@ describe("groupContentParts", () => {
     expect(grouped[1]).toMatchObject({ type: "text", text: "你好" });
   });
 
+  it("passes through office-progress parts", () => {
+    const parts: ContentPart[] = [
+      { type: "office-progress", phase: "routed" },
+      { type: "office-progress", phase: "blocked", message: "缺真图" },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped).toHaveLength(2);
+    expect(grouped[0]).toMatchObject({ type: "office-progress", phase: "routed" });
+    expect(grouped[1]).toMatchObject({ type: "office-progress", phase: "blocked", message: "缺真图" });
+  });
+
   it("nests tool calls under active worker", () => {
     const parts: ContentPart[] = [
       { type: "worker-start", workerId: "w1", workerType: "explore" },
