@@ -1623,6 +1623,30 @@ html.desktop-app * {
   background: oklch(0.97 0.02 35);
 }
 
+.worker-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0 0 0.5rem;
+}
+
+.worker-lane__banner {
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: oklch(0.45 0.03 145);
+}
+
+.worker-lane__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.worker-lane__cell {
+  min-width: 0;
+}
+
 .route-chip--hint .route-chip__mark {
   background: oklch(0.65 0.02 75);
 }

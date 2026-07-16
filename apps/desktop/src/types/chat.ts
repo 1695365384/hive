@@ -8,6 +8,7 @@ export type ContentPart =
       mode: "direct" | "inquiry" | "delegate" | "hint";
       scenarioId?: string;
       workerType?: string;
+      workerTypes?: string[];
       title?: string;
     }
   | { type: "worker-start"; workerId: string; workerType: string; description?: string; scenarioId?: string }
@@ -38,6 +39,7 @@ export type GroupedContent =
       mode: "direct" | "inquiry" | "delegate" | "hint";
       scenarioId?: string;
       workerType?: string;
+      workerTypes?: string[];
       title?: string;
     }
   | { type: "worker"; workerId: string; workerType: string; description?: string; scenarioId?: string; children: GroupedContent[]; status: "running" | "completed" | "failed"; duration?: number; error?: string }

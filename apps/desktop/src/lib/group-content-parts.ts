@@ -12,6 +12,7 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
         mode: part.mode,
         scenarioId: part.scenarioId,
         workerType: part.workerType,
+        workerTypes: part.workerTypes,
         title: part.title,
       });
     } else if (part.type === "worker-start") {
@@ -64,7 +65,40 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
     }
   }
 
-  return groupImageGalleries(dedupeTopLevelFileAttachments(mergeToolBatches(mergeReasoning(result))));
+  return groupWorkerLanes(
+    groupImageGalleries(dedupeTopLevelFileAttachments(mergeToolBatches(mergeReasoning(result)))),
+  );
+}
+
+/** ≥2 consecutive workers → side-by-side collaboration lane */
+function groupWorkerLanes(items: GroupedContent[]): GroupedContent[] {
+  const out: GroupedContent[] = [];
+  let run: Array<GroupedContent & { type: "worker" }> = [];
+
+  const flush = () => {
+    if (run.length === 0) return;
+    if (run.length === 1) {
+      out.push(run[0]!);
+    } else {
+      out.push({
+        type: "worker-lane",
+        workers: [...run],
+        runningCount: run.filter((w) => w.status === "running").length,
+      });
+    }
+    run = [];
+  };
+
+  for (const item of items) {
+    if (item.type === "worker") {
+      run.push(item);
+    } else {
+      flush();
+      out.push(item);
+    }
+  }
+  flush();
+  return out;
 }
 
 function isImageAttachment(item: GroupedContent): item is GroupedContent & {

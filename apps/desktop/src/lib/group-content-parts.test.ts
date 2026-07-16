@@ -71,6 +71,27 @@ describe("groupContentParts", () => {
     }
   });
 
+  it("groups consecutive workers into a collaboration lane", () => {
+    const parts: ContentPart[] = [
+      { type: "worker-start", workerId: "w1", workerType: "explore", description: "调研" },
+      { type: "worker-start", workerId: "w2", workerType: "office", description: "做页" },
+      { type: "tool-call", toolCallId: "1", toolName: "Read", args: {}, workerId: "w1" },
+      { type: "tool-call", toolCallId: "2", toolName: "bash", args: {}, workerId: "w2" },
+    ];
+
+    const grouped = groupContentParts(parts);
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].type).toBe("worker-lane");
+    if (grouped[0].type === "worker-lane") {
+      expect(grouped[0].workers).toHaveLength(2);
+      expect(grouped[0].runningCount).toBe(2);
+      expect(grouped[0].workers[0]!.workerId).toBe("w1");
+      expect(grouped[0].workers[1]!.workerId).toBe("w2");
+      expect(grouped[0].workers[0]!.children).toHaveLength(1);
+      expect(grouped[0].workers[1]!.children).toHaveLength(1);
+    }
+  });
+
   it("merges consecutive reasoning blocks inside worker", () => {
     const parts: ContentPart[] = [
       { type: "worker-start", workerId: "w1", workerType: "explore" },

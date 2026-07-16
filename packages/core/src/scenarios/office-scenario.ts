@@ -8,5 +8,7 @@ export {
   matchesOfficeScenario,
   resolveOfficeScenarioAction,
   buildOfficeWorkerSpawn,
+  buildOfficeExploreAssistSpawn,
+  needsOfficeResearchAssist,
   type OfficeScenarioAction,
 } from '../routing/scenarios/office.scenario.js';

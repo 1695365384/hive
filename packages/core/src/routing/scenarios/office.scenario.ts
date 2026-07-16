@@ -79,8 +79,9 @@ const OFFICE_ROUTING_HINT = [
   '## MANDATORY Routing (Office Task)',
   '',
   'This user message is an **Office document task**.',
-  '- You MUST call agent() exactly ONCE with type="office".',
-  '- Do NOT call explore, plan, or general workers.',
+  '- You MUST call agent(type="office") exactly once (required deliverable Worker).',
+  '- For research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages), ALSO call agent(type="explore") in the SAME response so research and document creation run in parallel.',
+  '- Do NOT call plan or general workers.',
   '- Do NOT run env() or research how to make PPT — officecli is already installed.',
   '- Do NOT mention python-pptx, AppleScript, or manual PowerPoint automation.',
   '- Do NOT answer with capability menus or "what would you like?" — delegate immediately.',
@@ -89,7 +90,7 @@ const OFFICE_ROUTING_HINT = [
 
 const OFFICE_COORDINATOR_BLURB =
   '[Installed Capability] **officecli** is bundled and available. '
-  + 'For PPT/Word/Excel tasks, spawn agent(type="office") — the office Worker runs officecli via bash. '
+  + 'For PPT/Word/Excel tasks, spawn agent(type="office") — optionally parallel agent(type="explore") for research-heavy decks. '
   + 'Do NOT research python-pptx, AppleScript, or env() for Office tasks.';
 
 export const officeScenarioCopy: ScenarioCopy = {
@@ -147,12 +148,43 @@ export function buildOfficeWorkerSpawn(task: string, description?: string): Work
   };
 }
 
+/** Research-heavy Office tasks → explore∥office parallel delegate */
+export function needsOfficeResearchAssist(task: string): boolean {
+  if (
+    /(调研|研究|收集资料|竞品|市场分析|行业分析|research|competitor|market\s+analysis|收集素材)/i
+      .test(task)
+  ) {
+    return true;
+  }
+  const pageMatch = task.match(/(\d+)\s*(页|页PPT|slides?|pages?)/i);
+  if (pageMatch && Number(pageMatch[1]) >= 5) {
+    return true;
+  }
+  return false;
+}
+
+export function buildOfficeExploreAssistSpawn(task: string): WorkerSpawnInput {
+  return {
+    type: 'explore',
+    prompt: [
+      'Parallel research assist for an Office document task.',
+      'Collect factual bullets, suggested outline, and key talking points.',
+      'Do NOT create PPT/Word/Excel files — read-only research only.',
+      'Keep the answer concise (bullets).',
+      '',
+      `User request:\n${task}`,
+    ].join('\n'),
+    description: '并行调研：收集大纲与要点',
+    scenarioId: OFFICE_SCENARIO_ID,
+  };
+}
+
 function officeSpawnValidationError(workerType: string): string {
   return [
     `Status: FAILED`,
     `Worker type "${workerType}" is NOT allowed for Office document tasks.`,
-    `You MUST retry with agent(type="office", prompt="...full requirements...").`,
-    `Do NOT use explore, plan, or general. officecli is already installed.`,
+    `You MUST use agent(type="office") for the deliverable; optional parallel agent(type="explore") for research.`,
+    `Do NOT use plan or general. officecli is already installed.`,
   ].join('\n');
 }
 
@@ -161,7 +193,7 @@ export const officeScenario: ScenarioDefinition = {
   priority: 100,
   labels: OFFICE_SCENARIO_LABELS,
   copy: officeScenarioCopy,
-  allowedWorkers: ['office'],
+  allowedWorkers: ['office', 'explore'],
   match: isOfficeTask,
   resolve(task: string) {
     const action = resolveOfficeScenarioAction(task);
@@ -169,9 +201,16 @@ export const officeScenario: ScenarioDefinition = {
       return { kind: 'inquiry', reply: action.reply };
     }
     if (action.kind === 'creation') {
+      const officeSpawn = buildOfficeWorkerSpawn(action.prompt, action.description);
+      if (needsOfficeResearchAssist(task)) {
+        return {
+          kind: 'delegate',
+          spawns: [buildOfficeExploreAssistSpawn(task), officeSpawn],
+        };
+      }
       return {
         kind: 'delegate',
-        spawn: buildOfficeWorkerSpawn(action.prompt, action.description),
+        spawns: [officeSpawn],
       };
     }
     if (isOfficeTask(task)) {
@@ -181,9 +220,9 @@ export const officeScenario: ScenarioDefinition = {
   },
   validateSpawn(task, spawn) {
     if (!isOfficeTask(task)) return null;
-    if (spawn.type !== 'office') {
-      return officeSpawnValidationError(spawn.type);
+    if (spawn.type === 'office' || spawn.type === 'explore') {
+      return null;
     }
-    return null;
+    return officeSpawnValidationError(spawn.type);
   },
 };

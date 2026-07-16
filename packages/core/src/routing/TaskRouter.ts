@@ -78,7 +78,7 @@ export class TaskRouter {
         return {
           action: 'delegate',
           scenarioId: scenario.id,
-          spawn: resolved.spawn,
+          spawns: resolved.spawns,
           notificationTitle: scenario.labels.creationNotification,
           notificationBody: scenario.labels.workerRunning,
         };

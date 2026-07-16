@@ -48,6 +48,7 @@ import {
 import { stripDecorativeEmoji } from '../../utils/sanitize-output.js';
 import {
   defaultTaskRouter,
+  primaryDelegateSpawn,
   type TaskRouter,
   type WorkerSpawnInput,
 } from '../../routing/index.js';
@@ -85,6 +86,8 @@ export interface DispatchOptions {
     mode: 'direct' | 'inquiry' | 'delegate' | 'hint';
     scenarioId?: string;
     workerType?: string;
+    /** 并行委派时全部 Worker 类型（含主 Worker） */
+    workerTypes?: string[];
     title?: string;
   }) => void;
   /** Office PPT 进度（routed / phases / blocked） */
@@ -288,17 +291,28 @@ export class CoordinatorCapability implements AgentCapability {
         }
 
         if (routeDecision.action === 'delegate') {
+          const spawns = routeDecision.spawns;
+          const primary = primaryDelegateSpawn(spawns);
           options?.onRoute?.({
             mode: 'delegate',
             scenarioId: routeDecision.scenarioId,
-            workerType: routeDecision.spawn.type,
+            workerType: primary.type,
+            workerTypes: spawns.map((s) => s.type),
             title: routeDecision.notificationTitle,
           });
           await this.emitNotification(
             sessionId, 'info', routeDecision.notificationTitle, routeDecision.notificationBody,
           );
-          const spawnResult = await this.autoSpawnWorker(routeDecision.spawn);
+          // 同 turn 多 spawn → 真并行（explore∥office 等）
+          const settled = await Promise.all(
+            spawns.map(async (spawn) => ({
+              spawn,
+              result: await this.autoSpawnWorker(spawn),
+            })),
+          );
           const duration = Date.now() - startTime;
+          const primarySettled = settled.find((s) => s.spawn.type === primary.type) ?? settled[0]!;
+          const spawnResult = primarySettled.result;
           if (spawnResult.success) {
             let resultText = stripDecorativeEmoji(spawnResult.output);
             this.flushOfficeArtifactsToUi();
@@ -375,7 +389,7 @@ export class CoordinatorCapability implements AgentCapability {
           isSuccess = false;
         }
 
-        // 场景任务未派正确 Worker 时自动补救
+        // 场景任务未派正确 Worker 时自动补救（只补主交付 Worker，不重跑并行调研）
         const recoveryDecision = this.taskRouter.resolve(task);
         if (
           !verification.passed
@@ -385,9 +399,10 @@ export class CoordinatorCapability implements AgentCapability {
             ...getAgentWorkerTypes(this.taskTrace.getTrace()),
             ...getSpawnedWorkerTypes(this.taskTrace.getTrace()),
           ];
-          const expectedType = recoveryDecision.spawn.type;
+          const expectedSpawn = primaryDelegateSpawn(recoveryDecision.spawns);
+          const expectedType = expectedSpawn.type;
           if (!routed.includes(expectedType)) {
-            const recovered = await this.autoSpawnWorker(recoveryDecision.spawn);
+            const recovered = await this.autoSpawnWorker(expectedSpawn);
             if (recovered.success) {
               resultText = stripDecorativeEmoji(recovered.output);
               this.taskTrace.setResponseText(recovered.output);

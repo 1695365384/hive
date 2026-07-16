@@ -23,6 +23,7 @@ export type StreamingEventUnion =
       mode: 'direct' | 'inquiry' | 'delegate' | 'hint';
       scenarioId?: string;
       workerType?: string;
+      workerTypes?: string[];
       title?: string;
     }
   | { type: 'reasoning'; sessionId: string; text: string; workerId?: string; workerType?: string }

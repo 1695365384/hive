@@ -33,6 +33,7 @@ export function GroupedContentRenderer({
           mode={part.mode}
           scenarioId={part.scenarioId}
           workerType={part.workerType}
+          workerTypes={part.workerTypes}
           title={part.title}
         />
       );
@@ -66,6 +67,8 @@ export function GroupedContentRenderer({
       );
     case "tool-batch":
       return <ToolBatchBlock toolName={part.toolName} count={part.count} children={part.children} />;
+    case "worker-lane":
+      return <WorkerLaneBlock part={part} />;
     case "worker":
       return (
         <WorkerBlock
@@ -210,6 +213,40 @@ function OfficeProgressBanner({
       role="status"
     >
       {label}
+    </div>
+  );
+}
+
+function WorkerLaneBlock({
+  part,
+}: {
+  part: Extract<GroupedContent, { type: "worker-lane" }>;
+}) {
+  const { t } = useTranslation();
+  const running = part.runningCount;
+  const label =
+    running > 0
+      ? t("activity.workerLane.running", { count: part.workers.length })
+      : t("activity.workerLane.done", { count: part.workers.length });
+
+  return (
+    <div className="worker-lane" role="group" aria-label={label}>
+      <div className="worker-lane__banner">{label}</div>
+      <div className="worker-lane__grid">
+        {part.workers.map((worker) => (
+          <div key={worker.workerId} className="worker-lane__cell">
+            <WorkerBlock
+              workerType={worker.workerType}
+              description={worker.description}
+              scenarioId={worker.scenarioId}
+              children={worker.children}
+              status={worker.status}
+              duration={worker.duration}
+              error={worker.error}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

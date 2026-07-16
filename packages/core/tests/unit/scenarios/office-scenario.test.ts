@@ -4,6 +4,7 @@ import {
   matchesOfficeScenario,
   resolveOfficeScenarioAction,
   buildOfficeWorkerSpawn,
+  needsOfficeResearchAssist,
 } from '../../../src/scenarios/office-scenario.js';
 
 describe('OfficeScenario', () => {
@@ -42,5 +43,11 @@ describe('OfficeScenario', () => {
     const spawn = buildOfficeWorkerSpawn('做一个 PPT');
     expect(spawn.type).toBe('office');
     expect(spawn.scenarioId).toBe(OFFICE_SCENARIO_ID);
+  });
+
+  it('needsOfficeResearchAssist detects research-heavy decks', () => {
+    expect(needsOfficeResearchAssist('帮我调研竞品做一个 PPT')).toBe(true);
+    expect(needsOfficeResearchAssist('帮我做一个 8 页 PPT')).toBe(true);
+    expect(needsOfficeResearchAssist('帮我做一个关于 AI 的 PPT')).toBe(false);
   });
 });

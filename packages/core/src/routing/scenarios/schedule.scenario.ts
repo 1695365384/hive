@@ -134,7 +134,7 @@ export const scheduleScenario: ScenarioDefinition = {
     if (isScheduleCreationTask(task)) {
       return {
         kind: 'delegate',
-        spawn: buildScheduleWorkerSpawn(task),
+        spawns: [buildScheduleWorkerSpawn(task)],
       };
     }
     return { kind: 'hint', directive: scheduleScenarioCopy.routingHint() };
