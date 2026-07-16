@@ -44,9 +44,12 @@ export interface ProviderConfig {
 }
 
 /**
- * MCP 服务器配置
+ * MCP stdio 服务器配置（本地进程）
+ *
+ * `transport` 可省略：缺省且存在 `command` 时视为 stdio（向后兼容）。
  */
-export interface McpServerConfig {
+export interface McpStdioServerConfig {
+  transport?: 'stdio';
   /** 命令 */
   command: string;
   /** 参数 */
@@ -55,6 +58,49 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** 是否启用 */
   enabled?: boolean;
+}
+
+/**
+ * MCP HTTP 远程服务器配置（Streamable HTTP / SSE）
+ */
+export interface McpHttpServerConfig {
+  transport: 'http';
+  /** 远程 MCP 端点 URL（https） */
+  url: string;
+  /** 可选请求头（不含用户交互填入的 secret；v1 仅 allowlist 静态值） */
+  headers?: Record<string, string>;
+  /** 是否启用 */
+  enabled?: boolean;
+}
+
+/**
+ * MCP 服务器配置（stdio | http）
+ */
+export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
+
+/** 是否为 HTTP 远程配置 */
+export function isHttpMcpConfig(config: McpServerConfig): config is McpHttpServerConfig {
+  return (config as McpHttpServerConfig).transport === 'http'
+    || typeof (config as McpHttpServerConfig).url === 'string';
+}
+
+/** 规范化配置：补齐 transport 默认值 */
+export function normalizeMcpServerConfig(config: McpServerConfig): McpServerConfig {
+  if (isHttpMcpConfig(config)) {
+    return {
+      transport: 'http',
+      url: config.url,
+      headers: config.headers,
+      enabled: config.enabled,
+    };
+  }
+  return {
+    transport: 'stdio',
+    command: config.command,
+    args: config.args,
+    env: config.env,
+    enabled: config.enabled,
+  };
 }
 
 // ============================================

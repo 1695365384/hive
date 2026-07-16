@@ -11,7 +11,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { createInterface, type Interface } from 'node:readline';
-import { type McpServerConfig } from '../providers/types.js';
+import { isHttpMcpConfig, type McpServerConfig, type McpStdioServerConfig } from '../providers/types.js';
 
 // ============================================
 // 类型
@@ -158,9 +158,14 @@ export class McpClient {
   async connect(): Promise<void> {
     if (this._connected) return;
 
-    const cmd = this._config.command;
-    const args = this._config.args ?? [];
-    const env = { ...process.env, ...this._config.env };
+    if (isHttpMcpConfig(this._config)) {
+      throw new Error('McpClient only supports stdio; use McpRemoteClient for HTTP');
+    }
+
+    const stdio = this._config as McpStdioServerConfig;
+    const cmd = stdio.command;
+    const args = stdio.args ?? [];
+    const env = { ...process.env, ...stdio.env };
 
     // 解析命令路径
     const resolvedCmd = this.resolveCommand(cmd);
@@ -368,9 +373,14 @@ export class McpClient {
  */
 import { zodSchema, tool, type Tool } from 'ai';
 
+/** 可调用 MCP 工具的连接（stdio / remote 共用） */
+export type McpToolCaller = {
+  callTool: (name: string, arguments_: Record<string, unknown>) => Promise<unknown>;
+};
+
 export function mcpToolToAiTool(
   mcpTool: McpToolDefinition,
-  client: McpClient,
+  client: McpToolCaller,
 ): Tool<any, string> {
   const zodSchema_ = mcpSchemaToZod(mcpTool.inputSchema);
 

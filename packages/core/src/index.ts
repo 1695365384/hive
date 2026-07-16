@@ -162,6 +162,8 @@ export {
   // 类型
   type ProviderConfig,
   type McpServerConfig,
+  type McpStdioServerConfig,
+  type McpHttpServerConfig,
   type ModelSpec,
   type ProviderPreset,
   type ConfigSource,
@@ -169,6 +171,8 @@ export {
   type ProviderType,
   type ProviderAdapter,
   type ModelsDevProvider,
+  isHttpMcpConfig,
+  normalizeMcpServerConfig,
 } from './providers/index.js';
 
 // ============================================
@@ -590,10 +594,19 @@ export {
   McpClient,
   mcpToolToAiTool,
   McpManager,
+  McpRemoteClient,
+  getMcpConfigPath,
+  loadPersistedMcpServers,
+  savePersistedMcpServers,
+  upsertPersistedMcpServer,
+  removePersistedMcpServer,
+  loadPersistedMcpServersIntoManager,
 } from './mcp/index.js';
 
 export type {
   McpToolDefinition,
   McpServerInfo,
   McpServerStatusCallback,
+  McpToolCaller,
+  LoadPersistedMcpOptions,
 } from './mcp/index.js';

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "title": "Hive MCP Catalog",
+  "description": "Curated one-click MCP servers (China-reachable where marked cn)",
+  "entries": [
+    {
+      "id": "officecli",
+      "title": "OfficeCLI",
+      "description": "本地 Office 文档工具（PPT / Word / Excel）。由 Hive 自动启用，无需手动配置。",
+      "region": "local",
+      "status": "live",
+      "builtin": true,
+      "transport": "stdio"
+    },
+    {
+      "id": "cn-remote-placeholder-1",
+      "title": "国内远程 MCP（即将上线）",
+      "description": "精选国内可直连托管服务。连通性验证通过后将开放一键启用。",
+      "region": "cn",
+      "status": "comingSoon",
+      "builtin": false,
+      "transport": "http"
+    },
+    {
+      "id": "cn-remote-placeholder-2",
+      "title": "更多国内服务（即将上线）",
+      "description": "第二批精选条目预留位。不会假装已可连接。",
+      "region": "cn",
+      "status": "comingSoon",
+      "builtin": false,
+      "transport": "http"
+    }
+  ]
+}

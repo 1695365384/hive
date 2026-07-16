@@ -181,7 +181,7 @@
   "settings": {
     "title": "Settings",
     "provider": "Provider",
-    "status": "Status",
+    "mcp": "MCP",
     "skills": "Skills",
     "plugins": "Plugins",
     "language": "Language",
@@ -253,6 +253,28 @@
     "installFailed": "Installation failed",
     "uninstallFailed": "Uninstall failed",
     "saveFailed": "Save failed"
+  },
+  "mcp": {
+    "title": "MCP Servers",
+    "subtitle": "{{title}} · {{count}} curated",
+    "catalog": "Catalog ({{count}})",
+    "refresh": "Refresh",
+    "loading": "Loading catalog…",
+    "noCatalog": "No MCP servers available",
+    "enable": "Enable",
+    "enabling": "Enabling…",
+    "disable": "Disable",
+    "builtin": "Built-in",
+    "builtinOn": "On · Built-in",
+    "comingSoon": "Coming soon",
+    "connected": "Connected ({{count}})",
+    "noConnected": "No connected servers",
+    "online": "online",
+    "offline": "offline",
+    "toolCount": "{{count}} tools",
+    "loadFailed": "Failed to load MCP catalog",
+    "enableFailed": "Failed to enable",
+    "disableFailed": "Failed to disable"
   },
   "skills": {
     "title": "Skills",

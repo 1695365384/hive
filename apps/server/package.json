@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').copyFileSync('mcp-catalog.json','dist/mcp-catalog.json')\"",
     "dev": "tsc -p tsconfig.build.json --watch",
     "start": "node dist/main.js",
     "cli": "node dist/cli/index.js",
@@ -43,6 +43,7 @@
   },
   "files": [
     "dist",
+    "mcp-catalog.json",
     "README.md",
     "LICENSE"
   ],
