@@ -33,4 +33,20 @@ describe('TaskTraceCollector', () => {
     collector.recordToolResult('agent', `Delivered ${path.join(tmpDir, '汇报.pptx')}`);
     expect(collector.getTrace().artifacts.some(p => p.endsWith('汇报.pptx'))).toBe(true);
   });
+
+  it('recordToolResultAt keeps parallel agent call/result pairing', () => {
+    const collector = new TaskTraceCollector('调研并做 PPT');
+    const exploreIdx = collector.recordToolCall('agent', { type: 'explore', prompt: 'research' });
+    const officeIdx = collector.recordToolCall('agent', { type: 'office', prompt: 'deck' });
+    // Office finishes first (out of start order)
+    collector.recordToolResultAt(officeIdx, 'Status: SUCCESS\nOutput: office done');
+    collector.recordToolResultAt(exploreIdx, 'Status: SUCCESS\nOutput: explore done');
+
+    const calls = collector.getTrace().toolCalls.filter((c) => c.toolName === 'agent');
+    expect(calls).toHaveLength(2);
+    expect((calls[0]!.input as { type: string }).type).toBe('explore');
+    expect(String(calls[0]!.output)).toContain('explore done');
+    expect((calls[1]!.input as { type: string }).type).toBe('office');
+    expect(String(calls[1]!.output)).toContain('office done');
+  });
 });

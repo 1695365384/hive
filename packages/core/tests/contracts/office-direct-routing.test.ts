@@ -74,6 +74,24 @@ describe('Scenario direct routing', () => {
       expect.any(Object),
       expect.any(Object),
     );
+    expect(result).toBeDefined();
+  });
+
+  it('spawns explore∥office in parallel for research-heavy PPT', async () => {
+    const routeEvents: Array<{ workerTypes?: string[] }> = [];
+    mockExecuteStreaming.mockImplementation(async (type: string, _prompt: string, hooks?: { onText?: (t: string) => void }) => {
+      hooks?.onText?.(`Worker ${type} done`);
+      return { text: `Worker ${type} done`, tools: ['bash'], success: true };
+    });
+
+    await capability.run('帮我调研竞品并做一个 8 页 PPT', {
+      onRoute: (route) => routeEvents.push(route),
+    });
+
+    expect(mockRuntimeStream).not.toHaveBeenCalled();
+    const types = mockExecuteStreaming.mock.calls.map((c) => c[0] as string).sort();
+    expect(types).toEqual(['explore', 'office']);
+    expect(routeEvents.some((e) => e.workerTypes?.includes('explore') && e.workerTypes?.includes('office'))).toBe(true);
   });
 
   it('answers schedule inquiry without LLM', async () => {

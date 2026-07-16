@@ -26,14 +26,34 @@ export class TaskTraceCollector {
     this.trace = createEmptyTaskTrace(task);
   }
 
-  recordToolCall(toolName: string, input?: unknown): void {
+  /** Returns call index for parallel-safe completion via recordToolResultAt */
+  recordToolCall(toolName: string, input?: unknown): number {
+    const index = this.trace.toolCalls.length;
     this.trace.toolCalls.push({ toolName, input });
+    return index;
   }
 
+  /**
+   * Pair result to a specific call index (required when multiple same-name tools
+   * run concurrently — LIFO pairing would swap explore∥office outputs).
+   */
+  recordToolResultAt(index: number, output?: unknown): void {
+    const call = this.trace.toolCalls[index];
+    if (call) {
+      call.output = output;
+    } else {
+      this.trace.toolCalls.push({ toolName: 'unknown', output });
+    }
+    this.extractArtifactsFromValue(output);
+  }
+
+  /** Sequential pairing: first unfinished call with the same toolName (FIFO) */
   recordToolResult(toolName: string, output?: unknown): void {
-    const last = [...this.trace.toolCalls].reverse().find(c => c.toolName === toolName && c.output === undefined);
-    if (last) {
-      last.output = output;
+    const pending = this.trace.toolCalls.find(
+      (c) => c.toolName === toolName && c.output === undefined,
+    );
+    if (pending) {
+      pending.output = output;
     } else {
       this.trace.toolCalls.push({ toolName, output });
     }

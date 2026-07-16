@@ -466,9 +466,10 @@ export class CoordinatorCapability implements AgentCapability {
     }
 
     try {
-      this.taskTrace.recordToolCall('agent', spawn);
+      // Index-based pairing: Promise.all parallel spawns must not LIFO-swap outputs
+      const callIndex = this.taskTrace.recordToolCall('agent', spawn);
       const output = await agentTool.execute(spawn);
-      this.taskTrace.recordToolResult('agent', output);
+      this.taskTrace.recordToolResultAt(callIndex, output);
       if (output.startsWith('Status: FAILED')) {
         return { success: false, error: output };
       }
