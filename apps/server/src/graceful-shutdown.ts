@@ -51,7 +51,23 @@ export function registerGracefulShutdown(options: GracefulShutdownOptions): () =
     shutdown('uncaughtException', 1)
   }
   function handleUnhandledRejection(reason: unknown) {
-    console.error('[shutdown] Unhandled rejection:', reason)
+    // AI SDK / AbortController sometimes reject with `{}` — log something useful
+    let detail: string
+    if (reason instanceof Error) {
+      detail = reason.stack || reason.message
+    } else if (reason && typeof reason === 'object') {
+      try {
+        detail = JSON.stringify(reason)
+      } catch {
+        detail = Object.prototype.toString.call(reason)
+      }
+      if (detail === '{}') {
+        detail = 'empty object (often a drained streamText rejection after provider error)'
+      }
+    } else {
+      detail = String(reason)
+    }
+    console.error('[shutdown] Unhandled rejection:', detail)
     // Log only — don't crash the process
   }
 

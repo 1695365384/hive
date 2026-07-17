@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useChatWsClient } from "../hooks/use-chat-ws-client";
@@ -18,8 +18,14 @@ import { formatToolLabel } from "../components/chat/activity-labels";
 import { formatWorkerTitle, formatScenarioLabel } from "../components/chat/worker-labels";
 import { useActivityStore } from "../stores/activity-store";
 import * as db from "../lib/db";
+import { finalizeRunContent, hasOpenRunParts } from "../lib/finalize-run-content";
+import { patchAssistantMessage, appendContentPart } from "../lib/chat-message-ops";
+import { schedulePersistAssistant, flushPersistAssistant, persistAssistantNow } from "../lib/persist-assistant";
+import { cancelSessionRun } from "../lib/cancel-session-run";
+import { useRunStore, RUN_SETTLE_MS } from "../stores/run-store";
 import type { ChatMessage, ContentPart } from "../types/chat";
 import { AskUserCard } from "../components/AskUserCard";
+import { BgToastHost } from "../components/chat/BgToastHost";
 import { ArrowUp, Plus, Square } from "lucide-react";
 
 function truncateActivityLabel(text: string, max = 48): string {
@@ -51,7 +57,6 @@ export function ChatPage() {
   const { pendingFiles, uploading, addFiles, removeFile, clearFiles } = useFileUpload();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
@@ -68,6 +73,7 @@ export function ChatPage() {
   const stickToBottomRef = useRef(true);
   const wasRunningRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** Currently viewed session's in-flight thread (null when viewing a settled session). */
   const activeThreadIdRef = useRef<string | null>(null);
   const lastTextSeqRef = useRef(0);
   const lastReasoningSeqRef = useRef(0);
@@ -85,49 +91,184 @@ export function ChatPage() {
   const createSession = useSessionStore((s) => s.createSession);
   const autoTitle = useSessionStore((s) => s.autoTitle);
   const storeLoading = useSessionStore((s) => s.loading);
-  /** Track the assistant message ID so we can persist it on complete */
-  const assistantMsgIdRef = useRef<string | null>(null);
-  const assistantThreadIdRef = useRef<string | null>(null);
+  /** Derived from run-store so sidebar stop / background complete stay in sync. */
+  const isRunning = useRunStore((s) => {
+    if (!currentId) return false;
+    const run = s.runs[currentId];
+    return !!run && (run.phase === "running" || run.phase === "waiting");
+  });
+  const currentIdRef = useRef<string | null>(null);
+  const prevSessionIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
+  currentIdRef.current = currentId;
 
-  const persistAssistantContent = useCallback((content: ContentPart[]) => {
-    const msgId = assistantMsgIdRef.current;
-    if (!msgId) return;
-    db.updateMessageContent(msgId, JSON.stringify(content)).catch(() => {});
+  const isViewingThread = useCallback((threadId: string) => currentIdRef.current === threadId, []);
+
+  /**
+   * Ensure a live run exists for inbound WS events.
+   * Revives from messageCache after HMR / accidental store loss so background
+   * sessions keep receiving stream updates after a lens switch.
+   */
+  const ensureLiveRun = useCallback((threadId: string): boolean => {
+    const store = useRunStore.getState();
+    if (store.getRun(threadId)) return true;
+    // Do not revive a session that just completed/cancelled
+    if (store.getRunOrSettling(threadId)?.phase === "settling") return false;
+
+    const cached = store.getMessageCache(threadId);
+    const assistant = cached
+      ? [...cached].reverse().find((m) => m.role === "assistant")
+      : undefined;
+    if (!assistant) return false;
+
+    store.beginRun({
+      sessionId: threadId,
+      assistantMsgId: assistant.id,
+      title: truncateActivityLabel(
+        cached?.find((m) => m.role === "user")?.content
+          ?.filter((p): p is Extract<ContentPart, { type: "text" }> => p.type === "text")
+          .map((p) => p.text)
+          .join(" ") || i18n.t("activity.processing"),
+      ),
+    });
+    return !!useRunStore.getState().getRun(threadId);
   }, []);
+
+  /** Apply message updates to the viewed session or a background cache. */
+  const mutateThreadMessages = useCallback(
+    (threadId: string, updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      const store = useRunStore.getState();
+      const run = store.getRun(threadId) ?? store.getRunOrSettling(threadId);
+      const assistantMsgId = run?.assistantMsgId;
+
+      const applyUpdate = (prev: ChatMessage[]) => {
+        const next = updater(prev);
+        if (assistantMsgId) {
+          const prevAssistant = prev.find((m) => m.id === assistantMsgId);
+          const nextAssistant = next.find((m) => m.id === assistantMsgId);
+          if (nextAssistant && (!prevAssistant || nextAssistant.content !== prevAssistant.content)) {
+            schedulePersistAssistant(nextAssistant.id, nextAssistant.content);
+          }
+        }
+        return next;
+      };
+
+      if (isViewingThread(threadId)) {
+        // Compute outside setState so Zustand cache writes never run during React render
+        // (calling setMessageCache inside setMessages updater re-renders ChatPage mid-render).
+        const next = applyUpdate(messagesRef.current);
+        store.setMessageCache(threadId, next);
+        setMessages(next);
+        return;
+      }
+      // Seed cache if missing so background WS updates are not silently dropped
+      if (!store.getMessageCache(threadId) && assistantMsgId) {
+        store.setMessageCache(threadId, [
+          {
+            id: assistantMsgId,
+            role: "assistant",
+            content: [],
+            createdAt: Date.now(),
+          },
+        ]);
+      }
+      store.updateMessageCache(threadId, applyUpdate);
+    },
+    [isViewingThread],
+  );
 
   // Init store on mount
   useEffect(() => {
     initStore();
   }, [initStore]);
 
-  // When session changes (or first load), load messages and reset ephemeral chat UI
+  // When session changes: cache the outgoing transcript, keep background runs alive
   useEffect(() => {
     if (!currentId) return;
-    setAskUserData(null);
-    setIsRunning(false);
+
+    const store = useRunStore.getState();
+    const prevId = prevSessionIdRef.current;
+    if (prevId && prevId !== currentId) {
+      store.setMessageCache(prevId, messagesRef.current);
+      const prevRun = store.getRun(prevId) ?? store.getRunOrSettling(prevId);
+      if (prevRun) {
+        flushPersistAssistant(prevRun.assistantMsgId);
+      }
+    }
+    prevSessionIdRef.current = currentId;
+    store.setViewingSessionId(currentId);
+
     setError(null);
-    activeThreadIdRef.current = null;
-    assistantMsgIdRef.current = null;
-    assistantThreadIdRef.current = null;
-    useActivityStore.getState().reset();
     usePreviewStore.getState().clear();
+
+    if (store.hasLiveRun(currentId)) {
+      activeThreadIdRef.current = currentId;
+      const run = store.getRun(currentId);
+      activitySetWorking({ title: run?.title ?? i18n.t("activity.processing") });
+      const pendingAsk = store.getPendingAsk(currentId);
+      setAskUserData(pendingAsk ?? null);
+      if (pendingAsk) {
+        activitySetWaiting(truncateActivityLabel(pendingAsk.question));
+      }
+    } else {
+      activeThreadIdRef.current = null;
+      setAskUserData(null);
+      useActivityStore.getState().reset();
+    }
+
+    const cached = store.getMessageCache(currentId);
+    if (cached) {
+      setMessages(cached);
+      return;
+    }
 
     const load = async () => {
       try {
         const rows = await db.listMessages(currentId);
-        const msgs: ChatMessage[] = rows.map((r) => ({
+        let msgs: ChatMessage[] = rows.map((r) => ({
           id: r.id,
           role: r.role as "user" | "assistant",
           content: JSON.parse(r.content) as ContentPart[],
           createdAt: r.created_at,
         }));
-        setMessages(msgs);
+
+        // Heal stale spinners only when nothing is in-flight app-wide.
+        // If another lens still has a live run, skip — this session may be that run
+        // after a store blip, and persisting "已中断" would falsely kill the transcript.
+        const runStore = useRunStore.getState();
+        if (!runStore.hasLiveRun(currentId) && !runStore.getInFlightSessionId()) {
+          let healed = false;
+          msgs = msgs.map((m) => {
+            if (m.role !== "assistant" || !hasOpenRunParts(m.content)) return m;
+            healed = true;
+            const delivered = m.content.some((p) => p.type === "file-attachment");
+            return {
+              ...m,
+              content: finalizeRunContent(m.content, {
+                success: delivered,
+                error: delivered ? undefined : "已中断",
+              }),
+            };
+          });
+          if (healed) {
+            const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
+            if (lastAssistant) {
+              persistAssistantNow(lastAssistant.id, lastAssistant.content);
+            }
+          }
+        }
+
+        if (currentIdRef.current === currentId) {
+          setMessages(msgs);
+          useRunStore.getState().setMessageCache(currentId, msgs);
+        }
       } catch {
         // DB not available — stay with empty messages
       }
     };
     load();
-  }, [currentId]);
+  }, [currentId, activitySetWorking, activitySetWaiting]);
 
   // Create first session if none exists
   useEffect(() => {
@@ -159,6 +300,23 @@ export function ChatPage() {
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickToBottomRef.current = distance < 96;
   }, []);
+
+  // Same-session live→idle (sidebar stop / cancel): sync messages from cache
+  const wasLiveForSessionRef = useRef<{ id: string | null; live: boolean }>({
+    id: null,
+    live: false,
+  });
+  useEffect(() => {
+    const prev = wasLiveForSessionRef.current;
+    if (currentId && prev.id === currentId && prev.live && !isRunning) {
+      const cached = useRunStore.getState().getMessageCache(currentId);
+      if (cached) setMessages(cached);
+      setAskUserData(null);
+      activeThreadIdRef.current = null;
+      activitySetIdle();
+    }
+    wasLiveForSessionRef.current = { id: currentId, live: isRunning };
+  }, [currentId, isRunning, activitySetIdle]);
 
   // Stick to bottom while streaming when user hasn't scrolled up
   useEffect(() => {
@@ -204,112 +362,95 @@ export function ChatPage() {
 
   // Elapsed time for tool calls is per-step (startedAt on each tool-call part).
 
-  // Message mutation helpers (stable references, no deps)
-  const upsertFilePart = useCallback((part: Extract<ContentPart, { type: "file-attachment" }>) => {
-    setMessages((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      if (last.role !== "assistant") return prev;
-
-      const updated = { ...last, content: [...last.content] };
-      const idx = updated.content.findIndex(
-        (p) =>
-          p.type === "file-attachment" &&
-          (p.path === part.path || p.name === part.name)
-      );
-
-      if (idx >= 0) {
-        updated.content[idx] = part;
-      } else {
-        updated.content.push(part);
-      }
-
-      persistAssistantContent(updated.content);
-      return [...prev.slice(0, -1), updated];
-    });
-  }, [persistAssistantContent]);
-
-  const appendPart = useCallback((part: ContentPart) => {
-    setMessages((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      if (last.role !== "assistant") return prev;
-
-      const updated = { ...last, content: [...last.content] };
-
-      if (part.type === "text") {
-        const lastPart = updated.content[updated.content.length - 1];
-        if (lastPart?.type === "text") {
-          updated.content[updated.content.length - 1] = { ...lastPart, text: lastPart.text + part.text };
-        } else {
-          updated.content.push(part);
-        }
-      } else if (part.type === "reasoning") {
-        const lastPart = updated.content[updated.content.length - 1];
-        if (lastPart?.type === "reasoning") {
-          updated.content[updated.content.length - 1] = { ...lastPart, text: lastPart.text + part.text };
-        } else {
-          updated.content.push(part);
-        }
-      } else {
-        updated.content.push(part);
-      }
-
-      return [...prev.slice(0, -1), updated];
-    });
-  }, []);
-
-  const updateToolResult = useCallback((toolCallId: string, result: unknown, isError?: boolean) => {
-    const now = Date.now();
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.role !== "assistant") return msg;
-        return {
-          ...msg,
-          content: msg.content.map((part) => {
-            if (part.type !== "tool-call" || part.toolCallId !== toolCallId) return part;
-            const durationMs = part.startedAt != null ? now - part.startedAt : undefined;
-            return { ...part, result, isError, durationMs };
-          }),
-        };
-      })
+  const upsertFilePart = useCallback((threadId: string, part: Extract<ContentPart, { type: "file-attachment" }>) => {
+    const store = useRunStore.getState();
+    const run = store.getRunOrSettling(threadId);
+    mutateThreadMessages(threadId, (prev) =>
+      patchAssistantMessage(prev, run?.assistantMsgId, (content) => {
+        const updated = content.slice();
+        const idx = updated.findIndex(
+          (p) =>
+            p.type === "file-attachment" &&
+            (p.path === part.path || p.name === part.name),
+        );
+        if (idx >= 0) updated[idx] = part;
+        else updated.push(part);
+        persistAssistantNow(run?.assistantMsgId, updated);
+        return updated;
+      }),
     );
-  }, []);
+  }, [mutateThreadMessages]);
 
-  const failPendingRun = useCallback((message: string) => {
-    setError(message);
-    setIsRunning(false);
-    activeThreadIdRef.current = null;
-    activitySetIdle();
-    setMessages((prev) => {
+  const appendPart = useCallback((threadId: string, part: ContentPart) => {
+    const run = useRunStore.getState().getRun(threadId);
+    mutateThreadMessages(threadId, (prev) =>
+      patchAssistantMessage(prev, run?.assistantMsgId, (content) => appendContentPart(content, part)),
+    );
+  }, [mutateThreadMessages]);
+
+  const updateToolResult = useCallback((threadId: string, toolCallId: string, result: unknown, isError?: boolean) => {
+    const now = Date.now();
+    const run = useRunStore.getState().getRun(threadId);
+    mutateThreadMessages(threadId, (prev) =>
+      patchAssistantMessage(prev, run?.assistantMsgId, (content) =>
+        content.map((part) => {
+          if (part.type !== "tool-call" || part.toolCallId !== toolCallId) return part;
+          const durationMs = part.startedAt != null ? now - part.startedAt : undefined;
+          return { ...part, result, isError, durationMs };
+        }),
+      ),
+    );
+  }, [mutateThreadMessages]);
+
+  const failPendingRun = useCallback((threadId: string, message: string) => {
+    const store = useRunStore.getState();
+    store.clearRun(threadId);
+    store.setPendingAsk(threadId, null);
+
+    const patchEmptyAssistant = (prev: ChatMessage[]): ChatMessage[] => {
       const last = prev[prev.length - 1];
-      if (!last || last.role !== "assistant" || last.content.length > 0) {
-        return prev;
-      }
-
+      if (!last || last.role !== "assistant" || last.content.length > 0) return prev;
       return [
         ...prev.slice(0, -1),
         { ...last, content: [{ type: "text", text: t("chat.processFailed", { detail: message }) }] },
       ];
-    });
-  }, [activitySetIdle, t]);
+    };
+
+    if (isViewingThread(threadId)) {
+      setError(message);
+      activeThreadIdRef.current = null;
+      activitySetIdle();
+      const next = patchEmptyAssistant(messagesRef.current);
+      store.setMessageCache(threadId, next);
+      setMessages(next);
+    } else {
+      store.updateMessageCache(threadId, patchEmptyAssistant);
+    }
+  }, [activitySetIdle, isViewingThread, t]);
 
   // Stable WS event handlers — useCallback ensures dedup in WsClient Set
-  // across React.StrictMode double-mount cycles
+  // across React.StrictMode double-mount cycles.
+  // Events are accepted for any registered run (including background sessions).
+  const handleAgentStart = useCallback((data: { threadId: string }) => {
+    ensureLiveRun(data.threadId);
+  }, [ensureLiveRun]);
+
   const handleReasoning = useCallback((data: { threadId: string; text: string; seq: number; workerId?: string; workerType?: string }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
     if (data.seq <= lastReasoningSeqRef.current) return;
     lastReasoningSeqRef.current = data.seq;
-    activitySetWorking({ detail: i18n.t("activity.thinking") });
-    appendPart({ type: "reasoning", text: data.text, workerId: data.workerId, workerType: data.workerType });
-  }, [appendPart, activitySetWorking]);
+    if (isViewingThread(data.threadId)) {
+      activitySetWorking({ detail: i18n.t("activity.thinking") });
+    }
+    appendPart(data.threadId, { type: "reasoning", text: data.text, workerId: data.workerId, workerType: data.workerType });
+  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
 
   const handleTextDelta = useCallback((data: { threadId: string; text: string; seq: number }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
     if (data.seq !== undefined && data.seq <= lastTextSeqRef.current) return;
     if (data.seq !== undefined) lastTextSeqRef.current = data.seq;
-    appendPart({ type: "text", text: data.text });
-  }, [appendPart]);
+    appendPart(data.threadId, { type: "text", text: data.text });
+  }, [appendPart, ensureLiveRun]);
 
   const handleRoute = useCallback((data: {
     threadId: string;
@@ -319,7 +460,7 @@ export function ChatPage() {
     workerTypes?: string[];
     title?: string;
   }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
 
     const dockTitle =
       data.mode === "inquiry"
@@ -343,8 +484,10 @@ export function ChatPage() {
           ? formatWorkerTitle(types[0]!, undefined, data.scenarioId)
           : formatScenarioLabel(data.scenarioId));
 
-    activitySetWorking({ title: dockTitle, detail: detail || undefined });
-    appendPart({
+    if (isViewingThread(data.threadId)) {
+      activitySetWorking({ title: dockTitle, detail: detail || undefined });
+    }
+    appendPart(data.threadId, {
       type: "route",
       mode: data.mode,
       scenarioId: data.scenarioId,
@@ -352,22 +495,25 @@ export function ChatPage() {
       workerTypes: data.workerTypes,
       title: data.title,
     });
-  }, [appendPart, activitySetWorking]);
+  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
 
   const handleWorkerStart = useCallback((data: { threadId: string; workerId: string; workerType: string; description?: string; scenarioId?: string }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
     const title = formatWorkerTitle(data.workerType, data.description, data.scenarioId);
-    activitySetWorking({ title, detail: undefined });
-    appendPart({ type: "worker-start", workerId: data.workerId, workerType: data.workerType, description: data.description, scenarioId: data.scenarioId });
-    // Preview sidebar is user-initiated only (Codex-style) — do not auto-open on worker start
-  }, [appendPart, activitySetWorking]);
+    if (isViewingThread(data.threadId)) {
+      activitySetWorking({ title, detail: undefined });
+    }
+    appendPart(data.threadId, { type: "worker-start", workerId: data.workerId, workerType: data.workerType, description: data.description, scenarioId: data.scenarioId });
+  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
 
   const handleWorkerComplete = useCallback((data: { threadId: string; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
     const title = formatWorkerTitle(data.workerType);
-    activitySetLastCompleted(`${data.success ? "✓" : "✗"} ${title}`);
-    appendPart({ type: "worker-complete", workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration });
-  }, [appendPart, activitySetLastCompleted]);
+    if (isViewingThread(data.threadId)) {
+      activitySetLastCompleted(`${data.success ? "✓" : "✗"} ${title}`);
+    }
+    appendPart(data.threadId, { type: "worker-complete", workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration });
+  }, [appendPart, activitySetLastCompleted, isViewingThread, ensureLiveRun]);
 
   const handleOfficeProgress = useCallback((data: {
     threadId: string;
@@ -377,29 +523,31 @@ export function ChatPage() {
     message?: string;
     workerId?: string;
   }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
     const detail =
       data.phase === "blocked" && data.message
         ? data.message
         : data.phase === "adding_slide" && data.slide != null
           ? (data.slideTotal != null ? `第 ${data.slide}/${data.slideTotal} 页` : `第 ${data.slide} 页`)
           : undefined;
-    activitySetWorking({
-      title:
-        data.phase === "routed"
-          ? "已交给 Office"
-          : data.phase === "creating"
-            ? "正在建稿"
-            : data.phase === "validating"
-              ? "检查版式"
-              : data.phase === "delivering"
-                ? "正在交付"
-                : data.phase === "blocked"
-                  ? "需要修正"
-                  : "Office 进行中",
-      detail,
-    });
-    appendPart({
+    if (isViewingThread(data.threadId)) {
+      activitySetWorking({
+        title:
+          data.phase === "routed"
+            ? "已交给 Office"
+            : data.phase === "creating"
+              ? "正在建稿"
+              : data.phase === "validating"
+                ? "检查版式"
+                : data.phase === "delivering"
+                  ? "正在交付"
+                  : data.phase === "blocked"
+                    ? "需要修正"
+                    : "Office 进行中",
+        detail,
+      });
+    }
+    appendPart(data.threadId, {
       type: "office-progress",
       phase: data.phase,
       slide: data.slide,
@@ -407,12 +555,14 @@ export function ChatPage() {
       message: data.message,
       workerId: data.workerId,
     });
-  }, [appendPart, activitySetWorking]);
+  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
 
   const handleToolCall = useCallback((data: { threadId: string; toolCallId: string; toolName: string; args: unknown; workerId?: string; workerType?: string }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
-    activitySetWorking({ detail: formatToolLabel(data.toolName, data.args) });
-    appendPart({
+    if (!ensureLiveRun(data.threadId)) return;
+    if (isViewingThread(data.threadId)) {
+      activitySetWorking({ detail: formatToolLabel(data.toolName, data.args) });
+    }
+    appendPart(data.threadId, {
       type: "tool-call",
       toolCallId: data.toolCallId,
       toolName: data.toolName,
@@ -420,62 +570,77 @@ export function ChatPage() {
       workerId: data.workerId,
       startedAt: Date.now(),
     });
-  }, [appendPart, activitySetWorking]);
+  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
 
   const handleToolResult = useCallback((data: { threadId: string; toolCallId: string; toolName: string; result: unknown; isError?: boolean; workerId?: string; workerType?: string }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
-    activitySetLastCompleted(formatToolLabel(data.toolName, undefined));
-    updateToolResult(data.toolCallId, data.result, data.isError);
-  }, [updateToolResult, activitySetLastCompleted]);
+    if (!ensureLiveRun(data.threadId)) return;
+    if (isViewingThread(data.threadId)) {
+      activitySetLastCompleted(formatToolLabel(data.toolName, undefined));
+    }
+    updateToolResult(data.threadId, data.toolCallId, data.result, data.isError);
+  }, [updateToolResult, activitySetLastCompleted, isViewingThread, ensureLiveRun]);
 
   const handleComplete = useCallback((data: { threadId?: string; cancelled?: boolean; success?: boolean; error?: string }) => {
-    const tid = activeThreadIdRef.current ?? assistantThreadIdRef.current;
-    if (data.threadId && tid && data.threadId !== tid) return;
-    setIsRunning(false);
-    setAskUserData(null);
-    activeThreadIdRef.current = null;
-    activitySetIdle();
-    if (data.cancelled) {
-      appendPart({ type: "text", text: t("chat.executionCancelled") });
-    } else if (data.success === false && data.error) {
-      setError(data.error);
-      appendPart({ type: "text", text: t("chat.processFailed", { detail: data.error }) });
-    }
-    // Ensure the assistant message is never left empty after completion
-    setMessages((prev) => {
-      const lastMsg = prev[prev.length - 1];
-      if (lastMsg?.role === "assistant" && lastMsg.content.length === 0) {
-        const fallbackText = data.success === false && data.error
-          ? t("chat.processFailed", { detail: data.error })
-          : (data as { text?: string }).text ?? t("chat.taskNoOutput");
-        return [
-          ...prev.slice(0, -1),
-          {
-            ...lastMsg,
-            content: [{ type: "text", text: fallbackText }],
-          },
-        ];
-      }
-      return prev;
-    });
-    // Persist after stream settles (late file events may still arrive)
-    if (tid && !data.cancelled) {
-      window.setTimeout(() => {
-        setMessages((prev) => {
-          const lastMsg = prev[prev.length - 1];
-          if (lastMsg?.role === "assistant") {
-            persistAssistantContent(lastMsg.content);
-          }
-          return prev;
+    const store = useRunStore.getState();
+    const tid = data.threadId ?? activeThreadIdRef.current ?? undefined;
+    if (!tid || !store.getRun(tid)) return;
+
+    const run = store.getRun(tid)!;
+    store.beginSettling(tid);
+    store.setPendingAsk(tid, null);
+
+    const viewing = isViewingThread(tid);
+    const isError = data.success === false && !!data.error;
+
+    mutateThreadMessages(tid, (prev) =>
+      patchAssistantMessage(prev, run.assistantMsgId, (content) => {
+        let c = content;
+        if (data.cancelled) {
+          c = appendContentPart(c, { type: "text", text: t("chat.executionCancelled") });
+        } else if (isError) {
+          c = appendContentPart(c, { type: "text", text: t("chat.processFailed", { detail: data.error }) });
+        }
+        c = finalizeRunContent(c, {
+          cancelled: data.cancelled,
+          success: data.success,
+          error: data.error,
         });
-      }, 400);
+        if (c.length === 0) {
+          const fallbackText = isError
+            ? t("chat.processFailed", { detail: data.error })
+            : (data as { text?: string }).text ?? t("chat.taskNoOutput");
+          c = [{ type: "text", text: fallbackText }];
+        }
+        return c;
+      }),
+    );
+
+    if (!viewing && !isError && !data.cancelled) {
+      store.pushToast({
+        sessionId: tid,
+        kind: "complete",
+        title: run.title,
+      });
     }
-  }, [appendPart, activitySetIdle, persistAssistantContent, t]);
+
+    if (viewing) {
+      setAskUserData(null);
+      activeThreadIdRef.current = null;
+      activitySetIdle();
+      if (isError) setError(data.error!);
+    }
+
+    flushPersistAssistant(run.assistantMsgId);
+
+    window.setTimeout(() => {
+      store.clearRun(tid);
+    }, RUN_SETTLE_MS + 50);
+  }, [activitySetIdle, isViewingThread, mutateThreadMessages, t]);
 
   const handleFile = useCallback((data: { threadId: string; name: string; path: string; servedPath?: string; size: number; mimeType: string; type: string; src?: string }) => {
-    const threadId = activeThreadIdRef.current ?? assistantThreadIdRef.current;
-    if (!threadId || data.threadId !== threadId) return;
-    upsertFilePart({
+    const run = useRunStore.getState().getRunOrSettling(data.threadId);
+    if (!run) return;
+    upsertFilePart(data.threadId, {
       type: "file-attachment",
       name: data.name,
       size: data.size,
@@ -484,6 +649,8 @@ export function ChatPage() {
       servedPath: data.servedPath,
       src: data.src,
     });
+
+    if (!isViewingThread(data.threadId)) return;
 
     const previewType = isPreviewableFile(data.name);
     if (!previewType) return;
@@ -531,25 +698,46 @@ export function ChatPage() {
         })
         .catch(() => {});
     }
-  }, [upsertFilePart]);
+  }, [upsertFilePart, isViewingThread]);
 
-  // Ask-user handler — keep question in the transcript
+  // Ask-user handler — keep question in the transcript; restore card when switching back
   const handleAskUser = useCallback((data: { askId: string; threadId: string; question: string; options: Array<{ label: string; description?: string }> }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
+    const store = useRunStore.getState();
+    const pending = { askId: data.askId, question: data.question, options: data.options };
+    store.setPendingAsk(data.threadId, pending);
+    store.setPhase(data.threadId, "waiting");
+    appendPart(data.threadId, { type: "text", text: data.question });
+    if (!isViewingThread(data.threadId)) {
+      const run = store.getRun(data.threadId);
+      store.pushToast({
+        sessionId: data.threadId,
+        kind: "waiting",
+        title: run?.title ?? truncateActivityLabel(data.question),
+      });
+      return;
+    }
     activitySetWaiting(truncateActivityLabel(data.question));
-    setAskUserData({ askId: data.askId, question: data.question, options: data.options });
-    appendPart({ type: "text", text: data.question });
-  }, [activitySetWaiting, appendPart]);
+    setAskUserData(pending);
+  }, [activitySetWaiting, appendPart, isViewingThread, ensureLiveRun]);
 
   const handleAskUserTimeout = useCallback((data: { askId: string; threadId: string }) => {
-    if (data.threadId !== activeThreadIdRef.current) return;
+    if (!ensureLiveRun(data.threadId)) return;
+    const store = useRunStore.getState();
+    store.setPendingAsk(data.threadId, null);
+    store.clearToastsForSession(data.threadId);
+    if (store.getRun(data.threadId)?.phase === "waiting") {
+      store.setPhase(data.threadId, "running");
+    }
+    if (!isViewingThread(data.threadId)) return;
     setAskUserData((prev) => (prev?.askId === data.askId ? null : prev));
     if (isRunning) activityClearWaiting();
-  }, [isRunning, activityClearWaiting]);
+  }, [isRunning, activityClearWaiting, isViewingThread, ensureLiveRun]);
 
   // Listen to WS events
   useEffect(() => {
     const unsubs = [
+      onEvent("agent.start", handleAgentStart),
       onEvent("agent.reasoning", handleReasoning),
       onEvent("agent.text-delta", handleTextDelta),
       onEvent("agent.route", handleRoute),
@@ -564,17 +752,20 @@ export function ChatPage() {
       onEvent("agent.ask-user-timeout", handleAskUserTimeout),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [onEvent, handleReasoning, handleTextDelta, handleRoute, handleWorkerStart, handleWorkerComplete, handleOfficeProgress, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
+  }, [onEvent, handleAgentStart, handleReasoning, handleTextDelta, handleRoute, handleWorkerStart, handleWorkerComplete, handleOfficeProgress, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
 
   const handleCancel = useCallback(async () => {
     const threadId = activeThreadIdRef.current;
     if (!threadId) return;
-    try {
-      await request("chat.cancel", { threadId });
-    } catch {
-      // Ignore cancel errors — agent.complete event will reset state
+    await cancelSessionRun(threadId);
+    if (isViewingThread(threadId)) {
+      setAskUserData(null);
+      activeThreadIdRef.current = null;
+      activitySetIdle();
+      const cached = useRunStore.getState().getMessageCache(threadId);
+      if (cached) setMessages(cached);
     }
-  }, [request]);
+  }, [activitySetIdle, isViewingThread]);
 
   // Submit ask-user answer — leave it in the transcript as a user turn
   const handleAskUserSubmit = useCallback(async (answer: string) => {
@@ -586,6 +777,7 @@ export function ChatPage() {
       // Ignore — server may have timed out
     }
     setAskUserData(null);
+    if (currentId) useRunStore.getState().setPendingAsk(currentId, null);
     if (isRunning) activityClearWaiting();
 
     const sessionId = currentId;
@@ -606,6 +798,7 @@ export function ChatPage() {
     const skip = t("askUser.skipAnswer");
     request("chat.answerAskUser", { askId: askUserData.askId, answer: skip }).catch(() => {});
     setAskUserData(null);
+    if (currentId) useRunStore.getState().setPendingAsk(currentId, null);
     if (isRunning) activityClearWaiting();
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -625,17 +818,28 @@ export function ChatPage() {
     stickToBottomRef.current = true;
 
     setError(null);
+    let threadId = currentId;
 
     try {
       await getChatWsClient().waitForConnected();
 
       // Use current session as threadId, or create one
-      let sessionId = currentId;
-      if (!sessionId) {
-        sessionId = await createSession();
+      if (!threadId) {
+        threadId = await createSession();
       }
-      const threadId = sessionId;
-      activeThreadIdRef.current = threadId;
+      if (!threadId) {
+        throw new Error(t("chat.sendFailed", { detail: "no session" }));
+      }
+      const activeThreadId = threadId;
+
+      // Agent is single-dispatch today — don't start another session while one runs.
+      const inFlight = useRunStore.getState().getInFlightSessionId();
+      if (inFlight && inFlight !== activeThreadId) {
+        setError(t("chat.turnBusyHint"));
+        return;
+      }
+
+      activeThreadIdRef.current = activeThreadId;
       lastTextSeqRef.current = 0;
       lastReasoningSeqRef.current = 0;
 
@@ -666,24 +870,26 @@ export function ChatPage() {
         createdAt: now,
       };
 
-      assistantMsgIdRef.current = assistantMsgId;
-      assistantThreadIdRef.current = threadId;
+      const titleSrc = text || pendingFiles.map((f) => f.name).slice(0, 3).join(", ");
+      useRunStore.getState().beginRun({
+        sessionId: activeThreadId,
+        assistantMsgId,
+        title: titleSrc || i18n.t("activity.processing"),
+      });
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      const next = [...messagesRef.current, userMsg, assistantMsg];
+      useRunStore.getState().setMessageCache(activeThreadId, next);
+      setMessages(next);
       setInput("");
       clearFiles();
-      setIsRunning(true);
       activityBeginRun();
 
       // Persist user + empty assistant placeholder (updated as stream progresses)
-      db.insertMessage(userMsgId, threadId, "user", JSON.stringify(userContent), now).catch(() => {});
-      db.insertMessage(assistantMsgId, threadId, "assistant", "[]", now).catch(() => {});
+      db.insertMessage(userMsgId, activeThreadId, "user", JSON.stringify(userContent), now).catch(() => {});
+      db.insertMessage(assistantMsgId, activeThreadId, "assistant", "[]", now).catch(() => {});
 
       // Auto-title from first user message
-      if (threadId) {
-        const titleSrc = text || pendingFiles.map(f => f.name).slice(0, 3).join(', ');
-        if (titleSrc) autoTitle(threadId, titleSrc);
-      }
+      if (titleSrc) autoTitle(activeThreadId, titleSrc);
 
       if (inputRef.current) {
         inputRef.current.style.height = `${COMPOSER_INPUT_LINE_PX}px`;
@@ -691,16 +897,17 @@ export function ChatPage() {
       }
 
       const attachments = pendingFiles.map(f => ({ type: f.type, path: f.path, name: f.name, size: f.size, mimeType: f.mimeType }));
-      await request("chat.send", { prompt: text || undefined, threadId, attachments: attachments.length > 0 ? attachments : undefined });
+      await request("chat.send", { prompt: text || undefined, threadId: activeThreadId, attachments: attachments.length > 0 ? attachments : undefined });
     } catch (err) {
       const errorMessage = err instanceof Error
         ? err.message
         : typeof err === "string"
           ? err
           : t("chat.sendFailed", { detail: JSON.stringify(err) });
-      failPendingRun(errorMessage);
+      if (threadId) failPendingRun(threadId, errorMessage);
+      else setError(errorMessage);
     }
-  }, [input, pendingFiles, isRunning, request, clearFiles, currentId, createSession, autoTitle, failPendingRun, activityBeginRun]);
+  }, [input, pendingFiles, isRunning, request, clearFiles, currentId, createSession, autoTitle, failPendingRun, activityBeginRun, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -743,9 +950,18 @@ export function ChatPage() {
 
   const isEmpty = messages.length === 0;
   const previewOpen = usePreviewStore((s) => s.isOpen);
+  const previewWidthPx = usePreviewStore((s) => s.panelWidthPx);
 
   return (
-    <div className={`chat-stage chat-shell${previewOpen ? " chat-stage--preview-open" : ""}`}>
+    <div
+      className={`chat-stage chat-shell${previewOpen ? " chat-stage--preview-open" : ""}`}
+      style={
+        previewOpen
+          ? ({ ["--preview-width" as string]: `${previewWidthPx}px` } as CSSProperties)
+          : undefined
+      }
+    >
+      <BgToastHost />
       <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin" onScroll={handleScroll}>
         {isEmpty ? (
           <EmptyState />

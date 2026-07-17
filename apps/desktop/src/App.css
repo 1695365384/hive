@@ -135,9 +135,8 @@ html.desktop-app * {
    Chat stage — sizes relative to main pane (container queries)
    ============================================ */
 .chat-stage {
-  /* Must use cqi (not %): --preview-width is also read by absolute sidebar / inner.
-     % resolves against the using element → inner collapses to ~8rem and looks "broken". */
-  --preview-width: clamp(22rem, 32cqi, 28rem);
+  /* Overridden inline by ChatPage when preview is open (user-resizable). */
+  --preview-width: 52rem;
   --chat-gutter: 1rem;
   --chat-rail-max: min(48rem, calc(100% - 2rem));
   --chat-composer-max: min(42rem, calc(100% - 2rem));
@@ -353,10 +352,11 @@ html.desktop-app * {
   align-items: center;
   gap: 0.5rem;
   margin: 0 0 0.625rem;
-  padding: 0.4rem 0.65rem;
-  border-radius: 0.5rem;
-  border: 1px solid oklch(0.35 0.02 75 / 0.45);
-  background: oklch(0.19 0 0 / 0.9);
+  padding: 0.3rem 0.15rem;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid oklch(0.3 0 0 / 0.4);
+  background: transparent;
   opacity: 0;
   transform: translateY(6px);
   transition:
@@ -390,19 +390,20 @@ html.desktop-app * {
   align-items: center;
   gap: 0.35rem;
   max-width: 12rem;
-  padding: 0.25rem 0.55rem;
+  padding: 0.2rem 0.5rem;
   border-radius: 0.375rem;
-  border: 1px solid oklch(0.4 0.04 75 / 0.4);
-  background: oklch(0.24 0.015 75 / 0.55);
-  color: oklch(0.88 0.01 75);
-  font-size: 0.75rem;
+  border: 1px solid oklch(0.34 0.02 75 / 0.4);
+  background: oklch(0.22 0.01 75 / 0.45);
+  color: oklch(0.78 0.01 75);
+  font-size: 0.72rem;
   line-height: 1.2;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .artifacts-strip__item:hover {
-  background: oklch(0.3 0.03 75 / 0.65);
-  border-color: oklch(0.55 0.08 75 / 0.5);
+  background: oklch(0.28 0.02 75 / 0.55);
+  border-color: oklch(0.42 0.04 75 / 0.5);
+  color: oklch(0.9 0.01 75);
 }
 
 .artifacts-strip__name {
@@ -769,7 +770,6 @@ html.desktop-app * {
   .chat-stage {
     --chat-rail-max: 52rem;
     --chat-composer-max: 44rem;
-    --preview-width: clamp(24rem, 30cqi, 30rem);
   }
 }
 
@@ -777,7 +777,6 @@ html.desktop-app * {
   .chat-stage {
     --chat-rail-max: 56rem;
     --chat-composer-max: 46rem;
-    --preview-width: clamp(26rem, 28cqi, 32rem);
   }
 }
 
@@ -791,7 +790,7 @@ html.desktop-app * {
   bottom: 0;
   width: 0;
   z-index: 30;
-  overflow: hidden;
+  overflow: visible;
   background: oklch(0.13 0 0);
   border-left: 1px solid oklch(0.28 0 0 / 0.65);
   box-shadow: -10px 0 28px oklch(0 0 0 / 0.28);
@@ -800,8 +799,125 @@ html.desktop-app * {
 }
 
 .preview-sidebar--open {
-  width: var(--preview-width);
   pointer-events: auto;
+}
+
+body.preview-resizing,
+body.preview-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.preview-resizing .preview-sidebar,
+body.preview-resizing .chat-stage {
+  transition: none !important;
+}
+
+.preview-sidebar__resizer {
+  position: absolute;
+  top: 0;
+  left: -8px;
+  bottom: 0;
+  width: 16px;
+  z-index: 40;
+  cursor: col-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Always-visible amber seam — readable at rest, brighter on hover */
+.preview-sidebar__resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    oklch(0.45 0.03 75 / 0.05) 0%,
+    oklch(0.68 0.1 75 / 0.55) 14%,
+    oklch(0.78 0.13 75 / 0.82) 50%,
+    oklch(0.68 0.1 75 / 0.55) 86%,
+    oklch(0.45 0.03 75 / 0.05) 100%
+  );
+  box-shadow: 0 0 12px oklch(0.72 0.12 75 / 0.22);
+  transition: width 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+/* Center grip pill — three dots read as a drag affordance */
+.preview-sidebar__resizer-grip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 12px;
+  height: 44px;
+  border-radius: 999px;
+  background: oklch(0.24 0.025 75 / 0.96);
+  border: 1px solid oklch(0.72 0.12 75 / 0.55);
+  box-shadow:
+    0 2px 6px oklch(0 0 0 / 0.4),
+    0 0 0 1px oklch(0.72 0.12 75 / 0.12),
+    inset 0 1px 0 oklch(1 0 0 / 0.07);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.preview-sidebar__resizer-grip span {
+  display: block;
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: oklch(0.8 0.12 75 / 0.92);
+  transition: background 160ms ease;
+}
+
+.preview-sidebar__resizer:hover::before,
+.preview-sidebar__resizer:focus-visible::before,
+body.preview-resizing .preview-sidebar__resizer::before {
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    oklch(0.5 0.04 75 / 0.1) 0%,
+    oklch(0.75 0.13 75 / 0.85) 12%,
+    oklch(0.85 0.14 75 / 1) 50%,
+    oklch(0.75 0.13 75 / 0.85) 88%,
+    oklch(0.5 0.04 75 / 0.1) 100%
+  );
+  box-shadow: 0 0 16px oklch(0.75 0.13 75 / 0.42);
+}
+
+.preview-sidebar__resizer:hover .preview-sidebar__resizer-grip,
+.preview-sidebar__resizer:focus-visible .preview-sidebar__resizer-grip,
+body.preview-resizing .preview-sidebar__resizer-grip {
+  background: oklch(0.3 0.04 75 / 0.98);
+  border-color: oklch(0.82 0.13 75 / 0.85);
+  box-shadow:
+    0 3px 12px oklch(0 0 0 / 0.45),
+    0 0 0 1px oklch(0.78 0.12 75 / 0.28),
+    inset 0 1px 0 oklch(1 0 0 / 0.1);
+  transform: scale(1.08);
+}
+
+.preview-sidebar__resizer:hover .preview-sidebar__resizer-grip span,
+.preview-sidebar__resizer:focus-visible .preview-sidebar__resizer-grip span,
+body.preview-resizing .preview-sidebar__resizer-grip span {
+  background: oklch(0.82 0.12 75);
+}
+
+.preview-sidebar__resizer:focus-visible {
+  outline: none;
 }
 
 .preview-sidebar__inner {
@@ -811,6 +927,8 @@ html.desktop-app * {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
+  background: oklch(0.13 0 0);
 }
 
 .preview-sidebar__header {
@@ -1326,31 +1444,29 @@ html.desktop-app * {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.75rem;
-  border: 1px solid oklch(0.32 0.01 75 / 0.7);
-  background: oklch(0.2 0.006 75 / 0.85);
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid oklch(0.32 0.01 75 / 0.5);
+  background: oklch(0.18 0.006 75 / 0.55);
 }
 
 .file-attachment--deliverable .file-attachment__row {
-  padding: 0.85rem 0.9rem;
-  border-color: oklch(0.72 0.12 75 / 0.45);
-  background:
-    linear-gradient(135deg, oklch(0.72 0.12 75 / 0.12), transparent 55%),
-    oklch(0.19 0.01 75 / 0.92);
-  box-shadow: 0 8px 24px oklch(0 0 0 / 0.22);
+  padding: 0.7rem 0.8rem;
+  border-color: oklch(0.38 0.04 75 / 0.55);
+  background: oklch(0.2 0.01 75 / 0.7);
+  box-shadow: none;
 }
 
 .file-attachment__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.55rem;
-  color: oklch(0.82 0.12 75);
-  background: oklch(0.72 0.12 75 / 0.14);
-  border: 1px solid oklch(0.72 0.12 75 / 0.25);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.45rem;
+  color: oklch(0.72 0.06 75);
+  background: oklch(0.28 0.02 75 / 0.55);
+  border: 1px solid oklch(0.35 0.02 75 / 0.45);
   flex-shrink: 0;
 }
 
@@ -1362,9 +1478,9 @@ html.desktop-app * {
 .file-attachment__eyebrow {
   margin: 0 0 0.2rem;
   font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: oklch(0.78 0.11 75);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: oklch(0.62 0.03 75);
 }
 
 .file-attachment__name {
@@ -1395,32 +1511,35 @@ html.desktop-app * {
 }
 
 .file-attachment__preview-btn {
-  padding: 0.35rem 0.7rem;
-  border-radius: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.375rem;
   font-size: 0.75rem;
   font-weight: 500;
-  color: oklch(0.16 0 0);
-  background: oklch(0.94 0 0);
+  color: oklch(0.78 0.02 75);
+  background: oklch(0.28 0.01 75 / 0.7);
+  border: 1px solid oklch(0.38 0.02 75 / 0.45);
   transition:
     background 150ms ease,
-    transform 150ms ease,
+    border-color 150ms ease,
     opacity 150ms ease;
 }
 
 .file-attachment__preview-btn--primary {
-  padding: 0.45rem 0.9rem;
-  font-weight: 600;
-  color: oklch(0.18 0.02 75);
-  background: oklch(0.86 0.12 75);
+  padding: 0.35rem 0.75rem;
+  font-weight: 500;
+  color: oklch(0.92 0.02 75);
+  background: oklch(0.32 0.04 75 / 0.85);
+  border-color: oklch(0.5 0.08 75 / 0.45);
 }
 
 .file-attachment__preview-btn:hover:not(:disabled) {
-  background: oklch(1 0 0);
-  transform: scale(1.02);
+  background: oklch(0.34 0.02 75 / 0.85);
+  border-color: oklch(0.48 0.04 75 / 0.55);
 }
 
 .file-attachment__preview-btn--primary:hover:not(:disabled) {
-  background: oklch(0.9 0.11 75);
+  background: oklch(0.38 0.06 75 / 0.9);
+  border-color: oklch(0.58 0.1 75 / 0.5);
 }
 
 .file-attachment__preview-btn:disabled {
@@ -1454,16 +1573,30 @@ html.desktop-app * {
 }
 
 .activity-card {
-  margin: 0.5rem 0;
+  margin: 0.45rem 0;
   border-radius: 0.5rem;
-  border: 1px solid oklch(0.35 0 0 / 0.55);
-  background: oklch(0.22 0 0 / 0.45);
+  border: 1px solid oklch(0.32 0 0 / 0.5);
+  background: oklch(0.18 0 0 / 0.4);
   overflow: hidden;
 }
 
 .activity-card--running {
-  border-color: oklch(0.728 0.164 75 / 0.28);
-  box-shadow: 0 0 0 1px oklch(0.728 0.164 75 / 0.08);
+  border-color: oklch(0.45 0.06 75 / 0.4);
+  box-shadow: none;
+}
+
+/* Quiet nested deliverables — avoid box-in-box glare */
+.activity-card__deliverables .file-attachment {
+  margin: 0.15rem 0;
+}
+
+.activity-card__deliverables .file-attachment__row {
+  border-color: oklch(0.3 0.01 75 / 0.4);
+  background: oklch(0.16 0.005 75 / 0.5);
+}
+
+.activity-card .office-progress-banner {
+  margin: 0.35rem 0.5rem;
 }
 
 .activity-card__pulse-dot,
@@ -1565,6 +1698,89 @@ html.desktop-app * {
 }
 
 /* ============================================
+   Session run badge (sidebar)
+   ============================================ */
+.session-run-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  margin: 0.2rem 0.15rem 0;
+}
+.session-run-dot--running {
+  background: oklch(0.72 0.14 75);
+  box-shadow: 0 0 0 0 oklch(0.72 0.14 75 / 0.5);
+  animation: session-run-pulse 1.8s ease-out infinite;
+}
+.session-run-dot--waiting {
+  background: oklch(0.7 0.12 55);
+  animation: session-run-pulse 2.4s ease-out infinite;
+}
+@keyframes session-run-pulse {
+  0% { box-shadow: 0 0 0 0 oklch(0.72 0.12 70 / 0.45); }
+  70% { box-shadow: 0 0 0 0.35rem oklch(0.72 0.12 70 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(0.72 0.12 70 / 0); }
+}
+
+/* ============================================
+   Background run toasts
+   ============================================ */
+.bg-toast-host {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 5.5rem;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: min(22rem, calc(100% - 1.5rem));
+  pointer-events: none;
+}
+.bg-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid oklch(0.35 0.02 75 / 0.55);
+  background: oklch(0.2 0.01 75 / 0.94);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.35);
+}
+.bg-toast--waiting {
+  border-color: oklch(0.55 0.1 55 / 0.55);
+}
+.bg-toast__body {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: oklch(0.85 0.02 75);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.bg-toast__body:hover {
+  color: oklch(0.92 0.03 75);
+}
+.bg-toast__dismiss {
+  flex-shrink: 0;
+  padding: 0.2rem;
+  border-radius: 0.25rem;
+  border: 0;
+  background: transparent;
+  color: oklch(0.55 0.01 75);
+  cursor: pointer;
+}
+.bg-toast__dismiss:hover {
+  color: oklch(0.8 0.02 75);
+  background: oklch(0.28 0.01 75 / 0.6);
+}
+
+/* ============================================
    Activity dock — sticky status bar
    ============================================ */
 .activity-dock {
@@ -1660,19 +1876,22 @@ html.desktop-app * {
 
 .office-progress-banner {
   display: block;
-  margin: 0 0 0.4rem;
-  padding: 0.35rem 0.55rem;
+  margin: 0.35rem 0;
+  padding: 0.4rem 0.65rem;
   font-size: 0.75rem;
   line-height: 1.4;
-  color: oklch(0.42 0.02 75);
-  background: oklch(0.97 0.005 75);
-  border-left: 2px solid oklch(0.72 0.04 145);
+  color: oklch(0.78 0.02 75);
+  background: oklch(0.2 0.008 75 / 0.65);
+  border: 1px solid oklch(0.32 0.01 75 / 0.45);
+  border-left: 2px solid oklch(0.68 0.1 75 / 0.75);
+  border-radius: 0.375rem;
 }
 
 .office-progress-banner--blocked {
-  color: oklch(0.45 0.08 35);
-  border-left-color: oklch(0.65 0.12 35);
-  background: oklch(0.97 0.02 35);
+  color: oklch(0.82 0.08 35);
+  border-color: oklch(0.4 0.06 35 / 0.45);
+  border-left-color: oklch(0.68 0.14 35);
+  background: oklch(0.22 0.03 35 / 0.45);
 }
 
 .worker-lane {
@@ -1685,7 +1904,7 @@ html.desktop-app * {
 .worker-lane__banner {
   font-size: 0.72rem;
   letter-spacing: 0.02em;
-  color: oklch(0.45 0.03 145);
+  color: oklch(0.55 0.02 75);
 }
 
 .worker-lane__grid {

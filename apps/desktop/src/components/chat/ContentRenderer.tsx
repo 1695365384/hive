@@ -127,11 +127,14 @@ function ToolBatchBlock({
   const [isOpen, setIsOpen] = useState(false);
   const firstArgs = (children[0] as { args?: unknown } | undefined)?.args;
   const isFileOps = toolName === "file-ops" || toolName === "__file-ops__";
+  const isOfficeOps = toolName === "office-ops";
   const detail = isFileOps
     ? t("activity.tool.fileOps", { count })
-    : formatToolLabel(toolName, firstArgs);
+    : isOfficeOps
+      ? t("activity.tool.officeOps", { count })
+      : formatToolLabel(toolName, firstArgs);
   const label =
-    !isFileOps && count > 1
+    !isFileOps && !isOfficeOps && count > 1
       ? t("activity.tool.batch", { label: detail, count })
       : detail;
 
@@ -283,24 +286,40 @@ function WorkerBlockInner({
   const deliverables = children.filter((c) => c.type === "file-attachment");
   const steps = children.filter((c) => c.type !== "file-attachment");
   const isRunning = status === "running";
-  // Explore/plan flood file ops — keep compact unless user expands
+  // Explore/plan/office flood low-level ops — keep compact unless user expands
   const defaultCollapsed =
-    workerType === "explore" || workerType === "plan" || stepCount >= 8;
+    workerType === "explore" ||
+    workerType === "plan" ||
+    workerType === "office" ||
+    stepCount >= 8;
 
-  const deliverableNodes =
-    deliverables.length > 0
-      ? deliverables.map((child, idx) => (
-          <FileAttachmentBlock
-            key={`${child.path}-${child.name}-${idx}`}
-            name={child.name}
-            size={child.size}
-            mimeType={child.mimeType}
-            path={child.path}
-            servedPath={child.servedPath}
-            src={child.src}
-          />
-        ))
-      : undefined;
+  const progressParts = children.filter((c) => c.type === "office-progress");
+  const latestProgress =
+    progressParts.length > 0
+      ? (progressParts[progressParts.length - 1] as Extract<
+          GroupedContent,
+          { type: "office-progress" }
+        >)
+      : null;
+
+  const deliverableNodes = (
+    <>
+      {latestProgress ? <OfficeProgressBanner part={latestProgress} /> : null}
+      {deliverables.map((child, idx) => (
+        <FileAttachmentBlock
+          key={`${child.path}-${child.name}-${idx}`}
+          name={child.name}
+          size={child.size}
+          mimeType={child.mimeType}
+          path={child.path}
+          servedPath={child.servedPath}
+          src={child.src}
+        />
+      ))}
+    </>
+  );
+
+  const hasDeliverables = !!latestProgress || deliverables.length > 0;
 
   return (
     <ActivityCard
@@ -310,9 +329,10 @@ function WorkerBlockInner({
       stepCount={stepCount}
       badge={scenarioLabel && title !== scenarioLabel ? scenarioLabel : undefined}
       defaultCollapsed={defaultCollapsed}
-      deliverables={deliverableNodes}
+      deliverables={hasDeliverables ? deliverableNodes : undefined}
     >
       {steps.map((child, idx) => {
+        if (child.type === "office-progress") return null;
         if (child.type === "tool-call") {
           return (
             <ToolCallBlock

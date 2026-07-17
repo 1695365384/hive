@@ -44,15 +44,32 @@ describe("groupContentParts", () => {
     expect(grouped[1]).toMatchObject({ type: "text", text: "你好" });
   });
 
-  it("passes through office-progress parts", () => {
+  it("coalesces consecutive office-progress into the latest", () => {
     const parts: ContentPart[] = [
       { type: "office-progress", phase: "routed" },
+      { type: "office-progress", phase: "adding_slide", slide: 1, slideTotal: 8 },
+      { type: "office-progress", phase: "adding_slide", slide: 2, slideTotal: 8 },
+      { type: "office-progress", phase: "adding_slide", slide: 3, slideTotal: 8 },
       { type: "office-progress", phase: "blocked", message: "缺真图" },
     ];
     const grouped = groupContentParts(parts);
-    expect(grouped).toHaveLength(2);
-    expect(grouped[0]).toMatchObject({ type: "office-progress", phase: "routed" });
-    expect(grouped[1]).toMatchObject({ type: "office-progress", phase: "blocked", message: "缺真图" });
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]).toMatchObject({
+      type: "office-progress",
+      phase: "blocked",
+      message: "缺真图",
+    });
+  });
+
+  it("keeps office-progress when interrupted by other content", () => {
+    const parts: ContentPart[] = [
+      { type: "office-progress", phase: "creating" },
+      { type: "text", text: "中间说明" },
+      { type: "office-progress", phase: "adding_slide", slide: 1 },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped.map((g) => g.type)).toEqual(["office-progress", "text", "office-progress"]);
+    expect(grouped[2]).toMatchObject({ type: "office-progress", phase: "adding_slide", slide: 1 });
   });
 
   it("nests tool calls under active worker", () => {
@@ -111,6 +128,81 @@ describe("groupContentParts", () => {
     ];
     const grouped = groupContentParts(parts);
     expect(grouped.map((g) => g.type)).toEqual(["worker", "office-progress", "worker"]);
+  });
+
+  it("folds flat historical officecli rows into one collapsed Office card", () => {
+    const parts: ContentPart[] = [
+      {
+        type: "file-attachment",
+        name: "项目汇报.pptx",
+        size: 1000,
+        mimeType: "application/octet-stream",
+        path: "/tmp/a.pptx",
+      },
+      { type: "office-progress", phase: "creating" },
+      {
+        type: "tool-call",
+        toolCallId: "1",
+        toolName: "officecli",
+        args: { command: "view outline" },
+        result: "ok",
+      },
+      { type: "office-progress", phase: "adding_slide", slide: 1, slideTotal: 3 },
+      {
+        type: "tool-call",
+        toolCallId: "2",
+        toolName: "officecli",
+        args: { command: "add title" },
+        result: "ok",
+      },
+      {
+        type: "tool-call",
+        toolCallId: "3",
+        toolName: "Bash",
+        args: { command: "officecli set text" },
+        result: "ok",
+      },
+      { type: "text", text: "PPT 已完成" },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped.map((g) => g.type)).toEqual(["file-attachment", "worker", "text"]);
+    expect(grouped[1]).toMatchObject({ type: "worker", workerType: "office", status: "completed" });
+    if (grouped[1]?.type === "worker") {
+      expect(grouped[1].children.map((c) => c.type)).toEqual(["office-progress", "tool-batch"]);
+      expect(grouped[1].children[1]).toMatchObject({
+        type: "tool-batch",
+        toolName: "office-ops",
+        count: 3,
+      });
+    }
+  });
+
+  it("nests office-progress into running office worker and batches office tools", () => {
+    const parts: ContentPart[] = [
+      { type: "worker-start", workerId: "w1", workerType: "office", description: "做PPT" },
+      { type: "office-progress", phase: "creating", workerId: "w1" },
+      { type: "tool-call", toolCallId: "1", toolName: "Bash", args: { command: "officecli new" }, workerId: "w1" },
+      { type: "office-progress", phase: "adding_slide", slide: 1, slideTotal: 3, workerId: "w1" },
+      { type: "tool-call", toolCallId: "2", toolName: "Bash", args: { command: "officecli add" }, workerId: "w1" },
+      { type: "tool-call", toolCallId: "3", toolName: "Bash", args: { command: "officecli view" }, workerId: "w1" },
+      { type: "worker-complete", workerId: "w1", workerType: "office", success: true, duration: 1200 },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]?.type).toBe("worker");
+    if (grouped[0]?.type === "worker") {
+      expect(grouped[0].children.map((c) => c.type)).toEqual(["office-progress", "tool-batch"]);
+      expect(grouped[0].children[0]).toMatchObject({
+        type: "office-progress",
+        phase: "adding_slide",
+        slide: 1,
+      });
+      expect(grouped[0].children[1]).toMatchObject({
+        type: "tool-batch",
+        toolName: "office-ops",
+        count: 3,
+      });
+    }
   });
 
   it("merges consecutive reasoning blocks inside worker", () => {

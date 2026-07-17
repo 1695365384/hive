@@ -45,7 +45,17 @@
     "collapseSidebar": "收起侧栏",
     "sessions": "会话",
     "messageCount_one": "1 条消息",
-    "messageCount_other": "{{count}} 条消息"
+    "messageCount_other": "{{count}} 条消息",
+    "stopConfirm": "停止「{{title}}」的后台任务？",
+    "deleteRunningConfirm": "「{{title}}」仍在执行，删除将先停止任务。确定删除？",
+    "running": "进行中",
+    "waiting": "等待确认",
+    "stopRun": "停止任务"
+  },
+  "run": {
+    "toastRegion": "后台任务通知",
+    "toastComplete": "「{{title}}」已完成",
+    "toastWaiting": "「{{title}}」需要你确认"
   },
   "chat": {
     "placeholder": "向 Hive 提问…",
@@ -100,7 +110,8 @@
       "agentDefault": "委派子任务",
       "web": "获取网页内容",
       "batch": "{{label}} · {{count}} 次",
-      "fileOps": "文件探索 · {{count}} 步"
+      "fileOps": "文件探索 · {{count}} 步",
+      "officeOps": "Office 操作 · {{count}} 步"
     },
     "worker": {
       "office": "Office 文档",
@@ -162,6 +173,7 @@
     "sheetCount_one": "1 个工作表",
     "sheetCount_other": "{{count}} 个工作表",
     "close": "关闭预览 (Esc)",
+    "resize": "拖动调整预览宽度",
     "documentPreview": "文档预览",
     "officeDoc": "Office 文档",
     "generating": "正在生成文档，预览即将出现…",

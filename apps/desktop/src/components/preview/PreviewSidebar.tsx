@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   FileText,
@@ -32,7 +32,9 @@ function previewTypeMeta(type: Preview["type"] | undefined, t: (key: string) => 
 
 export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
   const { t } = useTranslation();
-  const { isOpen, previews, activeId, close, setActive } = usePreviewStore();
+  const { isOpen, previews, activeId, close, setActive, panelWidthPx, setPanelWidthPx } =
+    usePreviewStore();
+  const dragRef = useRef<{ startX: number; startW: number; stageW: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -46,6 +48,45 @@ export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, close]);
 
+  const onResizePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const stage = e.currentTarget.closest(".chat-stage") as HTMLElement | null;
+      const stageW = stage?.getBoundingClientRect().width ?? window.innerWidth;
+      dragRef.current = {
+        startX: e.clientX,
+        startW: panelWidthPx,
+        stageW,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      document.body.classList.add("preview-resizing");
+    },
+    [panelWidthPx],
+  );
+
+  const onResizePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      // Drag handle on the left edge: move left → wider panel
+      const next = drag.startW + (drag.startX - e.clientX);
+      setPanelWidthPx(next, drag.stageW);
+    },
+    [setPanelWidthPx],
+  );
+
+  const endResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    document.body.classList.remove("preview-resizing");
+  }, []);
+
   const activePreview = activeId
     ? previews.find((p) => p.id === activeId) ?? null
     : null;
@@ -56,10 +97,41 @@ export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
   return (
     <aside
       className={`preview-sidebar ${isOpen ? "preview-sidebar--open" : ""}`}
-      style={{ width: isOpen ? "var(--preview-width)" : 0 }}
+      style={{ width: isOpen ? panelWidthPx : 0 }}
       aria-hidden={!isOpen}
       aria-label={t("preview.documentPreview")}
     >
+      {isOpen && (
+        <div
+          className="preview-sidebar__resizer app-no-drag"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("preview.resize")}
+          aria-valuenow={panelWidthPx}
+          tabIndex={0}
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onKeyDown={(e) => {
+            const stage = (e.currentTarget.closest(".chat-stage") as HTMLElement | null)
+              ?.getBoundingClientRect().width;
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              setPanelWidthPx(panelWidthPx + 24, stage);
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              setPanelWidthPx(panelWidthPx - 24, stage);
+            }
+          }}
+        >
+          <div className="preview-sidebar__resizer-grip" aria-hidden>
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+      )}
       <div className="preview-sidebar__inner">
         <header className="preview-sidebar__header">
           <div className="preview-sidebar__title-row">
