@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { getWsClient } from "../lib/ws-client";
 import { ProviderGrid } from "../components/provider-setup/ProviderGrid";
+import { ProviderLogo } from "../components/provider-setup/ProviderLogo";
 import { ApiKeyInput } from "../components/provider-setup/ApiKeyInput";
 import { ModelSelector } from "../components/provider-setup/ModelSelector";
 import { type ProviderInfo, type ModelInfo } from "../types/provider";
@@ -179,6 +180,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 providers={providers}
                 selectedId={selectedProvider}
                 onSelect={setSelectedProvider}
+                showSearch={false}
+                density="comfortable"
+                columns={3}
               />
             </div>
           )}
@@ -187,15 +191,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           {step === 1 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm text-stone-400">
-                {selected?.logo && (
-                  <div className="w-5 h-5 rounded bg-white/10 p-0.5">
-                    <img
-                      src={selected.logo}
-                      alt=""
-                      className="w-full h-full object-contain"
-                      style={{ filter: "invert(1) brightness(2)" }}
-                    />
-                  </div>
+                {selected && (
+                  <ProviderLogo
+                    providerId={selected.id}
+                    name={selected.name}
+                    logo={selected.logo}
+                    size="sm"
+                  />
                 )}
                 <span>
                   {t("setup.connectingTo", { name: selected?.name ?? "" })}

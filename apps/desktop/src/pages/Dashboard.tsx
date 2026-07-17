@@ -341,17 +341,17 @@ function SettingsModal({
       onClick={onClose}
     >
       <div
-        className="bg-stone-900 border border-stone-700 rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden"
+        className="bg-stone-900 border border-stone-700 rounded-xl shadow-2xl flex flex-col overflow-hidden w-[min(56rem,calc(100vw-2rem))] h-[min(80vh,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal header with tabs */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-800 shrink-0">
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-800 shrink-0 min-w-0">
+          <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-thin">
             {tabs.map((t) => (
               <button
                 key={t.id}
                 onClick={() => onTabChange(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm whitespace-nowrap transition-colors ${
                   tab === t.id
                     ? "bg-stone-800 text-stone-100 font-medium"
                     : "text-stone-500 hover:text-stone-300 hover:bg-stone-800/50"
@@ -366,14 +366,20 @@ function SettingsModal({
             type="button"
             onClick={onClose}
             aria-label={t("common.close")}
-            className="p-1.5 rounded-md text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors"
+            className="p-1.5 rounded-md text-stone-500 hover:text-stone-200 hover:bg-stone-800 transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal content */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
+        {/* 技能页自管滚动；其它 tab 仍用外层滚动 */}
+        <div
+          className={
+            tab === "skills"
+              ? "flex-1 min-h-0 overflow-hidden"
+              : "flex-1 min-h-0 overflow-y-auto scrollbar-thin"
+          }
+        >
           {tab === "config" && <ConfigPage />}
           {tab === "mcp" && <McpPage />}
           {tab === "skills" && <SkillPage />}

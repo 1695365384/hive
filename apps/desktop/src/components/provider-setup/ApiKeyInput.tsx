@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getWsClient } from "../../lib/ws-client";
 import {
   type ConnectionTestResult,
   describeConnectionError,
 } from "../../types/provider";
+import type { ProviderVerifyStatus } from "./provider-verify-status";
 
 interface ApiKeyInputProps {
   value: string;
@@ -12,6 +13,15 @@ interface ApiKeyInputProps {
   providerName: string;
   providerId: string;
   model?: string;
+  /** When false, Test is disabled (masked/saved key). */
+  canTest?: boolean;
+  testDisabledHint?: string;
+  /** Bump to reset local test UI (provider change / cancel). */
+  resetToken?: number;
+  onVerifyChange?: (
+    status: ProviderVerifyStatus,
+    result: ConnectionTestResult | null,
+  ) => void;
 }
 
 type TestState = "idle" | "testing" | "success" | "failed";
@@ -22,39 +32,71 @@ export function ApiKeyInput({
   providerName,
   providerId,
   model,
+  canTest = true,
+  testDisabledHint,
+  resetToken = 0,
+  onVerifyChange,
 }: ApiKeyInputProps) {
   const { t } = useTranslation();
   const [testState, setTestState] = useState<TestState>("idle");
-  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(
+    null,
+  );
+
+  useEffect(() => {
+    setTestState("idle");
+    setTestResult(null);
+  }, [resetToken, providerId]);
+
+  const emit = (
+    state: TestState,
+    result: ConnectionTestResult | null,
+  ) => {
+    setTestState(state);
+    setTestResult(result);
+    const status: ProviderVerifyStatus =
+      state === "testing"
+        ? "testing"
+        : state === "success"
+          ? "verified"
+          : state === "failed"
+            ? "failed"
+            : "unknown";
+    onVerifyChange?.(status, result);
+  };
 
   const handleTest = async () => {
-    if (!value || !providerId) return;
-    setTestState("testing");
-    setTestResult(null);
+    if (!canTest || !value || !providerId) return;
+    emit("testing", null);
     try {
       const result = await getWsClient().request<ConnectionTestResult>(
         "provider.testKey",
         { providerId, apiKey: value, model: model || undefined },
       );
-      setTestResult(result);
-      setTestState(result.valid ? "success" : "failed");
+      emit(result.valid ? "success" : "failed", result);
     } catch (err) {
-      setTestResult({
+      emit("failed", {
         valid: false,
         error: err instanceof Error ? err.message : t("provider.requestFailed"),
         errorKind: "unknown",
       });
-      setTestState("failed");
     }
   };
+
+  const testDisabled = !canTest || !value || testState === "testing";
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-stone-300">{t("provider.apiKey")}</label>
+        <label className="block text-sm font-medium text-stone-300">
+          {t("provider.apiKey")}
+        </label>
         {testState === "success" && (
           <span className="text-xs text-green-400 flex items-center gap-1">
-            ✓ {testResult?.latencyMs ? `${testResult.latencyMs}ms` : t("provider.valid")}
+            ✓{" "}
+            {testResult?.latencyMs
+              ? `${testResult.latencyMs}ms`
+              : t("provider.valid")}
           </span>
         )}
         {testState === "failed" && (
@@ -68,8 +110,7 @@ export function ApiKeyInput({
           value={value}
           onChange={(e) => {
             onChange(e.target.value);
-            setTestState("idle");
-            setTestResult(null);
+            emit("idle", null);
           }}
           placeholder={t("provider.enterApiKey", { name: providerName })}
           className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-4 py-2.5 text-stone-100 placeholder-stone-500 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
@@ -77,7 +118,8 @@ export function ApiKeyInput({
         <button
           type="button"
           onClick={handleTest}
-          disabled={!value || testState === "testing"}
+          disabled={testDisabled}
+          title={!canTest ? testDisabledHint : undefined}
           className="px-4 py-2.5 bg-stone-800 hover:bg-stone-700 disabled:bg-stone-800 disabled:cursor-not-allowed text-stone-200 text-sm font-medium rounded-lg border border-stone-700 transition-colors whitespace-nowrap"
         >
           {testState === "testing" ? (
@@ -91,8 +133,14 @@ export function ApiKeyInput({
         </button>
       </div>
 
+      {!canTest && testDisabledHint && (
+        <p className="text-xs text-stone-500">{testDisabledHint}</p>
+      )}
+
       {testState === "failed" && testResult && (
-        <p className="text-xs text-red-400">{describeConnectionError(testResult)}</p>
+        <p className="text-xs text-red-400">
+          {describeConnectionError(testResult)}
+        </p>
       )}
       {testState === "success" && testResult?.modelUsed && (
         <p className="text-xs text-stone-500">
