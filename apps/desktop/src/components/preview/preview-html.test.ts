@@ -3,20 +3,20 @@ import { enhanceOfficePreviewHtml } from "./preview-html";
 import { existsSync, readFileSync } from "node:fs";
 
 describe("enhanceOfficePreviewHtml", () => {
-  it("injects embed class, CSS, patched scale logic, and resize script", () => {
+  it("injects vertical deck scroll + width-fit scale logic", () => {
     const html = "<!DOCTYPE html><html><head></head><body><script>const fill = headless && slides.length === 1;</script></body></html>";
     const out = enhanceOfficePreviewHtml(html);
     expect(out).toContain('class="hive-embed"');
     expect(out).toContain("hive-embed");
     expect(out).toContain('document.documentElement.classList.contains("hive-embed") ? false');
-    expect(out).toContain("maxSlideW");
-    expect(out).toContain("flex-direction: row !important");
-    expect(out).toContain("scroll-snap-type: x mandatory");
+    expect(out).not.toContain("maxSlideW");
+    expect(out).toContain("flex-direction: column !important");
+    expect(out).toContain("overflow-y: auto !important");
+    expect(out).toContain("scroll-snap-type: y proximity");
+    expect(out).toContain("availW / designW");
+    expect(out).toContain("transformOrigin = \"center top\"");
     expect(out).toContain("__hivePreviewHeight");
-    expect(out).toContain("avail.h > 0");
-    expect(out).toContain("transformOrigin = \"center center\"");
     expect(out.indexOf("hive-preview-patch")).toBeLessThan(out.indexOf("</head>"));
-    expect(out.indexOf("hive-preview-patch-js")).toBeGreaterThan(out.indexOf("</body>") === -1 ? 0 : out.lastIndexOf("<script"));
   });
 
   it("patches real officecli HTML when fixture exists", () => {

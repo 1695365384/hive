@@ -1,4 +1,4 @@
-/** Patch officecli HTML so slides fit the embed by letterboxing (preserve aspect ratio). */
+/** Patch officecli HTML for vertical deck scroll + width-fit slides (PowerPoint-like). */
 export function enhanceOfficePreviewHtml(html: string): string {
   let out = addHiveEmbedClass(html);
   out = patchOfficeCliScaleLogic(out);
@@ -21,10 +21,10 @@ html.hive-embed body {
 html.hive-embed .sidebar,
 html.hive-embed .sidebar-toggle,
 html.hive-embed .toggle-zone { display: none !important; }
-/* Horizontal filmstrip — slides scroll sideways, not stacked vertically */
+/* Vertical deck — scroll top→bottom like PowerPoint / Keynote */
 html.hive-embed .main {
   display: flex !important;
-  flex-direction: row !important;
+  flex-direction: column !important;
   flex-wrap: nowrap !important;
   flex: 1 1 auto !important;
   width: 100% !important;
@@ -32,30 +32,33 @@ html.hive-embed .main {
   min-width: 0 !important;
   min-height: 0 !important;
   height: 100% !important;
-  padding: 12px 16px !important;
+  padding: 14px 12px 28px !important;
   margin: 0 !important;
-  gap: 14px !important;
+  gap: 18px !important;
   align-items: center !important;
   justify-content: flex-start !important;
   box-sizing: border-box !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  scroll-snap-type: x mandatory !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scroll-snap-type: y proximity !important;
   -webkit-overflow-scrolling: touch !important;
 }
 html.hive-embed .slide-container {
   flex: 0 0 auto !important;
-  width: auto !important;
-  max-width: none !important;
-  height: 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
   align-items: center !important;
-  justify-content: center !important;
+  justify-content: flex-start !important;
   margin: 0 !important;
-  scroll-snap-align: center !important;
+  scroll-snap-align: start !important;
+  box-sizing: border-box !important;
 }
 html.hive-embed .slide-wrapper {
   width: auto !important;
-  max-width: none !important;
+  max-width: 100% !important;
   margin: 0 !important;
   padding: 0 !important;
   display: flex !important;
@@ -64,6 +67,15 @@ html.hive-embed .slide-wrapper {
 }
 html.hive-embed .slide {
   box-shadow: 0 8px 28px rgba(0,0,0,0.35) !important;
+}
+/* Notes sit under each slide in the vertical flow */
+html.hive-embed .notes,
+html.hive-embed .slide-notes,
+html.hive-embed [class*="note"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin-top: 0.5rem !important;
 }
 </style>`;
 
@@ -76,27 +88,23 @@ html.hive-embed .slide {
   var rescaleScheduled = false;
   var rescaleRunning = false;
 
-  function getAvail() {
+  function getAvailWidth() {
     var hostW = window.__hivePreviewWidth;
-    var hostH = window.__hivePreviewHeight;
     var main = document.querySelector(".main");
-    var pad = 24;
-    var w = (hostW > 0 ? hostW : (main ? main.clientWidth : window.innerWidth)) - pad;
-    var h = (hostH > 0 ? hostH : (main ? main.clientHeight : window.innerHeight)) - pad;
-    return { w: Math.max(0, w), h: Math.max(0, h) };
+    // Match .main horizontal padding: 12px * 2
+    var padX = 24;
+    var w = (hostW > 0 ? hostW : (main ? main.clientWidth : window.innerWidth)) - padX;
+    return Math.max(0, w);
   }
 
   function hiveFitSlides() {
     if (rescaleRunning) return;
     rescaleRunning = true;
     try {
-      var avail = getAvail();
-      // Width is required; height may be 0 before first host postMessage — fall back to width-only
-      if (avail.w <= 0) return;
+      var availW = getAvailWidth();
+      if (availW <= 0) return;
 
       var slides = document.querySelectorAll(".main > .slide-container .slide");
-      // Leave a peek of the next slide so the strip reads as horizontal, not a single page
-      var maxSlideW = avail.w > 0 ? avail.w * 0.88 : 0;
       slides.forEach(function(slide) {
         slide.style.transform = "none";
         slide.style.margin = "0";
@@ -105,18 +113,15 @@ html.hive-embed .slide {
         var designH = slide.offsetHeight;
         if (designW <= 0 || designH <= 0) return;
 
-        // Fit height first; cap width so neighbors stay visible in the strip
-        var s = avail.h > 0 ? avail.h / designH : avail.w / designW;
-        if (maxSlideW > 0 && designW * s > maxSlideW) {
-          s = maxSlideW / designW;
-        }
+        // Fit-to-width for vertical deck review (height grows with aspect ratio)
+        var s = availW / designW;
         slide.style.transform = "scale(" + s + ")";
-        slide.style.transformOrigin = "center center";
+        slide.style.transformOrigin = "center top";
 
         var wrapper = slide.parentElement;
         if (wrapper) {
           wrapper.style.width = Math.ceil(designW * s) + "px";
-          wrapper.style.maxWidth = "none";
+          wrapper.style.maxWidth = "100%";
           wrapper.style.height = Math.ceil(designH * s) + "px";
           wrapper.style.marginLeft = "0";
           wrapper.style.marginRight = "0";

@@ -36,11 +36,33 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
         message: part.message,
         workerId: part.workerId,
       };
-      const last = result[result.length - 1];
-      if (last?.type === "office-progress") {
-        result[result.length - 1] = next;
+      // Prefer nesting into the office worker so the transcript stays one card
+      const nestTarget =
+        (part.workerId ? activeWorkers.get(part.workerId) : undefined) ??
+        [...activeWorkers.values()].find(
+          (w) => w.workerType === "office" && w.status === "running",
+        );
+      if (nestTarget) {
+        const kids = nestTarget.children;
+        let lastProgressIdx = -1;
+        for (let i = kids.length - 1; i >= 0; i--) {
+          if (kids[i]?.type === "office-progress") {
+            lastProgressIdx = i;
+            break;
+          }
+        }
+        if (lastProgressIdx >= 0) {
+          kids[lastProgressIdx] = next;
+        } else {
+          kids.push(next);
+        }
       } else {
-        result.push(next);
+        const last = result[result.length - 1];
+        if (last?.type === "office-progress") {
+          result[result.length - 1] = next;
+        } else {
+          result.push(next);
+        }
       }
     } else if (part.type === "worker-complete") {
       const group = activeWorkers.get(part.workerId);
@@ -72,7 +94,9 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
   }
 
   return groupWorkerLanes(
-    groupImageGalleries(dedupeTopLevelFileAttachments(mergeToolBatches(mergeReasoning(result)))),
+    compactTopLevelOfficeFlood(
+      groupImageGalleries(dedupeTopLevelFileAttachments(mergeToolBatches(mergeReasoning(result)))),
+    ),
   );
 }
 
@@ -217,17 +241,26 @@ function mergeToolBatches(items: GroupedContent[]): GroupedContent[] {
   const merged: GroupedContent[] = [];
   let batch: GroupedContent[] = [];
   let batchKey: string | null = null;
+  let pendingProgress: GroupedContent | null = null;
+
+  const emitProgress = () => {
+    if (!pendingProgress) return;
+    merged.push(pendingProgress);
+    pendingProgress = null;
+  };
 
   const flushBatch = () => {
     if (batch.length === 0) return;
+    emitProgress();
     if (batch.length === 1) {
-      merged.push(batch[0]);
+      merged.push(batch[0]!);
     } else {
       const first = batch[0] as { type: "tool-call"; toolName: string };
       const key = batchKey ?? first.toolName;
       merged.push({
         type: "tool-batch",
-        toolName: key === "file-ops" ? "file-ops" : first.toolName,
+        toolName:
+          key === "file-ops" ? "file-ops" : key === "office-ops" ? "office-ops" : first.toolName,
         count: batch.length,
         children: batch,
       });
@@ -238,8 +271,8 @@ function mergeToolBatches(items: GroupedContent[]): GroupedContent[] {
 
   for (const item of items) {
     if (item.type === "tool-call") {
-      const tc = item as { type: "tool-call"; toolName: string };
-      const key = toolBatchKey(tc.toolName);
+      const tc = item as { type: "tool-call"; toolName: string; args?: unknown };
+      const key = toolBatchKey(tc.toolName, tc.args);
       if (batch.length > 0 && batchKey === key) {
         batch.push(item);
       } else {
@@ -247,11 +280,15 @@ function mergeToolBatches(items: GroupedContent[]): GroupedContent[] {
         batch.push(item);
         batchKey = key;
       }
+    } else if (item.type === "office-progress") {
+      // Don't shatter officecli rows — keep latest progress for the batch header
+      pendingProgress = item;
     } else if (item.type === "reasoning" && batch.length > 0 && batchKey === "file-ops") {
       // Don't break file-op batches on interleaved model "thinking" inside explore
       continue;
     } else {
       flushBatch();
+      emitProgress();
       if (item.type === "worker") {
         const worker = item as GroupedContent & { type: "worker"; children: GroupedContent[] };
         merged.push({
@@ -264,12 +301,13 @@ function mergeToolBatches(items: GroupedContent[]): GroupedContent[] {
     }
   }
   flushBatch();
+  emitProgress();
 
   return merged;
 }
 
 /** Read/Glob/Grep/File share one batch so explore doesn't emit one row per file. */
-function toolBatchKey(toolName: string): string {
+function toolBatchKey(toolName: string, args?: unknown): string {
   const name = toolName.toLowerCase();
   if (
     name === "read" ||
@@ -281,19 +319,107 @@ function toolBatchKey(toolName: string): string {
   ) {
     return "file-ops";
   }
+  if (name.includes("officecli") || name === "office") return "office-ops";
+  if ((name === "bash" || name === "shell") && isOfficeArgs(args)) return "office-ops";
   return name;
 }
 
+function isOfficeArgs(args: unknown): boolean {
+  try {
+    return /officecli|\.pptx|powerpoint/i.test(JSON.stringify(args ?? ""));
+  } catch {
+    return false;
+  }
+}
+
+function isOfficeToolCall(item: GroupedContent): item is GroupedContent & { type: "tool-call" } {
+  if (item.type !== "tool-call") return false;
+  const name = item.toolName.toLowerCase();
+  if (name.includes("office")) return true;
+  if (name === "bash" || name === "shell") return isOfficeArgs(item.args);
+  return isOfficeArgs(item.args);
+}
+
+function isOfficeNoisePart(item: GroupedContent): boolean {
+  if (item.type === "office-progress") return true;
+  if (item.type === "tool-batch") {
+    return item.toolName === "office-ops" || /officecli/i.test(item.toolName);
+  }
+  return isOfficeToolCall(item);
+}
+
 /**
- * Explore/plan often interleave many different tools — fold the whole process
- * into one collapsed batch when noisy enough.
+ * Historical transcripts often stored officecli steps as flat top-level tool rows
+ * (no workerId). Fold those floods into one collapsed Office card.
+ */
+function compactTopLevelOfficeFlood(items: GroupedContent[]): GroupedContent[] {
+  const out: GroupedContent[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const head = items[i]!;
+    if (!isOfficeNoisePart(head)) {
+      out.push(head);
+      i += 1;
+      continue;
+    }
+
+    let progress: GroupedContent | null = null;
+    const tools: GroupedContent[] = [];
+    let j = i;
+    while (j < items.length && isOfficeNoisePart(items[j]!)) {
+      const it = items[j]!;
+      if (it.type === "office-progress") {
+        progress = it;
+      } else if (it.type === "tool-batch") {
+        tools.push(...it.children);
+      } else if (it.type === "tool-call") {
+        tools.push(it);
+      }
+      j += 1;
+    }
+
+    if (tools.length >= 2 || (tools.length >= 1 && progress)) {
+      const children: GroupedContent[] = [];
+      if (progress) children.push(progress);
+      if (tools.length === 1) {
+        children.push(tools[0]!);
+      } else {
+        children.push({
+          type: "tool-batch",
+          toolName: "office-ops",
+          count: tools.length,
+          children: tools,
+        });
+      }
+      out.push({
+        type: "worker",
+        workerId: `office-compact-${i}`,
+        workerType: "office",
+        children,
+        status: "completed",
+      });
+    } else {
+      for (let k = i; k < j; k++) out.push(items[k]!);
+    }
+    i = j;
+  }
+  return out;
+}
+
+/**
+ * Explore/plan/office flood the transcript with low-level tool rows —
+ * fold into one collapsed batch when noisy enough.
  */
 function compactWorkerProcess(
   children: GroupedContent[],
   workerType: string
 ): GroupedContent[] {
-  const noisy = workerType === "explore" || workerType === "plan";
+  const noisy =
+    workerType === "explore" || workerType === "plan" || workerType === "office";
   if (!noisy) return children;
+
+  const batchName =
+    workerType === "office" ? "office-ops" : "file-ops";
 
   const tools: GroupedContent[] = [];
   const rest: GroupedContent[] = [];
@@ -303,7 +429,7 @@ function compactWorkerProcess(
     } else if (child.type === "tool-batch") {
       tools.push(...child.children);
     } else if (child.type === "reasoning") {
-      // Keep if this worker has no file ops; otherwise hide thinking behind the strip
+      // Keep if this worker has no ops yet; otherwise hide thinking behind the strip
       if (tools.length === 0) rest.push(child);
     } else {
       rest.push(child);
@@ -319,13 +445,18 @@ function compactWorkerProcess(
     return [...tools, ...nonReasoningRest];
   }
 
+  // Keep office-progress banners ahead of the collapsed ops strip
+  const progress = nonReasoningRest.filter((c) => c.type === "office-progress");
+  const otherRest = nonReasoningRest.filter((c) => c.type !== "office-progress");
+
   return [
+    ...progress,
     {
       type: "tool-batch",
-      toolName: "file-ops",
+      toolName: batchName,
       count: tools.length,
       children: tools,
     },
-    ...nonReasoningRest,
+    ...otherRest,
   ];
 }

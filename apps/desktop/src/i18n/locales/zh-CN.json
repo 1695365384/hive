@@ -110,7 +110,8 @@
       "agentDefault": "委派子任务",
       "web": "获取网页内容",
       "batch": "{{label}} · {{count}} 次",
-      "fileOps": "文件探索 · {{count}} 步"
+      "fileOps": "文件探索 · {{count}} 步",
+      "officeOps": "Office 操作 · {{count}} 步"
     },
     "worker": {
       "office": "Office 文档",
@@ -172,6 +173,7 @@
     "sheetCount_one": "1 个工作表",
     "sheetCount_other": "{{count}} 个工作表",
     "close": "关闭预览 (Esc)",
+    "resize": "拖动调整预览宽度",
     "documentPreview": "文档预览",
     "officeDoc": "Office 文档",
     "generating": "正在生成文档，预览即将出现…",

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useChatWsClient } from "../hooks/use-chat-ws-client";
@@ -950,9 +950,17 @@ export function ChatPage() {
 
   const isEmpty = messages.length === 0;
   const previewOpen = usePreviewStore((s) => s.isOpen);
+  const previewWidthPx = usePreviewStore((s) => s.panelWidthPx);
 
   return (
-    <div className={`chat-stage chat-shell${previewOpen ? " chat-stage--preview-open" : ""}`}>
+    <div
+      className={`chat-stage chat-shell${previewOpen ? " chat-stage--preview-open" : ""}`}
+      style={
+        previewOpen
+          ? ({ ["--preview-width" as string]: `${previewWidthPx}px` } as CSSProperties)
+          : undefined
+      }
+    >
       <BgToastHost />
       <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin" onScroll={handleScroll}>
         {isEmpty ? (

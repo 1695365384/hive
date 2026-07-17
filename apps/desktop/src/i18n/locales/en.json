@@ -110,7 +110,8 @@
       "agentDefault": "Delegate subtask",
       "web": "Fetch web content",
       "batch": "{{label}} · {{count}}×",
-      "fileOps": "File exploration · {{count}} steps"
+      "fileOps": "File exploration · {{count}} steps",
+      "officeOps": "Office ops · {{count}} steps"
     },
     "worker": {
       "office": "Office document",
@@ -172,6 +173,7 @@
     "sheetCount_one": "1 sheet",
     "sheetCount_other": "{{count}} sheets",
     "close": "Close preview (Esc)",
+    "resize": "Drag to resize preview",
     "documentPreview": "Document preview",
     "officeDoc": "Office document",
     "generating": "Generating document, preview coming soon…",

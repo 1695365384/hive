@@ -135,9 +135,8 @@ html.desktop-app * {
    Chat stage — sizes relative to main pane (container queries)
    ============================================ */
 .chat-stage {
-  /* Must use cqi (not %): --preview-width is also read by absolute sidebar / inner.
-     % resolves against the using element → inner collapses to ~8rem and looks "broken". */
-  --preview-width: clamp(22rem, 32cqi, 28rem);
+  /* Overridden inline by ChatPage when preview is open (user-resizable). */
+  --preview-width: 52rem;
   --chat-gutter: 1rem;
   --chat-rail-max: min(48rem, calc(100% - 2rem));
   --chat-composer-max: min(42rem, calc(100% - 2rem));
@@ -771,7 +770,6 @@ html.desktop-app * {
   .chat-stage {
     --chat-rail-max: 52rem;
     --chat-composer-max: 44rem;
-    --preview-width: clamp(24rem, 30cqi, 30rem);
   }
 }
 
@@ -779,7 +777,6 @@ html.desktop-app * {
   .chat-stage {
     --chat-rail-max: 56rem;
     --chat-composer-max: 46rem;
-    --preview-width: clamp(26rem, 28cqi, 32rem);
   }
 }
 
@@ -793,7 +790,7 @@ html.desktop-app * {
   bottom: 0;
   width: 0;
   z-index: 30;
-  overflow: hidden;
+  overflow: visible;
   background: oklch(0.13 0 0);
   border-left: 1px solid oklch(0.28 0 0 / 0.65);
   box-shadow: -10px 0 28px oklch(0 0 0 / 0.28);
@@ -802,8 +799,125 @@ html.desktop-app * {
 }
 
 .preview-sidebar--open {
-  width: var(--preview-width);
   pointer-events: auto;
+}
+
+body.preview-resizing,
+body.preview-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.preview-resizing .preview-sidebar,
+body.preview-resizing .chat-stage {
+  transition: none !important;
+}
+
+.preview-sidebar__resizer {
+  position: absolute;
+  top: 0;
+  left: -8px;
+  bottom: 0;
+  width: 16px;
+  z-index: 40;
+  cursor: col-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Always-visible amber seam — readable at rest, brighter on hover */
+.preview-sidebar__resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    oklch(0.45 0.03 75 / 0.05) 0%,
+    oklch(0.68 0.1 75 / 0.55) 14%,
+    oklch(0.78 0.13 75 / 0.82) 50%,
+    oklch(0.68 0.1 75 / 0.55) 86%,
+    oklch(0.45 0.03 75 / 0.05) 100%
+  );
+  box-shadow: 0 0 12px oklch(0.72 0.12 75 / 0.22);
+  transition: width 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+/* Center grip pill — three dots read as a drag affordance */
+.preview-sidebar__resizer-grip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 12px;
+  height: 44px;
+  border-radius: 999px;
+  background: oklch(0.24 0.025 75 / 0.96);
+  border: 1px solid oklch(0.72 0.12 75 / 0.55);
+  box-shadow:
+    0 2px 6px oklch(0 0 0 / 0.4),
+    0 0 0 1px oklch(0.72 0.12 75 / 0.12),
+    inset 0 1px 0 oklch(1 0 0 / 0.07);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.preview-sidebar__resizer-grip span {
+  display: block;
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: oklch(0.8 0.12 75 / 0.92);
+  transition: background 160ms ease;
+}
+
+.preview-sidebar__resizer:hover::before,
+.preview-sidebar__resizer:focus-visible::before,
+body.preview-resizing .preview-sidebar__resizer::before {
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    oklch(0.5 0.04 75 / 0.1) 0%,
+    oklch(0.75 0.13 75 / 0.85) 12%,
+    oklch(0.85 0.14 75 / 1) 50%,
+    oklch(0.75 0.13 75 / 0.85) 88%,
+    oklch(0.5 0.04 75 / 0.1) 100%
+  );
+  box-shadow: 0 0 16px oklch(0.75 0.13 75 / 0.42);
+}
+
+.preview-sidebar__resizer:hover .preview-sidebar__resizer-grip,
+.preview-sidebar__resizer:focus-visible .preview-sidebar__resizer-grip,
+body.preview-resizing .preview-sidebar__resizer-grip {
+  background: oklch(0.3 0.04 75 / 0.98);
+  border-color: oklch(0.82 0.13 75 / 0.85);
+  box-shadow:
+    0 3px 12px oklch(0 0 0 / 0.45),
+    0 0 0 1px oklch(0.78 0.12 75 / 0.28),
+    inset 0 1px 0 oklch(1 0 0 / 0.1);
+  transform: scale(1.08);
+}
+
+.preview-sidebar__resizer:hover .preview-sidebar__resizer-grip span,
+.preview-sidebar__resizer:focus-visible .preview-sidebar__resizer-grip span,
+body.preview-resizing .preview-sidebar__resizer-grip span {
+  background: oklch(0.82 0.12 75);
+}
+
+.preview-sidebar__resizer:focus-visible {
+  outline: none;
 }
 
 .preview-sidebar__inner {
@@ -813,6 +927,8 @@ html.desktop-app * {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
+  background: oklch(0.13 0 0);
 }
 
 .preview-sidebar__header {
