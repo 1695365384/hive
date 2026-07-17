@@ -45,7 +45,17 @@
     "collapseSidebar": "收起侧栏",
     "sessions": "会话",
     "messageCount_one": "1 条消息",
-    "messageCount_other": "{{count}} 条消息"
+    "messageCount_other": "{{count}} 条消息",
+    "stopConfirm": "停止「{{title}}」的后台任务？",
+    "deleteRunningConfirm": "「{{title}}」仍在执行，删除将先停止任务。确定删除？",
+    "running": "进行中",
+    "waiting": "等待确认",
+    "stopRun": "停止任务"
+  },
+  "run": {
+    "toastRegion": "后台任务通知",
+    "toastComplete": "「{{title}}」已完成",
+    "toastWaiting": "「{{title}}」需要你确认"
   },
   "chat": {
     "placeholder": "向 Hive 提问…",

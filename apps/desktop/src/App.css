@@ -353,10 +353,11 @@ html.desktop-app * {
   align-items: center;
   gap: 0.5rem;
   margin: 0 0 0.625rem;
-  padding: 0.4rem 0.65rem;
-  border-radius: 0.5rem;
-  border: 1px solid oklch(0.35 0.02 75 / 0.45);
-  background: oklch(0.19 0 0 / 0.9);
+  padding: 0.3rem 0.15rem;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid oklch(0.3 0 0 / 0.4);
+  background: transparent;
   opacity: 0;
   transform: translateY(6px);
   transition:
@@ -390,19 +391,20 @@ html.desktop-app * {
   align-items: center;
   gap: 0.35rem;
   max-width: 12rem;
-  padding: 0.25rem 0.55rem;
+  padding: 0.2rem 0.5rem;
   border-radius: 0.375rem;
-  border: 1px solid oklch(0.4 0.04 75 / 0.4);
-  background: oklch(0.24 0.015 75 / 0.55);
-  color: oklch(0.88 0.01 75);
-  font-size: 0.75rem;
+  border: 1px solid oklch(0.34 0.02 75 / 0.4);
+  background: oklch(0.22 0.01 75 / 0.45);
+  color: oklch(0.78 0.01 75);
+  font-size: 0.72rem;
   line-height: 1.2;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .artifacts-strip__item:hover {
-  background: oklch(0.3 0.03 75 / 0.65);
-  border-color: oklch(0.55 0.08 75 / 0.5);
+  background: oklch(0.28 0.02 75 / 0.55);
+  border-color: oklch(0.42 0.04 75 / 0.5);
+  color: oklch(0.9 0.01 75);
 }
 
 .artifacts-strip__name {
@@ -1326,31 +1328,29 @@ html.desktop-app * {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.75rem;
-  border: 1px solid oklch(0.32 0.01 75 / 0.7);
-  background: oklch(0.2 0.006 75 / 0.85);
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid oklch(0.32 0.01 75 / 0.5);
+  background: oklch(0.18 0.006 75 / 0.55);
 }
 
 .file-attachment--deliverable .file-attachment__row {
-  padding: 0.85rem 0.9rem;
-  border-color: oklch(0.72 0.12 75 / 0.45);
-  background:
-    linear-gradient(135deg, oklch(0.72 0.12 75 / 0.12), transparent 55%),
-    oklch(0.19 0.01 75 / 0.92);
-  box-shadow: 0 8px 24px oklch(0 0 0 / 0.22);
+  padding: 0.7rem 0.8rem;
+  border-color: oklch(0.38 0.04 75 / 0.55);
+  background: oklch(0.2 0.01 75 / 0.7);
+  box-shadow: none;
 }
 
 .file-attachment__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.55rem;
-  color: oklch(0.82 0.12 75);
-  background: oklch(0.72 0.12 75 / 0.14);
-  border: 1px solid oklch(0.72 0.12 75 / 0.25);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.45rem;
+  color: oklch(0.72 0.06 75);
+  background: oklch(0.28 0.02 75 / 0.55);
+  border: 1px solid oklch(0.35 0.02 75 / 0.45);
   flex-shrink: 0;
 }
 
@@ -1362,9 +1362,9 @@ html.desktop-app * {
 .file-attachment__eyebrow {
   margin: 0 0 0.2rem;
   font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: oklch(0.78 0.11 75);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: oklch(0.62 0.03 75);
 }
 
 .file-attachment__name {
@@ -1395,32 +1395,35 @@ html.desktop-app * {
 }
 
 .file-attachment__preview-btn {
-  padding: 0.35rem 0.7rem;
-  border-radius: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.375rem;
   font-size: 0.75rem;
   font-weight: 500;
-  color: oklch(0.16 0 0);
-  background: oklch(0.94 0 0);
+  color: oklch(0.78 0.02 75);
+  background: oklch(0.28 0.01 75 / 0.7);
+  border: 1px solid oklch(0.38 0.02 75 / 0.45);
   transition:
     background 150ms ease,
-    transform 150ms ease,
+    border-color 150ms ease,
     opacity 150ms ease;
 }
 
 .file-attachment__preview-btn--primary {
-  padding: 0.45rem 0.9rem;
-  font-weight: 600;
-  color: oklch(0.18 0.02 75);
-  background: oklch(0.86 0.12 75);
+  padding: 0.35rem 0.75rem;
+  font-weight: 500;
+  color: oklch(0.92 0.02 75);
+  background: oklch(0.32 0.04 75 / 0.85);
+  border-color: oklch(0.5 0.08 75 / 0.45);
 }
 
 .file-attachment__preview-btn:hover:not(:disabled) {
-  background: oklch(1 0 0);
-  transform: scale(1.02);
+  background: oklch(0.34 0.02 75 / 0.85);
+  border-color: oklch(0.48 0.04 75 / 0.55);
 }
 
 .file-attachment__preview-btn--primary:hover:not(:disabled) {
-  background: oklch(0.9 0.11 75);
+  background: oklch(0.38 0.06 75 / 0.9);
+  border-color: oklch(0.58 0.1 75 / 0.5);
 }
 
 .file-attachment__preview-btn:disabled {
@@ -1454,16 +1457,30 @@ html.desktop-app * {
 }
 
 .activity-card {
-  margin: 0.5rem 0;
+  margin: 0.45rem 0;
   border-radius: 0.5rem;
-  border: 1px solid oklch(0.35 0 0 / 0.55);
-  background: oklch(0.22 0 0 / 0.45);
+  border: 1px solid oklch(0.32 0 0 / 0.5);
+  background: oklch(0.18 0 0 / 0.4);
   overflow: hidden;
 }
 
 .activity-card--running {
-  border-color: oklch(0.728 0.164 75 / 0.28);
-  box-shadow: 0 0 0 1px oklch(0.728 0.164 75 / 0.08);
+  border-color: oklch(0.45 0.06 75 / 0.4);
+  box-shadow: none;
+}
+
+/* Quiet nested deliverables — avoid box-in-box glare */
+.activity-card__deliverables .file-attachment {
+  margin: 0.15rem 0;
+}
+
+.activity-card__deliverables .file-attachment__row {
+  border-color: oklch(0.3 0.01 75 / 0.4);
+  background: oklch(0.16 0.005 75 / 0.5);
+}
+
+.activity-card .office-progress-banner {
+  margin: 0.35rem 0.5rem;
 }
 
 .activity-card__pulse-dot,
@@ -1565,6 +1582,89 @@ html.desktop-app * {
 }
 
 /* ============================================
+   Session run badge (sidebar)
+   ============================================ */
+.session-run-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  margin: 0.2rem 0.15rem 0;
+}
+.session-run-dot--running {
+  background: oklch(0.72 0.14 75);
+  box-shadow: 0 0 0 0 oklch(0.72 0.14 75 / 0.5);
+  animation: session-run-pulse 1.8s ease-out infinite;
+}
+.session-run-dot--waiting {
+  background: oklch(0.7 0.12 55);
+  animation: session-run-pulse 2.4s ease-out infinite;
+}
+@keyframes session-run-pulse {
+  0% { box-shadow: 0 0 0 0 oklch(0.72 0.12 70 / 0.45); }
+  70% { box-shadow: 0 0 0 0.35rem oklch(0.72 0.12 70 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(0.72 0.12 70 / 0); }
+}
+
+/* ============================================
+   Background run toasts
+   ============================================ */
+.bg-toast-host {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 5.5rem;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: min(22rem, calc(100% - 1.5rem));
+  pointer-events: none;
+}
+.bg-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid oklch(0.35 0.02 75 / 0.55);
+  background: oklch(0.2 0.01 75 / 0.94);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.35);
+}
+.bg-toast--waiting {
+  border-color: oklch(0.55 0.1 55 / 0.55);
+}
+.bg-toast__body {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: oklch(0.85 0.02 75);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.bg-toast__body:hover {
+  color: oklch(0.92 0.03 75);
+}
+.bg-toast__dismiss {
+  flex-shrink: 0;
+  padding: 0.2rem;
+  border-radius: 0.25rem;
+  border: 0;
+  background: transparent;
+  color: oklch(0.55 0.01 75);
+  cursor: pointer;
+}
+.bg-toast__dismiss:hover {
+  color: oklch(0.8 0.02 75);
+  background: oklch(0.28 0.01 75 / 0.6);
+}
+
+/* ============================================
    Activity dock — sticky status bar
    ============================================ */
 .activity-dock {
@@ -1660,19 +1760,22 @@ html.desktop-app * {
 
 .office-progress-banner {
   display: block;
-  margin: 0 0 0.4rem;
-  padding: 0.35rem 0.55rem;
+  margin: 0.35rem 0;
+  padding: 0.4rem 0.65rem;
   font-size: 0.75rem;
   line-height: 1.4;
-  color: oklch(0.42 0.02 75);
-  background: oklch(0.97 0.005 75);
-  border-left: 2px solid oklch(0.72 0.04 145);
+  color: oklch(0.78 0.02 75);
+  background: oklch(0.2 0.008 75 / 0.65);
+  border: 1px solid oklch(0.32 0.01 75 / 0.45);
+  border-left: 2px solid oklch(0.68 0.1 75 / 0.75);
+  border-radius: 0.375rem;
 }
 
 .office-progress-banner--blocked {
-  color: oklch(0.45 0.08 35);
-  border-left-color: oklch(0.65 0.12 35);
-  background: oklch(0.97 0.02 35);
+  color: oklch(0.82 0.08 35);
+  border-color: oklch(0.4 0.06 35 / 0.45);
+  border-left-color: oklch(0.68 0.14 35);
+  background: oklch(0.22 0.03 35 / 0.45);
 }
 
 .worker-lane {
@@ -1685,7 +1788,7 @@ html.desktop-app * {
 .worker-lane__banner {
   font-size: 0.72rem;
   letter-spacing: 0.02em;
-  color: oklch(0.45 0.03 145);
+  color: oklch(0.55 0.02 75);
 }
 
 .worker-lane__grid {

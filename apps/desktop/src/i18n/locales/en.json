@@ -45,7 +45,17 @@
     "collapseSidebar": "Collapse sidebar",
     "sessions": "Sessions",
     "messageCount_one": "1 message",
-    "messageCount_other": "{{count}} messages"
+    "messageCount_other": "{{count}} messages",
+    "stopConfirm": "Stop the background task in “{{title}}”?",
+    "deleteRunningConfirm": "“{{title}}” is still running. Delete will stop it first. Continue?",
+    "running": "Running",
+    "waiting": "Waiting",
+    "stopRun": "Stop task"
+  },
+  "run": {
+    "toastRegion": "Background task notifications",
+    "toastComplete": "“{{title}}” finished",
+    "toastWaiting": "“{{title}}” needs your confirmation"
   },
   "chat": {
     "placeholder": "Ask Hive anything…",

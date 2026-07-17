@@ -28,14 +28,20 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
       activeWorkers.set(part.workerId, group);
       result.push(group);
     } else if (part.type === "office-progress") {
-      result.push({
-        type: "office-progress",
+      const next = {
+        type: "office-progress" as const,
         phase: part.phase,
         slide: part.slide,
         slideTotal: part.slideTotal,
         message: part.message,
         workerId: part.workerId,
-      });
+      };
+      const last = result[result.length - 1];
+      if (last?.type === "office-progress") {
+        result[result.length - 1] = next;
+      } else {
+        result.push(next);
+      }
     } else if (part.type === "worker-complete") {
       const group = activeWorkers.get(part.workerId);
       if (group) {

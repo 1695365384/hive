@@ -44,15 +44,32 @@ describe("groupContentParts", () => {
     expect(grouped[1]).toMatchObject({ type: "text", text: "你好" });
   });
 
-  it("passes through office-progress parts", () => {
+  it("coalesces consecutive office-progress into the latest", () => {
     const parts: ContentPart[] = [
       { type: "office-progress", phase: "routed" },
+      { type: "office-progress", phase: "adding_slide", slide: 1, slideTotal: 8 },
+      { type: "office-progress", phase: "adding_slide", slide: 2, slideTotal: 8 },
+      { type: "office-progress", phase: "adding_slide", slide: 3, slideTotal: 8 },
       { type: "office-progress", phase: "blocked", message: "缺真图" },
     ];
     const grouped = groupContentParts(parts);
-    expect(grouped).toHaveLength(2);
-    expect(grouped[0]).toMatchObject({ type: "office-progress", phase: "routed" });
-    expect(grouped[1]).toMatchObject({ type: "office-progress", phase: "blocked", message: "缺真图" });
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]).toMatchObject({
+      type: "office-progress",
+      phase: "blocked",
+      message: "缺真图",
+    });
+  });
+
+  it("keeps office-progress when interrupted by other content", () => {
+    const parts: ContentPart[] = [
+      { type: "office-progress", phase: "creating" },
+      { type: "text", text: "中间说明" },
+      { type: "office-progress", phase: "adding_slide", slide: 1 },
+    ];
+    const grouped = groupContentParts(parts);
+    expect(grouped.map((g) => g.type)).toEqual(["office-progress", "text", "office-progress"]);
+    expect(grouped[2]).toMatchObject({ type: "office-progress", phase: "adding_slide", slide: 1 });
   });
 
   it("nests tool calls under active worker", () => {

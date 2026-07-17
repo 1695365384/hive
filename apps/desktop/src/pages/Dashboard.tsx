@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useLogPolling } from "../hooks/use-log-polling";
 import { useSessionStore } from "../stores/session-store";
+import { useRunStore } from "../stores/run-store";
+import { cancelSessionRun } from "../lib/cancel-session-run";
 import { ConfigPage } from "./ConfigPage";
 import { PluginPage } from "./PluginPage";
 import { SkillPage } from "./SkillPage";
@@ -22,6 +24,7 @@ import {
   Puzzle,
   Sparkles,
   Clapperboard,
+  Square,
 } from "lucide-react";
 import type { Session } from "../types/chat";
 import { formatRelativeTime } from "../lib/session-utils";
@@ -134,6 +137,14 @@ export function Dashboard() {
                 }}
                 onDelete={async (e) => {
                   e.stopPropagation();
+                  const live = useRunStore.getState().hasLiveRun(session.id);
+                  if (live) {
+                    const ok = window.confirm(
+                      t("session.deleteRunningConfirm", { title: session.title }),
+                    );
+                    if (!ok) return;
+                    await cancelSessionRun(session.id);
+                  }
                   await deleteSession(session.id);
                   setEditingId(null);
                 }}
@@ -206,9 +217,23 @@ function SessionItem({
   onDelete,
 }: SessionItemProps) {
   const { t } = useTranslation();
+  const runPhase = useRunStore((s) => {
+    const run = s.runs[session.id];
+    if (!run) return null;
+    if (run.phase === "running" || run.phase === "waiting") return run.phase;
+    return null;
+  });
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") onRenameConfirm();
     if (e.key === "Escape") onRenameCancel();
+  };
+
+  const handleStop = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const ok = window.confirm(t("session.stopConfirm", { title: session.title }));
+    if (!ok) return;
+    await cancelSessionRun(session.id);
   };
 
   return (
@@ -220,7 +245,15 @@ function SessionItem({
           : "hover:bg-stone-800/50 text-stone-400"
       }`}
     >
-      <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" />
+      {runPhase ? (
+        <span
+          className={`session-run-dot session-run-dot--${runPhase}`}
+          title={runPhase === "waiting" ? t("session.waiting") : t("session.running")}
+          aria-label={runPhase === "waiting" ? t("session.waiting") : t("session.running")}
+        />
+      ) : (
+        <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" />
+      )}
       <div className="flex-1 min-w-0">
         {isEditing ? (
           <input
@@ -238,15 +271,28 @@ function SessionItem({
           </p>
         )}
         <p className="text-[10px] text-stone-600 mt-0.5">
-          {session.messageCount > 0
-            ? t("session.messageCount", { count: session.messageCount })
-            : t("common.empty")}
+          {runPhase === "waiting"
+            ? t("session.waiting")
+            : runPhase === "running"
+              ? t("session.running")
+              : session.messageCount > 0
+                ? t("session.messageCount", { count: session.messageCount })
+                : t("common.empty")}
           <span className="mx-1">·</span>
           {formatRelativeTime(session.updatedAt)}
         </p>
       </div>
       {!isEditing && (
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          {runPhase && (
+            <button
+              onClick={handleStop}
+              className="p-0.5 rounded text-stone-600 hover:text-amber-400 hover:bg-stone-700"
+              title={t("session.stopRun")}
+            >
+              <Square className="w-3 h-3" />
+            </button>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); onRenameStart(); }}
             className="p-0.5 rounded text-stone-600 hover:text-stone-300 hover:bg-stone-700"
