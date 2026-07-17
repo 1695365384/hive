@@ -57,20 +57,41 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
 // LLM Runtime
 // ============================================
 
+const GENERIC_NO_OUTPUT =
+  /^No output generated\.?(?: Check the stream for errors\.)?$/i;
+
 /**
  * Extract the real provider error from AI SDK wrapper errors.
  *
- * Vercel AI SDK wraps provider errors as AI_APICallError with a generic
- * "No output generated" message. The actual error lives in:
+ * Vercel AI SDK often wraps failures as AI_NoOutputGeneratedError /
+ * AI_APICallError with a generic "No output generated" message. The real
+ * error may live in:
+ *   - error.cause
  *   - error.data?.error?.message  (parsed)
  *   - error.responseBody           (raw JSON string)
  *   - error.statusCode             (HTTP status)
  *
  * Falls back to the original error message if no structured data is found.
  */
-function extractProviderErrorMessage(error: unknown): string {
+export function extractProviderErrorMessage(error: unknown): string {
+  if (error == null) return 'Unknown stream error';
+
+  // Abort / SDK sometimes rejects with `{}` — useless if stringified as [object Object]
+  if (typeof error === 'object' && !(error instanceof Error)) {
+    const keys = Object.keys(error as object);
+    if (keys.length === 0) return 'Stream aborted or failed with empty error';
+  }
+
   if (error && typeof error === 'object') {
     const e = error as Record<string, unknown>;
+
+    // Prefer nested cause (NoOutputGeneratedError / APICallError wrap the real failure)
+    if (e.cause != null && e.cause !== error) {
+      const fromCause = extractProviderErrorMessage(e.cause);
+      if (fromCause && !GENERIC_NO_OUTPUT.test(fromCause)) {
+        return fromCause;
+      }
+    }
 
     // AI SDK v6: AI_APICallError.data.error.message
     const data = e.data as Record<string, unknown> | undefined;
@@ -78,6 +99,12 @@ function extractProviderErrorMessage(error: unknown): string {
     if (typeof dataError?.message === 'string') {
       const status = typeof e.statusCode === 'number' ? `[${e.statusCode}] ` : '';
       return `${status}${dataError.message}`;
+    }
+
+    // OpenAI-compat: data.message / data.msg
+    if (typeof data?.message === 'string') {
+      const status = typeof e.statusCode === 'number' ? `[${e.statusCode}] ` : '';
+      return `${status}${data.message}`;
     }
 
     // Fallback: raw responseBody JSON string
@@ -89,10 +116,42 @@ function extractProviderErrorMessage(error: unknown): string {
           const status = typeof e.statusCode === 'number' ? `[${e.statusCode}] ` : '';
           return `${status}${bodyError.message}`;
         }
+        if (typeof body?.message === 'string') {
+          return body.message;
+        }
       } catch { /* not JSON, use raw message */ }
+      // Non-JSON body still useful (rate-limit HTML, plain text)
+      if (e.responseBody.length > 0 && e.responseBody.length < 500) {
+        return e.responseBody;
+      }
     }
   }
-  return error instanceof Error ? error.message : String(error);
+
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+/** Swallow rejections from streamText accessors after a stream failure. */
+function drainStreamResult(streamResult: {
+  text: PromiseLike<unknown>;
+  finishReason: PromiseLike<unknown>;
+  steps: PromiseLike<unknown>;
+  usage: PromiseLike<unknown>;
+  totalUsage: PromiseLike<unknown>;
+}): void {
+  void Promise.all([
+    Promise.resolve(streamResult.text),
+    Promise.resolve(streamResult.finishReason),
+    Promise.resolve(streamResult.steps),
+    Promise.resolve(streamResult.usage),
+    Promise.resolve(streamResult.totalUsage),
+  ]).then(undefined, () => {});
 }
 
 /**
@@ -233,6 +292,7 @@ export class LLMRuntime {
 
         const normalizedConfig = self.normalizeConfig(config, spec);
 
+        let streamError: unknown;
         const streamResult = streamText({
           model,
           prompt: normalizedConfig.prompt,
@@ -241,6 +301,9 @@ export class LLMRuntime {
           tools: normalizedConfig.tools,
           stopWhen: stepCountIs(normalizedConfig.maxSteps ?? 10),
           abortSignal: normalizedConfig.abortSignal,
+          onError: ({ error }) => {
+            streamError = error;
+          },
         });
 
         try {
@@ -273,56 +336,79 @@ export class LLMRuntime {
                   },
                 };
                 break;
+
+              case 'error': {
+                // AI SDK yields error parts then often ends with 0 steps →
+                // generic NoOutputGeneratedError. Surface the real error now.
+                const realMessage = extractProviderErrorMessage(chunk.error ?? streamError);
+                resolveResult(self.buildErrorResult(startTime, realMessage, modelSpec));
+                drainStreamResult(streamResult);
+                return;
+              }
             }
           }
         } catch (error) {
           const err = error instanceof Error ? error : new Error(String(error));
           if (err.name === 'AbortError') {
             resolveResult(self.buildErrorResult(startTime, 'Request aborted', modelSpec));
+            drainStreamResult(streamResult);
             return;
           }
-          // Extract real provider error from AI SDK wrapper (vs generic "No output generated")
-          const realMessage = extractProviderErrorMessage(error);
+          const realMessage = extractProviderErrorMessage(streamError ?? error);
           resolveResult(self.buildErrorResult(startTime, realMessage, modelSpec));
+          drainStreamResult(streamResult);
+          return;
+        }
 
-          // Drain streamResult promises to prevent unhandled rejections.
-          // When the stream fails, streamText() internals may still have pending
-          // promises that reject — catching them prevents noisy unhandledRejection.
-          void Promise.all([
-            Promise.resolve(streamResult.text),
-            Promise.resolve(streamResult.finishReason),
-            Promise.resolve(streamResult.steps),
-            Promise.resolve(streamResult.usage),
-            Promise.resolve(streamResult.totalUsage),
-          ]).then(undefined, () => {});
+        // Stream closed with 0 finish-steps (provider drop / abort) — prefer onError
+        if (streamError != null) {
+          resolveResult(
+            self.buildErrorResult(
+              startTime,
+              extractProviderErrorMessage(streamError),
+              modelSpec,
+            ),
+          );
+          drainStreamResult(streamResult);
           return;
         }
 
         // 等待完整结果
-        const [text, finishReason, steps, totalUsage] = await Promise.all([
-          streamResult.text,
-          streamResult.finishReason,
-          streamResult.steps,
-          streamResult.totalUsage,
-        ]);
+        try {
+          const [text, finishReason, steps, totalUsage] = await Promise.all([
+            streamResult.text,
+            streamResult.finishReason,
+            streamResult.steps,
+            streamResult.totalUsage,
+          ]);
 
-        const toolsUsed = self.collectToolsFromSteps(steps);
+          const toolsUsed = self.collectToolsFromSteps(steps);
 
-        resolveResult({
-          text,
-          tools: toolsUsed,
-          usage: totalUsage
-            ? {
-                promptTokens: totalUsage.inputTokens ?? 0,
-                completionTokens: totalUsage.outputTokens ?? 0,
-              }
-            : undefined,
-          steps: steps.map(step => self.mapStepResult(step)),
-          success: finishReason !== 'error',
-          error: finishReason === 'error' ? 'Generation finished with error' : undefined,
-          duration: Date.now() - startTime,
-          modelSpec,
-        });
+          resolveResult({
+            text,
+            tools: toolsUsed,
+            usage: totalUsage
+              ? {
+                  promptTokens: totalUsage.inputTokens ?? 0,
+                  completionTokens: totalUsage.outputTokens ?? 0,
+                }
+              : undefined,
+            steps: steps.map(step => self.mapStepResult(step)),
+            success: finishReason !== 'error',
+            error: finishReason === 'error' ? 'Generation finished with error' : undefined,
+            duration: Date.now() - startTime,
+            modelSpec,
+          });
+        } catch (error) {
+          resolveResult(
+            self.buildErrorResult(
+              startTime,
+              extractProviderErrorMessage(streamError ?? error),
+              modelSpec,
+            ),
+          );
+          drainStreamResult(streamResult);
+        }
       } finally {
         // 消费者 break for-await 循环后，async generator 被 GC
         // 但 resultPromise 可能永远 pending，这里确保它被 reject
