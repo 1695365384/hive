@@ -41,6 +41,28 @@ describe("useRunStore", () => {
     expect(useRunStore.getState().getRunOrSettling("a")?.assistantMsgId).toBe("m1");
   });
 
+  // Regression: ISSUE-001 — Found by /qa on 2026-07-17
+  // Report: .gstack/qa-reports/qa-report-hive-desktop-2026-07-17.md
+  it("expired settling does not clearRun synchronously during getRunOrSettling", async () => {
+    const s = useRunStore.getState();
+    s.beginRun({ sessionId: "a", assistantMsgId: "m1", title: "t" });
+    useRunStore.setState((state) => ({
+      runs: {
+        ...state.runs,
+        a: {
+          ...state.runs.a!,
+          phase: "settling",
+          settleUntil: Date.now() - 1,
+        },
+      },
+    }));
+    expect(useRunStore.getState().getRunOrSettling("a")).toBeUndefined();
+    // Still present until microtask flush (safe for React render)
+    expect(useRunStore.getState().runs.a).toBeDefined();
+    await Promise.resolve();
+    expect(useRunStore.getState().runs.a).toBeUndefined();
+  });
+
   it("dedupes toasts by session+kind", () => {
     const s = useRunStore.getState();
     s.pushToast({ sessionId: "a", kind: "complete", title: "A" });

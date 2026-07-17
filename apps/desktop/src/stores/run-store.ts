@@ -141,7 +141,18 @@ export const useRunStore = create<RunState>((set, get) => ({
     if (!run) return undefined;
     if (run.phase === "settling") {
       if (run.settleUntil != null && Date.now() > run.settleUntil) {
-        get().clearRun(sessionId);
+        // Never clearRun synchronously here — callers may run during React render
+        // (and Zustand setState mid-render throws / corrupts subscribers).
+        queueMicrotask(() => {
+          const still = get().runs[sessionId];
+          if (
+            still?.phase === "settling" &&
+            still.settleUntil != null &&
+            Date.now() > still.settleUntil
+          ) {
+            get().clearRun(sessionId);
+          }
+        });
         return undefined;
       }
     }

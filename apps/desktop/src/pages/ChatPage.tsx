@@ -125,11 +125,11 @@ export function ChatPage() {
       };
 
       if (isViewingThread(threadId)) {
-        setMessages((prev) => {
-          const next = applyUpdate(prev);
-          store.setMessageCache(threadId, next);
-          return next;
-        });
+        // Compute outside setState so Zustand cache writes never run during React render
+        // (calling setMessageCache inside setMessages updater re-renders ChatPage mid-render).
+        const next = applyUpdate(messagesRef.current);
+        store.setMessageCache(threadId, next);
+        setMessages(next);
         return;
       }
       store.updateMessageCache(threadId, applyUpdate);
@@ -376,11 +376,9 @@ export function ChatPage() {
       setError(message);
       activeThreadIdRef.current = null;
       activitySetIdle();
-      setMessages((prev) => {
-        const next = patchEmptyAssistant(prev);
-        store.setMessageCache(threadId, next);
-        return next;
-      });
+      const next = patchEmptyAssistant(messagesRef.current);
+      store.setMessageCache(threadId, next);
+      setMessages(next);
     } else {
       store.updateMessageCache(threadId, patchEmptyAssistant);
     }
@@ -830,11 +828,9 @@ export function ChatPage() {
         title: titleSrc || i18n.t("activity.processing"),
       });
 
-      setMessages((prev) => {
-        const next = [...prev, userMsg, assistantMsg];
-        useRunStore.getState().setMessageCache(activeThreadId, next);
-        return next;
-      });
+      const next = [...messagesRef.current, userMsg, assistantMsg];
+      useRunStore.getState().setMessageCache(activeThreadId, next);
+      setMessages(next);
       setInput("");
       clearFiles();
       activityBeginRun();
