@@ -1874,6 +1874,15 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
   opacity: 0.95;
 }
 
+.route-chip--skill .route-chip__mark {
+  background: oklch(0.75 0.12 145);
+  opacity: 0.95;
+}
+
+.route-chip--skill {
+  color: oklch(0.72 0.06 145);
+}
+
 .office-progress-banner {
   display: block;
   margin: 0.35rem 0;

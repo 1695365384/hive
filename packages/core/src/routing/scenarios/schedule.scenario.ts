@@ -15,7 +15,14 @@ const SCHEDULE_CREATION_STRONG_RE =
   /(帮我|请|新建|创建|添加|create|set up|add|remind me|每天|每周|每小时)/i;
 
 export function isScheduleTask(task: string): boolean {
-  return SCHEDULE_TASK_RE.test(task);
+  if (!SCHEDULE_TASK_RE.test(task)) return false;
+  // 「总结/解释这段含定时字样的内容」不是定时任务意图（避免误路由抢走技能匹配）
+  const isContentTask =
+    /(?:总结|概括|summarize|summarise|解释一下|帮我看|翻译)/i.test(task) &&
+    !/(?:设置|创建|添加|新建).*(?:定时|提醒|cron|schedule)/i.test(task) &&
+    !/(?:定时|提醒|cron|schedule).*(?:设置|创建|添加|新建)/i.test(task);
+  if (isContentTask) return false;
+  return true;
 }
 
 function hasScheduleCreationIntent(

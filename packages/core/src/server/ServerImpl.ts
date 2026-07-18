@@ -705,6 +705,15 @@ class ServerImpl implements Server {
             });
             // routed progress is emitted via onOfficeProgress from Coordinator on office delegate
           },
+          onSkill: (skill) => {
+            this.logger.info(`[agent] [skill] loaded skill=${skill.name}`);
+            this.emitStreaming({
+              sessionId: sessionKey,
+              type: 'skill',
+              name: skill.name,
+              description: skill.description,
+            });
+          },
           onOfficeProgress: (progress) => {
             this.emitOfficeProgress(sessionKey, progress);
           },

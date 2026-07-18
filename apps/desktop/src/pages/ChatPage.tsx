@@ -497,6 +497,21 @@ export function ChatPage() {
     });
   }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
 
+  const handleSkill = useCallback((data: { threadId: string; name: string; description?: string }) => {
+    if (!ensureLiveRun(data.threadId)) return;
+    if (isViewingThread(data.threadId)) {
+      activitySetWorking({
+        title: i18n.t("activity.skill.dockTitle"),
+        detail: data.name,
+      });
+    }
+    appendPart(data.threadId, {
+      type: "skill",
+      name: data.name,
+      description: data.description,
+    });
+  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
+
   const handleWorkerStart = useCallback((data: { threadId: string; workerId: string; workerType: string; description?: string; scenarioId?: string }) => {
     if (!ensureLiveRun(data.threadId)) return;
     const title = formatWorkerTitle(data.workerType, data.description, data.scenarioId);
@@ -511,9 +526,11 @@ export function ChatPage() {
     const title = formatWorkerTitle(data.workerType);
     if (isViewingThread(data.threadId)) {
       activitySetLastCompleted(`${data.success ? "✓" : "✗"} ${title}`);
+      // Worker 完成后先把 dock 细节清掉，避免一直停在 Working·某任务；最终 idle 仍由 agent.complete 负责
+      activitySetWorking({ title: i18n.t("activity.processing"), detail: undefined });
     }
     appendPart(data.threadId, { type: "worker-complete", workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration });
-  }, [appendPart, activitySetLastCompleted, isViewingThread, ensureLiveRun]);
+  }, [appendPart, activitySetLastCompleted, activitySetWorking, isViewingThread, ensureLiveRun]);
 
   const handleOfficeProgress = useCallback((data: {
     threadId: string;
@@ -580,7 +597,7 @@ export function ChatPage() {
     updateToolResult(data.threadId, data.toolCallId, data.result, data.isError);
   }, [updateToolResult, activitySetLastCompleted, isViewingThread, ensureLiveRun]);
 
-  const handleComplete = useCallback((data: { threadId?: string; cancelled?: boolean; success?: boolean; error?: string }) => {
+  const handleComplete = useCallback((data: { threadId?: string; cancelled?: boolean; success?: boolean; error?: string; text?: string }) => {
     const store = useRunStore.getState();
     const tid = data.threadId ?? activeThreadIdRef.current ?? undefined;
     if (!tid || !store.getRun(tid)) return;
@@ -605,11 +622,12 @@ export function ChatPage() {
           success: data.success,
           error: data.error,
         });
-        if (c.length === 0) {
+        const hasText = c.some((p) => p.type === "text" && p.text.trim());
+        if (!hasText) {
           const fallbackText = isError
             ? t("chat.processFailed", { detail: data.error })
-            : (data as { text?: string }).text ?? t("chat.taskNoOutput");
-          c = [{ type: "text", text: fallbackText }];
+            : data.text?.trim() || t("chat.taskNoOutput");
+          c = appendContentPart(c, { type: "text", text: fallbackText });
         }
         return c;
       }),
@@ -741,6 +759,7 @@ export function ChatPage() {
       onEvent("agent.reasoning", handleReasoning),
       onEvent("agent.text-delta", handleTextDelta),
       onEvent("agent.route", handleRoute),
+      onEvent("agent.skill", handleSkill),
       onEvent("agent.worker-start", handleWorkerStart),
       onEvent("agent.worker-complete", handleWorkerComplete),
       onEvent("agent.office-progress", handleOfficeProgress),
@@ -752,7 +771,7 @@ export function ChatPage() {
       onEvent("agent.ask-user-timeout", handleAskUserTimeout),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [onEvent, handleAgentStart, handleReasoning, handleTextDelta, handleRoute, handleWorkerStart, handleWorkerComplete, handleOfficeProgress, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
+  }, [onEvent, handleAgentStart, handleReasoning, handleTextDelta, handleRoute, handleSkill, handleWorkerStart, handleWorkerComplete, handleOfficeProgress, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
 
   const handleCancel = useCallback(async () => {
     const threadId = activeThreadIdRef.current;
@@ -984,7 +1003,8 @@ export function ChatPage() {
                   p.type === "tool-call" ||
                   p.type === "reasoning" ||
                   p.type === "text" ||
-                  p.type === "route",
+                  p.type === "route" ||
+                  p.type === "skill",
               ) && <ColdStartPulse />}
             <div ref={scrollAnchorRef} className="chat-scroll-anchor" aria-hidden />
           </div>

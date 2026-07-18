@@ -11,6 +11,7 @@ export type ContentPart =
       workerTypes?: string[];
       title?: string;
     }
+  | { type: "skill"; name: string; description?: string }
   | { type: "worker-start"; workerId: string; workerType: string; description?: string; scenarioId?: string }
   | { type: "worker-complete"; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }
   | {

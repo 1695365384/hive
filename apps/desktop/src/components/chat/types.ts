@@ -21,6 +21,7 @@ export type GroupedContent =
       workerTypes?: string[];
       title?: string;
     }
+  | { type: "skill"; name: string; description?: string }
   | {
       type: "worker";
       workerId: string;

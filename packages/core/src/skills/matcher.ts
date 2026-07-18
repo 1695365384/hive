@@ -84,6 +84,43 @@ export function extractTriggerPhrases(description: string): string[] {
   return [...new Set(phrases)];
 }
 
+/** SkillHub 等源的描述常无引号；用技能名 + 描述中的动作词作回退触发语 */
+const FALLBACK_ACTION_HINTS = [
+  '摘要', '总结', '概括', '翻译', '搜索', '浏览器', '爬虫', 'PPT', '演示',
+  '表格', '文档', '日程', '提醒', '定时', '代码审查', '重构', '测试',
+  'summarize', 'summary', 'translate', 'browser', 'scrape', 'schedule',
+] as const;
+
+/**
+ * 构建触发短语：优先引号短语；否则回退到技能名与描述动作词（含常见同义）
+ */
+export function buildTriggerPhrases(skill: Skill): string[] {
+  const quoted = extractTriggerPhrases(skill.metadata.description);
+  const phrases = [...quoted];
+
+  const name = skill.metadata.name?.trim().toLowerCase();
+  if (name) {
+    phrases.push(name);
+    if (name.includes('-')) {
+      phrases.push(name.replace(/-/g, ' '));
+    }
+  }
+
+  const desc = skill.metadata.description ?? '';
+  for (const hint of FALLBACK_ACTION_HINTS) {
+    if (desc.toLowerCase().includes(hint.toLowerCase())) {
+      phrases.push(hint.toLowerCase());
+    }
+  }
+
+  // 摘要类技能：用户常说「总结」而非「摘要」
+  if (phrases.some((p) => p.includes('摘要') || p.includes('summar'))) {
+    phrases.push('总结', '概括', '摘要', 'summarize', 'summary');
+  }
+
+  return [...new Set(phrases.filter(Boolean))];
+}
+
 /**
  * 计算两个字符串的相似度（Jaccard 相似度）
  *
@@ -191,8 +228,8 @@ export class SkillMatcher {
       return phrases;
     }
 
-    // 缓存未命中，提取触发短语
-    const phrases = extractTriggerPhrases(skill.metadata.description);
+    // 缓存未命中，提取触发短语（兼容 SkillHub：描述常无引号触发词）
+    const phrases = buildTriggerPhrases(skill);
 
     // LRU 淘汰：如果缓存已满，删除最旧的条目
     if (this.triggerPhrasesCache.size >= MAX_CACHE_SIZE) {

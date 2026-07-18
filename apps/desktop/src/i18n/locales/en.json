@@ -1,5 +1,7 @@
 {
-  "app": { "name": "Hive" },
+  "app": {
+    "name": "Hive"
+  },
   "common": {
     "loading": "Loading…",
     "saving": "Saving…",
@@ -138,6 +140,10 @@
     "workerLane": {
       "running": "Collaborating · {{count}} workers in parallel",
       "done": "Collaboration done · {{count}} workers"
+    },
+    "skill": {
+      "loaded": "Skill loaded · {{name}}",
+      "dockTitle": "Skill loaded"
     }
   },
   "file": {

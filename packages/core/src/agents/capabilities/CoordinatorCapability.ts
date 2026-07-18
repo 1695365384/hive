@@ -20,6 +20,7 @@ import type {
   NotificationType,
 } from '../../hooks/types.js';
 import type { SessionCapability } from './SessionCapability.js';
+import type { SkillMatchResult } from '../../skills/index.js';
 import type { Tool } from 'ai';
 import { LLMRuntime } from '../runtime/LLMRuntime.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
@@ -103,6 +104,11 @@ export interface DispatchOptions {
     message?: string;
     workerId?: string;
   }) => void;
+  /**
+   * 技能命中回调（当本轮匹配到已安装技能并注入到 system prompt 时触发）
+   * 用于交互层展示「已加载技能: X」
+   */
+  onSkill?: (skill: { name: string; description?: string }) => void;
   /** 文本输出回调 */
   onText?: (text: string) => void;
   /** 工具调用回调 */
@@ -328,6 +334,10 @@ export class CoordinatorCapability implements AgentCapability {
               });
               resultText = this.formatOfficeIncompleteMessage(task, reasons);
             }
+            // 委派路径没有 streaming text-delta，这里主动推送正文，避免 UI 只剩 Worker 卡片
+            if (resultText.trim()) {
+              options?.onText?.(resultText);
+            }
             return await this.finalizeTask(
               task, resultText, resultText, undefined, options, sessionId, duration,
               verification.passed, verification,
@@ -355,8 +365,8 @@ export class CoordinatorCapability implements AgentCapability {
           options?.onRoute?.({ mode: 'direct' });
         }
 
-        // 构建 system prompt
-        const systemPrompt = await this.buildSystemPrompt(task, options?.systemPrompt);
+        // 构建 system prompt（注入已安装技能）
+        const systemPrompt = await this.buildSystemPrompt(task, options?.systemPrompt, options);
 
         // 加载历史消息 + 模型感知压缩
         const historyMessages = this.loadHistoryMessages();
@@ -764,6 +774,7 @@ export class CoordinatorCapability implements AgentCapability {
   private async buildSystemPrompt(
     task: string,
     externalSystemPrompt?: string,
+    options?: DispatchOptions,
   ): Promise<string> {
     let basePrompt: string;
     if (externalSystemPrompt) {
@@ -777,7 +788,16 @@ export class CoordinatorCapability implements AgentCapability {
       basePrompt = this.promptTemplate.render('coordinator', { task });
     }
 
-    // 通过 DynamicPromptBuilder 注入 schedule/tools
+    // 组装已安装技能 section（清单 + 本轮命中技能的完整指令）
+    const { section: skillSection, matched: matchedSkill } = this.composeSkillSection(task);
+    if (matchedSkill) {
+      options?.onSkill?.({
+        name: matchedSkill.skill.metadata.name,
+        description: matchedSkill.skill.metadata.description,
+      });
+    }
+
+    // 通过 DynamicPromptBuilder 注入 schedule/tools/skills
     const builder = createDynamicPromptBuilder();
     const scheduleSummary = await buildScheduleSummary(this.context);
     const toolDescriptions = Object.entries(this.coordinatorTools).map(([name, tool]) => ({
@@ -793,6 +813,7 @@ export class CoordinatorCapability implements AgentCapability {
       environmentContext: this.context.environmentContext,
       scheduleSummary,
       toolDescriptions,
+      skillSection: skillSection || undefined,
     } satisfies PromptBuildContext);
 
     const parts: string[] = [];
@@ -834,6 +855,35 @@ export class CoordinatorCapability implements AgentCapability {
     }
 
     return parts.join('\n\n');
+  }
+
+  /**
+   * 组装技能 section：
+   * - 始终注入「可用技能清单」（name + description），让 Coordinator 感知已安装技能
+   * - 若本轮输入命中某技能，额外注入该技能的完整指令（SKILL.md 正文），让本轮直接遵循
+   */
+  private composeSkillSection(task: string): {
+    section: string;
+    matched: SkillMatchResult | null;
+  } {
+    const registry = this.context.skillRegistry;
+    const parts: string[] = [];
+
+    const listDescription = registry.generateSkillListDescription();
+    if (listDescription.trim()) {
+      parts.push(listDescription);
+      parts.push(
+        'When the user request matches one of the skills above, follow that skill\'s instructions. ' +
+        'You may read the skill\'s SKILL.md and reference files for full details before acting.',
+      );
+    }
+
+    const matched = this.context.matchSkill(task);
+    if (matched) {
+      parts.push(registry.generateSkillInstruction(matched.skill));
+    }
+
+    return { section: parts.join('\n\n'), matched };
   }
 
   // ============================================

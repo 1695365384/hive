@@ -7,6 +7,7 @@ import { ToolCallBlock } from "./ToolCallBlock";
 import { FileAttachmentBlock } from "./FileAttachmentBlock";
 import { ActivityCard } from "./ActivityCard";
 import { RouteChip } from "./RouteChip";
+import { SkillChip } from "./SkillChip";
 import { formatToolLabel } from "./activity-labels";
 import { formatWorkerTitle, formatScenarioLabel } from "./worker-labels";
 import { playMotion } from "../../motion";
@@ -38,6 +39,8 @@ export function GroupedContentRenderer({
           title={part.title}
         />
       );
+    case "skill":
+      return <SkillChip name={part.name} description={part.description} />;
     case "office-progress":
       return <OfficeProgressBanner part={part} />;
     case "reasoning":

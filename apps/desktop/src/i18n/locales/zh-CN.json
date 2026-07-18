@@ -135,6 +135,10 @@
       "dockDelegate": "专项处理",
       "dockHint": "协调中"
     },
+    "skill": {
+      "loaded": "已加载技能 · {{name}}",
+      "dockTitle": "技能加载"
+    },
     "workerLane": {
       "running": "协作中 · {{count}} 个 Worker 并行",
       "done": "协作完成 · {{count}} 个 Worker"

@@ -222,6 +222,14 @@ export class ChatWsHandler extends EventEmitter {
         })))
         break
 
+      case 'skill':
+        ws.send(JSON.stringify(createEvent('agent.skill', {
+          threadId,
+          name: event.name,
+          description: event.description,
+        })))
+        break
+
       case 'reasoning':
         ws.send(JSON.stringify(createEvent('agent.reasoning', { threadId, text: event.text, seq: this.nextSeq(threadId), workerId: event.workerId, workerType: event.workerType })))
         break
