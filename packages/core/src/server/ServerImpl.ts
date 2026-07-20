@@ -9,6 +9,7 @@ import {
   createAgent,
   createDatabase,
   createScheduleRepository,
+  createGoalRepository,
   createScheduleEngine,
   createWorkspaceManager,
   HeartbeatScheduler,
@@ -239,6 +240,10 @@ class ServerImpl implements Server {
       message: '已取消目标',
     });
     return { ok: true };
+  }
+
+  getGoal(sessionId: string) {
+    return this.goalStore.get(sessionId);
   }
 
   getActiveDispatchSessionId(): string | null {
@@ -965,6 +970,36 @@ class ServerImpl implements Server {
   // ScheduleEngine（修复死代码：直接调用替代 bus.emit）
   // ============================================
 
+  /**
+   * Attach SQLite Goal persistence and restore incomplete Goals after restart.
+   * Any in-memory "active" Goal becomes blocked (no in-flight work after restart).
+   */
+  private hydrateGoalsFromDb(db: import('better-sqlite3').Database): void {
+    try {
+      const goalRepo = createGoalRepository(db);
+      this.goalStore.attachPersistence(goalRepo);
+      const incomplete = goalRepo.loadIncomplete();
+      const restored: typeof incomplete = [];
+      for (const record of incomplete) {
+        if (record.status === 'active') {
+          record.status = 'blocked';
+          record.reasons = record.reasons.length > 0
+            ? record.reasons
+            : ['进程重启，可继续完成'];
+          record.updatedAt = Date.now();
+          goalRepo.save(record);
+        }
+        restored.push(record);
+      }
+      this.goalStore.hydrate(restored);
+      if (restored.length > 0) {
+        this.logger.info(`[server] Restored ${restored.length} incomplete Goal(s) from disk`);
+      }
+    } catch (error) {
+      this.logger.warn(`[server] Goal persistence unavailable: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
   private async initScheduleEngine(): Promise<void> {
     try {
       const { resolve } = await import('path');
@@ -972,6 +1007,7 @@ class ServerImpl implements Server {
       const dbManager = createDatabase({ dbPath });
       await dbManager.initialize();
       this.dbManager = dbManager;
+      this.hydrateGoalsFromDb(dbManager.getDb());
       const scheduleRepo = createScheduleRepository(dbManager.getDb());
 
       const engine = createScheduleEngine(scheduleRepo, async ({ schedule: task }) => {

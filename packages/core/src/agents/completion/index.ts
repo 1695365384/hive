@@ -51,6 +51,8 @@ export {
   type GoalStatus,
   type GoalTodo,
   type GoalRecord,
+  type GoalPersistence,
+  type GoalStoreOptions,
 } from './GoalStore.js';
 
 export {

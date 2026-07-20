@@ -424,6 +424,10 @@ export {
   createScheduleRepository,
   type IScheduleRepository,
 
+  GoalRepository,
+  createGoalRepository,
+  type IGoalRepository,
+
   MemoryRepository,
   createMemoryRepository,
   type IMemoryRepository,

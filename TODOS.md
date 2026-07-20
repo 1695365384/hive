@@ -15,3 +15,10 @@
 - **Context:** Deferred from same CEO review; not load-bearing for visual polish.
 - **Effort:** S
 - **Depends on:** none
+
+## Done — Goal SQLite persistence (2026-07-20)
+- Goals table migration v5; GoalRepository + GoalStore.attachPersistence
+- Server hydrate on start (active→blocked after restart)
+- WS `chat.getGoal`; desktop restores blocked banner on session load
+- WS client waits for reconnect before failing requests (softens restart flash)
+- Verified: cancel → restart → getGoal blocked → continueGoal ok

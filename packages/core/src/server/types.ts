@@ -142,6 +142,19 @@ export interface Server {
   /** Cancel / clear Goal (blocked "取消"); also aborts in-flight work if any */
   cancelGoal(sessionId: string): { ok: boolean; error?: string };
 
+  /** Read Goal state (for reconnect / session restore) */
+  getGoal(sessionId: string): {
+    sessionId: string;
+    goal: string;
+    status: 'active' | 'blocked' | 'done' | 'cancelled';
+    todos: Array<{ id: string; text: string; done: boolean }>;
+    reasons: string[];
+    auditAttempts: number;
+    continueAttempts: number;
+    createdAt: number;
+    updatedAt: number;
+  } | undefined;
+
   /** 当前正在 dispatch 的 session（用于 ask-user 路由到正确 thread） */
   getActiveDispatchSessionId(): string | null;
 

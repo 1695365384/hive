@@ -132,8 +132,23 @@ export class WsClient {
   // 请求方法 (req/res)
   // ============================================
 
-  request<T = any>(method: string, params?: unknown): Promise<T> {
-    return new Promise((resolve, reject) => {
+  request<T = any>(method: string, params?: unknown, options?: { retryOnReconnect?: boolean }): Promise<T> {
+    const retryOnReconnect = options?.retryOnReconnect !== false
+    return new Promise(async (resolve, reject) => {
+      try {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          if (!retryOnReconnect) {
+            reject(new Error('Not connected'))
+            return
+          }
+          // Soften restart flashes: wait briefly for reconnect then send once.
+          await this.waitForConnected(8_000)
+        }
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('Not connected'))
+        return
+      }
+
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         reject(new Error('Not connected'))
         return

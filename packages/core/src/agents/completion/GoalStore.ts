@@ -3,6 +3,8 @@
  *
  * Tracks the original user Goal across audit continues / blocked / user Continue,
  * so the Coordinator can resume the SAME task instead of treating Continue as a new chat.
+ *
+ * Optional GoalPersistence (SQLite) keeps incomplete Goals across process restarts.
  */
 
 import type { TaskProgressEvent } from './types.js';
@@ -30,8 +32,36 @@ export interface GoalRecord {
   updatedAt: number;
 }
 
+/** Optional durable backend for GoalStore (e.g. SQLite GoalRepository). */
+export interface GoalPersistence {
+  save(record: GoalRecord): void;
+  delete(sessionId: string): void;
+  loadIncomplete(): GoalRecord[];
+}
+
+export interface GoalStoreOptions {
+  persistence?: GoalPersistence;
+}
+
 export class GoalStore {
   private goals = new Map<string, GoalRecord>();
+  private persistence?: GoalPersistence;
+
+  constructor(options?: GoalStoreOptions) {
+    this.persistence = options?.persistence;
+  }
+
+  /** Attach / replace durable backend after DB is ready. */
+  attachPersistence(persistence: GoalPersistence): void {
+    this.persistence = persistence;
+  }
+
+  /** Load records into memory (typically incomplete Goals after restart). */
+  hydrate(records: GoalRecord[]): void {
+    for (const record of records) {
+      this.goals.set(record.sessionId, { ...record, todos: [...record.todos], reasons: [...record.reasons] });
+    }
+  }
 
   get(sessionId: string): GoalRecord | undefined {
     return this.goals.get(sessionId);
@@ -52,6 +82,7 @@ export class GoalStore {
       updatedAt: now,
     };
     this.goals.set(sessionId, record);
+    this.persist(sessionId);
     return record;
   }
 
@@ -65,6 +96,7 @@ export class GoalStore {
       existing.updatedAt = Date.now();
       if (existing.status === 'blocked') existing.status = 'active';
       this.goals.set(sessionId, existing);
+      this.persist(sessionId);
       return existing;
     }
     return this.start(sessionId, goal);
@@ -75,6 +107,7 @@ export class GoalStore {
     if (!g) return undefined;
     g.status = 'active';
     g.updatedAt = Date.now();
+    this.persist(sessionId);
     return g;
   }
 
@@ -84,6 +117,7 @@ export class GoalStore {
     g.status = 'blocked';
     g.reasons = reasons.filter(Boolean);
     g.updatedAt = Date.now();
+    this.persist(sessionId);
     return g;
   }
 
@@ -94,6 +128,7 @@ export class GoalStore {
     g.reasons = [];
     g.todos = g.todos.map((t) => ({ ...t, done: true }));
     g.updatedAt = Date.now();
+    this.persist(sessionId);
     return g;
   }
 
@@ -102,6 +137,7 @@ export class GoalStore {
     if (!g) return undefined;
     g.status = 'cancelled';
     g.updatedAt = Date.now();
+    this.persist(sessionId);
     return g;
   }
 
@@ -110,6 +146,7 @@ export class GoalStore {
     if (!g) return;
     g.auditAttempts += n;
     g.updatedAt = Date.now();
+    this.persist(sessionId);
   }
 
   bumpContinueAttempts(sessionId: string, n = 1): void {
@@ -117,6 +154,7 @@ export class GoalStore {
     if (!g) return;
     g.continueAttempts += n;
     g.updatedAt = Date.now();
+    this.persist(sessionId);
   }
 
   setTodos(sessionId: string, todos: GoalTodo[]): void {
@@ -124,6 +162,7 @@ export class GoalStore {
     if (!g) return;
     g.todos = todos;
     g.updatedAt = Date.now();
+    this.persist(sessionId);
   }
 
   /** Sync Goal status from streaming task-progress events. */
@@ -132,7 +171,10 @@ export class GoalStore {
       this.markBlocked(sessionId, progress.reasons ?? (progress.message ? [progress.message] : []));
       if (progress.attempt != null) {
         const g = this.goals.get(sessionId);
-        if (g) g.auditAttempts = Math.max(g.auditAttempts, progress.attempt);
+        if (g) {
+          g.auditAttempts = Math.max(g.auditAttempts, progress.attempt);
+          this.persist(sessionId);
+        }
       }
       return;
     }
@@ -150,7 +192,10 @@ export class GoalStore {
       this.markActive(sessionId);
       if (progress.attempt != null) {
         const g = this.goals.get(sessionId);
-        if (g) g.auditAttempts = Math.max(g.auditAttempts, progress.attempt);
+        if (g) {
+          g.auditAttempts = Math.max(g.auditAttempts, progress.attempt);
+          this.persist(sessionId);
+        }
       }
       return;
     }
@@ -160,14 +205,34 @@ export class GoalStore {
 
   clear(sessionId: string): void {
     this.goals.delete(sessionId);
+    this.persistence?.delete(sessionId);
   }
 
   /** Test helper */
   clearAll(): void {
+    const ids = [...this.goals.keys()];
     this.goals.clear();
+    for (const id of ids) {
+      this.persistence?.delete(id);
+    }
+  }
+
+  private persist(sessionId: string): void {
+    if (!this.persistence) return;
+    const g = this.goals.get(sessionId);
+    if (!g) {
+      this.persistence.delete(sessionId);
+      return;
+    }
+    // Keep terminal Goals briefly for audit, then drop cancelled from disk when cleared.
+    this.persistence.save({
+      ...g,
+      todos: [...g.todos],
+      reasons: [...g.reasons],
+    });
   }
 }
 
-export function createGoalStore(): GoalStore {
-  return new GoalStore();
+export function createGoalStore(options?: GoalStoreOptions): GoalStore {
+  return new GoalStore(options);
 }

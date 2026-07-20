@@ -400,6 +400,8 @@ export class ChatWsHandler extends EventEmitter {
         return this.handleChatContinueGoal(req.params, req.id)
       case 'chat.cancelGoal':
         return this.handleChatCancelGoal(req.params, req.id)
+      case 'chat.getGoal':
+        return this.handleChatGetGoal(req.params, req.id)
       case 'chat.answerAskUser':
         return this.handleAnswerAskUser(req.params, req.id)
       default:
@@ -534,6 +536,40 @@ export class ChatWsHandler extends EventEmitter {
     }
 
     return createSuccessResponse(id, { threadId, cancelled: true })
+  }
+
+
+  private handleChatGetGoal(params: unknown, id: string): WsResponse {
+    const { threadId } = params as { threadId?: string }
+
+    if (!threadId) {
+      return createErrorResponse(id, 'VALIDATION', 'threadId is required')
+    }
+
+    if (!this.server) {
+      return createErrorResponse(id, 'AGENT_NOT_READY', 'Server not initialized')
+    }
+
+    const sessionId = SessionId.forAbort(threadId)
+    const goal = this.server.getGoal(sessionId)
+    if (!goal) {
+      return createSuccessResponse(id, { threadId, goal: null })
+    }
+
+    return createSuccessResponse(id, {
+      threadId,
+      goal: {
+        sessionId: goal.sessionId,
+        text: goal.goal,
+        status: goal.status,
+        todos: goal.todos,
+        reasons: goal.reasons,
+        auditAttempts: goal.auditAttempts,
+        continueAttempts: goal.continueAttempts,
+        createdAt: goal.createdAt,
+        updatedAt: goal.updatedAt,
+      },
+    })
   }
 
   // ============================================

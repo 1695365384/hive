@@ -33,6 +33,12 @@ export {
   createScheduleRepository,
 } from './ScheduleRepository.js';
 
+export {
+  GoalRepository,
+  createGoalRepository,
+  type IGoalRepository,
+} from './GoalRepository.js';
+
 export type { IScheduleRepository } from '../scheduler/types.js';
 
 // Row types (for consumers extending storage)

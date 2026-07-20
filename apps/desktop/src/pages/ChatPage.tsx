@@ -423,6 +423,77 @@ export function ChatPage() {
     );
   }, [mutateThreadMessages]);
 
+  /** After reload/reconnect, rehydrate blocked Goal banner from server. */
+  /** After reload/reconnect, rehydrate blocked Goal banner from server. */
+  const restoreIncompleteGoal = useCallback(async (threadId: string) => {
+    try {
+      const result = await request("chat.getGoal", { threadId }) as {
+        goal?: {
+          status: string;
+          text?: string;
+          reasons?: string[];
+        } | null;
+      };
+      const goal = result?.goal;
+      if (!goal) return;
+      if (goal.status !== "blocked" && goal.status !== "active") return;
+
+      const store = useRunStore.getState();
+      const existing = store.getMessageCache(threadId) ?? (isViewingThread(threadId) ? messagesRef.current : []);
+      const hasBlocked = existing.some((m) =>
+        Array.isArray(m.content) && m.content.some((part: any) => part?.type === "task-progress" && part?.phase === "blocked")
+      );
+      if (hasBlocked) return;
+
+      const reasons = goal.reasons?.length ? goal.reasons : ["任务未完成，可继续"];
+      const blockedPart = {
+        type: "task-progress" as const,
+        phase: "blocked" as const,
+        message: "任务未完成，可继续",
+        reasons,
+        actions: [
+          { id: "continue" as const, label: "继续完成" },
+          { id: "provide-info" as const, label: "补充信息" },
+          { id: "cancel" as const, label: "取消" },
+        ],
+      };
+
+      const lastAssistant = [...existing].reverse().find((m) => m.role === "assistant");
+      if (lastAssistant && Array.isArray(lastAssistant.content)) {
+        appendPart(threadId, blockedPart);
+      } else {
+        const assistantMsg = {
+          id: crypto.randomUUID(),
+          role: "assistant" as const,
+          content: [blockedPart],
+          createdAt: Date.now(),
+        };
+        const next = [...existing, assistantMsg];
+        store.setMessageCache(threadId, next);
+        if (isViewingThread(threadId)) setMessages(next);
+        db.insertMessage(assistantMsg.id, threadId, "assistant", JSON.stringify(assistantMsg.content), assistantMsg.createdAt).catch(() => {});
+      }
+
+      if (isViewingThread(threadId)) {
+        activitySetWorking({
+          title: "需要处理",
+          detail: reasons[0],
+        });
+      }
+    } catch (err) {
+      console.debug("[chat] getGoal restore skipped", err);
+    }
+  }, [request, appendPart, isViewingThread, activitySetWorking]);
+
+  // Restore blocked Goal banner when switching sessions / after server restart
+  useEffect(() => {
+    if (!currentId) return;
+    if (useRunStore.getState().hasLiveRun(currentId)) return;
+    void restoreIncompleteGoal(currentId);
+  }, [currentId, restoreIncompleteGoal]);
+
+
+
   const updateToolResult = useCallback((threadId: string, toolCallId: string, result: unknown, isError?: boolean) => {
     const now = Date.now();
     const run = useRunStore.getState().getRun(threadId);
