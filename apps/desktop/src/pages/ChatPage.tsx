@@ -77,6 +77,7 @@ export function ChatPage() {
   const activeThreadIdRef = useRef<string | null>(null);
   const lastTextSeqRef = useRef(0);
   const lastReasoningSeqRef = useRef(0);
+  const activeWorkersRef = useRef<Map<string, Map<string, string>>>(new Map());
   const activityBeginRun = useActivityStore((s) => s.beginRun);
   const activitySetWorking = useActivityStore((s) => s.setWorking);
   const activitySetWaiting = useActivityStore((s) => s.setWaiting);
@@ -134,6 +135,40 @@ export function ChatPage() {
     });
     return !!useRunStore.getState().getRun(threadId);
   }, []);
+
+  const upsertActiveWorker = useCallback((threadId: string, workerId: string, label: string) => {
+    const next = new Map(activeWorkersRef.current.get(threadId) ?? []);
+    next.set(workerId, label);
+    activeWorkersRef.current.set(threadId, next);
+    return next;
+  }, []);
+
+  const removeActiveWorker = useCallback((threadId: string, workerId: string) => {
+    const next = new Map(activeWorkersRef.current.get(threadId) ?? []);
+    next.delete(workerId);
+    if (next.size === 0) activeWorkersRef.current.delete(threadId);
+    else activeWorkersRef.current.set(threadId, next);
+    return next;
+  }, []);
+
+  const formatActiveWorkerDetail = useCallback((threadId: string) => {
+    const labels = [...(activeWorkersRef.current.get(threadId)?.values() ?? [])];
+    if (labels.length === 0) return undefined;
+    if (labels.length === 1) return labels[0];
+    const preview = labels.slice(0, 2).join(" · ");
+    return labels.length > 2
+      ? `并行 ${labels.length} 个 Worker · ${preview} 等`
+      : `并行 ${labels.length} 个 Worker · ${preview}`;
+  }, []);
+
+  const syncWorkerActivity = useCallback((threadId: string, fallbackTitle?: string) => {
+    if (!isViewingThread(threadId)) return;
+    const labels = [...(activeWorkersRef.current.get(threadId)?.values() ?? [])];
+    const title = labels.length > 1
+      ? "并行执行"
+      : labels[0] ?? fallbackTitle ?? i18n.t("activity.processing");
+    activitySetWorking({ title, detail: formatActiveWorkerDetail(threadId) });
+  }, [activitySetWorking, formatActiveWorkerDetail, isViewingThread]);
 
   /** Apply message updates to the viewed session or a background cache. */
   const mutateThreadMessages = useCallback(
@@ -432,6 +467,7 @@ export function ChatPage() {
   // across React.StrictMode double-mount cycles.
   // Events are accepted for any registered run (including background sessions).
   const handleAgentStart = useCallback((data: { threadId: string }) => {
+    activeWorkersRef.current.delete(data.threadId);
     ensureLiveRun(data.threadId);
   }, [ensureLiveRun]);
 
@@ -515,22 +551,21 @@ export function ChatPage() {
   const handleWorkerStart = useCallback((data: { threadId: string; workerId: string; workerType: string; description?: string; scenarioId?: string }) => {
     if (!ensureLiveRun(data.threadId)) return;
     const title = formatWorkerTitle(data.workerType, data.description, data.scenarioId);
-    if (isViewingThread(data.threadId)) {
-      activitySetWorking({ title, detail: undefined });
-    }
+    upsertActiveWorker(data.threadId, data.workerId, title);
+    syncWorkerActivity(data.threadId, title);
     appendPart(data.threadId, { type: "worker-start", workerId: data.workerId, workerType: data.workerType, description: data.description, scenarioId: data.scenarioId });
-  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
+  }, [appendPart, ensureLiveRun, syncWorkerActivity, upsertActiveWorker]);
 
   const handleWorkerComplete = useCallback((data: { threadId: string; workerId: string; workerType: string; success: boolean; error?: string; duration?: number }) => {
     if (!ensureLiveRun(data.threadId)) return;
     const title = formatWorkerTitle(data.workerType);
+    removeActiveWorker(data.threadId, data.workerId);
     if (isViewingThread(data.threadId)) {
       activitySetLastCompleted(`${data.success ? "✓" : "✗"} ${title}`);
-      // Worker 完成后先把 dock 细节清掉，避免一直停在 Working·某任务；最终 idle 仍由 agent.complete 负责
-      activitySetWorking({ title: i18n.t("activity.processing"), detail: undefined });
+      syncWorkerActivity(data.threadId, i18n.t("activity.processing"));
     }
     appendPart(data.threadId, { type: "worker-complete", workerId: data.workerId, workerType: data.workerType, success: data.success, error: data.error, duration: data.duration });
-  }, [appendPart, activitySetLastCompleted, activitySetWorking, isViewingThread, ensureLiveRun]);
+  }, [appendPart, activitySetLastCompleted, ensureLiveRun, isViewingThread, removeActiveWorker, syncWorkerActivity]);
 
   const handleOfficeProgress = useCallback((data: {
     threadId: string;
@@ -571,6 +606,70 @@ export function ChatPage() {
       slideTotal: data.slideTotal,
       message: data.message,
       workerId: data.workerId,
+    });
+  }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
+
+  const handleTaskProgress = useCallback((data: {
+    threadId: string;
+    phase: "understand" | "plan" | "execute" | "verify" | "continue" | "blocked" | "done";
+    message?: string;
+    reasons?: string[];
+    actions?: Array<{ id: "continue" | "cancel" | "provide-info"; label: string }>;
+    attempt?: number;
+    maxAttempts?: number;
+  }) => {
+    if (!ensureLiveRun(data.threadId)) return;
+    const titleMap: Record<string, string> = {
+      understand: "理解任务",
+      plan: "规划中",
+      execute: "执行中",
+      verify: "检查交付",
+      continue: "自动续跑",
+      blocked: "需要处理",
+      done: "已完成",
+    };
+    if (isViewingThread(data.threadId)) {
+      if (data.phase === "done") {
+        activitySetLastCompleted(data.message || titleMap.done);
+      } else if (data.phase === "blocked") {
+        activitySetWorking({
+          title: titleMap.blocked,
+          detail: data.message || data.reasons?.[0],
+        });
+      } else {
+        activitySetWorking({
+          title: titleMap[data.phase] || "处理中",
+          detail: data.message,
+        });
+      }
+    }
+    appendPart(data.threadId, {
+      type: "task-progress",
+      phase: data.phase,
+      message: data.message,
+      reasons: data.reasons,
+      actions: data.actions,
+      attempt: data.attempt,
+      maxAttempts: data.maxAttempts,
+    });
+  }, [appendPart, activitySetWorking, activitySetLastCompleted, isViewingThread, ensureLiveRun]);
+
+  const handleHeartbeat = useCallback((data: {
+    threadId: string;
+    message?: string;
+    silentMs?: number;
+  }) => {
+    if (!ensureLiveRun(data.threadId)) return;
+    if (isViewingThread(data.threadId)) {
+      activitySetWorking({
+        title: "仍在处理",
+        detail: data.message || "请稍候…",
+      });
+    }
+    appendPart(data.threadId, {
+      type: "heartbeat",
+      message: data.message,
+      silentMs: data.silentMs,
     });
   }, [appendPart, activitySetWorking, isViewingThread, ensureLiveRun]);
 
@@ -640,6 +739,8 @@ export function ChatPage() {
         title: run.title,
       });
     }
+
+    activeWorkersRef.current.delete(tid);
 
     if (viewing) {
       setAskUserData(null);
@@ -763,6 +864,8 @@ export function ChatPage() {
       onEvent("agent.worker-start", handleWorkerStart),
       onEvent("agent.worker-complete", handleWorkerComplete),
       onEvent("agent.office-progress", handleOfficeProgress),
+      onEvent("agent.task-progress", handleTaskProgress),
+      onEvent("agent.heartbeat", handleHeartbeat),
       onEvent("agent.tool-call", handleToolCall),
       onEvent("agent.tool-result", handleToolResult),
       onEvent("agent.complete", handleComplete),
@@ -771,7 +874,7 @@ export function ChatPage() {
       onEvent("agent.ask-user-timeout", handleAskUserTimeout),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [onEvent, handleAgentStart, handleReasoning, handleTextDelta, handleRoute, handleSkill, handleWorkerStart, handleWorkerComplete, handleOfficeProgress, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
+  }, [onEvent, handleAgentStart, handleReasoning, handleTextDelta, handleRoute, handleSkill, handleWorkerStart, handleWorkerComplete, handleOfficeProgress, handleTaskProgress, handleHeartbeat, handleToolCall, handleToolResult, handleComplete, handleFile, handleAskUser, handleAskUserTimeout]);
 
   const handleCancel = useCallback(async () => {
     const threadId = activeThreadIdRef.current;
@@ -785,6 +888,72 @@ export function ChatPage() {
       if (cached) setMessages(cached);
     }
   }, [activitySetIdle, isViewingThread]);
+
+  /** Blocked banner actions: continue same Goal / provide info / cancel Goal */
+  const handleBlockedAction = useCallback(async (action: "continue" | "provide-info" | "cancel") => {
+    const threadId = currentIdRef.current;
+    if (!threadId) return;
+
+    if (action === "provide-info") {
+      setInput("");
+      window.requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.placeholder = "补充完成该任务所需的信息…";
+      });
+      return;
+    }
+
+    if (action === "cancel") {
+      try {
+        await request("chat.cancelGoal", { threadId });
+      } catch (err) {
+        console.warn("[chat] cancelGoal failed", err);
+      }
+      activitySetIdle();
+      return;
+    }
+
+    // continue — same Goal
+    if (isRunning) {
+      setError("当前任务仍在执行，请稍候或先取消");
+      return;
+    }
+
+    const assistantMsgId = crypto.randomUUID();
+    const now = Date.now();
+    const assistantMsg: ChatMessage = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: [],
+      createdAt: now,
+    };
+
+    activeThreadIdRef.current = threadId;
+    lastTextSeqRef.current = 0;
+    lastReasoningSeqRef.current = 0;
+
+    useRunStore.getState().beginRun({
+      sessionId: threadId,
+      assistantMsgId,
+      title: "继续完成",
+    });
+
+    const next = [...messagesRef.current, assistantMsg];
+    useRunStore.getState().setMessageCache(threadId, next);
+    setMessages(next);
+    activityBeginRun();
+    activeWorkersRef.current.delete(threadId);
+    db.insertMessage(assistantMsgId, threadId, "assistant", "[]", now).catch(() => {});
+
+    try {
+      await request("chat.continueGoal", { threadId });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      failPendingRun(threadId, errorMessage);
+    }
+  }, [request, isRunning, activityBeginRun, activitySetIdle, failPendingRun]);
 
   // Submit ask-user answer — leave it in the transcript as a user turn
   const handleAskUserSubmit = useCallback(async (answer: string) => {
@@ -902,6 +1071,7 @@ export function ChatPage() {
       setInput("");
       clearFiles();
       activityBeginRun();
+      activeWorkersRef.current.delete(activeThreadId);
 
       // Persist user + empty assistant placeholder (updated as stream progresses)
       db.insertMessage(userMsgId, activeThreadId, "user", JSON.stringify(userContent), now).catch(() => {});
@@ -993,6 +1163,7 @@ export function ChatPage() {
                 isLast={msg === messages[messages.length - 1]}
                 isRunning={isRunning && msg === messages[messages.length - 1]}
                 onOpenImage={setLightboxSrc}
+                onBlockedAction={handleBlockedAction}
               />
             ))}
             {isRunning &&

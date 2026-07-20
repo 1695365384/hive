@@ -49,6 +49,20 @@ export function appendContentPart(content: ContentPart[], part: ContentPart): Co
     } else {
       updated.push(part);
     }
+  } else if (part.type === "task-progress") {
+    const lastPart = updated[updated.length - 1];
+    if (lastPart?.type === "task-progress") {
+      updated[updated.length - 1] = part;
+    } else {
+      updated.push(part);
+    }
+  } else if (part.type === "heartbeat") {
+    const lastPart = updated[updated.length - 1];
+    if (lastPart?.type === "heartbeat") {
+      updated[updated.length - 1] = part;
+    } else {
+      updated.push(part);
+    }
   } else {
     updated.push(part);
   }

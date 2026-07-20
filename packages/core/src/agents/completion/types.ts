@@ -25,6 +25,8 @@ export interface VerifyResult {
   verifierId: string;
   passed: boolean;
   message: string;
+  /** Soft failures may be auto-continued by Coordinator discipline loop */
+  retryable?: boolean;
 }
 
 export interface CompletionVerifyResult {
@@ -40,4 +42,28 @@ export interface CompletionVerifier {
 
 export interface CompletionVerifierOptions {
   verifiers?: CompletionVerifier[];
+}
+
+/** Unified task progress phases for UX + discipline loop */
+export type TaskProgressPhase =
+  | 'understand'
+  | 'plan'
+  | 'execute'
+  | 'verify'
+  | 'continue'
+  | 'blocked'
+  | 'done';
+
+export interface TaskProgressAction {
+  id: 'continue' | 'cancel' | 'provide-info';
+  label: string;
+}
+
+export interface TaskProgressEvent {
+  phase: TaskProgressPhase;
+  message?: string;
+  reasons?: string[];
+  actions?: TaskProgressAction[];
+  attempt?: number;
+  maxAttempts?: number;
 }

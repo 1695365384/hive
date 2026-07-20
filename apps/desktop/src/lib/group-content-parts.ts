@@ -64,6 +64,34 @@ export function groupContentParts(parts: ContentPart[]): GroupedContent[] {
           result.push(next);
         }
       }
+    } else if (part.type === "task-progress") {
+      const next = {
+        type: "task-progress" as const,
+        phase: part.phase,
+        message: part.message,
+        reasons: part.reasons,
+        actions: part.actions,
+        attempt: part.attempt,
+        maxAttempts: part.maxAttempts,
+      };
+      const last = result[result.length - 1];
+      if (last?.type === "task-progress") {
+        result[result.length - 1] = next;
+      } else {
+        result.push(next);
+      }
+    } else if (part.type === "heartbeat") {
+      const next = {
+        type: "heartbeat" as const,
+        message: part.message,
+        silentMs: part.silentMs,
+      };
+      const last = result[result.length - 1];
+      if (last?.type === "heartbeat") {
+        result[result.length - 1] = next;
+      } else {
+        result.push(next);
+      }
     } else if (part.type === "worker-complete") {
       const group = activeWorkers.get(part.workerId);
       if (group) {

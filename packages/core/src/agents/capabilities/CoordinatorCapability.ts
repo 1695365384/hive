@@ -44,7 +44,14 @@ import type { AdversarialConfig, HarnessResult } from '../harness/types.js';
 import {
   TaskTraceCollector,
   createCompletionVerifierService,
+  MAX_AUDIT_CONTINUES,
+  collectFailureReasons,
+  isRetryableFailure,
+  buildContinuationPrompt,
+  blockedActions,
+  mapWorkflowPhaseToTaskProgress,
   type CompletionVerifyResult,
+  type TaskProgressEvent,
 } from '../completion/index.js';
 import { stripDecorativeEmoji } from '../../utils/sanitize-output.js';
 import {
@@ -104,6 +111,8 @@ export interface DispatchOptions {
     message?: string;
     workerId?: string;
   }) => void;
+  /** 通用任务进度（阶段条 / 续跑 / 阻塞动作） */
+  onTaskProgress?: (progress: TaskProgressEvent) => void;
   /**
    * 技能命中回调（当本轮匹配到已安装技能并注入到 system prompt 时触发）
    * 用于交互层展示「已加载技能: X」
@@ -281,6 +290,8 @@ export class CoordinatorCapability implements AgentCapability {
           `开始执行: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}`);
 
         previousPhase = 'start';
+        await this.emitPhase(sessionId, 'understand', '理解任务...', previousPhase, options);
+        previousPhase = 'understand';
         await this.emitPhase(sessionId, 'execute', '执行任务...', previousPhase, options);
 
         // 场景路由：确定性短路（TaskRouter 唯一入口）
@@ -294,6 +305,7 @@ export class CoordinatorCapability implements AgentCapability {
           });
           // 短路回复也走 onText，避免 UI 长时间 ColdStart 空白
           options?.onText?.(reply);
+          options?.onTaskProgress?.({ phase: 'done', message: '已直接回复' });
           const duration = Date.now() - startTime;
           return await this.finalizeTask(
             task, reply, reply, undefined, options, sessionId, duration, true,
@@ -322,17 +334,30 @@ export class CoordinatorCapability implements AgentCapability {
               resultText = `${resultText}\n\n(${assistFailedNote})`;
             }
             this.flushOfficeArtifactsToUi();
-            const verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+            let verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
             if (!verification.passed) {
-              const reasons = verification.results
-                .filter(r => !r.passed)
-                .map(r => r.message)
-                .join('; ');
-              options?.onOfficeProgress?.({
-                phase: 'blocked',
-                message: reasons.slice(0, 240) || '需要修正后才能完成',
+              // Delegate path: rebuild prompts and try limited audit continues via Coordinator LLM
+              const systemPrompt = await this.buildSystemPrompt(task, options?.systemPrompt, options);
+              const historyMessages = this.loadHistoryMessages();
+              const compressedHistoryMessages = await this.compressHistoryIfNeeded(
+                historyMessages,
+                options?.modelId,
+                systemPrompt,
+              );
+              const disciplined = await this.runAuditContinueLoop({
+                task,
+                sessionId,
+                options,
+                combinedSignal,
+                systemPrompt,
+                historyMessages: compressedHistoryMessages,
+                resultText,
+                finalText: resultText,
               });
-              resultText = this.formatOfficeIncompleteMessage(task, reasons);
+              resultText = disciplined.resultText;
+              verification = disciplined.verification;
+            } else {
+              options?.onTaskProgress?.({ phase: 'done', message: '交付完成' });
             }
             // 委派路径没有 streaming text-delta，这里主动推送正文，避免 UI 只剩 Worker 卡片
             if (resultText.trim()) {
@@ -377,9 +402,11 @@ export class CoordinatorCapability implements AgentCapability {
         );
 
         // 执行 LLM 流式循环
-        const { result, finalText, runtimeResult } = await this.executeStreamingLoop(
+        const { result, finalText: initialFinalText, runtimeResult: initialRuntimeResult } = await this.executeStreamingLoop(
           task, systemPrompt, compressedHistoryMessages, options, combinedSignal, sessionId,
         );
+        let finalText = initialFinalText;
+        let runtimeResult = initialRuntimeResult;
 
         const duration = Date.now() - startTime;
 
@@ -394,6 +421,7 @@ export class CoordinatorCapability implements AgentCapability {
         this.taskTrace.setResponseText(final);
         let resultText = stripDecorativeEmoji(final);
         this.flushOfficeArtifactsToUi();
+        await this.emitPhase(sessionId, 'verify', '检查交付结果...', 'execute', options);
         let verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
         if (!verification.passed) {
           isSuccess = false;
@@ -428,17 +456,26 @@ export class CoordinatorCapability implements AgentCapability {
         }
 
         if (!verification.passed) {
-          const reasons = verification.results
-            .filter(r => !r.passed)
-            .map(r => r.message)
-            .join('; ');
-          if (isOfficeTask(task)) {
-            options?.onOfficeProgress?.({
-              phase: 'blocked',
-              message: reasons.slice(0, 240) || '需要修正后才能完成',
-            });
+          const disciplined = await this.runAuditContinueLoop({
+            task,
+            sessionId,
+            options,
+            combinedSignal,
+            systemPrompt,
+            historyMessages: compressedHistoryMessages,
+            resultText,
+            finalText,
+            runtimeResult,
+          });
+          resultText = disciplined.resultText;
+          finalText = disciplined.finalText;
+          if (disciplined.runtimeResult) {
+            runtimeResult = disciplined.runtimeResult;
           }
-          resultText = this.formatOfficeIncompleteMessage(task, reasons, final);
+          verification = disciplined.verification;
+          isSuccess = verification.passed;
+        } else {
+          options?.onTaskProgress?.({ phase: 'done', message: '交付完成' });
         }
 
         // 收尾：通知 + 持久化 + 返回
@@ -1070,6 +1107,105 @@ export class CoordinatorCapability implements AgentCapability {
     };
     await this.context.hookRegistry.emit('workflow:phase', hookContext);
     options?.onPhase?.(phase, message);
+    const progress = mapWorkflowPhaseToTaskProgress(phase, message);
+    if (progress) {
+      options?.onTaskProgress?.(progress);
+    }
+  }
+
+  /**
+   * Limited audit continue loop: retryable completion failures get up to
+   * MAX_AUDIT_CONTINUES Coordinator LLM passes, then surface blocked UX.
+   */
+  private async runAuditContinueLoop(args: {
+    task: string;
+    sessionId: string;
+    options: DispatchOptions | undefined;
+    combinedSignal?: AbortSignal;
+    systemPrompt: string;
+    historyMessages: Array<{ role: string; content: string }>;
+    resultText: string;
+    finalText: string;
+    runtimeResult?: import('../runtime/types.js').RuntimeResult;
+  }): Promise<{
+    resultText: string;
+    finalText: string;
+    verification: CompletionVerifyResult;
+    runtimeResult?: import('../runtime/types.js').RuntimeResult;
+  }> {
+    let { resultText, finalText, runtimeResult } = args;
+    let verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+    let attempt = 0;
+
+    while (
+      !verification.passed
+      && isRetryableFailure(verification)
+      && attempt < MAX_AUDIT_CONTINUES
+      && !args.combinedSignal?.aborted
+    ) {
+      attempt += 1;
+      const reasons = collectFailureReasons(verification);
+      args.options?.onTaskProgress?.({
+        phase: 'continue',
+        message: `审计未通过，自动续跑 (${attempt}/${MAX_AUDIT_CONTINUES})`,
+        reasons,
+        attempt,
+        maxAttempts: MAX_AUDIT_CONTINUES,
+      });
+      await this.emitPhase(
+        args.sessionId,
+        'execute',
+        `审计续跑 ${attempt}/${MAX_AUDIT_CONTINUES}...`,
+        'verify',
+        args.options,
+      );
+
+      const continuation = buildContinuationPrompt(args.task, reasons, resultText);
+      const cont = await this.executeStreamingLoop(
+        continuation,
+        args.systemPrompt,
+        args.historyMessages as any,
+        args.options,
+        args.combinedSignal,
+        args.sessionId,
+      );
+      resultText = stripDecorativeEmoji(cont.result || resultText);
+      finalText = cont.finalText || finalText;
+      runtimeResult = cont.runtimeResult ?? runtimeResult;
+      this.taskTrace.setResponseText(resultText);
+      this.flushOfficeArtifactsToUi();
+      await this.emitPhase(args.sessionId, 'verify', '再次检查交付结果...', 'execute', args.options);
+      verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
+    }
+
+    if (!verification.passed) {
+      const reasons = collectFailureReasons(verification);
+      const reasonText = reasons.join('; ');
+      args.options?.onTaskProgress?.({
+        phase: 'blocked',
+        message: reasonText.slice(0, 240) || '需要修正后才能完成',
+        reasons,
+        actions: blockedActions(),
+        attempt,
+        maxAttempts: MAX_AUDIT_CONTINUES,
+      });
+      if (isOfficeTask(args.task)) {
+        args.options?.onOfficeProgress?.({
+          phase: 'blocked',
+          message: reasonText.slice(0, 240) || '需要修正后才能完成',
+        });
+      }
+      resultText = this.formatOfficeIncompleteMessage(args.task, reasonText, resultText);
+    } else {
+      args.options?.onTaskProgress?.({
+        phase: 'done',
+        message: attempt > 0 ? `续跑后交付完成（${attempt} 次）` : '交付完成',
+        attempt,
+        maxAttempts: MAX_AUDIT_CONTINUES,
+      });
+    }
+
+    return { resultText, finalText, verification, runtimeResult };
   }
 
   private async emitToolBefore(

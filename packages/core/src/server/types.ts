@@ -42,6 +42,22 @@ export type StreamingEventUnion =
       message?: string;
       workerId?: string;
     }
+  | {
+      type: 'task-progress';
+      sessionId: string;
+      phase: 'understand' | 'plan' | 'execute' | 'verify' | 'continue' | 'blocked' | 'done';
+      message?: string;
+      reasons?: string[];
+      actions?: Array<{ id: 'continue' | 'cancel' | 'provide-info'; label: string }>;
+      attempt?: number;
+      maxAttempts?: number;
+    }
+  | {
+      type: 'heartbeat';
+      sessionId: string;
+      message?: string;
+      silentMs?: number;
+    }
   | { type: 'complete'; sessionId: string; success: boolean; cancelled?: boolean; error?: string; text?: string };
 
 /** 流式事件回调 */
@@ -116,6 +132,15 @@ export interface Server {
 
   /** 中止指定 session 的 Agent 执行 */
   abort(sessionId: string): void;
+
+  /**
+   * Continue the SAME Goal for an idle incomplete session.
+   * Used by chat.continue / blocked "继续完成".
+   */
+  continueGoal(sessionId: string): Promise<{ ok: boolean; error?: string; threadId?: string }>;
+
+  /** Cancel / clear Goal (blocked "取消"); also aborts in-flight work if any */
+  cancelGoal(sessionId: string): { ok: boolean; error?: string };
 
   /** 当前正在 dispatch 的 session（用于 ask-user 路由到正确 thread） */
   getActiveDispatchSessionId(): string | null;

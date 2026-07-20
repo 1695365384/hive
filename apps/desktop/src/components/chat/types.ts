@@ -47,6 +47,16 @@ export type GroupedContent =
       workerId?: string;
     }
   | {
+      type: "task-progress";
+      phase: "understand" | "plan" | "execute" | "verify" | "continue" | "blocked" | "done";
+      message?: string;
+      reasons?: string[];
+      actions?: Array<{ id: "continue" | "cancel" | "provide-info"; label: string }>;
+      attempt?: number;
+      maxAttempts?: number;
+    }
+  | { type: "heartbeat"; message?: string; silentMs?: number }
+  | {
       type: "file-attachment";
       name: string;
       size: number;

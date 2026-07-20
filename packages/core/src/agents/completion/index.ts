@@ -6,6 +6,9 @@ export type {
   CompletionVerifyResult,
   CompletionVerifier,
   CompletionVerifierOptions,
+  TaskProgressPhase,
+  TaskProgressAction,
+  TaskProgressEvent,
 } from './types.js';
 
 export {
@@ -22,6 +25,7 @@ export {
 
 export { officeCompletionVerifier } from './verifiers/office.js';
 export { scheduleCompletionVerifier } from './verifiers/schedule.js';
+export { genericCompletionVerifier } from './verifiers/generic.js';
 export {
   isOfficeTask,
   isScheduleTask,
@@ -31,3 +35,28 @@ export {
   buildOfficeRoutingDirective,
   buildScheduleRoutingDirective,
 } from './task-routing.js';
+
+export {
+  MAX_AUDIT_CONTINUES,
+  collectFailureReasons,
+  isRetryableFailure,
+  buildContinuationPrompt,
+  blockedActions,
+  mapWorkflowPhaseToTaskProgress,
+} from './discipline.js';
+
+export {
+  GoalStore,
+  createGoalStore,
+  type GoalStatus,
+  type GoalTodo,
+  type GoalRecord,
+} from './GoalStore.js';
+
+export {
+  MAX_GOAL_CONTINUES,
+  isIncompleteGoal,
+  buildGoalContinuationPrompt,
+  resolveIdleContinuation,
+  type EnforceDecision,
+} from './TodoEnforcer.js';

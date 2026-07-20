@@ -10,6 +10,7 @@ type MessageBubbleProps = {
   isLast: boolean;
   isRunning: boolean;
   onOpenImage: (src: string) => void;
+  onBlockedAction?: (action: "continue" | "provide-info" | "cancel") => void;
 };
 
 function findLastTextPartIndex(parts: GroupedContent[]): number {
@@ -31,6 +32,7 @@ export function MessageBubble({
   isLast,
   isRunning,
   onOpenImage,
+  onBlockedAction,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
 
@@ -118,6 +120,7 @@ export function MessageBubble({
               isReasoningStreaming={
                 isLast && isRunning && part.type === "reasoning" && idx === lastReasoningIdx
               }
+              onBlockedAction={onBlockedAction}
             />
           ))}
         </div>

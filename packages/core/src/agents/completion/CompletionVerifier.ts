@@ -4,6 +4,7 @@
 
 import { officeCompletionVerifier } from './verifiers/office.js';
 import { scheduleCompletionVerifier } from './verifiers/schedule.js';
+import { genericCompletionVerifier } from './verifiers/generic.js';
 import type {
   CompletionVerifier,
   CompletionVerifierOptions,
@@ -15,6 +16,7 @@ import type {
 const DEFAULT_VERIFIERS: CompletionVerifier[] = [
   officeCompletionVerifier,
   scheduleCompletionVerifier,
+  genericCompletionVerifier,
 ];
 
 export class CompletionVerifierService {
@@ -25,18 +27,28 @@ export class CompletionVerifierService {
   }
 
   async verify(trace: TaskTrace): Promise<CompletionVerifyResult> {
-    const matched = this.verifiers.filter(v => v.match(trace));
-    if (matched.length === 0) {
+    const specialized = this.verifiers.filter(
+      (v) => v.id !== 'generic' && v.match(trace),
+    );
+
+    // Prefer scenario verifiers when they match; otherwise fall back to generic.
+    let toRun = specialized;
+    if (toRun.length === 0) {
+      const generic = this.verifiers.find((v) => v.id === 'generic' && v.match(trace));
+      toRun = generic ? [generic] : [];
+    }
+
+    if (toRun.length === 0) {
       return { passed: true, results: [] };
     }
 
     const results: VerifyResult[] = [];
-    for (const verifier of matched) {
+    for (const verifier of toRun) {
       results.push(await verifier.verify(trace));
     }
 
     return {
-      passed: results.every(r => r.passed),
+      passed: results.every((r) => r.passed),
       results,
     };
   }

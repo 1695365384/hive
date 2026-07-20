@@ -285,6 +285,26 @@ export class ChatWsHandler extends EventEmitter {
         })))
         break
 
+      case 'task-progress':
+        ws.send(JSON.stringify(createEvent('agent.task-progress', {
+          threadId,
+          phase: event.phase,
+          message: event.message,
+          reasons: event.reasons,
+          actions: event.actions,
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+        })))
+        break
+
+      case 'heartbeat':
+        ws.send(JSON.stringify(createEvent('agent.heartbeat', {
+          threadId,
+          message: event.message,
+          silentMs: event.silentMs,
+        })))
+        break
+
       case 'complete':
         ws.send(JSON.stringify(createEvent('agent.complete', {
           threadId,
@@ -374,6 +394,12 @@ export class ChatWsHandler extends EventEmitter {
         return this.handleChatSend(req.params, req.id, client.ws)
       case 'chat.cancel':
         return this.handleChatCancel(req.params, req.id)
+      case 'chat.continue':
+        return this.handleChatContinue(req.params, req.id, client.ws)
+      case 'chat.continueGoal':
+        return this.handleChatContinueGoal(req.params, req.id)
+      case 'chat.cancelGoal':
+        return this.handleChatCancelGoal(req.params, req.id)
       case 'chat.answerAskUser':
         return this.handleAnswerAskUser(req.params, req.id)
       default:
@@ -448,6 +474,64 @@ export class ChatWsHandler extends EventEmitter {
 
     // 直接调用 server.abort() 替代 bus.publish
     this.server?.abort(SessionId.forAbort(threadId))
+
+    return createSuccessResponse(id, { threadId, cancelled: true })
+  }
+
+
+  private async handleChatContinue(
+    params: unknown,
+    id: string,
+    ws?: WebSocket,
+  ): Promise<WsResponse> {
+    const { threadId } = params as { threadId?: string }
+
+    if (!threadId) {
+      return createErrorResponse(id, 'VALIDATION', 'threadId is required')
+    }
+
+    if (!this.server) {
+      return createErrorResponse(id, 'AGENT_NOT_READY', 'Server not initialized')
+    }
+
+    if (ws) {
+      this.threadClientMap.set(threadId, ws)
+      const client = this.findClientByWs(ws)
+      if (client) client.threadIds.add(threadId)
+    }
+
+    const sessionId = SessionId.forAbort(threadId)
+    const result = await this.server.continueGoal(sessionId)
+    if (!result.ok) {
+      return createErrorResponse(id, 'VALIDATION', result.error || 'Unable to continue goal')
+    }
+
+    return createSuccessResponse(id, {
+      threadId: result.threadId ?? threadId,
+      continued: true,
+    })
+  }
+
+  private async handleChatContinueGoal(params: unknown, id: string): Promise<WsResponse> {
+    return this.handleChatContinue(params, id)
+  }
+
+  private handleChatCancelGoal(params: unknown, id: string): WsResponse {
+    const { threadId } = params as { threadId?: string }
+
+    if (!threadId) {
+      return createErrorResponse(id, 'VALIDATION', 'threadId is required')
+    }
+
+    if (!this.server) {
+      return createErrorResponse(id, 'AGENT_NOT_READY', 'Server not initialized')
+    }
+
+    const sessionId = SessionId.forAbort(threadId)
+    const result = this.server.cancelGoal(sessionId)
+    if (!result.ok) {
+      return createErrorResponse(id, 'VALIDATION', result.error || 'Unable to cancel goal')
+    }
 
     return createSuccessResponse(id, { threadId, cancelled: true })
   }

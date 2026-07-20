@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { CompletionVerifierService } from '../../../src/agents/completion/CompletionVerifier.js';
 import { officeCompletionVerifier } from '../../../src/agents/completion/verifiers/office.js';
 import { scheduleCompletionVerifier } from '../../../src/agents/completion/verifiers/schedule.js';
+import { genericCompletionVerifier } from '../../../src/agents/completion/verifiers/generic.js';
 import { FAKE_CHART_PREFIX, LAYOUT_ISSUES_PREFIX } from '../../../src/agents/completion/office-visual-contract.js';
 import type { TaskTrace } from '../../../src/agents/completion/types.js';
 import { buildPptxFixture } from './pptx-fixture.js';
@@ -192,16 +193,16 @@ describe('officeCompletionVerifier', () => {
 });
 
 describe('scheduleCompletionVerifier', () => {
-  it('fails when schedule worker was not spawned', () => {
-    const result = scheduleCompletionVerifier.verify(trace({
+  it('fails when schedule worker was not spawned', async () => {
+    const result = await scheduleCompletionVerifier.verify(trace({
       task: '每天早上 9 点提醒我喝水',
       toolCalls: [{ toolName: 'agent', input: { type: 'general' } }],
     }));
     expect(result.passed).toBe(false);
   });
 
-  it('passes when schedule worker spawned', () => {
-    const result = scheduleCompletionVerifier.verify(trace({
+  it('passes when schedule worker spawned', async () => {
+    const result = await scheduleCompletionVerifier.verify(trace({
       task: 'Set up a daily cron reminder',
       workerSpawns: [{ workerType: 'schedule' }],
     }));
@@ -209,13 +210,56 @@ describe('scheduleCompletionVerifier', () => {
   });
 });
 
+describe('genericCompletionVerifier', () => {
+  it('passes conversational greetings without tools', async () => {
+    const result = await genericCompletionVerifier.verify(
+      trace({ task: '你好', responseText: '你好！有什么可以帮你的？' }),
+    );
+    expect(result.passed).toBe(true);
+  });
+
+  it('fails actionable promise-only responses', async () => {
+    const result = await genericCompletionVerifier.verify(
+      trace({
+        task: '帮我实现一个登录页面',
+        responseText: '我会马上开始实现。',
+      }),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.retryable).toBe(true);
+  });
+
+  it('passes actionable tasks with worker activity', async () => {
+    const result = await genericCompletionVerifier.verify(
+      trace({
+        task: '实现登录页面',
+        responseText: '已完成基础页面。',
+        workerSpawns: [{ workerType: 'general', description: 'build login' }],
+      }),
+    );
+    expect(result.passed).toBe(true);
+  });
+});
+
 describe('CompletionVerifierService', () => {
-  it('skips verifiers for unrelated tasks', async () => {
+  it('skips specialized verifiers for unrelated tasks when only specialized are registered', async () => {
     const service = new CompletionVerifierService({
       verifiers: [officeCompletionVerifier, scheduleCompletionVerifier],
     });
     const result = await service.verify(trace({ task: '你好' }));
     expect(result.passed).toBe(true);
     expect(result.results).toHaveLength(0);
+  });
+
+  it('falls back to generic verifier by default', async () => {
+    const service = new CompletionVerifierService();
+    const result = await service.verify(
+      trace({
+        task: '帮我修复这个 bug',
+        responseText: '我稍后会处理。',
+      }),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.results[0]?.verifierId).toBe('generic');
   });
 });

@@ -13,12 +13,15 @@ import { formatWorkerTitle, formatScenarioLabel } from "./worker-labels";
 import { playMotion } from "../../motion";
 import type { GroupedContent } from "./types";
 
+export type BlockedActionId = "continue" | "provide-info" | "cancel";
+
 export type GroupedContentRendererProps = {
   part: GroupedContent;
   sourceMessageId?: string;
   autoPreview?: boolean;
   isStreaming?: boolean;
   isReasoningStreaming?: boolean;
+  onBlockedAction?: (action: BlockedActionId) => void;
 };
 
 export function GroupedContentRenderer({
@@ -27,6 +30,7 @@ export function GroupedContentRenderer({
   autoPreview,
   isStreaming,
   isReasoningStreaming,
+  onBlockedAction,
 }: GroupedContentRendererProps) {
   switch (part.type) {
     case "route":
@@ -43,6 +47,10 @@ export function GroupedContentRenderer({
       return <SkillChip name={part.name} description={part.description} />;
     case "office-progress":
       return <OfficeProgressBanner part={part} />;
+    case "task-progress":
+      return <TaskProgressBanner part={part} onBlockedAction={onBlockedAction} />;
+    case "heartbeat":
+      return <HeartbeatPulse part={part} />;
     case "reasoning":
       return <ThinkingCard text={part.text} isStreaming={isReasoningStreaming} />;
     case "text":
@@ -220,6 +228,75 @@ function OfficeProgressBanner({
       role="status"
     >
       {label}
+    </div>
+  );
+}
+
+const TASK_PROGRESS_LABEL: Record<string, string> = {
+  understand: "理解任务",
+  plan: "规划中",
+  execute: "执行中",
+  verify: "检查交付",
+  continue: "自动续跑",
+  blocked: "需要处理",
+  done: "已完成",
+};
+
+function TaskProgressBanner({
+  part,
+  onBlockedAction,
+}: {
+  part: Extract<GroupedContent, { type: "task-progress" }>;
+  onBlockedAction?: (action: BlockedActionId) => void;
+}) {
+  const base = TASK_PROGRESS_LABEL[part.phase] ?? part.phase;
+  let label = part.message?.trim() ? part.message : base;
+  if (part.phase === "continue" && part.attempt != null && part.maxAttempts != null) {
+    label = part.message?.trim()
+      ? part.message
+      : `自动续跑 (${part.attempt}/${part.maxAttempts})`;
+  }
+  const blocked = part.phase === "blocked";
+  return (
+    <div
+      className={`task-progress-banner${blocked ? " task-progress-banner--blocked" : ""}${part.phase === "continue" ? " task-progress-banner--continue" : ""}`}
+      role="status"
+    >
+      <div className="task-progress-banner__phase">{base}</div>
+      <div className="task-progress-banner__message">{label}</div>
+      {blocked && part.reasons && part.reasons.length > 0 ? (
+        <ul className="task-progress-banner__reasons">
+          {part.reasons.slice(0, 3).map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      ) : null}
+      {blocked && part.actions && part.actions.length > 0 ? (
+        <div className="task-progress-banner__actions">
+          {part.actions.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className="task-progress-banner__action-chip task-progress-banner__action-btn"
+              onClick={() => onBlockedAction?.(a.id)}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HeartbeatPulse({
+  part,
+}: {
+  part: Extract<GroupedContent, { type: "heartbeat" }>;
+}) {
+  return (
+    <div className="task-heartbeat-pulse" role="status">
+      {part.message?.trim() || "仍在处理，请稍候…"}
     </div>
   );
 }

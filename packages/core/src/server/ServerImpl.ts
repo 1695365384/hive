@@ -36,6 +36,13 @@ import {
   decideWorkerFinalizations,
   type OpenWorker,
 } from '../agents/completion/office-worker-finalize.js';
+import { createGoalStore, type GoalStore } from '../agents/completion/GoalStore.js';
+import {
+  resolveIdleContinuation,
+  isIncompleteGoal,
+  MAX_GOAL_CONTINUES,
+} from '../agents/completion/TodoEnforcer.js';
+import type { TaskProgressEvent } from '../agents/completion/types.js';
 import type {
   Server,
   ServerOptions,
@@ -101,17 +108,20 @@ class ServerImpl implements Server {
   private dbManager: ReturnType<typeof createDatabase> | undefined;
   private activeAbortControllers: Map<string, AbortController> = new Map();
   private activeDispatchSessionId: string | null = null;
+  private goalStore: GoalStore = createGoalStore();
   private streamingHandlers: Set<StreamingHandler> = new Set();
   private fileHandlers: Set<FileHandler> = new Set();
   private artifactEmitter: ArtifactEmitter;
 
   /** Per-session open workers (awaiting worker-complete) */
   private openWorkersBySession: Map<string, Map<string, OpenWorker>> = new Map();
+  private sessionLastUxHeartbeatAt = new Map<string, number>();
   /** Last streaming activity timestamp per session */
   private sessionLastActivityAt: Map<string, number> = new Map();
   /** Heartbeat pollers */
   private sessionHeartbeatTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
   private static readonly WORKER_SILENCE_MS = 30_000;
+  private static readonly UX_HEARTBEAT_MS = 8_000;
 
   /** Reasoning 防抖状态：sessionId → { buffer, timer, workerId?, workerType? } */
   private reasoningBuffers: Map<string, { buffer: string; timer: ReturnType<typeof setTimeout>; workerId?: string; workerType?: string }> = new Map();
@@ -160,7 +170,74 @@ class ServerImpl implements Server {
       controller.abort();
       this.agent.taskManager.abortAll();
       this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
+      // Keep Goal resumable via Continue
+      if (isIncompleteGoal(this.goalStore.get(sessionId))) {
+        this.goalStore.markBlocked(sessionId, ['已中断，可继续完成']);
+      }
     }
+  }
+
+  async continueGoal(sessionId: string): Promise<{ ok: boolean; error?: string; threadId?: string }> {
+    const goal = this.goalStore.get(sessionId);
+    const decision = resolveIdleContinuation(goal, {
+      inFlight: this.activeAbortControllers.has(sessionId),
+    });
+    if (decision.action === 'noop') {
+      return { ok: false, error: 'No incomplete Goal to continue' };
+    }
+    if (decision.action === 'busy') {
+      return { ok: false, error: 'Goal is already running' };
+    }
+    if (decision.action === 'exhausted') {
+      return { ok: false, error: 'Continue budget exhausted for this Goal' };
+    }
+
+    const parsed = SessionId.parse(sessionId);
+    const threadId = parsed?.recipientId ?? sessionId;
+    const channelId = parsed?.channelId ?? 'ws-chat';
+
+    this.goalStore.bumpContinueAttempts(sessionId);
+    this.goalStore.markActive(sessionId);
+    const attempts = this.goalStore.get(sessionId)?.continueAttempts ?? 1;
+    this.emitTaskProgress(sessionId, {
+      phase: 'continue',
+      message: `继续完成同一目标 (${attempts}/${MAX_GOAL_CONTINUES})`,
+      reasons: goal?.reasons,
+      attempt: attempts,
+      maxAttempts: MAX_GOAL_CONTINUES,
+    });
+
+    this.handleMessage({
+      id: crypto.randomUUID(),
+      content: decision.prompt,
+      type: 'text',
+      from: { id: 'desktop-user', type: 'user' },
+      to: { id: threadId, type: 'user' },
+      timestamp: Date.now(),
+      metadata: {
+        channelId,
+        continueGoal: true,
+      },
+    });
+
+    return { ok: true, threadId };
+  }
+
+  cancelGoal(sessionId: string): { ok: boolean; error?: string } {
+    if (this.activeAbortControllers.has(sessionId)) {
+      this.abort(sessionId);
+    }
+    const goal = this.goalStore.get(sessionId);
+    if (!goal) {
+      return { ok: true };
+    }
+    this.goalStore.markCancelled(sessionId);
+    this.goalStore.clear(sessionId);
+    this.emitTaskProgress(sessionId, {
+      phase: 'done',
+      message: '已取消目标',
+    });
+    return { ok: true };
   }
 
   getActiveDispatchSessionId(): string | null {
@@ -429,6 +506,30 @@ class ServerImpl implements Server {
     });
   }
 
+  private emitTaskProgress(
+    sessionId: string,
+    progress: {
+      phase: 'understand' | 'plan' | 'execute' | 'verify' | 'continue' | 'blocked' | 'done';
+      message?: string;
+      reasons?: string[];
+      actions?: Array<{ id: 'continue' | 'cancel' | 'provide-info'; label: string }>;
+      attempt?: number;
+      maxAttempts?: number;
+    },
+  ): void {
+    this.logger.info(`[agent] [task-progress] ${progress.phase}${progress.message ? `: ${progress.message}` : ''}`);
+    this.emitStreaming({
+      sessionId,
+      type: 'task-progress',
+      phase: progress.phase,
+      message: progress.message,
+      reasons: progress.reasons,
+      actions: progress.actions,
+      attempt: progress.attempt,
+      maxAttempts: progress.maxAttempts,
+    });
+  }
+
   private trackWorkerStart(sessionId: string, workerId: string, workerType: string): void {
     let map = this.openWorkersBySession.get(sessionId);
     if (!map) {
@@ -447,10 +548,26 @@ class ServerImpl implements Server {
     this.sessionLastActivityAt.set(sessionId, Date.now());
     const timer = setInterval(() => {
       const last = this.sessionLastActivityAt.get(sessionId) ?? 0;
-      const silent = Date.now() - last >= ServerImpl.WORKER_SILENCE_MS;
+      const silentMs = Date.now() - last;
       const inFlight = this.activeAbortControllers.has(sessionId);
+      if (!inFlight) return;
+
+      // Soft UX pulse when stream is quiet but turn still alive (throttled)
+      if (silentMs >= ServerImpl.UX_HEARTBEAT_MS) {
+        const lastBeat = this.sessionLastUxHeartbeatAt.get(sessionId) ?? 0;
+        if (Date.now() - lastBeat >= ServerImpl.UX_HEARTBEAT_MS) {
+          this.sessionLastUxHeartbeatAt.set(sessionId, Date.now());
+          this.emitStreaming({
+            sessionId,
+            type: 'heartbeat',
+            message: '仍在处理，请稍候…',
+            silentMs,
+          });
+        }
+      }
+
       // Hang while dispatch alive but no stream for 30s → force-fail open workers
-      if (silent && inFlight) {
+      if (silentMs >= ServerImpl.WORKER_SILENCE_MS) {
         const open = [...(this.openWorkersBySession.get(sessionId)?.values() ?? [])];
         if (open.length === 0) return;
         this.logger.warn(`[server] worker heartbeat timeout for ${sessionId} (${open.length} open)`);
@@ -464,6 +581,7 @@ class ServerImpl implements Server {
     const t = this.sessionHeartbeatTimers.get(sessionId);
     if (t) clearInterval(t);
     this.sessionHeartbeatTimers.delete(sessionId);
+    this.sessionLastUxHeartbeatAt.delete(sessionId);
   }
 
   private finalizeOpenWorkers(
@@ -614,6 +732,14 @@ class ServerImpl implements Server {
       this.activeAbortControllers.set(sessionKey, abortController);
       this.activeDispatchSessionId = sessionKey;
 
+      // GoalStore: fresh user turns replace Goal; Continue keeps the same Goal text
+      const isContinue = Boolean(channelMessage.metadata?.continueGoal);
+      if (isContinue) {
+        this.goalStore.ensure(sessionKey, channelMessage.content);
+      } else {
+        this.goalStore.start(sessionKey, channelMessage.content);
+      }
+
       // 订阅 Worker 事件并转发到流式回调
       const workerHookIds: string[] = [];
 
@@ -717,6 +843,10 @@ class ServerImpl implements Server {
           onOfficeProgress: (progress) => {
             this.emitOfficeProgress(sessionKey, progress);
           },
+          onTaskProgress: (progress: TaskProgressEvent) => {
+            this.goalStore.updateFromProgress(sessionKey, progress);
+            this.emitTaskProgress(sessionKey, progress);
+          },
           onReasoning: (text) => {
             this.emitReasoningDebounced(sessionKey, text);
           },
@@ -745,6 +875,22 @@ class ServerImpl implements Server {
           turnError: result.success ? undefined : (result.error || 'failed'),
           hasOfficeArtifact: !!result.success,
         });
+
+        // Sync GoalStore from completion verification when progress events were skipped
+        const verification = (result as { verification?: { passed: boolean; results?: Array<{ message: string }> } }).verification;
+        if (verification) {
+          if (verification.passed) {
+            this.goalStore.markDone(sessionKey);
+          } else if (isIncompleteGoal(this.goalStore.get(sessionKey))) {
+            const reasons = (verification.results ?? [])
+              .filter((r) => r && (r as { passed?: boolean }).passed === false)
+              .map((r) => r.message)
+              .filter(Boolean);
+            this.goalStore.markBlocked(sessionKey, reasons);
+          }
+        } else if (result.success) {
+          this.goalStore.markDone(sessionKey);
+        }
 
         this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled: abortController.signal.aborted, error: result.error, text: replyText });
 

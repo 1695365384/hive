@@ -1903,6 +1903,96 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
   background: oklch(0.22 0.03 35 / 0.45);
 }
 
+.task-progress-banner {
+  display: block;
+  margin: 0.35rem 0;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: oklch(0.82 0.02 220);
+  background: oklch(0.2 0.015 220 / 0.55);
+  border: 1px solid oklch(0.35 0.02 220 / 0.45);
+  border-left: 2px solid oklch(0.68 0.1 220 / 0.85);
+  border-radius: 0.375rem;
+}
+
+.task-progress-banner__phase {
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.task-progress-banner__message {
+  margin-top: 0.15rem;
+  opacity: 0.85;
+}
+
+.task-progress-banner__reasons {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  opacity: 0.8;
+}
+
+.task-progress-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.task-progress-banner__action-chip {
+  display: inline-flex;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid oklch(0.45 0.04 35 / 0.5);
+  background: oklch(0.25 0.03 35 / 0.4);
+  color: oklch(0.86 0.05 35);
+  font-size: 0.7rem;
+}
+
+.task-progress-banner__action-btn {
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.2;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.task-progress-banner__action-btn:hover {
+  border-color: oklch(0.62 0.08 35 / 0.8);
+  background: oklch(0.32 0.04 35 / 0.55);
+  color: oklch(0.94 0.04 35);
+}
+
+.task-progress-banner__action-btn:focus-visible {
+  outline: 2px solid oklch(0.7 0.1 35 / 0.7);
+  outline-offset: 1px;
+}
+
+.task-progress-banner--continue {
+  border-left-color: oklch(0.72 0.12 85 / 0.9);
+}
+
+.task-progress-banner--blocked {
+  color: oklch(0.84 0.08 35);
+  border-color: oklch(0.4 0.06 35 / 0.45);
+  border-left-color: oklch(0.68 0.14 35);
+  background: oklch(0.22 0.03 35 / 0.45);
+}
+
+.task-heartbeat-pulse {
+  display: block;
+  margin: 0.25rem 0;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.72rem;
+  color: oklch(0.72 0.02 75 / 0.9);
+  opacity: 0.85;
+  animation: task-heartbeat-fade 1.6s ease-in-out infinite;
+}
+
+@keyframes task-heartbeat-fade {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.95; }
+}
+
 .worker-lane {
   display: flex;
   flex-direction: column;
