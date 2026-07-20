@@ -157,3 +157,28 @@ describe('TodoEnforcer', () => {
     expect(resolveIdleContinuation(goal, { inFlight: false }).action).toBe('noop');
   });
 });
+
+  // Regression: ISSUE-001 — cancel completion marked Goal done and broke continueGoal
+  // Found by /qa on 2026-07-20
+  // Report: .gstack/qa-reports/qa-report-localhost-1420-2026-07-20.md
+  it('keeps blocked Goal injectable after cancel (must not markDone)', () => {
+    const store = new GoalStore();
+    store.start('ws-chat:t-cancel', '写一份竞品调研');
+    store.markBlocked('ws-chat:t-cancel', ['已中断，可继续完成']);
+    const decision = resolveIdleContinuation(store.get('ws-chat:t-cancel'), { inFlight: false });
+    expect(decision.action).toBe('inject');
+    // Bug reproduction: markDone after abort made continueGoal noop
+    store.markDone('ws-chat:t-cancel');
+    expect(resolveIdleContinuation(store.get('ws-chat:t-cancel'), { inFlight: false }).action).toBe('noop');
+  });
+
+  it('treats done-with-failure-label as blocked, not done', () => {
+    const store = new GoalStore();
+    store.start('ws-chat:t-fail-done', '写 PPT');
+    store.updateFromProgress('ws-chat:t-fail-done', {
+      phase: 'done',
+      message: '任务失败',
+    });
+    expect(store.get('ws-chat:t-fail-done')?.status).toBe('blocked');
+    expect(resolveIdleContinuation(store.get('ws-chat:t-fail-done'), { inFlight: false }).action).toBe('inject');
+  });

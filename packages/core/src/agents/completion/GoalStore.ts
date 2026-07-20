@@ -137,6 +137,12 @@ export class GoalStore {
       return;
     }
     if (progress.phase === 'done') {
+      // Defensive: some paths emit done with a failure label — keep Goal resumable.
+      const msg = progress.message ?? '';
+      if (/失败|未完成|fail|error/i.test(msg)) {
+        this.markBlocked(sessionId, progress.reasons ?? [msg]);
+        return;
+      }
       this.markDone(sessionId);
       return;
     }

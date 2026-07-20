@@ -63,6 +63,10 @@ export function mapWorkflowPhaseToTaskProgress(
     case 'verify':
       return { phase: 'verify', message };
     case 'complete':
+      // Failure completions must stay blocked/resumable, not "done".
+      if (/失败|未完成|fail|error/i.test(message)) {
+        return { phase: 'blocked', message, actions: blockedActions(), reasons: [message] };
+      }
       return { phase: 'done', message };
     case 'error':
       return { phase: 'blocked', message, actions: blockedActions(), reasons: [message] };

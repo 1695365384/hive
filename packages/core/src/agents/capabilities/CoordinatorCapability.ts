@@ -748,7 +748,7 @@ export class CoordinatorCapability implements AgentCapability {
     success: boolean,
     verification?: CompletionVerifyResult,
   ): Promise<DispatchResult> {
-    await this.emitPhase(sessionId, 'complete', success ? '任务完成' : '任务失败', 'execute', options);
+    await this.emitPhase(sessionId, success ? 'complete' : 'error', success ? '任务完成' : '任务失败', 'execute', options);
 
     await this.emitNotification(
       sessionId,

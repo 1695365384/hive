@@ -42,6 +42,7 @@ import {
   isIncompleteGoal,
   MAX_GOAL_CONTINUES,
 } from '../agents/completion/TodoEnforcer.js';
+import { blockedActions } from '../agents/completion/discipline.js';
 import type { TaskProgressEvent } from '../agents/completion/types.js';
 import type {
   Server,
@@ -170,9 +171,9 @@ class ServerImpl implements Server {
       controller.abort();
       this.agent.taskManager.abortAll();
       this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
-      // Keep Goal resumable via Continue
+      // Keep Goal resumable via Continue — also push blocked UX to the client.
       if (isIncompleteGoal(this.goalStore.get(sessionId))) {
-        this.goalStore.markBlocked(sessionId, ['已中断，可继续完成']);
+        this.markGoalBlockedForResume(sessionId, ['已中断，可继续完成']);
       }
     }
   }
@@ -503,6 +504,17 @@ class ServerImpl implements Server {
       slideTotal: progress.slideTotal,
       message: progress.message,
       workerId: progress.workerId,
+    });
+  }
+
+  /** Mark Goal blocked and emit clickable Continue/Cancel actions to the UI. */
+  private markGoalBlockedForResume(sessionId: string, reasons: string[]): void {
+    this.goalStore.markBlocked(sessionId, reasons);
+    this.emitTaskProgress(sessionId, {
+      phase: 'blocked',
+      message: '任务未完成，可继续',
+      reasons,
+      actions: blockedActions(),
     });
   }
 
@@ -844,6 +856,14 @@ class ServerImpl implements Server {
             this.emitOfficeProgress(sessionKey, progress);
           },
           onTaskProgress: (progress: TaskProgressEvent) => {
+            // After user cancel, ignore late "done" pulses from the dying turn.
+            if (abortController.signal.aborted && progress.phase === 'done') {
+              const reasons = progress.reasons?.length
+                ? progress.reasons
+                : ['已中断，可继续完成'];
+              this.markGoalBlockedForResume(sessionKey, reasons);
+              return;
+            }
             this.goalStore.updateFromProgress(sessionKey, progress);
             this.emitTaskProgress(sessionKey, progress);
           },
@@ -876,9 +896,19 @@ class ServerImpl implements Server {
           hasOfficeArtifact: !!result.success,
         });
 
-        // Sync GoalStore from completion verification when progress events were skipped
+        // Sync GoalStore from completion verification when progress events were skipped.
+        // Cancelled turns must stay blocked/resumable — never markDone after abort.
+        const cancelled = abortController.signal.aborted;
         const verification = (result as { verification?: { passed: boolean; results?: Array<{ message: string }> } }).verification;
-        if (verification) {
+        if (cancelled) {
+          if (isIncompleteGoal(this.goalStore.get(sessionKey))) {
+            const existing = this.goalStore.get(sessionKey);
+            const reasons = existing?.reasons?.length
+              ? existing.reasons
+              : ['已中断，可继续完成'];
+            this.markGoalBlockedForResume(sessionKey, reasons);
+          }
+        } else if (verification) {
           if (verification.passed) {
             this.goalStore.markDone(sessionKey);
           } else if (isIncompleteGoal(this.goalStore.get(sessionKey))) {
@@ -886,13 +916,13 @@ class ServerImpl implements Server {
               .filter((r) => r && (r as { passed?: boolean }).passed === false)
               .map((r) => r.message)
               .filter(Boolean);
-            this.goalStore.markBlocked(sessionKey, reasons);
+            this.markGoalBlockedForResume(sessionKey, reasons.length ? reasons : ['完成校验未通过']);
           }
         } else if (result.success) {
           this.goalStore.markDone(sessionKey);
         }
 
-        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled: abortController.signal.aborted, error: result.error, text: replyText });
+        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled, error: result.error, text: replyText });
 
         this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
       } finally {
@@ -917,7 +947,12 @@ class ServerImpl implements Server {
 
       await this.pushToChannel(channelMessage.metadata?.channelId as string | undefined, channelMessage.to?.id as string | undefined, `处理失败：${errorMsg}`, replyType);
 
-      const isAborted = error instanceof DOMException && error.name === 'AbortError';
+      const isAborted =
+        (error instanceof DOMException && error.name === 'AbortError')
+        || (error instanceof Error && /abort/i.test(error.message));
+      if (isAborted && isIncompleteGoal(this.goalStore.get(sessionKey))) {
+        this.markGoalBlockedForResume(sessionKey, ['已中断，可继续完成']);
+      }
       this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: false, cancelled: isAborted, error: errorMsg });
     } finally {
       // 清除记忆上下文，避免影响下一次 dispatch
