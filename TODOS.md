@@ -27,3 +27,16 @@
 - Added delegatable workers: librarian, metis, momus, oracle
 - Wired AgentType, CORE_AGENTS, tool whitelists, templates, coordinator routing, desktop labels
 - Complex pipeline: Explore/Librarian → Metis → Plan → Momus → General (+ Oracle when needed)
+
+## P2 — Hard-route named Worker types (librarian/metis/momus/oracle)
+
+- **What:** If user explicitly names a worker type, enforce first dispatch type (not prompt-only).
+- **Why:** QA 2026-07-21 ISSUE-002 — asked librarian, got explore-only.
+- **Effort:** M
+- **Depends on:** specialist workers commit
+
+## P2 — Workspace root for desktop chat should include repo (or clearer path UX)
+
+- **What:** Explore/file tools currently jail to server cwd/.hive; README at repo root fails.
+- **Why:** QA 2026-07-21 ISSUE-004
+- **Effort:** M
