@@ -76,6 +76,10 @@ export function formatToolLabel(toolName: string, args: unknown): string {
       plan: "activity.tool.agentPlan",
       general: "activity.tool.agentGeneral",
       schedule: "activity.tool.agentSchedule",
+      librarian: "activity.tool.agentLibrarian",
+      metis: "activity.tool.agentMetis",
+      momus: "activity.tool.agentMomus",
+      oracle: "activity.tool.agentOracle",
     };
     return i18n.t(keys[type] ?? "activity.tool.agentDefault");
   }

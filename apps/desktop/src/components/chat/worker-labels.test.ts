@@ -15,6 +15,10 @@ describe('formatWorkerTitle', () => {
   it('maps office worker type to user-facing label', () => {
     expect(formatWorkerTitle('office')).toBe('Office 文档');
     expect(formatWorkerTitle('explore')).toBe('探索');
+    expect(formatWorkerTitle('librarian')).toBe('文献检索');
+    expect(formatWorkerTitle('metis')).toBe('计划顾问');
+    expect(formatWorkerTitle('momus')).toBe('计划评审');
+    expect(formatWorkerTitle('oracle')).toBe('架构诊断');
   });
 
   it('uses scenario label when description is absent', () => {

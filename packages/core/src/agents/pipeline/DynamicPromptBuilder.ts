@@ -119,6 +119,10 @@ export class DynamicPromptBuilder {
       schedule: 'schedule',
       critic: 'critic',
       arbiter: 'arbiter',
+      librarian: 'librarian',
+      metis: 'metis',
+      momus: 'momus',
+      oracle: 'oracle',
     };
 
     const templateName = templateMap[agentType] ?? 'intelligent';

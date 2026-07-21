@@ -25,33 +25,47 @@ import { setEnvDbProvider } from './built-in/env-tool.js';
 import type { AgentType as CapabilityAgentType } from '../agents/types/capabilities.js';
 
 /** Agent types that have tool whitelists in the registry */
-export type AgentType = 'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter' | 'office';
+export type AgentType =
+  | 'explore'
+  | 'plan'
+  | 'general'
+  | 'schedule'
+  | 'critic'
+  | 'arbiter'
+  | 'office'
+  | 'librarian'
+  | 'metis'
+  | 'momus'
+  | 'oracle';
+
+const READ_ONLY_TOOLS: Array<{ name: string; factory: () => Tool }> = [
+  { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
+  { name: 'glob', factory: () => createGlobTool() },
+  { name: 'grep', factory: () => createGrepTool() },
+  { name: 'web-search', factory: () => createWebSearchTool() },
+  { name: 'web-fetch', factory: () => createWebFetchTool() },
+  { name: 'env', factory: () => createEnvTool() },
+];
 
 /**
  * Agent 类型对应的工具白名单
  *
- * - explore: 只读工具（file 只读版、glob、grep、web-search、web-fetch、env）
- * - general: 全量工具（含 bash、file 全量版、ask-user、send-file、env）
+ * - explore/plan/librarian/momus/oracle/critic/arbiter: 只读工具
+ * - metis: 只读 + ask-user（计划前澄清）
+ * - general: 全量工具
  * - schedule: 空白名单，schedule 工具由 agent-tool.ts 在 spawn 时动态注册
- *
- * 'plan' 使用与 explore 相同的只读工具集。
  */
 const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () => Tool }>> = {
-  explore: [
-    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
-    { name: 'glob', factory: () => createGlobTool() },
-    { name: 'grep', factory: () => createGrepTool() },
-    { name: 'web-search', factory: () => createWebSearchTool() },
-    { name: 'web-fetch', factory: () => createWebFetchTool() },
-    { name: 'env', factory: () => createEnvTool() },
-  ],
-  plan: [
-    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
-    { name: 'glob', factory: () => createGlobTool() },
-    { name: 'grep', factory: () => createGrepTool() },
-    { name: 'web-search', factory: () => createWebSearchTool() },
-    { name: 'web-fetch', factory: () => createWebFetchTool() },
-    { name: 'env', factory: () => createEnvTool() },
+  explore: [...READ_ONLY_TOOLS],
+  plan: [...READ_ONLY_TOOLS],
+  librarian: [...READ_ONLY_TOOLS],
+  momus: [...READ_ONLY_TOOLS],
+  oracle: [...READ_ONLY_TOOLS],
+  critic: [...READ_ONLY_TOOLS],
+  arbiter: [...READ_ONLY_TOOLS],
+  metis: [
+    ...READ_ONLY_TOOLS,
+    { name: 'ask-user', factory: () => createAskUserTool() },
   ],
   general: [
     { name: 'bash', factory: () => createCodeShellShellTool({ allowed: true }) },
@@ -65,22 +79,6 @@ const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () 
     { name: 'env', factory: () => createEnvTool() },
   ],
   schedule: [],
-  critic: [
-    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
-    { name: 'glob', factory: () => createGlobTool() },
-    { name: 'grep', factory: () => createGrepTool() },
-    { name: 'web-search', factory: () => createWebSearchTool() },
-    { name: 'web-fetch', factory: () => createWebFetchTool() },
-    { name: 'env', factory: () => createEnvTool() },
-  ],
-  arbiter: [
-    { name: 'file', factory: () => createFileTool({ allowedCommands: ['view'] }) },
-    { name: 'glob', factory: () => createGlobTool() },
-    { name: 'grep', factory: () => createGrepTool() },
-    { name: 'web-search', factory: () => createWebSearchTool() },
-    { name: 'web-fetch', factory: () => createWebFetchTool() },
-    { name: 'env', factory: () => createEnvTool() },
-  ],
   office: [
     // Office agent gets code-shell (bash) + file read + env + send-file for explicit delivery
     { name: 'bash', factory: () => createCodeShellShellTool({ allowed: true }) },

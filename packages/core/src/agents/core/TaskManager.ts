@@ -11,12 +11,14 @@
  *                    ↘ TIMEOUT
  */
 
+import type { DelegatableWorkerType } from './worker-types.js';
+
 // ============================================
 // 类型
 // ============================================
 
-/** Worker 任务类型 */
-export type WorkerType = 'explore' | 'plan' | 'general' | 'schedule' | 'office';
+/** Worker 任务类型（与可委派 Worker 列表对齐） */
+export type WorkerType = DelegatableWorkerType;
 
 /** Worker 执行状态 */
 export type WorkerStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'timeout';

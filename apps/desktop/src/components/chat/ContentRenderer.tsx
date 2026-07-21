@@ -371,6 +371,10 @@ function WorkerBlockInner({
     workerType === "explore" ||
     workerType === "plan" ||
     workerType === "office" ||
+    workerType === "librarian" ||
+    workerType === "metis" ||
+    workerType === "momus" ||
+    workerType === "oracle" ||
     stepCount >= 8;
 
   const progressParts = children.filter((c) => c.type === "office-progress");

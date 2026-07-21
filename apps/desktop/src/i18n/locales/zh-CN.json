@@ -1,5 +1,7 @@
 {
-  "app": { "name": "Hive" },
+  "app": {
+    "name": "Hive"
+  },
   "common": {
     "loading": "加载中…",
     "saving": "保存中…",
@@ -111,7 +113,11 @@
       "web": "获取网页内容",
       "batch": "{{label}} · {{count}} 次",
       "fileOps": "文件探索 · {{count}} 步",
-      "officeOps": "Office 操作 · {{count}} 步"
+      "officeOps": "Office 操作 · {{count}} 步",
+      "agentLibrarian": "委派文献检索任务",
+      "agentMetis": "委派计划顾问任务",
+      "agentMomus": "委派计划评审任务",
+      "agentOracle": "委派架构诊断任务"
     },
     "worker": {
       "office": "Office 文档",
@@ -120,7 +126,11 @@
       "general": "执行",
       "schedule": "定时任务",
       "scenarioOffice": "Office 文档",
-      "scenarioRecurring": "定时任务"
+      "scenarioRecurring": "定时任务",
+      "librarian": "文献检索",
+      "metis": "计划顾问",
+      "momus": "计划评审",
+      "oracle": "架构诊断"
     },
     "route": {
       "direct": "直接回答",

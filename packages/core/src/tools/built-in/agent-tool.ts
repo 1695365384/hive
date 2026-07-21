@@ -34,7 +34,7 @@ const INPUT_SCHEMA = zodSchema(
   z.object({
     prompt: z.string().describe('The task to delegate to the Worker'),
 type: z.enum(DELEGATABLE_WORKER_TYPES).describe(
-'Worker type: "explore" for read-only research, "plan" for deep analysis, "general" for full-access execution, "schedule" for scheduled task management, "office" for Office document creation (PPT/Word/Excel)',
+'Worker type: "explore" for read-only research, "plan" for deep analysis, "general" for full-access execution, "schedule" for scheduled task management, "office" for Office document creation (PPT/Word/Excel), "librarian" for cited docs/API evidence, "metis" for pre-plan clarification, "momus" for plan APPROVE/REJECT, "oracle" for architecture/root-cause diagnosis',
     ),
     model: z.string().optional().describe('Override model for this Worker'),
     maxTurns: z.number().int().min(1).max(50).optional().describe('Override max turns'),
@@ -346,7 +346,11 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       '- "plan": Deep analysis (same tools, higher thoroughness). Use for: complex planning, dependency analysis, risk assessment.',
       '- "general": Full access (Bash, File write, Glob, Grep, Web). Use for: code modifications, running commands, complex tasks.',
       '- "schedule": Schedule management (create, list, pause, resume, remove, history). Use for: creating/managing scheduled/cron tasks.',
-'- "office": Office document specialist (bash, officecli, file read). Use for: creating PPT presentations, Word documents, Excel spreadsheets. The office worker handles all the individual officecli calls — you just give it the content requirements.',
+      '- "office": Office document specialist (bash, officecli, file read). Use for: creating PPT presentations, Word documents, Excel spreadsheets. The office worker handles all the individual officecli calls — you just give it the content requirements.',
+      '- "librarian": Evidence-first docs/API retrieval with citations. Use for: official docs, GitHub sources, verified API usage.',
+      '- "metis": Plan advisor. Use for: surfacing ambiguities and clarifying questions before Plan.',
+      '- "momus": Strict plan reviewer (APPROVE/REJECT). Use for: gating execution after Plan on complex tasks.',
+      '- "oracle": Architecture / root-cause diagnosis (read-only). Use for: hard design tradeoffs and tricky bugs.',
       '',
       '## When to Use',
       '- Task requires extensive file reading that would consume your context',
@@ -560,7 +564,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
             const agentType = input.type === 'schedule' ? 'general' : input.type;
             const phaseResult = await compactor.compressPhase(
               { text: accumulatedText, tools: result.tools, success: true },
-              agentType as 'explore' | 'plan' | 'general' | 'office',
+              agentType as import('../../agents/types/capabilities.js').AgentType,
             );
             compressedExcerpt = phaseResult.summary;
           } catch {

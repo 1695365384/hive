@@ -58,7 +58,11 @@ describe('Agent 模块', () => {
       expect(coreAgents).toContain('critic');
       expect(coreAgents).toContain('arbiter');
       expect(coreAgents).toContain('office');
-      expect(coreAgents).toHaveLength(7);
+      expect(coreAgents).toContain('librarian');
+      expect(coreAgents).toContain('metis');
+      expect(coreAgents).toContain('momus');
+      expect(coreAgents).toContain('oracle');
+      expect(coreAgents).toHaveLength(11);
     });
   });
 

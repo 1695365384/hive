@@ -113,7 +113,11 @@
       "web": "Fetch web content",
       "batch": "{{label}} · {{count}}×",
       "fileOps": "File exploration · {{count}} steps",
-      "officeOps": "Office ops · {{count}} steps"
+      "officeOps": "Office ops · {{count}} steps",
+      "agentLibrarian": "Delegate librarian task",
+      "agentMetis": "Delegate plan-advisor task",
+      "agentMomus": "Delegate plan-review task",
+      "agentOracle": "Delegate architecture diagnosis"
     },
     "worker": {
       "office": "Office document",
@@ -122,7 +126,11 @@
       "general": "Execute",
       "schedule": "Scheduled task",
       "scenarioOffice": "Office document",
-      "scenarioRecurring": "Scheduled task"
+      "scenarioRecurring": "Scheduled task",
+      "librarian": "Librarian",
+      "metis": "Plan advisor",
+      "momus": "Plan reviewer",
+      "oracle": "Architecture oracle"
     },
     "route": {
       "direct": "Direct reply",

@@ -51,6 +51,18 @@ export const AGENT_PRESETS: Record<string, AgentPreset> = {
   arbiter: {
     maxSteps: 10,
   },
+  librarian: {
+    maxSteps: 12,
+  },
+  metis: {
+    maxSteps: 10,
+  },
+  momus: {
+    maxSteps: 10,
+  },
+  oracle: {
+    maxSteps: 15,
+  },
 };
 
 // ============================================

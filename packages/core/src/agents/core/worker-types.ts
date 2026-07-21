@@ -11,6 +11,10 @@ export const DELEGATABLE_WORKER_TYPES = [
   'general',
   'schedule',
   'office',
+  'librarian',
+  'metis',
+  'momus',
+  'oracle',
 ] as const;
 
 export type DelegatableWorkerType = (typeof DELEGATABLE_WORKER_TYPES)[number];

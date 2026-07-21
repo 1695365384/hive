@@ -22,3 +22,8 @@
 - WS `chat.getGoal`; desktop restores blocked banner on session load
 - WS client waits for reconnect before failing requests (softens restart flash)
 - Verified: cancel → restart → getGoal blocked → continueGoal ok
+
+## Done - Specialist workers librarian/metis/momus/oracle (2026-07-21)
+- Added delegatable workers: librarian, metis, momus, oracle
+- Wired AgentType, CORE_AGENTS, tool whitelists, templates, coordinator routing, desktop labels
+- Complex pipeline: Explore/Librarian → Metis → Plan → Momus → General (+ Oracle when needed)

@@ -1,7 +1,8 @@
 /**
  * 内置 Agent 定义
  *
- * 核心三代理：Explore（只读）/ Plan（深度分析）/ General（全量）
+ * 核心代理：Explore / Plan / General / Schedule / Office /
+ * Librarian / Metis / Momus / Oracle（+ critic/arbiter 仅用于 harness）
  * 提示词内容统一在 templates/ 目录的 .md 文件中维护，不在此处硬编码。
  */
 
@@ -20,6 +21,10 @@ export const AGENT_NAMES = {
   CRITIC: 'critic',
   ARBITER: 'arbiter',
   OFFICE: 'office',
+  LIBRARIAN: 'librarian',
+  METIS: 'metis',
+  MOMUS: 'momus',
+  ORACLE: 'oracle',
 } as const;
 
 // ============================================
@@ -29,7 +34,20 @@ export const AGENT_NAMES = {
 /**
  * 核心代理
  */
-export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter' | 'office', AgentConfig> = {
+export const CORE_AGENTS: Record<
+  | 'explore'
+  | 'plan'
+  | 'general'
+  | 'schedule'
+  | 'critic'
+  | 'arbiter'
+  | 'office'
+  | 'librarian'
+  | 'metis'
+  | 'momus'
+  | 'oracle',
+  AgentConfig
+> = {
   explore: {
     type: 'explore',
     description: 'Read-only agent for searching, analyzing codebases, and deep research.',
@@ -78,10 +96,38 @@ export const CORE_AGENTS: Record<'explore' | 'plan' | 'general' | 'schedule' | '
     tools: ['bash', 'file', 'glob', 'grep', 'send-file', 'env'],
     maxTurns: 50,
   },
+
+  librarian: {
+    type: 'librarian',
+    description: 'Evidence-first documentation and API retrieval agent. Returns cited sources (docs, GitHub, permanent links) instead of guessing.',
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
+    maxTurns: 12,
+  },
+
+  metis: {
+    type: 'metis',
+    description: 'Plan advisor that surfaces ambiguities, missing requirements, and risky assumptions before planning. May ask the user clarifying questions.',
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'ask-user', 'env'],
+    maxTurns: 10,
+  },
+
+  momus: {
+    type: 'momus',
+    description: 'Strict plan reviewer. Approves or rejects implementation plans before execution. Does not write code.',
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
+    maxTurns: 10,
+  },
+
+  oracle: {
+    type: 'oracle',
+    description: 'Architecture and root-cause diagnosis specialist. Read-only analysis for hard design decisions and tricky bugs. Does not modify files.',
+    tools: ['file', 'glob', 'grep', 'web-search', 'web-fetch', 'env'],
+    maxTurns: 15,
+  },
 };
 
 /**
- * 所有内置 Agent（= 核心三代理）
+ * 所有内置 Agent（= 核心代理）
  */
 export const BUILTIN_AGENTS: Record<string, AgentConfig> = {
   ...CORE_AGENTS,

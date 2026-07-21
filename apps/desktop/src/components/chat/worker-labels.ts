@@ -6,6 +6,10 @@ const WORKER_TYPE_KEYS: Record<string, string> = {
   plan: "activity.worker.plan",
   general: "activity.worker.general",
   schedule: "activity.worker.schedule",
+  librarian: "activity.worker.librarian",
+  metis: "activity.worker.metis",
+  momus: "activity.worker.momus",
+  oracle: "activity.worker.oracle",
 };
 
 const SCENARIO_KEYS: Record<string, string> = {

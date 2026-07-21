@@ -7,7 +7,19 @@
 /**
  * Agent 类型
  */
-export type AgentType = 'explore' | 'plan' | 'general' | 'schedule' | 'critic' | 'arbiter' | 'office' | 'custom';
+export type AgentType =
+  | 'explore'
+  | 'plan'
+  | 'general'
+  | 'schedule'
+  | 'critic'
+  | 'arbiter'
+  | 'office'
+  | 'librarian'
+  | 'metis'
+  | 'momus'
+  | 'oracle'
+  | 'custom';
 
 /**
  * Agent 配置
