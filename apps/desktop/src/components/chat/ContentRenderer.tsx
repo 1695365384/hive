@@ -198,12 +198,12 @@ const OFFICE_PROGRESS_LABEL: Record<
   "routed" | "creating" | "adding_slide" | "validating" | "delivering" | "blocked",
   string
 > = {
-  routed: "已交给 Office",
-  creating: "正在建稿",
-  adding_slide: "正在加页",
-  validating: "检查版式",
-  delivering: "正在交付",
-  blocked: "需要修正",
+  routed: "文档助手已接手",
+  creating: "正在创建演示文稿",
+  adding_slide: "正在添加页面",
+  validating: "正在检查版式",
+  delivering: "正在准备交付",
+  blocked: "需要你确认一下",
 };
 
 function OfficeProgressBanner({
@@ -233,12 +233,12 @@ function OfficeProgressBanner({
 }
 
 const TASK_PROGRESS_LABEL: Record<string, string> = {
-  understand: "理解任务",
-  plan: "规划中",
-  execute: "执行中",
-  verify: "检查交付",
-  continue: "自动续跑",
-  blocked: "需要处理",
+  understand: "正在理解你的需求",
+  plan: "正在规划怎么做",
+  execute: "正在处理",
+  verify: "正在检查结果",
+  continue: "还在继续完善",
+  blocked: "需要你确认一下",
   done: "已完成",
 };
 
