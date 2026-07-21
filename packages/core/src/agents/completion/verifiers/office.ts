@@ -5,6 +5,7 @@
 import { access } from 'node:fs/promises';
 import { isOfficeDocumentPath } from '../../../artifacts/artifact-detector.js';
 import { isOfficeTask } from '../../../routing/scenarios/office.scenario.js';
+import { hasNoArtifactIntent } from '../../../routing/intent.js';
 import type { CompletionVerifier, TaskTrace, VerifyResult } from '../types.js';
 import { getAgentWorkerTypes, getSpawnedWorkerTypes } from '../TaskTrace.js';
 import { extractExpectedSlideCount, inspectPptxZip } from '../office-slide-count.js';
@@ -33,6 +34,8 @@ export const officeCompletionVerifier: CompletionVerifier = {
   id: 'office',
 
   match(trace: TaskTrace): boolean {
+    // User forbade artifacts — do not demand office delivery.
+    if (hasNoArtifactIntent(trace.task)) return false;
     return isOfficeTask(trace.task);
   },
 

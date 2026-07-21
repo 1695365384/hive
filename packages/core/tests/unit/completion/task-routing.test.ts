@@ -23,6 +23,7 @@ describe('task-routing', () => {
     expect(isOfficeCreationTask('帮我做一个关于 AI 的 PPT')).toBe(true);
     expect(isOfficeCreationTask('做一个 quarterly report pptx')).toBe(true);
     expect(isOfficeCreationTask('Can you make me a PPT about AI?')).toBe(true);
+    expect(isOfficeCreationTask('帮我做一个 PPT，不要生成文件')).toBe(false);
   });
 
   it('returns mandatory office routing directive', () => {

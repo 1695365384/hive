@@ -4,6 +4,7 @@
 
 import type { ScenarioCopy, ScenarioDefinition, WorkerSpawnInput } from '../types.js';
 import { pickLocalizedLines } from '../scenario-copy.js';
+import { hasNoArtifactIntent } from '../intent.js';
 
 const OFFICE_TASK_RE =
   /\b(ppt|pptx|powerpoint|presentation|幻灯片|演示文稿|word|docx|excel|xlsx|spreadsheet|报告|汇报)\b/i;
@@ -40,6 +41,7 @@ export function isOfficeInquiryTask(task: string): boolean {
 
 export function isOfficeCreationTask(task: string): boolean {
   if (!isOfficeTask(task)) return false;
+  if (hasNoArtifactIntent(task)) return false;
   if (isOfficeInquiryTask(task)) return false;
   const trimmed = task.trim();
   const isQuestion = /[?？]|吗\s*$/.test(trimmed);
@@ -119,6 +121,7 @@ export type OfficeScenarioAction =
   | { kind: 'none' };
 
 export function matchesOfficeScenario(task: string): boolean {
+  if (hasNoArtifactIntent(task)) return false;
   return isOfficeTask(task);
 }
 
@@ -220,8 +223,11 @@ export const officeScenario: ScenarioDefinition = {
   labels: OFFICE_SCENARIO_LABELS,
   copy: officeScenarioCopy,
   allowedWorkers: ['office', 'explore'],
-  match: isOfficeTask,
+  match: matchesOfficeScenario,
   resolve(task: string) {
+    if (hasNoArtifactIntent(task)) {
+      return { kind: 'none' };
+    }
     const action = resolveOfficeScenarioAction(task);
     if (action.kind === 'inquiry') {
       return { kind: 'inquiry', reply: action.reply };
@@ -246,6 +252,13 @@ export const officeScenario: ScenarioDefinition = {
   },
   validateSpawn(task, spawn) {
     if (!isOfficeTask(task)) return null;
+    if (hasNoArtifactIntent(task) && spawn.type === 'office') {
+      return [
+        'Status: FAILED',
+        'User forbade generating files/artifacts.',
+        'Do NOT spawn office or create .pptx/.docx/.xlsx. Answer in text only.',
+      ].join('\n');
+    }
     if (spawn.type === 'office' || spawn.type === 'explore') {
       return null;
     }
