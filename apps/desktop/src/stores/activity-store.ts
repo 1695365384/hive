@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import i18n from "../i18n";
 
-export type ActivityPhase = "idle" | "working" | "waiting";
+export type ActivityPhase = "idle" | "working" | "waiting" | "completed";
 
 export type ActivityRollup = {
   phase: ActivityPhase;
@@ -9,7 +9,7 @@ export type ActivityRollup = {
   detail?: string;
   startedAt?: number;
   lastCompleted?: { label: string; at: number };
-  /** ms timestamp when idle dock should hide */
+  /** ms timestamp when idle/completed dock should hide */
   fadeIdleAt?: number;
 };
 
@@ -24,20 +24,21 @@ type ActivityState = {
   beginRun: () => void;
   setWorking: (opts?: { title?: string; detail?: string; startedAt?: number }) => void;
   setWaiting: (detail: string) => void;
+  setCompleted: (label?: string) => void;
   setLastCompleted: (label: string) => void;
   clearWaiting: () => void;
   setIdle: () => void;
   reset: () => void;
 };
 
-/** waiting > working > idle — used in tests */
+/** waiting > working > idle > completed — priority ordering for phase transitions */
 export function pickPhase(current: ActivityPhase, next: ActivityPhase): ActivityPhase {
-  const rank: Record<ActivityPhase, number> = { waiting: 3, working: 2, idle: 1 };
+  const rank: Record<ActivityPhase, number> = { waiting: 4, working: 3, completed: 2, idle: 1 };
   return rank[next] >= rank[current] ? next : current;
 }
 
 export function isDockVisible(rollup: ActivityRollup, now = Date.now()): boolean {
-  if (rollup.phase === "working" || rollup.phase === "waiting") return true;
+  if (rollup.phase === "working" || rollup.phase === "waiting" || rollup.phase === "completed") return true;
   if (rollup.fadeIdleAt != null && now < rollup.fadeIdleAt) return true;
   return false;
 }
@@ -92,10 +93,25 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
       },
     })),
 
+  /** Brief "just finished" state → auto-transitions to idle after 2.5s */
+  setCompleted: (label) =>
+    set((state) => ({
+      runStartedAt: null,
+      rollup: {
+        phase: "completed",
+        title: label ?? state.rollup.lastCompleted?.label ?? i18n.t("activity.done"),
+        detail: undefined,
+        startedAt: undefined,
+        lastCompleted: state.rollup.lastCompleted,
+        fadeIdleAt: Date.now() + 2500,
+      },
+    })),
+
   setLastCompleted: (label) =>
     set((state) => ({
       rollup: {
         ...state.rollup,
+        detail: label,
         lastCompleted: { label, at: Date.now() },
       },
     })),

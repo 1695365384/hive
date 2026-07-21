@@ -26,7 +26,7 @@ import { useRunStore, RUN_SETTLE_MS } from "../stores/run-store";
 import type { ChatMessage, ContentPart } from "../types/chat";
 import { AskUserCard } from "../components/AskUserCard";
 import { BgToastHost } from "../components/chat/BgToastHost";
-import { ArrowUp, Plus, Square } from "lucide-react";
+import { ArrowUp, Plus, Square, Presentation, FileText, MessageSquare, BarChart3 } from "lucide-react";
 
 function truncateActivityLabel(text: string, max = 48): string {
   const t = text.trim().replace(/\s+/g, " ");
@@ -83,6 +83,7 @@ export function ChatPage() {
   const activitySetWaiting = useActivityStore((s) => s.setWaiting);
   const activitySetLastCompleted = useActivityStore((s) => s.setLastCompleted);
   const activityClearWaiting = useActivityStore((s) => s.clearWaiting);
+  const activitySetCompleted = useActivityStore((s) => s.setCompleted);
   const activitySetIdle = useActivityStore((s) => s.setIdle);
 
   // ── Session store integration ──
@@ -816,7 +817,7 @@ export function ChatPage() {
     if (viewing) {
       setAskUserData(null);
       activeThreadIdRef.current = null;
-      activitySetIdle();
+      activitySetCompleted();
       if (isError) setError(data.error!);
     }
 
@@ -954,7 +955,7 @@ export function ChatPage() {
     if (isViewingThread(threadId)) {
       setAskUserData(null);
       activeThreadIdRef.current = null;
-      activitySetIdle();
+      activitySetCompleted();
       const cached = useRunStore.getState().getMessageCache(threadId);
       if (cached) setMessages(cached);
     }
@@ -1224,7 +1225,7 @@ export function ChatPage() {
       <BgToastHost />
       <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin" onScroll={handleScroll}>
         {isEmpty ? (
-          <EmptyState />
+          <EmptyState onScenarioSelect={setInput} />
         ) : (
           <div ref={messagesRailRef} className="chat-rail chat-rail--messages py-6 space-y-6">
             {messages.map((msg) => (
@@ -1368,14 +1369,58 @@ export function ChatPage() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ onScenarioSelect }: { onScenarioSelect: (text: string) => void }) {
   const { t } = useTranslation();
+  const scenarios = [
+    { id: "ppt", icon: Presentation, label: t("chat.emptyScenarios.ppt"), hint: t("chat.emptyScenarioHintPpt"), prompt: "帮我做一份项目汇报 PPT，包含项目背景、进展、风险和下一步计划" },
+    { id: "doc", icon: FileText, label: t("chat.emptyScenarios.doc"), hint: t("chat.emptyScenarioHintDoc"), prompt: "帮我写本周周报，主要完成了用户登录模块开发和接口联调" },
+    { id: "meeting", icon: MessageSquare, label: t("chat.emptyScenarios.meeting"), hint: t("chat.emptyScenarioHintMeeting"), prompt: "帮我整理下面会议纪要的要点和待办事项" },
+    { id: "data", icon: BarChart3, label: t("chat.emptyScenarios.data"), hint: t("chat.emptyScenarioHintData"), prompt: "帮我分析这份数据，给出关键指标和趋势" },
+  ] as const;
+  const quickPrompts: string[] = t("chat.emptyQuickPrompts", { returnObjects: true }) as unknown as string[] ?? [];
+
+  const handleScenario = (prompt: string) => {
+    onScenarioSelect(prompt);
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 select-none">
-      <div className="flex flex-col items-center gap-4">
-        <img src="/logo.svg" alt={t("app.name")} className="w-10 h-10 opacity-40" />
-        <p className="text-sm text-stone-600">{t("chat.empty")}</p>
+    <div className="chat-empty-state">
+      <div className="chat-empty-state__greeting">
+        <h2>{t("chat.emptyGreeting")}</h2>
+        <p>{t("chat.emptySubtitle")}</p>
       </div>
+
+      <div className="chat-empty-state__cards">
+        {scenarios.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className="chat-empty-state__card app-no-drag"
+            onClick={() => handleScenario(s.prompt)}
+          >
+            <span className="chat-empty-state__card-icon">
+              <s.icon className="w-4 h-4" />
+            </span>
+            <span className="chat-empty-state__card-label">{s.label}</span>
+            <span className="chat-empty-state__card-hint">{s.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      {quickPrompts.length > 0 && (
+        <div className="chat-empty-state__prompt-row">
+          {quickPrompts.map((prompt, i) => (
+            <button
+              key={i}
+              type="button"
+              className="chat-empty-state__prompt-chip app-no-drag"
+              onClick={() => handleScenario(prompt)}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

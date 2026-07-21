@@ -79,7 +79,27 @@
     "assistant": "Hive",
     "connecting": "正在连接对话服务…",
     "disconnected": "对话服务已断开，正在重连…",
-    "waitingDetail": "等待确认 · {{question}}"
+    "waitingDetail": "等待确认 · {{question}}",
+    "emptyGreeting": "你好，我能帮你做什么？",
+    "emptySubtitle": "选一个场景开始，或者直接在下面输入",
+    "emptyScenarios": {
+      "ppt": "制作项目汇报 PPT",
+      "doc": "帮我写一份周报",
+      "meeting": "整理会议纪要",
+      "data": "分析这份数据表格"
+    },
+    "emptyScenarioHintPpt": "输入主题，自动生成演示文稿",
+    "emptyScenarioHintDoc": "描述本周工作，生成周报文档",
+    "emptyScenarioHintMeeting": "粘贴会议记录，提取要点和待办",
+    "emptyScenarioHintData": "上传 Excel，获取图表和分析",
+    "emptyQuickPrompts": [
+      "做一份年中总结 PPT",
+      "帮我写一封邮件",
+      "翻译这份文档"
+    ],
+    "deliveryTitle": "刚刚完成",
+    "deliveryPreview": "预览",
+    "deliveryDownload": "下载"
   },
   "connect": {
     "connectingServer": "正在连接 Hive 服务…",

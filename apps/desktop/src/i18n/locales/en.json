@@ -79,7 +79,27 @@
     "assistant": "Hive",
     "connecting": "Connecting to chat service…",
     "disconnected": "Chat service disconnected. Reconnecting…",
-    "waitingDetail": "Waiting for confirmation · {{question}}"
+    "waitingDetail": "Waiting for confirmation · {{question}}",
+    "emptyGreeting": "Hi, what can I help you with?",
+    "emptySubtitle": "Pick a scenario to start, or type below",
+    "emptyScenarios": {
+      "ppt": "Create a project presentation",
+      "doc": "Write my weekly report",
+      "meeting": "Summarize meeting notes",
+      "data": "Analyze this spreadsheet"
+    },
+    "emptyScenarioHintPpt": "Enter a topic to auto-generate slides",
+    "emptyScenarioHintDoc": "Describe your week, get a report",
+    "emptyScenarioHintMeeting": "Paste meeting notes, extract action items",
+    "emptyScenarioHintData": "Upload an Excel file for charts & insights",
+    "emptyQuickPrompts": [
+      "Make a mid-year review PPT",
+      "Write an email for me",
+      "Translate this document"
+    ],
+    "deliveryTitle": "Just finished",
+    "deliveryPreview": "Preview",
+    "deliveryDownload": "Download"
   },
   "connect": {
     "connectingServer": "Connecting to Hive Server…",
