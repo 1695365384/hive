@@ -2,8 +2,14 @@
  * TaskTrace 构建器 — 在 Coordinator 执行期间收集轨迹
  */
 
-import { detectArtifactsFromToolCall, extractArtifactPathsFromText } from '../../artifacts/artifact-detector.js';
+import {
+  detectArtifactsFromToolCall,
+  extractArtifactPathsFromText,
+  isExistingArtifactFile,
+  sanitizeArtifactPath,
+} from '../../artifacts/artifact-detector.js';
 import type { TaskTrace, TraceToolCall, TraceWorkerSpawn } from './types.js';
+import { resolve } from 'node:path';
 
 export function createEmptyTaskTrace(task = ''): TaskTrace {
   return {
@@ -77,8 +83,9 @@ export class TaskTraceCollector {
   }
 
   recordArtifact(filePath: string): void {
-    if (filePath && !this.trace.artifacts.includes(filePath)) {
-      this.trace.artifacts.push(filePath);
+    const cleaned = sanitizeArtifactPath(filePath);
+    if (cleaned && !this.trace.artifacts.includes(cleaned)) {
+      this.trace.artifacts.push(cleaned);
     }
   }
 
@@ -91,10 +98,17 @@ export class TaskTraceCollector {
     };
   }
 
+  /**
+   * Free-text mentions only count when the sanitized path exists on disk.
+   * Prevents markdown bold paths like `**deck.pptx` from poisoning office verify.
+   */
   private extractArtifactsFromValue(value: unknown): void {
     const text = typeof value === 'string' ? value : JSON.stringify(value ?? '');
     for (const filePath of extractArtifactPathsFromText(text)) {
-      this.recordArtifact(filePath);
+      const abs = resolve(filePath);
+      if (isExistingArtifactFile(abs)) {
+        this.recordArtifact(abs);
+      }
     }
   }
 }

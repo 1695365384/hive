@@ -6,6 +6,7 @@ import {
   extractArtifactPathsFromText,
   isArtifactExtension,
   isChatAutoEmitPath,
+  sanitizeArtifactPath,
   shouldEmitArtifactToChat,
 } from '../../../src/artifacts/artifact-detector.js';
 
@@ -124,5 +125,46 @@ describe('artifact-detector', () => {
       'Sent file: final.pptx',
     );
     expect(found).toContain(pptx);
+  });
+
+  // Regression: ISSUE — markdown-bold path poisoned office verify
+  it('extractArtifactPathsFromText strips markdown bold / backticks', () => {
+    expect(sanitizeArtifactPath('**项目汇报示例.pptx**')).toBe('项目汇报示例.pptx');
+    expect(extractArtifactPathsFromText('已创建完成并发送了 **项目汇报示例.pptx**')).toEqual([
+      '项目汇报示例.pptx',
+    ]);
+    expect(
+      extractArtifactPathsFromText(
+        '**文件已交付**：`/Users/me/.hive/workspace/项目汇报示例.pptx`',
+      ),
+    ).toEqual(['/Users/me/.hive/workspace/项目汇报示例.pptx']);
+    expect(
+      extractArtifactPathsFromText(
+        '路径为 `/Users/limingwu/Documents/mvp/hive/项目汇报示例.pptx`。',
+      ),
+    ).toEqual(['/Users/limingwu/Documents/mvp/hive/项目汇报示例.pptx']);
+  });
+
+  // Regression: bash `ls` listed every pptx in repo root and force-delivered them
+  it('detectArtifactsFromToolCall ignores bash stdout listings', () => {
+    const target = path.join(tmpDir, 'wanted.pptx');
+    const noise = path.join(tmpDir, 'noise.pptx');
+    fs.writeFileSync(target, 'fake');
+    fs.writeFileSync(noise, 'fake');
+
+    const listing = `_temp_project_report.pptx\n方案提案.pptx\n${path.basename(noise)}\n${path.basename(target)}\napps\nREADME.md`;
+    const found = detectArtifactsFromToolCall(
+      'bash',
+      { command: 'ls' },
+      listing,
+    );
+    expect(found).toEqual([]);
+
+    const createFound = detectArtifactsFromToolCall(
+      'bash',
+      { command: `officecli create ${target}` },
+      listing,
+    );
+    expect(createFound).toEqual([target]);
   });
 });

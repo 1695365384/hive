@@ -29,9 +29,30 @@ describe('TaskTraceCollector', () => {
   });
 
   it('extractArtifactsFromValue finds CJK paths in agent output', () => {
+    const pptx = path.join(tmpDir, '汇报.pptx');
+    fs.writeFileSync(pptx, 'fake');
     const collector = new TaskTraceCollector();
-    collector.recordToolResult('agent', `Delivered ${path.join(tmpDir, '汇报.pptx')}`);
+    collector.recordToolResult('agent', `Delivered ${pptx}`);
     expect(collector.getTrace().artifacts.some(p => p.endsWith('汇报.pptx'))).toBe(true);
+  });
+
+  // Regression: markdown-bold response must not record missing **path.pptx
+  it('setResponseText ignores markdown-bold missing paths and keeps real send-file', () => {
+    const pptx = path.join(tmpDir, '项目汇报示例.pptx');
+    fs.writeFileSync(pptx, 'fake');
+    const collector = new TaskTraceCollector('做个项目汇报的PPT demo');
+    collector.recordArtifactsFromToolCall(
+      'send-file',
+      { filePath: pptx },
+      'Sent file: 项目汇报示例.pptx',
+    );
+    collector.setResponseText(
+      'PPT 已创建完成。\n\n**文件路径：** `/missing/nope.pptx`\n已交付 **项目汇报示例.pptx**',
+    );
+    const arts = collector.getTrace().artifacts;
+    expect(arts).toContain(pptx);
+    expect(arts.some(p => p.includes('**'))).toBe(false);
+    expect(arts.some(p => p.includes('nope.pptx'))).toBe(false);
   });
 
   it('recordToolResultAt keeps parallel agent call/result pairing', () => {

@@ -3,7 +3,11 @@
  */
 
 import { access } from 'node:fs/promises';
-import { isOfficeDocumentPath } from '../../../artifacts/artifact-detector.js';
+import { resolve } from 'node:path';
+import {
+  isOfficeDocumentPath,
+  sanitizeArtifactPath,
+} from '../../../artifacts/artifact-detector.js';
 import { isOfficeTask } from '../../../routing/scenarios/office.scenario.js';
 import { hasNoArtifactIntent } from '../../../routing/intent.js';
 import type { CompletionVerifier, TaskTrace, VerifyResult } from '../types.js';
@@ -27,7 +31,14 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 function officeDocuments(trace: TaskTrace): string[] {
-  return trace.artifacts.filter(isOfficeDocumentPath);
+  const cleaned: string[] = [];
+  for (const raw of trace.artifacts) {
+    const path = sanitizeArtifactPath(raw);
+    if (!path || !isOfficeDocumentPath(path)) continue;
+    const abs = resolve(path);
+    if (!cleaned.includes(abs)) cleaned.push(abs);
+  }
+  return cleaned;
 }
 
 export const officeCompletionVerifier: CompletionVerifier = {

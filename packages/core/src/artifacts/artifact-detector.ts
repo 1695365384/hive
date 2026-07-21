@@ -15,8 +15,12 @@ export const ARTIFACT_EXTENSIONS = new Set([
   '.csv', '.json', '.md',
 ]);
 
-/** Unicode-safe path tail before extension (supports CJK filenames like 项目汇报.pptx) */
-const ARTIFACT_PATH_RE = /[^\s"'<>|\n]+\.(pptx|docx|xlsx|pdf|html?|svg|png|jpe?g|gif|webp|csv|json|md)\b/gi;
+/**
+ * Unicode-safe path tail before extension (supports CJK filenames like 项目汇报.pptx).
+ * Excludes markdown noise chars (*, `, []) so "**deck.pptx" / "`/tmp/a.pptx`" do not stick.
+ */
+const ARTIFACT_PATH_RE =
+  /(?:\/|\.\/|\.\.\/|[A-Za-z]:[\\/])[^\s"'<>|*`\[\]\n]*\.(pptx|docx|xlsx|pdf|html?|svg|png|jpe?g|gif|webp|csv|json|md)\b|[^\s"'<>|*`\[\]\/\n:：]+\.(pptx|docx|xlsx|pdf|html?|svg|png|jpe?g|gif|webp|csv|json|md)\b/gi;
 
 /** officecli create — bash form and MCP form (command without "officecli " prefix) */
 const OFFICECLI_CREATE_RE =
@@ -25,6 +29,26 @@ const OFFICECLI_CREATE_RE =
 /** Explicit screenshot / export output: -o out.png / --output path */
 const OFFICECLI_OUTPUT_RE =
   /(?:^|\s)(?:-o|--output|--out)\s+(\S+\.(?:png|jpe?g|webp|gif|pdf|html?|svg))\b/gi;
+
+/**
+ * Strip markdown / prose wrappers from a matched path token.
+ * Regression: Coordinator replies like `**项目汇报示例.pptx**` used to be recorded
+ * literally and failed office verify with "not found on disk: **….pptx".
+ */
+export function sanitizeArtifactPath(raw: string): string {
+  let p = raw.trim();
+  if (!p) return '';
+
+  // Prefer a clean path-like substring if prose leaked into the match
+  const nested = p.match(
+    /(?:\/|\.\/|\.\.\/|[A-Za-z]:[\\/])[^\s"'<>|*`\[\]\n]*\.(?:pptx|docx|xlsx|pdf|html?|svg|png|jpe?g|gif|webp|csv|json|md)\b|[^\s"'<>|*`\[\]\/\n:：]+\.(?:pptx|docx|xlsx|pdf|html?|svg|png|jpe?g|gif|webp|csv|json|md)\b/i,
+  );
+  if (nested?.[0]) p = nested[0];
+
+  p = p.replace(/^[`"'*~_]+/, '').replace(/[`"'*~_]+$/, '');
+  p = p.replace(/[)\]}>.,;:!?。，、；：！？]+$/u, '');
+  return p.trim();
+}
 
 export function isArtifactExtension(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
@@ -84,7 +108,7 @@ export function extractArtifactPathsFromText(text: string): string[] {
   if (!text) return [];
   const found: string[] = [];
   for (const match of text.matchAll(ARTIFACT_PATH_RE)) {
-    const p = match[0];
+    const p = sanitizeArtifactPath(match[0] ?? '');
     if (p && !found.includes(p)) found.push(p);
   }
   return found;
@@ -140,12 +164,13 @@ export function pathsFromOfficeCommand(command: string): string[] {
   const found: string[] = [];
 
   const createMatch = command.match(OFFICECLI_CREATE_RE);
-  if (createMatch?.[1] && !found.includes(createMatch[1])) {
-    found.push(createMatch[1]);
+  if (createMatch?.[1]) {
+    const p = sanitizeArtifactPath(createMatch[1]);
+    if (p && !found.includes(p)) found.push(p);
   }
 
   for (const match of command.matchAll(OFFICECLI_OUTPUT_RE)) {
-    const p = match[1];
+    const p = sanitizeArtifactPath(match[1] ?? '');
     if (p && !found.includes(p)) found.push(p);
   }
 
@@ -156,14 +181,14 @@ export function pathsFromOfficeCommand(command: string): string[] {
   return found;
 }
 
-function isShellOrOfficeCliTool(toolName: string): boolean {
+function isBashOrShellTool(toolName: string): boolean {
   const name = toolName.toLowerCase();
-  return (
-    name === 'bash' ||
-    name === 'shell' ||
-    name === 'officecli' ||
-    name.includes('officecli')
-  );
+  return name === 'bash' || name === 'shell';
+}
+
+function isOfficeCliTool(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return name === 'officecli' || name.includes('officecli');
 }
 
 /**
@@ -176,31 +201,39 @@ export function detectArtifactsFromToolCall(
   output: unknown,
 ): string[] {
   const candidates = new Set<string>();
+  const bashLike = isBashOrShellTool(toolName);
+  const officeCli = isOfficeCliTool(toolName);
 
-  for (const p of pathsFromSendFileInput(input)) candidates.add(p);
-  for (const p of pathsFromFileToolInput(input)) candidates.add(p);
+  for (const p of pathsFromSendFileInput(input)) candidates.add(sanitizeArtifactPath(p));
+  for (const p of pathsFromFileToolInput(input)) candidates.add(sanitizeArtifactPath(p));
 
-  if (isShellOrOfficeCliTool(toolName)) {
+  if (bashLike || officeCli) {
     for (const p of pathsFromOfficeCommand(normalizeToolCommand(input))) {
-      candidates.add(p);
+      candidates.add(sanitizeArtifactPath(p));
     }
   }
 
-  // Always scan input + output text (MCP payloads often embed paths only once)
+  // Scan tool input text (commands / MCP payloads embed target paths)
   for (const p of extractArtifactPathsFromText(stringifyPayload(input))) {
     candidates.add(p);
   }
 
   const outputText = stringifyPayload(output);
-  for (const p of extractArtifactPathsFromText(outputText)) candidates.add(p);
+
+  // bash/shell stdout is often `ls` noise — do NOT harvest every *.pptx in cwd.
+  // officecli / send-file / other tools may only mention the path in the result.
+  if (!bashLike) {
+    for (const p of extractArtifactPathsFromText(outputText)) candidates.add(p);
+  }
 
   // send-file success message embeds filename
-  if (toolName === 'send-file' && outputText.includes('Sent')) {
+  if (toolName.toLowerCase() === 'send-file' && outputText.includes('Sent')) {
     for (const p of extractArtifactPathsFromText(outputText)) candidates.add(p);
   }
 
   const resolved: string[] = [];
   for (const candidate of candidates) {
+    if (!candidate) continue;
     const abs = resolve(candidate);
     if (isExistingArtifactFile(abs) && !resolved.includes(abs)) {
       resolved.push(abs);
