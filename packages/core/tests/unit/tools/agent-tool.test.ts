@@ -270,6 +270,12 @@ describe('AgentTool', () => {
       );
 
       expect(result).toContain('[Worker explore completed in ');
+      // Regression: ISSUE-001 — duration was raw ms labeled as seconds (e.g. 27202.0s)
+      // Found by /qa on 2026-07-21
+      const m = String(result).match(/completed in ([0-9.]+)s/);
+      expect(m).not.toBeNull();
+      expect(Number(m![1])).toBeLessThan(60);
+
       expect(result).toContain('Status: SUCCESS');
       expect(result).toContain('Tools used: glob, grep');
     });

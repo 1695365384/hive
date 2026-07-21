@@ -267,6 +267,7 @@ function buildWorkerResultSummary(input: {
   type: string;
   result: { text: string; tools: string[]; success: boolean; error?: string };
   accumulatedText: string;
+  /** Worker 运行时长（毫秒） */
   duration: number;
   shouldBlockRetry: (error: string) => boolean;
   stuckWarning?: string | null;
@@ -276,9 +277,10 @@ function buildWorkerResultSummary(input: {
   const { type, result, accumulatedText, duration, shouldBlockRetry, stuckWarning, compressedExcerpt } = input;
   const parts: string[] = [];
 
-  // 状态行
+  // 状态行（Date.now 差值是 ms，展示为秒）
+  const durationSec = duration / 1000;
   const lineCount = accumulatedText.split('\n').filter(l => l.trim()).length;
-  parts.push(`[Worker ${type} completed in ${duration.toFixed(1)}s — ${lineCount} lines output]`);
+  parts.push(`[Worker ${type} completed in ${durationSec.toFixed(1)}s — ${lineCount} lines output]`);
 
   // 成功/失败
   if (result.error) {
@@ -342,6 +344,7 @@ export function createAgentTool(context: AgentContext, taskManager: TaskManager)
       'Delegate a task to a Worker agent in an isolated context window.',
       '',
       '## Worker Types',
+      'If the user names a worker type, prefer that type on first dispatch (do not silently substitute explore for librarian/metis/momus/oracle).',
       '- "explore": Read-only (Glob, Grep, Read, WebSearch, WebFetch). Use for: file discovery, code search, architecture understanding.',
       '- "plan": Deep analysis (same tools, higher thoroughness). Use for: complex planning, dependency analysis, risk assessment.',
       '- "general": Full access (Bash, File write, Glob, Grep, Web). Use for: code modifications, running commands, complex tasks.',

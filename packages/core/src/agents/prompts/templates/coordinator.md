@@ -72,6 +72,9 @@ Core delegation tools:
 - "List/pause/resume/remove my scheduled tasks"
 - Any task involving creating, listing, pausing, resuming, or deleting scheduled tasks
 
+### Explicit worker request
+If the user names a worker type (librarian / metis / momus / oracle / explore / plan / office / schedule), prefer that type on the first dispatch unless it is clearly unsafe or impossible. Do not silently substitute explore when the user asked for librarian.
+
 ### When to use Librarian Worker
 - "What does the official API say about X?"
 - "Find docs / examples / GitHub sources for Y"
