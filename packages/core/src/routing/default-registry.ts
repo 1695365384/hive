@@ -6,10 +6,12 @@ import { ScenarioRegistry } from './ScenarioRegistry.js';
 import { TaskRouter } from './TaskRouter.js';
 import { officeScenario } from './scenarios/office.scenario.js';
 import { scheduleScenario } from './scenarios/schedule.scenario.js';
+import { namedWorkerScenario } from './scenarios/named-worker.scenario.js';
 
 /** 构建含 Office + Schedule 的默认注册表 */
 export function createDefaultScenarioRegistry(): ScenarioRegistry {
   return new ScenarioRegistry()
+    .register(namedWorkerScenario)
     .register(officeScenario)
     .register(scheduleScenario);
 }

@@ -53,3 +53,15 @@ export {
   getScheduleInquiryReply,
   buildScheduleRoutingDirective,
 } from './scenarios/schedule.scenario.js';
+
+export {
+  NAMED_WORKER_SCENARIO_ID,
+  NAMED_WORKER_SCENARIO_LABELS,
+  namedWorkerScenario,
+  namedWorkerScenarioCopy,
+  detectNamedWorkerType,
+  matchesNamedWorkerScenario,
+  buildNamedWorkerSpawn,
+} from './scenarios/named-worker.scenario.js';
+
+export { hasNoArtifactIntent } from './intent.js';

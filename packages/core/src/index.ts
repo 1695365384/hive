@@ -83,10 +83,16 @@ export {
   OFFICE_SCENARIO_LABELS,
   SCHEDULE_SCENARIO_ID,
   SCHEDULE_SCENARIO_LABELS,
+  NAMED_WORKER_SCENARIO_ID,
+  NAMED_WORKER_SCENARIO_LABELS,
   officeScenario,
   scheduleScenario,
+  namedWorkerScenario,
   buildOfficeWorkerSpawn,
   buildScheduleWorkerSpawn,
+  buildNamedWorkerSpawn,
+  detectNamedWorkerType,
+  hasNoArtifactIntent,
 } from './routing/index.js';
 
 export type {
@@ -208,6 +214,10 @@ export {
   truncateOutput,
   isDangerousCommand,
   isSensitiveFile,
+  isPathAllowed,
+  setAllowedRoots,
+  addAllowedRoot,
+  _resetAllowedRoots,
 } from './tools/index.js';
 
 // ============================================

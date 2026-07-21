@@ -68,6 +68,11 @@ import {
   isOfficeCreationTask,
   isOfficeTask,
 } from '../../routing/scenarios/office.scenario.js';
+import {
+  detectNamedWorkerType,
+  buildNamedWorkerSpawn,
+} from '../../routing/scenarios/named-worker.scenario.js';
+import { hasNoArtifactIntent } from '../../routing/intent.js';
 import { resolve as resolvePath } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -428,20 +433,26 @@ export class CoordinatorCapability implements AgentCapability {
         }
 
         // 场景任务未派正确 Worker 时自动补救（只补主交付 Worker）
-        // Office 创建：即使 resolve 落在 hint（LLM 只派了 explore），也强制补 office
+        // Named worker / Office 创建：即使 resolve 落在 hint（LLM 只派了 explore），也强制补正确类型
         const recoveryDecision = this.taskRouter.resolve(task);
         const routed = [
           ...getAgentWorkerTypes(this.taskTrace.getTrace()),
           ...getSpawnedWorkerTypes(this.taskTrace.getTrace()),
         ];
         let recoverySpawn: WorkerSpawnInput | null = null;
-        if (recoveryDecision.action === 'delegate') {
+        const namedType = detectNamedWorkerType(task);
+        if (namedType && !routed.includes(namedType)) {
+          recoverySpawn = buildNamedWorkerSpawn(task, namedType);
+        } else if (recoveryDecision.action === 'delegate') {
           recoverySpawn = primaryDelegateSpawn(recoveryDecision.spawns);
         } else if (isOfficeCreationTask(task) && !routed.includes('office')) {
           recoverySpawn = buildOfficeWorkerSpawn(task);
         }
+        const forceNamedRecovery = Boolean(
+          namedType && recoverySpawn && !routed.includes(recoverySpawn.type),
+        );
         if (
-          !verification.passed
+          (forceNamedRecovery || !verification.passed)
           && recoverySpawn
           && !routed.includes(recoverySpawn.type)
         ) {
@@ -884,6 +895,14 @@ export class CoordinatorCapability implements AgentCapability {
 
     for (const blurb of this.taskRouter.getCoordinatorBlurbs(task)) {
       parts.push(blurb);
+    }
+
+    if (hasNoArtifactIntent(task)) {
+      parts.push(
+        '[User Constraint] The user forbade generating files/artifacts. '
+        + 'Do NOT spawn agent(type="office"), do NOT create .pptx/.docx/.xlsx, '
+        + 'and do not call send-file for new documents. Answer in text only.',
+      );
     }
 
     const mcpToolNames = Object.keys(this.context.mcpManager?.getAllTools?.() ?? {});
