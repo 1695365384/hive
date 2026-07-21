@@ -28,15 +28,18 @@
 - Wired AgentType, CORE_AGENTS, tool whitelists, templates, coordinator routing, desktop labels
 - Complex pipeline: Explore/Librarian → Metis → Plan → Momus → General (+ Oracle when needed)
 
-## P2 — Hard-route named Worker types (librarian/metis/momus/oracle)
+## Done — Hard-route named Worker types (2026-07-21)
+- named-worker scenario priority 200; explicit「请用 librarian」etc. hard-delegates
+- validateSpawn rejects explore substitutes; Coordinator force-recovery if missing
 
-- **What:** If user explicitly names a worker type, enforce first dispatch type (not prompt-only).
-- **Why:** QA 2026-07-21 ISSUE-002 — asked librarian, got explore-only.
-- **Effort:** M
-- **Depends on:** specialist workers commit
 
-## P2 — Workspace root for desktop chat should include repo (or clearer path UX)
+## Done — Workspace root includes repo (2026-07-21)
+- security getAllowedRoots always unions process.cwd() + HIVE_WORKING_DIR + HIVE_HOME
+- desktop spawn sets HIVE_WORKING_DIR to project root; bootstrap addAllowedRoot(cwd, HIVE_HOME)
 
-- **What:** Explore/file tools currently jail to server cwd/.hive; README at repo root fails.
-- **Why:** QA 2026-07-21 ISSUE-004
-- **Effort:** M
+
+## Done — Chat Send aria-label (2026-07-21)
+- chat-composer__send / attach buttons expose aria-label from i18n
+
+## Done — Honor no-artifact intent (2026-07-21)
+- hasNoArtifactIntent blocks office creation + office verifier + Coordinator prompt constraint
