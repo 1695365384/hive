@@ -1319,6 +1319,7 @@ export function ChatPage() {
                 disabled={isRunning || uploading || chatState !== "connected"}
                 className="chat-composer__attach app-no-drag"
                 title={t("chat.attachFiles")}
+                aria-label={t("chat.attachFiles")}
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
@@ -1344,6 +1345,7 @@ export function ChatPage() {
                       : "chat-composer__send--idle"
                 }`}
                 title={isRunning ? t("chat.stop") : t("chat.send")}
+                aria-label={isRunning ? t("chat.stop") : t("chat.send")}
               >
                 {isRunning ? (
                   <Square className="w-3.5 h-3.5" fill="currentColor" />
