@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path';
 import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { isPathAllowed } from './utils/security.js';
+import { getWorkingDirectory } from '../../workspace/session-fs.js';
 import { truncateOutput } from './utils/output-safety.js';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness } from '../harness/with-harness.js';
@@ -99,7 +100,7 @@ export function createRawGlobTool(): RawTool<GlobToolInput> {
     inputSchema: zodSchema(globInputSchema),
     execute: async ({ pattern, path: searchPath, maxResults }): Promise<ToolResult> => {
       const max = maxResults ?? 500;
-      const dir = resolve(searchPath || process.cwd());
+      const dir = resolve(getWorkingDirectory(), searchPath || '.');
 
       // 路径约束检查
       if (!isPathAllowed(dir)) {

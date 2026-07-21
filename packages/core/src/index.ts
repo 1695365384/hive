@@ -408,6 +408,18 @@ export {
   WorkspaceManager,
   initWorkspace,
   createWorkspaceManager,
+
+  // 会话工作区（写沙箱）
+  type SessionFsContext,
+  getHiveHomeDir,
+  sanitizeSessionId,
+  getSessionWorkspacePath,
+  ensureSessionWorkspace,
+  buildDefaultReadRoots,
+  createSessionFsContext,
+  runWithSessionFs,
+  getSessionFs,
+  getWorkingDirectory,
 } from './workspace/index.js';
 
 // ============================================

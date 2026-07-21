@@ -73,6 +73,11 @@ import {
   buildNamedWorkerSpawn,
 } from '../../routing/scenarios/named-worker.scenario.js';
 import { hasNoArtifactIntent } from '../../routing/intent.js';
+import {
+  createSessionFsContext,
+  getWorkingDirectory,
+  runWithSessionFs,
+} from '../../workspace/session-fs.js';
 import { resolve as resolvePath } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -281,6 +286,11 @@ export class CoordinatorCapability implements AgentCapability {
       // 确保 session 已切换到正确的 chatId
       await this.ensureSession(options?.chatId);
 
+      // 绑定会话工作区：写操作落到 ~/.hive/sessions/<id>/workspace
+      const sessionKey = options?.chatId || sessionId || 'default';
+      const sessionFs = createSessionFsContext(sessionKey, options?.cwd);
+      return await runWithSessionFs(sessionFs, async () => {
+      try { // session-fs try
       // 启动心跳
       const timeoutConfig = this.context.timeoutCap.getConfig();
       const combinedSignal = this.combineAbortSignals(abortController.signal, options?.abortSignal);
@@ -292,7 +302,7 @@ export class CoordinatorCapability implements AgentCapability {
 
       try {
         await this.emitNotification(sessionId, 'info', '任务开始',
-          `开始执行: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}`);
+          `开始执行: ${task.slice(0, 50)}${task.length > 50 ? '...' : ''}（工作区: ${sessionFs.workspaceDir}）`);
 
         previousPhase = 'start';
         await this.emitPhase(sessionId, 'understand', '理解任务...', previousPhase, options);
@@ -497,13 +507,28 @@ export class CoordinatorCapability implements AgentCapability {
         this.context.timeoutCap.stopHeartbeat();
         this.taskManager.abortAll();
       }
-    } catch (error) {
-      abortController.abort();
-      this.taskManager.abortAll();
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      await this.emitPhase(sessionId, 'error', errorMsg, previousPhase, options);
-      await this.emitNotification(sessionId, 'error', '执行错误', errorMsg, { error: true });
+      } catch (error) {
+        abortController.abort();
+        this.taskManager.abortAll();
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        await this.emitPhase(sessionId, 'error', errorMsg, previousPhase, options);
+        await this.emitNotification(sessionId, 'error', '执行错误', errorMsg, { error: true });
 
+        return {
+          text: '',
+          tools: [],
+          success: false,
+          error: errorMsg,
+          duration: Date.now() - startTime,
+        };
+      } finally {
+        this.context.currentDispatchTask = previousDispatchTask;
+      }
+      }); // runWithSessionFs
+    } catch (error) {
+      // ensureSession / sessionFs 绑定失败
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.context.currentDispatchTask = previousDispatchTask;
       return {
         text: '',
         tools: [],
@@ -511,8 +536,6 @@ export class CoordinatorCapability implements AgentCapability {
         error: errorMsg,
         duration: Date.now() - startTime,
       };
-    } finally {
-      this.context.currentDispatchTask = previousDispatchTask;
     }
   }
 
@@ -853,12 +876,17 @@ export class CoordinatorCapability implements AgentCapability {
       description: tool.description ?? '',
     }));
 
+    const workingDirectory = getWorkingDirectory();
+    const environmentContext = this.context.environmentContext
+      ? { ...this.context.environmentContext, cwd: workingDirectory }
+      : undefined;
+
     const extraSections = builder.buildPrompt({
       task: '',
       priorResults: [],
       agentType: 'general',
       skipBaseTemplate: true,
-      environmentContext: this.context.environmentContext,
+      environmentContext,
       scheduleSummary,
       toolDescriptions,
       skillSection: skillSection || undefined,
@@ -896,6 +924,14 @@ export class CoordinatorCapability implements AgentCapability {
     for (const blurb of this.taskRouter.getCoordinatorBlurbs(task)) {
       parts.push(blurb);
     }
+
+    parts.push(
+      '[Session Workspace] '
+      + `All file writes MUST be created under: ${workingDirectory}. `
+      + 'Relative paths resolve to this workspace. '
+      + `You may READ repository files under: ${process.cwd()}. `
+      + 'Do not write into the repository root unless the user explicitly asks.',
+    );
 
     if (hasNoArtifactIntent(task)) {
       parts.push(

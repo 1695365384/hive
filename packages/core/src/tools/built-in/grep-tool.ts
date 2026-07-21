@@ -10,6 +10,7 @@ import { join, resolve, extname } from 'node:path';
 import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { isPathAllowed } from './utils/security.js';
+import { getWorkingDirectory } from '../../workspace/session-fs.js';
 import { truncateOutput } from './utils/output-safety.js';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness } from '../harness/with-harness.js';
@@ -89,7 +90,7 @@ export function createRawGrepTool(): RawTool<GrepToolInput> {
     inputSchema: zodSchema(grepInputSchema),
     execute: async ({ pattern, path: searchPath, glob: globFilter, maxResults, caseInsensitive }): Promise<ToolResult> => {
       const max = maxResults ?? 200;
-      const dir = resolve(searchPath || process.cwd());
+      const dir = resolve(getWorkingDirectory(), searchPath || '.');
 
       // 路径约束检查
       if (!isPathAllowed(dir)) {

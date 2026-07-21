@@ -10,6 +10,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { isPathAllowed, isSensitiveFile } from './utils/security.js';
+import { getWorkingDirectory } from '../../workspace/session-fs.js';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness } from '../harness/with-harness.js';
 import type { RawTool } from '../harness/with-harness.js';
@@ -48,7 +49,7 @@ export function createRawSendFileTool(): RawTool<SendFileToolInput> {
         return { ok: false, code: 'PERMISSION', error: 'File sending not supported in current environment. Only available when connected via a messaging channel (e.g. Feishu).', context: { reason: 'No callback registered' } };
       }
 
-      const absolutePath = path.resolve(filePath);
+      const absolutePath = path.resolve(getWorkingDirectory(), filePath);
 
       // 路径约束检查
       if (!isPathAllowed(absolutePath)) {

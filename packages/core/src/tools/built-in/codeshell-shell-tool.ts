@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { BUILTIN_TOOLS } from '@cjhyy/code-shell-core';
 import { truncateOutput } from './utils/output-safety.js';
 import { isDangerousCommand, isCommandAllowed } from './utils/security.js';
+import { getWorkingDirectory } from '../../workspace/session-fs.js';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness } from '../harness/with-harness.js';
 import type { RawTool } from '../harness/with-harness.js';
@@ -166,7 +167,7 @@ export function createRawCodeShellShellTool(
         }
 
         const csCtx: Record<string, unknown> = {
-          cwd: process.cwd(),
+          cwd: getWorkingDirectory(),
           signal: AbortSignal.timeout(timeoutMs),
         };
 

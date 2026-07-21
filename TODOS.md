@@ -43,3 +43,8 @@
 
 ## Done — Honor no-artifact intent (2026-07-21)
 - hasNoArtifactIntent blocks office creation + office verifier + Coordinator prompt constraint
+
+## Done — Session write workspace (2026-07-21)
+- Each chat session writes under `~/.hive/sessions/<id>/workspace`
+- Read still allowed for repo cwd / HIVE_WORKING_DIR / HIVE_HOME
+- AsyncLocalStorage binds tools (file/bash/glob/grep/send-file) + Coordinator prompt Working Directory

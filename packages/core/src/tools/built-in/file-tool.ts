@@ -14,6 +14,7 @@ import { zodSchema, type Tool } from 'ai';
 import { z } from 'zod';
 import { truncateOutput } from './utils/output-safety.js';
 import { isSensitiveFile, isPathAllowed } from './utils/security.js';
+import { getWorkingDirectory } from '../../workspace/session-fs.js';
 import type { ToolResult } from '../harness/types.js';
 import { withHarness } from '../harness/with-harness.js';
 import type { RawTool } from '../harness/with-harness.js';
@@ -84,7 +85,7 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
     inputSchema: zodSchema(fileInputSchema),
     execute: async (args): Promise<ToolResult> => {
       const { command, file_path: rawPath } = args;
-      const filePath = resolve(rawPath);
+      const filePath = resolve(getWorkingDirectory(), rawPath);
 
       // 权限检查
       if (!allowedSet.has(command)) {
@@ -96,8 +97,11 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
         };
       }
 
+      // 敏感文件检查（先判定读写，再用对应监狱）
+      const op = command === 'view' ? 'read' as const : 'write' as const;
+
       // 路径约束检查
-      if (!isPathAllowed(filePath)) {
+      if (!isPathAllowed(filePath, op)) {
         return {
           ok: false,
           code: 'PATH_BLOCKED',
@@ -106,8 +110,6 @@ export function createRawFileTool(options?: FileToolOptions): RawTool<FileToolIn
         };
       }
 
-      // 敏感文件检查
-      const op = command === 'view' ? 'read' as const : 'write' as const;
       const sensitive = isSensitiveFile(filePath, op);
       if (sensitive.sensitive) {
         return {

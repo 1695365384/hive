@@ -7,6 +7,7 @@
 
 import { resolve, isAbsolute, relative, basename } from 'node:path';
 import dns from 'node:dns';
+import { getSessionFs } from '../../../workspace/session-fs.js';
 
 // ============================================
 // 常量
@@ -123,20 +124,41 @@ export function _resetAllowedRoots(): void {
   _allowedRoots = null;
 }
 
-/**
- * 检查路径是否在允许的根目录内
- */
-export function isPathAllowed(filePath: string): boolean {
-  const resolved = resolve(filePath);
+function isUnderRoot(resolvedPath: string, root: string): boolean {
+  const rel = relative(resolve(root), resolvedPath);
+  return !rel.startsWith('..') && !isAbsolute(rel);
+}
 
-  for (const root of getAllowedRoots()) {
-    const rel = relative(root, resolved);
-    if (!rel.startsWith('..') && !isAbsolute(rel)) {
-      return true;
+function isUnderAnyRoot(resolvedPath: string, roots: string[]): boolean {
+  return roots.some((root) => isUnderRoot(resolvedPath, root));
+}
+
+/**
+ * 检查路径是否在允许的根目录内。
+ *
+ * - read（默认）：会话 workspace ∪ 会话 readRoots ∪ 全局 allowedRoots
+ * - write：有会话上下文时仅允许 session workspace；否则回退全局 allowedRoots
+ */
+export function isPathAllowed(
+  filePath: string,
+  operation: 'read' | 'write' = 'read',
+): boolean {
+  const resolved = resolve(filePath);
+  const session = getSessionFs();
+
+  if (operation === 'write') {
+    if (session) {
+      return isUnderRoot(resolved, session.workspaceDir);
     }
+    return isUnderAnyRoot(resolved, getAllowedRoots());
   }
 
-  return false;
+  if (session) {
+    if (isUnderRoot(resolved, session.workspaceDir)) return true;
+    if (isUnderAnyRoot(resolved, session.readRoots)) return true;
+  }
+
+  return isUnderAnyRoot(resolved, getAllowedRoots());
 }
 
 // ============================================

@@ -28,3 +28,17 @@ export {
   initWorkspace,
   createWorkspaceManager,
 } from './WorkspaceManager.js';
+
+// 会话工作区（写沙箱）
+export {
+  type SessionFsContext,
+  getHiveHomeDir,
+  sanitizeSessionId,
+  getSessionWorkspacePath,
+  ensureSessionWorkspace,
+  buildDefaultReadRoots,
+  createSessionFsContext,
+  runWithSessionFs,
+  getSessionFs,
+  getWorkingDirectory,
+} from './session-fs.js';
