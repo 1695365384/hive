@@ -8,7 +8,7 @@ import {
   isExistingArtifactFile,
   sanitizeArtifactPath,
 } from '../../artifacts/artifact-detector.js';
-import type { TaskTrace, TraceToolCall, TraceWorkerSpawn } from './types.js';
+import type { TaskTrace } from './types.js';
 import { resolve } from 'node:path';
 
 export function createEmptyTaskTrace(task = ''): TaskTrace {
