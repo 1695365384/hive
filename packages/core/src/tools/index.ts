@@ -47,4 +47,11 @@ export type { GetMcpManagerCallback, McpServersChangedCallback, McpInstallToolIn
 
 // 工具基础设施
 export { truncateOutput } from './built-in/utils/output-safety.js';
-export { isDangerousCommand, isSensitiveFile } from './built-in/utils/security.js';
+export {
+  isDangerousCommand,
+  isSensitiveFile,
+  isPathAllowed,
+  setAllowedRoots,
+  addAllowedRoot,
+  _resetAllowedRoots,
+} from './built-in/utils/security.js';

@@ -7,6 +7,7 @@
 
 import {
   createServer,
+  addAllowedRoot,
   type Agent,
   type IPlugin,
   type ILogger,
@@ -92,6 +93,10 @@ export async function bootstrap(options: BootstrapOptions): Promise<HiveContext>
     dbPath: join(HIVE_HOME, 'hive.db'),
     logger,
   })
+
+  // Allow both process cwd (repo root in desktop) and HIVE_HOME workspace.
+  addAllowedRoot(process.cwd())
+  addAllowedRoot(HIVE_HOME)
 
   await server.start()
 

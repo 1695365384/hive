@@ -55,6 +55,13 @@ describe('isPathAllowed', () => {
     expect(isPathAllowed(process.cwd())).toBe(true);
   });
 
+  it('always includes process.cwd even when HIVE_WORKING_DIR is set', () => {
+    process.env.HIVE_WORKING_DIR = '/tmp/test-workspace';
+    expect(isPathAllowed(process.cwd())).toBe(true);
+    expect(isPathAllowed('/tmp/test-workspace/file.txt')).toBe(true);
+    delete process.env.HIVE_WORKING_DIR;
+  });
+
   it('should resolve symlinks before checking', () => {
     process.env.HIVE_WORKING_DIR = '/tmp/test-workspace';
     const normalPath = '/tmp/test-workspace/normal-file.txt';

@@ -79,6 +79,8 @@ async fn do_spawn(bin: &str, args: &[&str], cwd: &str) -> Result<tokio::process:
     let mut cmd = tokio::process::Command::new(bin);
     cmd.args(args)
         .current_dir(cwd)
+        // Ensure file tools can read the project repo (README etc.), not only ~/.hive.
+        .env("HIVE_WORKING_DIR", cwd)
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit());
 

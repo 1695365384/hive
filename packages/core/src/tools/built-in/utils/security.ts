@@ -76,14 +76,44 @@ const SENSITIVE_FILES: SensitivePattern[] = [
 function getAllowedRoots(): string[] {
   if (_allowedRoots) return _allowedRoots;
 
+  const roots = new Set<string>();
+  // Always allow process cwd so repo-root files (e.g. README.md) stay readable
+  // even when HIVE_WORKING_DIR points at a narrower workspace like ~/.hive.
+  roots.add(resolve(process.cwd()));
+
   const envDir = process.env.HIVE_WORKING_DIR;
   if (envDir) {
-    _allowedRoots = envDir.split(':').map(d => resolve(d)).filter(Boolean);
-  } else {
-    _allowedRoots = [process.cwd()];
+    for (const part of envDir.split(':')) {
+      const trimmed = part.trim();
+      if (trimmed) roots.add(resolve(trimmed));
+    }
   }
 
+  const hiveHome = process.env.HIVE_HOME?.trim();
+  if (hiveHome) {
+    roots.add(resolve(hiveHome));
+  }
+
+  _allowedRoots = [...roots];
   return _allowedRoots;
+}
+
+/**
+ * 显式设置允许的根路径（测试 / Server bootstrap）
+ */
+export function setAllowedRoots(roots: string[]): void {
+  _allowedRoots = roots.map((d) => resolve(d)).filter(Boolean);
+}
+
+/**
+ * 追加允许的根路径
+ */
+export function addAllowedRoot(root: string): void {
+  const current = getAllowedRoots();
+  const resolved = resolve(root);
+  if (!current.includes(resolved)) {
+    _allowedRoots = [...current, resolved];
+  }
 }
 
 /**
