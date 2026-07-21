@@ -348,7 +348,7 @@ export class CoordinatorCapability implements AgentCapability {
             if (assistFailedNote) {
               resultText = `${resultText}\n\n(${assistFailedNote})`;
             }
-            this.flushOfficeArtifactsToUi();
+            await this.flushOfficeArtifactsToUi();
             let verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
             if (!verification.passed) {
               // Delegate path: rebuild prompts and try limited audit continues via Coordinator LLM
@@ -435,7 +435,7 @@ export class CoordinatorCapability implements AgentCapability {
 
         this.taskTrace.setResponseText(final);
         let resultText = stripDecorativeEmoji(final);
-        this.flushOfficeArtifactsToUi();
+        await this.flushOfficeArtifactsToUi();
         await this.emitPhase(sessionId, 'verify', '检查交付结果...', 'execute', options);
         let verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
         if (!verification.passed) {
@@ -470,7 +470,7 @@ export class CoordinatorCapability implements AgentCapability {
           if (recovered.success) {
             resultText = stripDecorativeEmoji(recovered.output);
             this.taskTrace.setResponseText(recovered.output);
-            this.flushOfficeArtifactsToUi();
+            await this.flushOfficeArtifactsToUi();
             verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
             isSuccess = verification.passed;
           }
@@ -742,7 +742,7 @@ export class CoordinatorCapability implements AgentCapability {
    * Push Office docs (.pptx/.docx/.xlsx) into Desktop chat before we claim completion.
    * Screenshots alone are ignored — Preview unlocks from the Office file itself.
    */
-  private flushOfficeArtifactsToUi(): void {
+  private async flushOfficeArtifactsToUi(): Promise<void> {
     const deliver = this.context.onDeliverArtifacts;
     if (!deliver) return;
 
@@ -752,7 +752,7 @@ export class CoordinatorCapability implements AgentCapability {
       .filter((p) => existsSync(p));
 
     if (paths.length === 0) return;
-    deliver(paths);
+    await deliver(paths);
   }
 
   /** User-facing failure copy — never keep LLM “screenshots shown / file path” fibs. */
@@ -1228,7 +1228,7 @@ export class CoordinatorCapability implements AgentCapability {
       finalText = cont.finalText || finalText;
       runtimeResult = cont.runtimeResult ?? runtimeResult;
       this.taskTrace.setResponseText(resultText);
-      this.flushOfficeArtifactsToUi();
+      await this.flushOfficeArtifactsToUi();
       await this.emitPhase(args.sessionId, 'verify', '再次检查交付结果...', 'execute', args.options);
       verification = await this.completionVerifier.verify(this.taskTrace.getTrace());
     }

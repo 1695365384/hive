@@ -14,7 +14,7 @@ import {
 
 describe('discipline helpers', () => {
   it('exposes a limited continue budget', () => {
-    expect(MAX_AUDIT_CONTINUES).toBe(2);
+    expect(MAX_AUDIT_CONTINUES).toBe(1);
   });
 
   it('collects failure reasons', () => {
@@ -56,7 +56,7 @@ describe('discipline helpers', () => {
     );
     expect(prompt).toContain('实现登录页');
     expect(prompt).toContain('promise instead of delivery');
-    expect(prompt).toContain('Continue now');
+    expect(prompt).toContain('Fix ONLY the specific issues below');
   });
 
   it('returns blocked actions', () => {
