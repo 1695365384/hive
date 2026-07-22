@@ -1,0 +1,51 @@
+{
+  "name": "@bundy-lmw/hive-desktop-electron",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "npm run build:electron && concurrently \"vite\" \"electron .\"",
+    "dev:vite": "vite",
+    "dev:electron": "npm run build:electron && electron .",
+    "build": "pnpm --filter @bundy-lmw/hive-core build && pnpm --filter @bundy-lmw/hive-server build && npm run build:renderer && npm run build:electron",
+    "build:renderer": "tsc && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', JSON.stringify({type:'commonjs'}))\"",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@streamdown/cjk": "^1.0.3",
+    "@streamdown/code": "^1.1.1",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.2.2",
+    "@tanstack/react-query": "^5.95.2",
+    "animejs": "^4.5.0",
+    "clsx": "^2.1.1",
+    "docx-preview": "^0.3.7",
+    "electron-store": "^10.0.0",
+    "i18next": "^26.3.6",
+    "lucide-react": "^1.7.0",
+    "pdfjs-dist": "^6.1.200",
+    "pptx-preview": "^1.0.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-i18next": "^17.0.9",
+    "streamdown": "^2.5.0",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.2",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "concurrently": "^9.2.1",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "vitest": "^4.1.0"
+  }
+}

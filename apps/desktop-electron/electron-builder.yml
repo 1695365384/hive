@@ -1,0 +1,28 @@
+appId: com.hive.desktop
+productName: Hive
+directories:
+  output: release
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+extraResources:
+  - from: ../server/bundle
+    to: server
+mac:
+  target:
+    - dmg
+    - zip
+  icon: assets/icon.icns
+  category: public.app-category.productivity
+win:
+  target:
+    - nsis
+  icon: assets/icon.ico
+linux:
+  target:
+    - AppImage
+  icon: assets/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

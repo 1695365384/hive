@@ -1,0 +1,189 @@
+import { useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  FileText,
+  Presentation,
+  FileSpreadsheet,
+  FileImage,
+  FileCode,
+  PanelRightClose,
+} from "lucide-react";
+import { usePreviewStore, type Preview } from "../../stores/preview-store";
+import { PreviewCanvas } from "./PreviewCanvas";
+
+function previewTypeMeta(type: Preview["type"] | undefined, t: (key: string) => string) {
+  switch (type) {
+    case "ppt":
+      return { label: t("preview.type.ppt"), icon: Presentation };
+    case "doc":
+      return { label: t("preview.type.doc"), icon: FileText };
+    case "pdf":
+      return { label: t("preview.type.pdf"), icon: FileText };
+    case "xlsx":
+      return { label: t("preview.type.xlsx"), icon: FileSpreadsheet };
+    case "svg":
+      return { label: t("preview.type.svg"), icon: FileImage };
+    case "html":
+      return { label: t("preview.type.html"), icon: FileCode };
+    default:
+      return { label: t("preview.title"), icon: FileText };
+  }
+}
+
+export function PreviewSidebar({ isRunning }: { isRunning?: boolean }) {
+  const { t } = useTranslation();
+  const { isOpen, previews, activeId, close, setActive, panelWidthPx, setPanelWidthPx } =
+    usePreviewStore();
+  const dragRef = useRef<{ startX: number; startW: number; stageW: number } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Ask-user confirmation owns Esc while open
+      if (document.querySelector(".ask-user")) return;
+      close();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isOpen, close]);
+
+  const onResizePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const stage = e.currentTarget.closest(".chat-stage") as HTMLElement | null;
+      const stageW = stage?.getBoundingClientRect().width ?? window.innerWidth;
+      dragRef.current = {
+        startX: e.clientX,
+        startW: panelWidthPx,
+        stageW,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      document.body.classList.add("preview-resizing");
+    },
+    [panelWidthPx],
+  );
+
+  const onResizePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      // Drag handle on the left edge: move left → wider panel
+      const next = drag.startW + (drag.startX - e.clientX);
+      setPanelWidthPx(next, drag.stageW);
+    },
+    [setPanelWidthPx],
+  );
+
+  const endResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    document.body.classList.remove("preview-resizing");
+  }, []);
+
+  const activePreview = activeId
+    ? previews.find((p) => p.id === activeId) ?? null
+    : null;
+
+  const meta = previewTypeMeta(activePreview?.type, t);
+  const TypeIcon = meta.icon;
+
+  return (
+    <aside
+      className={`preview-sidebar ${isOpen ? "preview-sidebar--open" : ""}`}
+      style={{ width: isOpen ? panelWidthPx : 0 }}
+      aria-hidden={!isOpen}
+      aria-label={t("preview.documentPreview")}
+    >
+      {isOpen && (
+        <div
+          className="preview-sidebar__resizer app-no-drag"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("preview.resize")}
+          aria-valuenow={panelWidthPx}
+          tabIndex={0}
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onKeyDown={(e) => {
+            const stage = (e.currentTarget.closest(".chat-stage") as HTMLElement | null)
+              ?.getBoundingClientRect().width;
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              setPanelWidthPx(panelWidthPx + 24, stage);
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              setPanelWidthPx(panelWidthPx - 24, stage);
+            }
+          }}
+        >
+          <div className="preview-sidebar__resizer-grip" aria-hidden>
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+      )}
+      <div className="preview-sidebar__inner">
+        <header className="preview-sidebar__header">
+          <div className="preview-sidebar__title-row">
+            <span className="preview-sidebar__type-badge" aria-hidden>
+              <TypeIcon className="w-3.5 h-3.5" />
+              <span>{meta.label}</span>
+            </span>
+            {activePreview && (
+              <h2 className="preview-sidebar__filename" title={activePreview.title}>
+                {activePreview.title}
+              </h2>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            className="preview-sidebar__close app-no-drag"
+            title={t("preview.close")}
+          >
+            <PanelRightClose className="w-4 h-4" />
+          </button>
+        </header>
+
+        {previews.length > 1 && (
+          <div className="preview-sidebar__tabs" role="tablist">
+            {previews.map((p) => {
+              const active = p.id === activeId;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActive(p.id)}
+                  className={`preview-sidebar__tab ${active ? "preview-sidebar__tab--active" : ""}`}
+                  title={p.title}
+                >
+                  {p.title}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="preview-sidebar__stage">
+          <div className="preview-sidebar__canvas">
+            {isOpen ? (
+              <PreviewCanvas preview={activePreview} isRunning={isRunning} />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
