@@ -1,21 +1,54 @@
 /**
- * PPTX converter using Electron's built-in Chromium + dom-to-pptx.
+ * PPTX converter using Electron's built-in Chromium + dom-to-pptx (local bundle).
  *
  * Replaces the Puppeteer-based CLI path in packages/ppt-export for desktop use.
  * Renders HTML in a hidden BrowserWindow and calls dom-to-pptx directly.
+ *
+ * The dom-to-pptx UMD bundle is read from node_modules at module load time —
+ * no CDN, no network dependency, deterministic version.
  */
-import { BrowserWindow } from "electron";
-import fs from "node:fs/promises";
+import { BrowserWindow, app } from "electron";
+import fs from "node:fs";
+import fsPromises from "node:fs/promises";
+import path from "node:path";
+
+/** Resolve dom-to-pptx UMD bundle path, handling pnpm hoisting. */
+function resolveDomToPptxBundle(): string {
+  // In dev: relative to electron/ directory → node_modules at monorepo root
+  // In packaged: relative to app.asar → node_modules in asar
+  const candidates = [
+    // Packaged: next to app.asar
+    path.join(path.dirname(app.getAppPath()), "node_modules", "dom-to-pptx", "dist", "dom-to-pptx.bundle.js"),
+    // Dev: monorepo root node_modules (pnpm hoisted)
+    path.resolve(__dirname, "..", "..", "..", "node_modules", ".pnpm", "dom-to-pptx@2.1.1_yauzl@2.10.0", "node_modules", "dom-to-pptx", "dist", "dom-to-pptx.bundle.js"),
+    // Fallback: try require.resolve
+    (() => { try { return require.resolve("dom-to-pptx/dist/dom-to-pptx.bundle.js"); } catch { return ""; } })(),
+  ];
+
+  for (const p of candidates) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  throw new Error("dom-to-pptx bundle not found. Ensure dom-to-pptx is in dependencies.");
+}
+
+/** dom-to-pptx UMD bundle source, loaded once at module init. */
+let bundleScript: string | null = null;
+
+function getBundleScript(): string {
+  if (!bundleScript) {
+    bundleScript = fs.readFileSync(resolveDomToPptxBundle(), "utf-8");
+  }
+  return bundleScript;
+}
 
 /**
  * Render an HTML file to PPTX via headless BrowserWindow.
  *
- * Uses dom-to-pptx via CDN (esm.sh) to avoid bundling issues in Electron.
- * The 2-second loading delay is conservative for Tailwind CDN + font loading;
- * could be replaced by waitForSelector polling in production.
+ * Injects the dom-to-pptx UMD bundle from the local filesystem,
+ * then calls domToPptx.exportToPptx() in the renderer context.
  */
 export async function htmlToPptx(htmlPath: string, outputPath: string): Promise<void> {
-  const html = await fs.readFile(htmlPath, "utf-8");
+  const html = await fsPromises.readFile(htmlPath, "utf-8");
 
   const win = new BrowserWindow({
     width: 1920,
@@ -35,10 +68,14 @@ export async function htmlToPptx(htmlPath: string, outputPath: string): Promise<
     // Wait for Tailwind CDN + fonts to load
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
+    // Inject dom-to-pptx bundle, then call it
+    const script = getBundleScript();
     const pptxBase64: string = await win.webContents.executeJavaScript(`
-      (async () => {
-        const { exportToPptx } = await import('https://esm.sh/dom-to-pptx@2.1.1');
-        const buffer = await exportToPptx(document.body, {
+      (() => {
+        // Inject dom-to-pptx UMD bundle (defines globalThis.domToPptx)
+        ${script}
+
+        const buffer = domToPptx.exportToPptx(document.body, {
           width: 10,
           height: 5.625,
         });
@@ -52,7 +89,7 @@ export async function htmlToPptx(htmlPath: string, outputPath: string): Promise<
     `);
 
     const pptxBuffer = Buffer.from(pptxBase64, "base64");
-    await fs.writeFile(outputPath, pptxBuffer);
+    await fsPromises.writeFile(outputPath, pptxBuffer);
   } finally {
     win.close();
   }
