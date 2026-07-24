@@ -103,3 +103,31 @@ docs/superpowers/
 *.pptx
 ~$*
 .gstack/
+
+# ============================================================
+# Local QA / generated artifacts
+# ============================================================
+
+# Product-design audits and root-level QA screenshots
+/audit/
+/design-qa.md
+/slide*.png
+
+# Agent task deliverables and disposable workspaces
+/output/
+/workspace/
+
+# Desktop build output
+**/dist-electron/
+
+# Runtime state created when launching packages directly
+/apps/server/.hive/
+/packages/core/.hive/
+
+# Local smoke-test and presentation preview files
+/apps/server/smoke*.txt
+/apps/server/*-demo.html
+/apps/server/project-report.html
+
+# Accidental line-range export created during local inspection
+/apps/server/src/gateway/http.ts:250-257
