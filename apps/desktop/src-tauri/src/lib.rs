@@ -248,7 +248,7 @@ async fn spawn_server(state: &ServerState, force: bool) -> Result<(), String> {
                 state.entry, state.project_root
             );
             (
-                "node".to_string(),
+                "bun".to_string(),
                 vec![state.entry.as_str()],
                 state.project_root.clone(),
             )

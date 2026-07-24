@@ -886,9 +886,12 @@ class ServerImpl implements Server {
           },
         });
 
-        // 优先使用 finalText（最后一次工具调用后的文本）
-        const replyText = (result as any).finalText
-          || result.text
+        // finalText is the assistant segment after the last tool call. It may
+        // intentionally be empty; never fall back to accumulated operational
+        // narration in result.text.
+        const finalText = (result as { finalText?: string }).finalText;
+        const replyText = (typeof finalText === 'string' ? finalText.trim() : '')
+          || (typeof finalText === 'undefined' ? result.text : '')
           || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`);
 
         this.logger.info(`[agent] completed (${result.duration}ms)`);
