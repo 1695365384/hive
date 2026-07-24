@@ -10,8 +10,8 @@ export type { AgentCapability, AgentContext } from '../core/types.js';
 // 能力类
 export { ProviderCapability } from './ProviderCapability.js';
 export { SkillCapability } from './SkillCapability.js';
-export { CoordinatorCapability } from './CoordinatorCapability.js';
-export type { DispatchOptions, DispatchResult } from './CoordinatorCapability.js';
+// CoordinatorCapability replaced by AgentLoop — see agents/core/AgentLoop.ts
+export type { DispatchOptions, DispatchResult } from '../types/dispatch.js';
 export type { AdversarialConfig } from '../harness/types.js';
 export { SessionCapability, createSessionCapability } from './SessionCapability.js';
 export type { SessionCapabilityConfig, DispatchTraceEvent } from './SessionCapability.js';

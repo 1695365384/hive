@@ -53,7 +53,7 @@ const READ_ONLY_TOOLS: Array<{ name: string; factory: () => Tool }> = [
  * - explore/plan/librarian/momus/oracle/critic/arbiter: 只读工具
  * - metis: 只读 + ask-user（计划前澄清）
  * - general: 全量工具
- * - schedule: 空白名单，schedule 工具由 agent-tool.ts 在 spawn 时动态注册
+ * - schedule: 空白名单（schedule 工具由 schedule capability 动态注册）
  */
 const AGENT_TOOL_WHITELIST: Record<AgentType, Array<{ name: string; factory: () => Tool }>> = {
   explore: [...READ_ONLY_TOOLS],

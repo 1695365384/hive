@@ -2,7 +2,7 @@
  * TaskManager — Worker 生命周期管理
  *
  * 追踪活跃的 Worker 任务，支持注册、中止和查询。
- * 被 CoordinatorCapability 和 AgentTool 共享使用。
+ * 供 AgentLoop / ServerImpl abort 子任务使用。
  *
  * Worker 状态机：
  *   PENDING → RUNNING → SUCCESS

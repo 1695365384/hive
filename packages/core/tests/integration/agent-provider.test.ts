@@ -11,9 +11,58 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Agent, createAgent } from '../../src/agents/core/index.js';
 import type { ProviderConfig } from '../../src/providers/types.js';
-import { streamText } from 'ai';
 
-// Mock ai module so streamText is a spy
+const { piSession } = vi.hoisted(() => {
+  const queue: Array<{ text: string; tools?: string[]; success?: boolean; error?: string }> = [
+    { text: 'Mock response' },
+  ];
+  let callCount = 0;
+  const runWithPiAgentSession = vi.fn(async (input: any) => {
+    callCount += 1;
+    const next = queue.shift() ?? { text: 'Mock response' };
+    input.options?.onPhase?.('execute', '');
+    if (next.text) input.options?.onText?.(next.text);
+    for (const tool of next.tools ?? []) {
+      input.options?.onTool?.(tool, {});
+      input.options?.onToolResult?.(tool, 'ok');
+    }
+    const success = next.success !== false && !next.error;
+    input.options?.onTaskProgress?.(
+      success ? { phase: 'done' } : { phase: 'blocked', message: next.error ?? 'blocked' },
+    );
+    return {
+      text: next.text ?? '',
+      finalText: next.text ?? '',
+      success,
+      duration: 1,
+      tools: next.tools ?? [],
+      error: next.error,
+      verification: { passed: true, results: [] },
+    };
+  });
+  return {
+    piSession: {
+      runWithPiAgentSession,
+      mapPiSessionEventToDispatch: vi.fn(),
+      setResponses(responses: Array<{ text: string; tools?: string[]; success?: boolean; error?: string }>) {
+        queue.length = 0;
+        queue.push(...responses);
+      },
+      getCallCount: () => callCount,
+      resetCallCount: () => {
+        callCount = 0;
+      },
+    },
+  };
+});
+
+vi.mock('../../src/agents/core/PiAgentSessionAdapter.js', () => ({
+  runWithPiAgentSession: (...args: unknown[]) => (piSession.runWithPiAgentSession as any)(...args),
+  mapPiSessionEventToDispatch: piSession.mapPiSessionEventToDispatch,
+}));
+
+
+// Keep ai mock for any residual runner paths
 vi.mock('ai', () => ({
   streamText: vi.fn(),
   generateText: vi.fn(),
@@ -38,9 +87,6 @@ vi.mock('../../src/providers/ProviderManager.js', () => {
   class MockProviderManager {
     active: any = null;
     all: any[] = [];
-    getModelWithSpec = vi.fn().mockResolvedValue({ model: fakeModel, spec: null });
-    getModelForProvider = vi.fn().mockResolvedValue(fakeModel);
-    getModel = vi.fn().mockResolvedValue(fakeModel);
     switch = vi.fn().mockReturnValue(false);
     reResolveAll = vi.fn();
     dispose = vi.fn();
@@ -286,12 +332,6 @@ describe('Agent + Provider Integration', () => {
 
     it('should have providerManager in context', () => {
       expect(agent.context.providerManager).toBeDefined();
-    });
-
-    it('should get model from providerManager', () => {
-      const model = agent.context.providerManager.getModel();
-      // 可能为 null（如果没有配置 provider）
-      expect(model === null || typeof model === 'object').toBe(true);
     });
 
     it('should handle missing provider gracefully', async () => {
@@ -549,7 +589,7 @@ describe('Agent + Provider Integration', () => {
       const presetIds = presets.map(p => p.id.toLowerCase());
 
       // 验证已知的 provider 都在预设列表中
-      const knownProviders = ['anthropic', 'openai', 'google', 'deepseek', 'glm', 'qwen'];
+      const knownProviders = ['anthropic', 'openai', 'google', 'deepseek', 'zai', 'qwen-portal'];
       for (const known of knownProviders) {
         if (presetIds.includes(known)) {
           const preset = presets.find(p => p.id.toLowerCase() === known);
@@ -649,23 +689,23 @@ describe('Agent + Provider Integration', () => {
 
     it('should include GLM in presets', () => {
       const presets = agent.listPresets();
-      const glm = presets.find(p => p.id.toLowerCase() === 'glm');
+      const glm = presets.find(p => p.id.toLowerCase() === 'zai');
       expect(glm).toBeDefined();
-      expect(glm?.name).toContain('GLM');
+      expect(glm?.name).toContain('zAI');
     });
 
     it('should include Qwen in presets', () => {
       const presets = agent.listPresets();
-      const qwen = presets.find(p => p.id.toLowerCase() === 'qwen');
+      const qwen = presets.find(p => p.id.toLowerCase() === 'qwen-portal');
       expect(qwen).toBeDefined();
-      expect(qwen?.name).toContain('通义');
+      expect(qwen?.name).toMatch(/Qwen|通义/);
     });
 
     it('should include Kimi in presets', () => {
       const presets = agent.listPresets();
-      const kimi = presets.find(p => p.id.toLowerCase() === 'kimi');
+      const kimi = presets.find(p => p.id.toLowerCase() === 'moonshot');
       expect(kimi).toBeDefined();
-      expect(kimi?.name).toContain('Kimi');
+      expect(kimi?.name).toMatch(/Kimi|Moonshot/);
     });
 
     it('should include Groq in presets', () => {
@@ -679,13 +719,16 @@ describe('Agent + Provider Integration', () => {
       const presets = agent.listPresets();
 
       // DeepSeek, GLM, Qwen 等应该是 openai-compatible 类型
-      const compatibleProviders = ['deepseek', 'glm', 'qwen', 'kimi', 'moonshot', 'groq', 'openrouter', 'litellm'];
+      const compatibleProviders = ['deepseek', 'qwen-portal', 'moonshot', 'groq', 'openrouter'];
       for (const providerId of compatibleProviders) {
         const preset = presets.find(p => p.id.toLowerCase() === providerId);
         if (preset) {
           expect(preset.type).toBe('openai-compatible');
         }
       }
+      // zAI speaks Anthropic Messages API in pi catalog
+      const zai = presets.find(p => p.id.toLowerCase() === 'zai');
+      expect(zai?.type).toBe('anthropic');
     });
 
     it('should return non-empty presets list', () => {
@@ -760,29 +803,21 @@ describe('Agent + Provider Integration', () => {
       agent = createAgent();
       await agent.initialize();
       vi.clearAllMocks();
+      piSession.resetCallCount();
+      piSession.setResponses([{ text: 'Mock response' }]);
     });
 
     afterEach(async () => {
       await agent.dispose();
     });
 
-    it('should call streamText during chat', async () => {
-      (streamText as any).mockReturnValueOnce({
-        fullStream: (async function* () {
-          yield { type: 'start' };
-          yield { type: 'text-delta', text: 'Hello from mock provider' };
-          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 10, outputTokens: 5 } };
-        })(),
-        text: Promise.resolve('Hello from mock provider'),
-        finishReason: Promise.resolve('stop'),
-        steps: Promise.resolve([]),
-        totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
-      });
+    it('should call pi session during chat', async () => {
+      piSession.setResponses([{ text: 'Hello from mock provider' }]);
 
       const result = await agent.dispatch('hello');
 
       expect(result.text).toBe('Hello from mock provider');
-      expect(streamText).toHaveBeenCalled();
+      expect(piSession.runWithPiAgentSession).toHaveBeenCalled();
     });
 
     it('should trigger provider:beforeChange hook on useProvider', async () => {
@@ -823,46 +858,27 @@ describe('Agent + Provider Integration', () => {
       const providers = agent.listProviders();
       if (providers.length < 1) return;
 
-      // 先切换 provider
       agent.useProvider(providers[0].id);
 
-      // 再 chat
-      (streamText as any).mockReturnValueOnce({
-        fullStream: (async function* () {
-          yield { type: 'start' };
-          yield { type: 'text-delta', text: 'Response after switch' };
-          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 10, outputTokens: 5 } };
-        })(),
-        text: Promise.resolve('Response after switch'),
-        finishReason: Promise.resolve('stop'),
-        steps: Promise.resolve([]),
-        totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
-      });
+      piSession.setResponses([{ text: 'Response after switch' }]);
 
       const result = await agent.dispatch('test after switch');
       expect(result.text).toBe('Response after switch');
-      expect(streamText).toHaveBeenCalled();
+      expect(piSession.runWithPiAgentSession).toHaveBeenCalled();
     });
 
-    it('should pass provider config to LLM via streamText call', async () => {
-      (streamText as any).mockReturnValueOnce({
-        fullStream: (async function* () {
-          yield { type: 'start' };
-          yield { type: 'text-delta', text: 'OK' };
-          yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 10, outputTokens: 5 } };
-        })(),
-        text: Promise.resolve('OK'),
-        finishReason: Promise.resolve('stop'),
-        steps: Promise.resolve([]),
-        totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
-      });
+    it('should pass task/systemPrompt into pi session', async () => {
+      piSession.setResponses([{ text: 'OK' }]);
 
       await agent.dispatch('hello');
 
-      // streamText 应该被调用，且包含 model 参数
-      const callArgs = (streamText as any).mock.calls[0][0];
+      const callArgs = piSession.runWithPiAgentSession.mock.calls[0][0] as {
+        task: string;
+        systemPrompt: string;
+      };
       expect(callArgs).toBeDefined();
-      expect(callArgs.model).toBeDefined();
+      expect(callArgs.task).toBe('hello');
+      expect(typeof callArgs.systemPrompt).toBe('string');
     });
   });
 });

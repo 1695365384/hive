@@ -19,9 +19,9 @@ describe('Agent dispatch/chat', () => {
   });
 
   describe('dispatch() 行为', () => {
-    it('dispatch() should delegate to coordinatorCap.run() and return full DispatchResult', async () => {
-      const coordinatorCap = (agent as any).coordinatorCap;
-      vi.spyOn(coordinatorCap, 'run').mockResolvedValue({
+    it('dispatch() should delegate to agentLoop.run() and return full DispatchResult', async () => {
+      const agentLoop = (agent as any).agentLoop;
+      vi.spyOn(agentLoop, 'run').mockResolvedValue({
         text: 'Hello!',
         success: true,
         duration: 100,
@@ -32,12 +32,12 @@ describe('Agent dispatch/chat', () => {
 
       expect(result.text).toBe('Hello!');
       expect(result.success).toBe(true);
-      expect(coordinatorCap.run).toHaveBeenCalledWith('Test prompt', undefined);
+      expect(agentLoop.run).toHaveBeenCalledWith('Test prompt', undefined);
     });
 
-    it('dispatch() should pass options to coordinatorCap.run()', async () => {
-      const coordinatorCap = (agent as any).coordinatorCap;
-      vi.spyOn(coordinatorCap, 'run').mockResolvedValue({
+    it('dispatch() should pass options to agentLoop.run()', async () => {
+      const agentLoop = (agent as any).agentLoop;
+      vi.spyOn(agentLoop, 'run').mockResolvedValue({
         text: 'result',
         success: true,
         duration: 100,
@@ -46,12 +46,12 @@ describe('Agent dispatch/chat', () => {
 
       await agent.dispatch('Test', { sessionId: 'test-session' });
 
-      expect(coordinatorCap.run).toHaveBeenCalledWith('Test', { sessionId: 'test-session' });
+      expect(agentLoop.run).toHaveBeenCalledWith('Test', { sessionId: 'test-session' });
     });
 
     it('dispatch() should return DispatchResult with error on failure', async () => {
-      const coordinatorCap = (agent as any).coordinatorCap;
-      vi.spyOn(coordinatorCap, 'run').mockResolvedValue({
+      const agentLoop = (agent as any).agentLoop;
+      vi.spyOn(agentLoop, 'run').mockResolvedValue({
         text: '',
         success: false,
         duration: 100,
@@ -67,8 +67,8 @@ describe('Agent dispatch/chat', () => {
     });
 
     it('dispatch() should return full DispatchResult', async () => {
-      const coordinatorCap = (agent as any).coordinatorCap;
-      vi.spyOn(coordinatorCap, 'run').mockResolvedValue({
+      const agentLoop = (agent as any).agentLoop;
+      vi.spyOn(agentLoop, 'run').mockResolvedValue({
         text: 'Response',
         success: true,
         duration: 200,

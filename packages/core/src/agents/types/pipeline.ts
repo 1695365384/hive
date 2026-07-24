@@ -16,7 +16,7 @@ import type { EnvironmentContext } from '../../environment/types.js';
  * 子 Agent 阶段的结构化结果
  *
  * 在阶段间传递，替代原始文本拼接。
- * 由 ContextCompactor 从 AgentResult 压缩生成。
+ * 由管道阶段从 AgentResult 结构化生成。
  */
 export interface AgentPhaseResult {
   /** 压缩后的摘要（< 2000 chars） */
@@ -35,26 +35,6 @@ export interface AgentPhaseResult {
   originalLength: number;
   /** 压缩后的字符数 */
   compressedLength: number;
-}
-
-// ============================================
-// 压缩配置
-// ============================================
-
-/**
- * Context Compactor 配置
- */
-export interface CompactorConfig {
-  /** 用于压缩的模型 ID（不指定则使用 provider 最低成本模型） */
-  model?: string;
-  /** 是否保留原始文本（用于 debug，默认 false） */
-  preserveRaw?: boolean;
-  /** 摘要最大字符数（默认 2000） */
-  maxSummaryLength?: number;
-  /** 最大 findings 数量（默认 20） */
-  maxFindings?: number;
-  /** 最大 suggestions 数量（默认 10） */
-  maxSuggestions?: number;
 }
 
 // ============================================

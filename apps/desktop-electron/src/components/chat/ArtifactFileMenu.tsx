@@ -55,7 +55,7 @@ export function ArtifactFileMenu({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void fetchOpenTargets(name).then((installed) => {
+    void fetchOpenTargets(name ?? "").then((installed) => {
       if (!cancelled) setApps(installed);
     });
     return () => {

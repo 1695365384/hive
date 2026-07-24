@@ -243,7 +243,7 @@ export class PluginHandler extends WsDomainHandler {
     _server: ReturnType<HandlerContext['getServer']>,
   ): Promise<IPlugin> {
     // 所有来源（npm/local/git）统一通过 scanPluginDir 获取 manifest，
-    // 然后用文件路径 import，避免 SEA 环境下 import(npmPkg) 无法解析。
+    // 然后用文件路径 import，避免打包/运行环境下 import(npmPkg) 无法解析。
     const { scanPluginDir } = await import('../../../plugins.js')
     const manifests = scanPluginDir()
     const target = manifests.find(m => m.id === pluginId)

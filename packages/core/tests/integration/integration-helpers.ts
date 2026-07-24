@@ -2,7 +2,7 @@
  * 集成测试共享基础设施
  *
  * 提供智能 AI SDK mock、Agent 生命周期管理、场景预设、断言增强。
- * Mock 结构严格对齐 hive-core 实际使用的 AI SDK 接口（LLMRuntime.ts）。
+ * AgentLoop 主路径 mock PiAgentSessionAdapter；AI SDK mock 供仍用 generateText 的旁路用例。
  *
  * 使用方式:
  *   import { createMockAI, createTestAgent, withAgent, ... } from './integration-helpers.js';
@@ -14,13 +14,90 @@ import { vi, expect } from 'vitest';
 import type { Agent } from '../../src/agents/core/index.js';
 
 // ============================================
-// Mock Provider — 让 LLMRuntime.resolveModelWithSpec() 通过
+// Mock PiAgentSessionAdapter — AgentLoop 唯一执行核
+// ============================================
+
+export type MockPiSessionResponse = {
+  text: string;
+  tools?: string[];
+  success?: boolean;
+  error?: string;
+};
+
+/**
+ * Mock runWithPiAgentSession for integration tests that go through Agent.dispatch.
+ * Prefer this over mocking AI SDK streamText for AgentLoop paths.
+ */
+export function createMockPiSession(options?: {
+  responses?: MockPiSessionResponse[];
+}) {
+  const queue: MockPiSessionResponse[] = [
+    ...(options?.responses ?? [{ text: 'Mock response' }]),
+  ];
+  let callCount = 0;
+
+  const runWithPiAgentSession = vi.fn(async (input: {
+    task: string;
+    options?: {
+      onPhase?: (phase: string, message: string) => void;
+      onText?: (text: string) => void;
+      onTool?: (tool: string, input?: unknown) => void;
+      onToolResult?: (tool: string, result: unknown) => void;
+      onTaskProgress?: (progress: { phase: string; message?: string }) => void;
+      systemPrompt?: string;
+      modelId?: string;
+    };
+    systemPrompt: string;
+  }) => {
+    callCount += 1;
+    const next = queue.shift() ?? { text: 'Mock response' };
+    input.options?.onPhase?.('execute', '');
+    if (next.text) {
+      input.options?.onText?.(next.text);
+    }
+    for (const tool of next.tools ?? []) {
+      input.options?.onTool?.(tool, {});
+      input.options?.onToolResult?.(tool, 'ok');
+    }
+    const success = next.success !== false && !next.error;
+    input.options?.onTaskProgress?.(
+      success
+        ? { phase: 'done' }
+        : { phase: 'blocked', message: next.error ?? 'blocked' },
+    );
+    return {
+      text: next.text ?? '',
+      finalText: next.text ?? '',
+      success,
+      duration: 1,
+      tools: next.tools ?? [],
+      error: next.error,
+      verification: { passed: true, results: [] },
+    };
+  });
+
+  return {
+    runWithPiAgentSession,
+    mapPiSessionEventToDispatch: vi.fn(),
+    setResponses(responses: MockPiSessionResponse[]) {
+      queue.length = 0;
+      queue.push(...responses);
+    },
+    getCallCount: () => callCount,
+    resetCallCount: () => {
+      callCount = 0;
+    },
+  };
+}
+
+// ============================================
+// Mock Provider — 让 ProviderManager 解析到可用 model
 // ============================================
 
 /**
  * 创建 fake LanguageModelV3 用于 mock Provider
  *
- * LLMRuntime.resolveModelWithSpec() 需要返回一个 model 实例，
+ * Provider 解析需要返回一个 model 实例，
  * 否则会报 "No available model" 错误。
  */
 export function createFakeModel(): Record<string, unknown> {
@@ -49,10 +126,7 @@ export function createMockProviderManagerModule(): Record<string, any> {
     active: null,
     all: [],
 
-    // Core methods used by LLMRuntime
-    getModelWithSpec: vi.fn().mockResolvedValue({ model: fakeModel, spec: null }),
-    getModelForProvider: vi.fn().mockResolvedValue(fakeModel),
-    getModel: vi.fn().mockResolvedValue(fakeModel),
+    // Core ProviderManager methods
 
     // Provider management methods
     switch: vi.fn().mockReturnValue(false),
@@ -76,7 +150,7 @@ export function createMockProviderManagerModule(): Record<string, any> {
 }
 
 // ============================================
-// Types — 对齐 LLMRuntime.ts 实际使用的结构
+// Types — 对齐 AI SDK generateText/streamText 结构
 // ============================================
 
 /** generateText mock 响应（对齐 AI SDK generateText 返回值） */

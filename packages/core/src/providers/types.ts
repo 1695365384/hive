@@ -21,19 +21,17 @@ export type ProviderType = 'openai' | 'anthropic' | 'google' | 'openai-compatibl
  * Provider 配置
  */
 export interface ProviderConfig {
-  /** 唯一标识（对应 providers 表 id） */
+  /** 唯一标识（pi catalog provider id） */
   id: string;
   /** 显示名称 */
   name: string;
-  /** Provider 类型（由 providers 表自动补全） */
+  /** Provider 类型（由 pi catalog 自动补全） */
   type?: ProviderType;
-  /** AI SDK npm 包名（由 providers 表自动补全，用于适配器匹配） */
-  npmPackage?: string;
-  /** API 基础 URL（由 providers 表自动补全，用户配置中不需要设置） */
+  /** API 基础 URL（由 pi catalog 自动补全，用户配置中不需要设置） */
   baseUrl?: string;
   /** API Key（用户配置或环境变量） */
   apiKey?: string;
-  /** 默认模型（由 providers 表自动补全） */
+  /** 默认模型（由 pi catalog 自动补全） */
   model?: string;
   /** 是否启用 */
   enabled?: boolean;
@@ -172,115 +170,19 @@ export interface ModelSpec {
 }
 
 // ============================================
-// Models.dev API 类型
+// Pi catalog 提供商（UI / ProviderManager 共用 DTO）
 // ============================================
 
-/**
- * Models.dev API 原始模型格式
- *
- * @see https://models.dev
- */
-export interface ModelsDevModelRaw {
-  id: string;
-  name: string;
-  family?: string;
-  attachment?: boolean;
-  reasoning?: boolean;
-  tool_call?: boolean;
-  structured_output?: boolean;
-  temperature?: boolean;
-  knowledge?: string;
-  release_date?: string;
-  last_updated?: string;
-  open_weights?: boolean;
-  interleaved?: { field: string };
-  modalities?: {
-    input: string[];
-    output: string[];
-  };
-  cost?: {
-    input: number;
-    output: number;
-    cache_read?: number;
-    cache_write?: number;
-    reasoning?: number;
-    input_audio?: number;
-    output_audio?: number;
-    context_over_200k?: number;
-  };
-  limit?: {
-    context: number;
-    input?: number;
-    output: number;
-  };
-  status?: 'alpha' | 'beta' | 'deprecated';
-}
-
-/**
- * Models.dev API 原始提供商格式
- */
-export interface ModelsDevProviderRaw {
-  id: string;
-  name: string;
-  env?: string[];
-  npm?: string;
-  api?: string;
-  doc?: string;
-  logo?: string;
-  models: Record<string, ModelsDevModelRaw>;
-}
-
-/**
- * Models.dev API 完整响应格式
- */
-export interface ModelsDevResponse {
-  providers: Record<string, ModelsDevProviderRaw>;
-}
-
-/**
- * 转换后的提供商信息
- */
-export interface ModelsDevProvider {
+/** oh-my-pi catalog 提供商条目（Desktop provider.list 协议形状）。 */
+export interface PiCatalogProvider {
   id: string;
   name: string;
   baseUrl: string;
   envKeys: string[];
-  npmPackage: string;
   docUrl?: string;
   logo?: string;
   type: ProviderType;
   models: ModelSpec[];
-}
-
-// ============================================
-// Provider Registry 注册信息
-// ============================================
-
-/**
- * Provider 注册信息
- *
- * 内置 Registry 中存储的已知 Provider 默认配置。
- * ProviderManager 根据 id 查询 Registry 自动补全缺失配置。
- */
-export interface ProviderRegistration {
-  /** API 基础 URL */
-  baseUrl: string;
-  /** Provider 类型 */
-  type?: ProviderType;
-  /** 默认模型 */
-  defaultModel?: string;
-  /** 参数预处理规则 */
-  preprocessRules?: PreprocessRule[];
-  /** 环境变量 Key（用于 apiKey fallback） */
-  envKeys?: string[];
-}
-
-/**
- * 参数预处理规则
- */
-export interface PreprocessRule {
-  /** 要移除的参数字段 */
-  remove?: string[];
 }
 
 // ============================================

@@ -38,18 +38,6 @@ export {
 } from './agents.js';
 
 // ============================================
-// Agent 运行器（含 Task 系统）
-// ============================================
-
-export {
-  AgentRunner,
-  createAgentRunner,
-  type TaskConfig,
-  type TaskResult,
-  type ParallelTaskConfig,
-} from './runner.js';
-
-// ============================================
 // CapabilityRegistry
 // ============================================
 

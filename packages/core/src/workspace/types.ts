@@ -92,10 +92,6 @@ export interface WorkspacePaths {
   providersFile: string;
   /** 缓存目录 */
   cacheDir: string;
-  /** models.dev 缓存文件 */
-  modelsDevCacheFile: string;
-  /** models.dev SQLite 数据库文件 */
-  modelsDevDbFile: string;
   /** SQLite 数据库文件 */
   dbFile: string;
 }

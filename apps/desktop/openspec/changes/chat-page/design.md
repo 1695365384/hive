@@ -1,6 +1,6 @@
 ## Context
 
-Hive Desktop 是 Tauri + React 19 + Tailwind 4 SPA，通过 WebSocket 与 Hive Server 通信。当前缺少与 Agent 对话的入口。Server 端 LLMRuntime 已支持 fullStream 流式事件。
+Hive Desktop 是 Tauri + React 19 + Tailwind 4 SPA，通过 WebSocket 与 Hive Server 通信。当前缺少与 Agent 对话的入口。Server 端经 pi AgentLoop 适配器支持流式事件。
 
 ## Goals / Non-Goals
 

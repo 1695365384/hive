@@ -6,7 +6,7 @@
 
 import { ProviderManager } from '../../providers/index.js';
 import type { ExternalConfig } from '../../providers/index.js';
-import { AgentRunner } from './runner.js';
+import { ToolRegistry } from '../../tools/tool-registry.js';
 import { SkillRegistry, createSkillRegistry } from '../../skills/index.js';
 import { AgentRegistryImpl } from '../registry/AgentRegistry.js';
 import { HookRegistry } from '../../hooks/index.js';
@@ -35,7 +35,7 @@ export interface AgentContextOptions {
  */
 export class AgentContextImpl implements AgentContext {
   readonly providerManager: ProviderManager;
-  readonly runner: AgentRunner;
+  readonly toolRegistry: ToolRegistry;
   readonly skillRegistry: SkillRegistry;
   readonly agentRegistry: AgentRegistryImpl;
   readonly hookRegistry: HookRegistry;
@@ -66,7 +66,8 @@ export class AgentContextImpl implements AgentContext {
     this.environmentContext = environmentContext;
 
     this.providerManager = new ProviderManager({ externalConfig });
-    this.runner = new AgentRunner(this.providerManager);
+    this.toolRegistry = new ToolRegistry();
+    this.toolRegistry.registerBuiltInTools();
     this.skillRegistry = createSkillRegistry(skillConfig);
     this.agentRegistry = new AgentRegistryImpl();
     this.hookRegistry = new HookRegistry();

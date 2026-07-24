@@ -13,7 +13,7 @@ import { SkillLoader, createSkillLoader } from './loader.js';
 import { SkillMatcher, createSkillMatcher } from './matcher.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DEFAULT_WORKSPACE_DIR } from '../workspace/index.js';
+import { DEFAULT_WORKSPACE_DIR, getHiveHomeDir } from '../workspace/index.js';
 
 function resolveBuiltinSkillsDir(): string {
   const envSkillsDir = process.env.HIVE_SKILLS_DIR?.trim();
@@ -57,7 +57,16 @@ export class SkillRegistry {
   }
 
   private getConfiguredSkillDirs(): string[] {
-    return [this.config.builtinSkillsDir, this.config.userSkillsDir].filter((dir): dir is string => Boolean(dir));
+    // 三层目录、各司其职（同一 skill 只装一份）：
+    // 1) builtinSkillsDir  = cwd/.hive/skills          项目内置
+    // 2) userSkillsDir     = cwd/.hive/skills.local    SkillHub/本地安装
+    // 3) $HIVE_HOME/skills = ~/.hive/skills            全局用户 skill（如 dashi-ppt）
+    const dirs = [
+      this.config.builtinSkillsDir,
+      this.config.userSkillsDir,
+      path.join(getHiveHomeDir(), 'skills'),
+    ];
+    return [...new Set(dirs.filter((dir): dir is string => Boolean(dir)))];
   }
 
   private collectSkillFiles(dir: string): string[] {

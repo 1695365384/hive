@@ -661,13 +661,15 @@ export function ChatPage() {
             ? "已交给 Office"
             : data.phase === "creating"
               ? "正在建稿"
-              : data.phase === "validating"
-                ? "检查版式"
-                : data.phase === "delivering"
-                  ? "正在交付"
-                  : data.phase === "blocked"
-                    ? "需要修正"
-                    : "Office 进行中",
+              : data.phase === "adding_slide"
+                ? "正在添加页面"
+                : data.phase === "validating"
+                  ? "检查版式"
+                  : data.phase === "delivering"
+                    ? "正在交付"
+                    : data.phase === "blocked"
+                      ? "需要修正"
+                      : "Office 进行中",
         detail,
       });
     }

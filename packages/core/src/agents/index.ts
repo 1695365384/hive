@@ -26,19 +26,12 @@ export {
   getAgentConfig,
   getAllAgentNames,
 
-  // 运行器（含 Task 系统）
-  AgentRunner,
-  createAgentRunner,
-
   // 类型
   type AgentInitOptions,
   type AgentConfig,
   type AgentResult,
   type ThoroughnessLevel,
   type AgentType,
-  type TaskConfig,
-  type TaskResult,
-  type ParallelTaskConfig,
 } from './core/index.js';
 
 // ============================================
@@ -48,7 +41,7 @@ export {
 export {
   ProviderCapability,
   SkillCapability,
-  CoordinatorCapability,
+  // CoordinatorCapability replaced by AgentLoop,
   ScheduleCapability,
   createScheduleCapability,
 } from './capabilities/index.js';

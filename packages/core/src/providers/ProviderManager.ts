@@ -1,19 +1,21 @@
 /**
  * Provider 管理器
  *
- * 统一管理所有 Provider 配置和状态
- * 使用 AI SDK 适配器和 Models.dev 元数据
+ * 统一管理所有 Provider 配置和状态。
+ * 元数据唯一来源：oh-my-pi catalog（via pi-catalog-bridge）。
  */
 
-import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { ProviderConfig, ConfigSource, ExternalConfig } from './types.js';
 import type { ModelSpec } from './types.js';
 import type { ILogger } from '../plugins/types.js';
 import { noopLogger } from '../plugins/types.js';
-import { adapterRegistry } from './adapters/index.js';
 import { createConfigChain } from './sources/index.js';
-import { getProviderInfoSync } from './metadata/provider-registry.js';
-import { fetchModelSpec } from './metadata/index.js';
+import {
+  getPiProviderDescriptorSync,
+  getPiProviderMetaSync,
+  listPiProviderModels,
+  normalizeProviderId,
+} from './pi-catalog-bridge.js';
 
 /**
  * Provider 信息
@@ -48,12 +50,10 @@ export class ProviderManager {
     this.externalConfig = options.externalConfig ?? null;
     this.logger = options.logger ?? noopLogger;
 
-    // 如果提供了外部配置，优先使用
     if (this.externalConfig) {
       this.loadExternalConfig();
     }
 
-    // 如果允许环境变量 fallback，加载环境变量配置
     if (options.useEnvFallback !== false) {
       this.sources = createConfigChain();
       this.loadFromSources();
@@ -61,7 +61,6 @@ export class ProviderManager {
       this.sources = [];
     }
 
-    // 设置默认 Provider
     if (!this.activeId && this.providers.size > 0) {
       this.activeId = this.externalConfig?.activeProvider
         ?? this.providers.keys().next().value
@@ -69,15 +68,11 @@ export class ProviderManager {
     }
   }
 
-  /**
-   * 加载外部配置
-   */
   private loadExternalConfig(): void {
     if (!this.externalConfig?.providers) return;
 
     for (const config of this.externalConfig.providers) {
-      // 从 Registry 补全缺失的 baseUrl、type、apiKey
-      const resolvedConfig = this.resolveFromRegistry(config);
+      const resolvedConfig = this.resolveFromCatalog(config);
       this.providers.set(resolvedConfig.id, {
         config: resolvedConfig,
       });
@@ -85,43 +80,34 @@ export class ProviderManager {
   }
 
   /**
-   * 从 providers 表补全缺失配置
-   *
-   * providers 表是 baseUrl 和 npmPackage 的唯一来源：
-   * - baseUrl: providers 表 → 适配器
-   * - npmPackage: providers 表 → 适配器工厂匹配
-   * - defaultModel: providers 表
-   * - apiKey: 用户配置 > 环境变量(由 providers 表 envKeys 指定)
-   *
-   * models 表仅用于：校验模型合法性 + 获取 context window 等元数据
+   * 从 pi catalog 补全缺失配置（baseUrl / type / defaultModel / apiKey）。
    */
-  private resolveFromRegistry(config: ProviderConfig): ProviderConfig {
-    const info = getProviderInfoSync(config.id);
-    const resolved = { ...config };
+  private resolveFromCatalog(config: ProviderConfig): ProviderConfig {
+    const canonical = normalizeProviderId(config.id);
+    const warmed = getPiProviderMetaSync(canonical);
+    const descriptor = getPiProviderDescriptorSync(canonical);
+    const resolved: ProviderConfig = {
+      ...config,
+      id: canonical,
+      name: config.name || descriptor?.name || canonical,
+    };
 
-    // 1. baseUrl 始终来自 providers 表（用户配置中不应包含 baseUrl）
-    if (info?.baseUrl) {
-      resolved.baseUrl = info.baseUrl;
+    const catalogBaseUrl = warmed?.baseUrl ?? descriptor?.baseUrl;
+    if (catalogBaseUrl) {
+      resolved.baseUrl = catalogBaseUrl;
     }
 
-    // 2. npmPackage 来自 providers 表（用于适配器匹配）
-    if (info?.npmPackage) {
-      resolved.npmPackage = info.npmPackage;
+    if (warmed?.type || descriptor?.type) {
+      resolved.type = warmed?.type ?? descriptor?.type;
     }
 
-    // 3. type 来自 providers 表
-    if (info?.type) {
-      resolved.type = info.type;
+    if (!resolved.model && (warmed?.models?.[0]?.id || descriptor?.defaultModel)) {
+      resolved.model = warmed?.models?.[0]?.id ?? descriptor?.defaultModel;
     }
 
-    // 4. defaultModel 来自 providers 表
-    if (!resolved.model && info?.defaultModel) {
-      resolved.model = info.defaultModel;
-    }
-
-    // 5. apiKey: 用户配置 > 环境变量
-    if (!resolved.apiKey && info?.envKeys?.length) {
-      for (const envKey of info.envKeys) {
+    const envKeys = descriptor?.envKeys ?? warmed?.envKeys ?? [];
+    if (!resolved.apiKey && envKeys.length) {
+      for (const envKey of envKeys) {
         const apiKey = process.env[envKey];
         if (apiKey) {
           resolved.apiKey = apiKey;
@@ -130,9 +116,8 @@ export class ProviderManager {
       }
     }
 
-    // fallback: ${PROVIDER_ID}_API_KEY
     if (!resolved.apiKey) {
-      const fallbackEnvKey = `${config.id.toUpperCase()}_API_KEY`;
+      const fallbackEnvKey = `${canonical.toUpperCase().replace(/-/g, '_')}_API_KEY`;
       const apiKey = process.env[fallbackEnvKey];
       if (apiKey) {
         resolved.apiKey = apiKey;
@@ -142,18 +127,14 @@ export class ProviderManager {
     return resolved;
   }
 
-  /**
-   * 从配置源加载（环境变量 fallback）
-   */
   private loadFromSources(): void {
     for (const source of this.sources) {
       if (!source.isAvailable()) continue;
 
       const configs = source.getAllProviders();
       for (const config of configs) {
-        // 外部配置优先，不覆盖
         if (!this.providers.has(config.id)) {
-          const resolved = this.resolveFromRegistry(config);
+          const resolved = this.resolveFromCatalog(config);
           this.providers.set(resolved.id, {
             config: resolved,
           });
@@ -162,68 +143,50 @@ export class ProviderManager {
     }
   }
 
-  /**
-   * 获取当前活跃的 Provider 配置
-   */
   get active(): ProviderConfig | null {
     if (!this.activeId) return null;
     return this.providers.get(this.activeId)?.config ?? null;
   }
 
-  /**
-   * 获取所有 Provider 配置
-   */
   get all(): ProviderConfig[] {
     return Array.from(this.providers.values()).map(p => p.config);
   }
 
-  /**
-   * 获取所有 Provider ID
-   */
   get ids(): string[] {
     return Array.from(this.providers.keys());
   }
 
-  /**
-   * 获取指定 Provider 配置
-   */
   get(id: string): ProviderConfig | undefined {
     return this.providers.get(id)?.config;
   }
 
-  /**
-   * 切换 Provider
-   */
   switch(id: string, apiKey?: string): boolean {
-    if (!this.providers.has(id)) {
-      this.logger.error(`未找到 Provider: ${id}`);
+    const canonical = normalizeProviderId(id);
+    if (!this.providers.has(canonical)) {
+      this.logger.error(`未找到 Provider: ${id} (canonical: ${canonical})`);
       return false;
     }
 
-    // 如果提供了新的 apiKey，更新配置
     if (apiKey) {
-      const info = this.providers.get(id)!;
+      const info = this.providers.get(canonical)!;
       info.config = { ...info.config, apiKey };
     }
 
-    this.activeId = id;
+    this.activeId = canonical;
     return true;
   }
 
-  /**
-   * 注册新的 Provider
-   */
   register(config: ProviderConfig): ProviderConfig {
-    const resolvedConfig = this.resolveFromRegistry(config);
+    const resolvedConfig = this.resolveFromCatalog(config);
+    if (config.id !== resolvedConfig.id) {
+      this.providers.delete(config.id);
+    }
     this.providers.set(resolvedConfig.id, {
       config: resolvedConfig,
     });
     return resolvedConfig;
   }
 
-  /**
-   * 注销 Provider
-   */
   unregister(id: string): boolean {
     if (this.activeId === id) {
       this.logger.warn(`不能注销当前活跃的 Provider: ${id}`);
@@ -232,110 +195,47 @@ export class ProviderManager {
     return this.providers.delete(id);
   }
 
-  /**
-   * 重新从 providers 表补全所有已注册的 Provider 配置
-   *
-   * 在 SQLite 持久化初始化后调用，确保 baseUrl、npmPackage 等
-   * 从数据库获取而非使用构造时的空值。
-   */
+  /** 重新从 pi catalog 补全所有已注册 Provider（warm 后调用）。 */
   reResolveAll(): void {
-    for (const [id, info] of this.providers) {
-      info.config = this.resolveFromRegistry(info.config);
+    for (const [, info] of this.providers) {
+      info.config = this.resolveFromCatalog(info.config);
     }
   }
 
-  // ============================================
-  // AI SDK 集成方法
-  // ============================================
-
   /**
-   * 获取 AI SDK 模型实例及 ModelSpec
-   *
-   * @param modelId 可选的模型 ID，不提供则使用默认
-   * @returns 模型实例和 ModelSpec，若 Provider 不可用则返回 null
+   * 从 pi catalog 解析 ModelSpec（主会话 LLM 经 pi-auth-bridge，此处供元数据查询）。
    */
-  async getModelWithSpec(modelId?: string): Promise<{ model: LanguageModelV3; spec: ModelSpec | null } | null> {
-    const config = this.active;
+  async getModelSpec(providerId?: string, modelId?: string): Promise<ModelSpec | null> {
+    const config = providerId
+      ? this.providers.get(normalizeProviderId(providerId))?.config
+      : this.active;
     if (!config) return null;
 
-    const adapter = adapterRegistry.getOrCreate(config);
-    const model = adapter.createModel(config, modelId);
-    if (!model) return null;
+    const effectiveModelId = modelId ?? config.model;
+    if (!effectiveModelId) return null;
 
-    // 异步获取 ModelSpec
-    let spec: ModelSpec | null = null;
     try {
-      const effectiveModelId = modelId ?? config.model;
-      if (effectiveModelId) {
-        spec = await fetchModelSpec(config.id, effectiveModelId) ?? null;
-      }
-      // 未知模型：从同 Provider 的任意已知模型继承能力默认值
-      if (!spec) {
-        spec = await this.resolveProviderDefaultSpec(config.id);
-      }
+      const models = await listPiProviderModels(config.id);
+      const exact = models.find((m) => m.id === effectiveModelId);
+      if (exact) return exact;
+      return this.resolveProviderDefaultSpec(models);
     } catch {
-      // ModelSpec 获取失败不影响正常运行
+      return null;
     }
-
-    return { model, spec };
   }
 
-  /**
-   * 获取 Provider 级别的默认模型能力（未知模型继承此能力）
-   *
-   * 当用户配置了一个不在注册表中的自定义模型时，通过查询同一 Provider
-   * 下的任意已知模型来推断默认能力（如 supportsTools、supportsSystemMessages）。
-   */
-  private async resolveProviderDefaultSpec(providerId: string): Promise<ModelSpec | null> {
-    try {
-      const providers = await (await import('../providers/metadata/index.js')).fetchProviderModels(providerId);
-      if (providers && providers.length > 0) {
-        return {
-          id: `__default_${providerId}`,
-          contextWindow: Math.max(...providers.map(p => p.contextWindow || 4096)),
-          supportsTools: providers.some(p => p.supportsTools),
-          supportsSystemMessages: providers.every(p => p.supportsSystemMessages !== false),
-          supportsStreaming: providers.some(p => p.supportsStreaming),
-        };
-      }
-    } catch { /* fall through */ }
-    return null;
-  }
-
-  /**
-   * 获取 AI SDK 模型实例（同步，向后兼容）
-   *
-   * @param modelId 可选的模型 ID，不提供则使用默认
-   */
-  getModel(modelId?: string): LanguageModelV3 | null {
-    const config = this.active;
-    if (!config) return null;
-
-    const adapter = adapterRegistry.getOrCreate(config);
-    return adapter.createModel(config, modelId);
-  }
-
-  /**
-   * 获取指定 Provider 的 AI SDK 模型实例
-   */
-  getModelForProvider(providerId: string, modelId?: string): LanguageModelV3 | null {
-    const config = this.providers.get(providerId)?.config;
-    if (!config) return null;
-
-    const adapter = adapterRegistry.getOrCreate(config);
-    return adapter.createModel(config, modelId);
+  private resolveProviderDefaultSpec(models: ModelSpec[]): ModelSpec | null {
+    if (models.length === 0) return null;
+    return {
+      id: '__default__',
+      contextWindow: Math.max(...models.map(p => p.contextWindow || 4096)),
+      supportsTools: models.some(p => p.supportsTools),
+      supportsSystemMessages: models.every(p => p.supportsSystemMessages !== false),
+      supportsStreaming: models.some(p => p.supportsStreaming),
+    };
   }
 }
 
-// ============================================
-// 工厂函数
-// ============================================
-
-/**
- * 创建新的 Provider 管理器实例
- *
- * @param options 配置选项
- */
 export function createProviderManager(options?: ProviderManagerOptions): ProviderManager {
   return new ProviderManager(options);
 }

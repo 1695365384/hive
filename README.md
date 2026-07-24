@@ -191,7 +191,7 @@ const result = await agent.dispatch(task: string, options?: DispatchOptions): Pr
 // Provider management
 agent.useProvider(name: string, apiKey?: string): boolean;
 agent.listProviders(): ProviderConfig[];
-agent.listAllProviders(): Promise<ModelsDevProvider[]>;
+agent.listAllProviders(): Promise<PiCatalogProvider[]>;
 agent.listProviderModels(providerId: string): Promise<ModelSpec[]>;
 
 // Skill management
@@ -304,7 +304,7 @@ hive/
 │   │   │   ├── Agent.ts              # Single entry point
 │   │   │   ├── AgentContext.ts        # Shared context + hook registry
 │   │   │   ├── agents.ts             # Worker definitions (explore/plan/general/schedule)
-│   │   │   └── runner.ts             # AgentRunner — worker execution engine
+│   │   │   └── PiAgentSessionAdapter.ts # pi createAgentSession adapter
 │   │   └── capabilities/
 │   │       ├── CoordinatorCapability.ts  # LLM loop + worker orchestration
 │   │       ├── ProviderCapability.ts     # Provider registry + AI SDK

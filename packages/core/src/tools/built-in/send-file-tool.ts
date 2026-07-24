@@ -49,7 +49,18 @@ export function createRawSendFileTool(): RawTool<SendFileToolInput> {
         return { ok: false, code: 'PERMISSION', error: 'File sending not supported in current environment. Only available when connected via a messaging channel (e.g. Feishu).', context: { reason: 'No callback registered' } };
       }
 
-      const absolutePath = path.resolve(getWorkingDirectory(), filePath);
+      // Resolve relative paths against session workspace first, then process.cwd().
+      // officecli/bash sometimes leave artifacts in the server process cwd.
+      const candidates: string[] = [];
+      if (path.isAbsolute(filePath)) {
+        candidates.push(filePath);
+      } else {
+        candidates.push(path.resolve(getWorkingDirectory(), filePath));
+        const cwdFallback = path.resolve(process.cwd(), filePath);
+        if (cwdFallback !== candidates[0]) candidates.push(cwdFallback);
+      }
+
+      const absolutePath = candidates.find((p) => fs.existsSync(p)) ?? candidates[0]!;
 
       // 路径约束检查
       if (!isPathAllowed(absolutePath)) {
@@ -64,7 +75,7 @@ export function createRawSendFileTool(): RawTool<SendFileToolInput> {
 
       // 检查文件是否存在
       if (!fs.existsSync(absolutePath)) {
-        return { ok: false, code: 'NOT_FOUND', error: `File not found: ${absolutePath}`, context: { path: absolutePath } };
+        return { ok: false, code: 'NOT_FOUND', error: `File not found: ${absolutePath}`, context: { path: absolutePath, tried: candidates } };
       }
 
       // 检查是否为目录

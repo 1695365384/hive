@@ -9,7 +9,7 @@
 
 import type { DelegatableWorkerType } from '../agents/core/worker-types.js';
 
-/** Coordinator → agent-tool 委派参数 */
+/** ScenarioRouter → worker spawn 委派参数 */
 export interface WorkerSpawnInput {
   type: DelegatableWorkerType;
   prompt: string;

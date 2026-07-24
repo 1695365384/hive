@@ -46,11 +46,46 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle("file:readHtml", async (_event, filePath: string) => {
+    if (!/\.html?$/i.test(filePath)) {
+      throw new Error(`readHtml only supports .html/.htm files, got: ${path.extname(filePath) || filePath}`);
+    }
     return fs.promises.readFile(filePath, "utf-8");
   });
 
-  ipcMain.handle("file:openPath", async (_event, filePath: string, _appName?: string) => {
-    await shell.openPath(filePath);
+  ipcMain.handle("file:readBytes", async (_event, filePath: string) => {
+    if (!filePath || filePath.includes("\0")) {
+      throw new Error("Invalid file path");
+    }
+    const buf = await fs.promises.readFile(filePath);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  });
+
+  ipcMain.handle("file:openPath", async (_event, filePath: string, appName?: string) => {
+    if (!filePath || filePath.includes("\0")) {
+      throw new Error("Invalid file path");
+    }
+    const withApp = typeof appName === "string" ? appName.trim() : "";
+    if (withApp) {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+      if (process.platform === "darwin") {
+        await execFileAsync("open", ["-a", withApp, filePath]);
+        return;
+      }
+      if (process.platform === "win32") {
+        await execFileAsync("cmd", ["/c", "start", "", withApp, filePath], { windowsHide: true });
+        return;
+      }
+      try {
+        await execFileAsync(withApp, [filePath]);
+        return;
+      } catch {
+        /* fall through to default opener */
+      }
+    }
+    const err = await shell.openPath(filePath);
+    if (err) throw new Error(err);
   });
 
   ipcMain.handle("file:revealInFolder", async (_event, filePath: string) => {

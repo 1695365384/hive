@@ -24,6 +24,7 @@ export interface HiveAPI {
     copy: (src: string, dest?: string) => Promise<void>;
     write: (data: ArrayBuffer, name: string) => Promise<string>;
     readHtml: (filePath: string) => Promise<string>;
+    readBytes: (filePath: string) => Promise<ArrayBuffer>;
     openPath: (path: string, appName?: string) => Promise<void>;
     revealInFolder: (path: string) => Promise<void>;
     showOpenDialog: (options?: {

@@ -1,8 +1,7 @@
 /**
  * Adversarial Harness 单元测试
  *
- * 覆盖 quality-gate 的 JSON 解析、加权评分、质量门控判定
- * 以及 AdversarialHarness 在 mocked runner 下的循环行为。
+ * 覆盖 quality-gate 的 JSON 解析、加权评分、质量门控判定。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,7 +11,6 @@ import {
   passesQualityGate,
   createFallbackQuality,
 } from '../../../src/agents/harness/quality-gate.js';
-import { AdversarialHarness } from '../../../src/agents/harness/AdversarialHarness.js';
 import type {
   ResolvedAdversarialConfig,
   QualityScore,
@@ -207,137 +205,5 @@ describe('createFallbackQuality', () => {
     const q = createFallbackQuality('', 'parse failed');
     expect(q.dimensions[0].rationale).toContain('parse failed');
     expect(q.summary).toContain('parse failed');
-  });
-});
-
-// ============================================
-// AdversarialHarness (with mocked runner)
-// ============================================
-
-// Mock the runner module so harness.run() doesn't make real LLM calls
-vi.mock('../../../src/agents/core/runner.js', () => {
-  return {
-    createAgentRunner: vi.fn(() => ({
-      execute: vi.fn(),
-    })),
-    AgentRunner: vi.fn(),
-  };
-});
-
-import { createAgentRunner } from '../../../src/agents/core/runner.js';
-
-describe('AdversarialHarness', () => {
-  let harness: AdversarialHarness;
-  let mockExecute: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockExecute = vi.fn();
-    (createAgentRunner as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      execute: mockExecute,
-    });
-    // ProviderManager stub — harness only uses it to construct runner
-    harness = new AdversarialHarness({} as any);
-  });
-
-  it('should exit early when arbiter accepts on round 1', async () => {
-    // Critic call (1st execute) → returns critique JSON
-    // Arbiter call (2nd execute) → returns ACCEPT with high quality
-    mockExecute
-      .mockResolvedValueOnce({ text: criticJson({ overall_score: 0.85, passed: true }), tools: [], success: true } as AgentResult)
-      .mockResolvedValueOnce({ text: arbiterJson({ decision: 'ACCEPT', quality_assessment: { overall: 0.9, passed: true, summary: 'great' } }), tools: [], success: true } as AgentResult);
-
-    const result = await harness.run('do task', 'thesis output', { maxRounds: 3, qualityThreshold: 0.7 });
-
-    expect(result.success).toBe(true);
-    expect(result.totalRounds).toBe(1);
-    expect(result.quality.overall).toBe(0.9);
-    expect(mockExecute).toHaveBeenCalledTimes(2); // critic + arbiter
-  });
-
-  it('should loop when quality is below threshold', async () => {
-    // Round 1: critic + arbiter (REVISE, score 0.4)
-    // Round 2: critic + arbiter (ACCEPT, score 0.8)
-    mockExecute
-      .mockResolvedValueOnce({ text: criticJson(), tools: [], success: true } as AgentResult)
-      .mockResolvedValueOnce({ text: arbiterJson({
-        decision: 'REVISE',
-        revision_round_needed: true,
-        quality_assessment: { overall: 0.4, passed: false, summary: 'needs work' },
-      }), tools: [], success: true } as AgentResult)
-      .mockResolvedValueOnce({ text: criticJson(), tools: [], success: true } as AgentResult)
-      .mockResolvedValueOnce({ text: arbiterJson({
-        decision: 'ACCEPT',
-        revision_round_needed: false,
-        quality_assessment: { overall: 0.8, passed: true, summary: 'good now' },
-      }), tools: [], success: true } as AgentResult);
-
-    const result = await harness.run('do task', 'thesis output', { maxRounds: 3, qualityThreshold: 0.7 });
-
-    expect(result.success).toBe(true);
-    expect(result.totalRounds).toBe(2);
-    expect(mockExecute).toHaveBeenCalledTimes(4); // 2 rounds × 2 calls
-  });
-
-  it('should stop at maxRounds even if quality not reached', async () => {
-    // Every arbiter returns low quality → should hit maxRounds
-    const lowArbiter = { text: arbiterJson({
-      decision: 'REVISE',
-      revision_round_needed: true,
-      quality_assessment: { overall: 0.3, passed: false, summary: 'still bad' },
-    }), tools: [], success: true } as AgentResult;
-    const critic = { text: criticJson(), tools: [], success: true } as AgentResult;
-
-    for (let i = 0; i < 6; i++) {
-      mockExecute.mockResolvedValueOnce(i % 2 === 0 ? critic : lowArbiter);
-    }
-
-    const result = await harness.run('do task', 'thesis output', { maxRounds: 3, qualityThreshold: 0.9 });
-
-    expect(result.success).toBe(false);
-    expect(result.totalRounds).toBe(3);
-  });
-
-  it('should invoke callbacks at each phase', async () => {
-    mockExecute
-      .mockResolvedValueOnce({ text: criticJson(), tools: [], success: true } as AgentResult)
-      .mockResolvedValueOnce({ text: arbiterJson({
-        quality_assessment: { overall: 0.9, passed: true, summary: 'ok' },
-      }), tools: [], success: true } as AgentResult);
-
-    const onRoundStart = vi.fn();
-    const onThesisComplete = vi.fn();
-    const onAntithesisComplete = vi.fn();
-    const onSynthesisComplete = vi.fn();
-    const onRoundComplete = vi.fn();
-    const onComplete = vi.fn();
-
-    await harness.run('task', 'output', { maxRounds: 1 }, {
-      onRoundStart,
-      onThesisComplete,
-      onAntithesisComplete,
-      onSynthesisComplete,
-      onRoundComplete,
-      onComplete,
-    });
-
-    expect(onRoundStart).toHaveBeenCalledWith(1);
-    expect(onThesisComplete).toHaveBeenCalledTimes(1);
-    expect(onAntithesisComplete).toHaveBeenCalledTimes(1);
-    expect(onSynthesisComplete).toHaveBeenCalledTimes(1);
-    expect(onRoundComplete).toHaveBeenCalledTimes(1);
-    expect(onComplete).toHaveBeenCalledTimes(1);
-  });
-
-  it('should handle arbiter returning unparseable output (fallback)', async () => {
-    mockExecute
-      .mockResolvedValueOnce({ text: criticJson(), tools: [], success: true } as AgentResult)
-      .mockResolvedValueOnce({ text: 'this is not valid json', tools: [], success: true } as AgentResult);
-
-    const result = await harness.run('task', 'output', { maxRounds: 1, qualityThreshold: 0.5 });
-
-    // Should not throw; should use fallback
-    expect(result.success).toBe(false);
-    expect(result.quality.overall).toBe(0);
   });
 });

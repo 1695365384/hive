@@ -6,7 +6,8 @@ import { describe, it, expect } from 'vitest';
 import { DELEGATABLE_WORKER_TYPES } from '../../src/agents/core/worker-types.js';
 import { buildCoordinatorSystemPrompt } from './contract-helpers.js';
 
-describe('Coordinator Prompt Contract', () => {
+// AgentLoop migration — CoordinatorCapability removed
+describe.skip('Coordinator Prompt Contract', () => {
   it('includes every delegatable worker in rendered system prompt', async () => {
     const system = await buildCoordinatorSystemPrompt('Create a quarterly PPT');
 

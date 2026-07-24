@@ -5,10 +5,48 @@
  * Provides singleton connection per workspace.
  */
 
-import Database from 'better-sqlite3';
+import BetterSqlite3 from 'better-sqlite3';
+import { createRequire } from 'node:module';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MigrationRunner } from './MigrationRunner.js';
+
+type SqliteDatabase = BetterSqlite3.Database;
+
+const require = createRequire(import.meta.url);
+
+/** Adapt bun:sqlite to the better-sqlite3 surface Hive storage uses. */
+function openBunDatabase(dbPath: string): SqliteDatabase {
+  // bun:sqlite is only resolvable under Bun.
+  const { Database } = require('bun:sqlite') as {
+    Database: new (filename: string, options?: { create?: boolean }) => {
+      prepare(sql: string): BetterSqlite3.Statement;
+      exec(sql: string): unknown;
+      transaction<T extends unknown[]>(fn: (...args: T) => unknown): (...args: T) => unknown;
+      close(): void;
+      query(sql: string): { all: (...params: unknown[]) => unknown[]; get: (...params: unknown[]) => unknown };
+    };
+  };
+  const raw = new Database(dbPath, { create: true });
+  const adapted = {
+    prepare: (sql: string) => raw.prepare(sql),
+    exec: (sql: string) => {
+      raw.exec(sql);
+    },
+    transaction: <T extends unknown[]>(fn: (...args: T) => unknown) => raw.transaction(fn),
+    close: () => raw.close(),
+    pragma: (statement: string) => {
+      const sql = `PRAGMA ${statement}`;
+      try {
+        return raw.query(sql).all();
+      } catch {
+        raw.exec(sql);
+        return undefined;
+      }
+    },
+  };
+  return adapted as unknown as SqliteDatabase;
+}
 
 // Import migrations to register them
 import './migrations/index.js';
@@ -26,7 +64,7 @@ export interface DatabaseConfig {
  * SQLite Database Manager
  */
 export class DatabaseManager {
-  private db: Database.Database | null = null;
+  private db: SqliteDatabase | null = null;
   private config: Required<DatabaseConfig>;
   private static instances: Map<string, DatabaseManager> = new Map();
 
@@ -54,7 +92,7 @@ export class DatabaseManager {
   /**
    * Get database connection (lazy initialization)
    */
-  getDb(): Database.Database {
+  getDb(): SqliteDatabase {
     if (!this.db) {
       this.db = this.openConnection();
     }
@@ -64,7 +102,7 @@ export class DatabaseManager {
   /**
    * Open database connection with WAL mode
    */
-  private openConnection(): Database.Database {
+  private openConnection(): SqliteDatabase {
     const dbDir = path.dirname(this.config.dbPath);
 
     // Ensure directory exists
@@ -72,7 +110,9 @@ export class DatabaseManager {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    const db = new Database(this.config.dbPath);
+    const db = process.versions.bun
+      ? openBunDatabase(this.config.dbPath)
+      : new BetterSqlite3(this.config.dbPath);
 
     // Enable WAL mode for concurrent reads
     if (this.config.walMode) {
@@ -148,7 +188,7 @@ export class DatabaseManager {
   /**
    * Prepare a statement
    */
-  prepare(sql: string): Database.Statement {
+  prepare(sql: string): BetterSqlite3.Statement {
     return this.getDb().prepare(sql);
   }
 

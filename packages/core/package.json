@@ -9,10 +9,6 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
-    "./runner": {
-      "import": "./dist/agents/core/runner.js",
-      "types": "./dist/agents/core/runner.d.ts"
-    },
     "./providers": {
       "import": "./dist/providers/index.js",
       "types": "./dist/providers/index.d.ts"
@@ -41,16 +37,11 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('coverage',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.62",
-    "@ai-sdk/deepseek": "^2.0.26",
-    "@ai-sdk/google": "^3.0.51",
-    "@ai-sdk/mistral": "^3.0.27",
-    "@ai-sdk/openai": "^3.0.46",
-    "@ai-sdk/openai-compatible": "^2.0.37",
-    "@ai-sdk/provider": "^3.0.8",
-    "@ai-sdk/xai": "^3.0.74",
     "@cjhyy/code-shell-core": "0.5.0-rc.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@oh-my-pi/pi-ai": "17.0.6",
+    "@oh-my-pi/pi-catalog": "17.0.6",
+    "@oh-my-pi/pi-coding-agent": "17.0.6",
     "@opencode-ai/sdk": "^1.17.17",
     "ai": "^6.0.129",
     "better-sqlite3": "^11.0.0",

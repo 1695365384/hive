@@ -79,6 +79,8 @@ coverage/
 .hive/*
 !.hive/skills/
 !.hive/skills/**
+.hive/skills/**/node_modules/
+.hive/skills/**/output/
 
 # User-installed skills (via hive skill add)
 .hive/skills.local/
@@ -131,3 +133,4 @@ docs/superpowers/
 
 # Accidental line-range export created during local inspection
 /apps/server/src/gateway/http.ts:250-257
+/packages/ppt-export/tests/validate.test.ts:18-24

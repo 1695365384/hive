@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tauri dev",
     "dev:ui": "vite",
-    "dev:server": "node --watch ../../apps/server/dist/main.js",
-    "build": "pnpm --filter @bundy-lmw/hive-core build && pnpm --filter @bundy-lmw/hive-server build && node ../../apps/server/scripts/bundle.mjs && tsc && vite build",
+    "dev:server": "bun --watch ../../apps/server/dist/main.js",
+    "build": "pnpm --filter @bundy-lmw/hive-core build && pnpm --filter @bundy-lmw/hive-server build && tsc && vite build",
     "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri"

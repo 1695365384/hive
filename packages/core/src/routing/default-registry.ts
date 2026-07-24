@@ -21,7 +21,7 @@ export function createDefaultTaskRouter(): TaskRouter {
   return new TaskRouter(createDefaultScenarioRegistry());
 }
 
-/** 进程内默认单例（Coordinator / agent-tool 共用） */
+/** 进程内默认单例（ScenarioRouter 共用） */
 export const defaultTaskRouter = createDefaultTaskRouter();
 
 /** 场景 ID → 用户可见标签 */

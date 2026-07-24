@@ -17,7 +17,7 @@ describe('OfficeScenario', () => {
     const action = resolveOfficeScenarioAction('你能做PPT吗');
     expect(action.kind).toBe('inquiry');
     if (action.kind === 'inquiry') {
-      expect(action.reply).toContain('officecli');
+      expect(action.reply).toContain('dashi-ppt');
     }
   });
 
@@ -25,8 +25,8 @@ describe('OfficeScenario', () => {
     const action = resolveOfficeScenarioAction('你有PPT技能吗？');
     expect(action.kind).toBe('inquiry');
     if (action.kind === 'inquiry') {
+      expect(action.reply).toContain('dashi-ppt');
       expect(action.reply).toContain('officecli');
-      expect(action.reply).toContain('office Worker');
     }
   });
 
@@ -35,7 +35,7 @@ describe('OfficeScenario', () => {
     expect(action.kind).toBe('creation');
     if (action.kind === 'creation') {
       expect(action.prompt).toContain('AI');
-      expect(action.description).toContain('officecli');
+      expect(action.description).toContain('dashi-ppt');
     }
   });
 
@@ -43,6 +43,13 @@ describe('OfficeScenario', () => {
     const spawn = buildOfficeWorkerSpawn('做一个 PPT');
     expect(spawn.type).toBe('office');
     expect(spawn.scenarioId).toBe(OFFICE_SCENARIO_ID);
+  });
+
+  it('buildOfficeWorkerSpawn injects PPT quality gate', () => {
+    const spawn = buildOfficeWorkerSpawn('做一个 PPT');
+    expect(spawn.prompt).toContain('PPT Quality Gate');
+    expect(spawn.prompt).toContain('fillPlan');
+    expect(spawn.prompt).toContain('AI-slop');
   });
 
   it('needsOfficeResearchAssist detects research-heavy decks', () => {

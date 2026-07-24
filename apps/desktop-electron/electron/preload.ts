@@ -22,6 +22,7 @@ export interface HiveAPI {
     copy: (src: string, dest?: string) => Promise<void>;
     write: (data: ArrayBuffer, name: string) => Promise<string>;
     readHtml: (filePath: string) => Promise<string>;
+    readBytes: (filePath: string) => Promise<ArrayBuffer>;
     openPath: (path: string, appName?: string) => Promise<void>;
     revealInFolder: (path: string) => Promise<void>;
     showOpenDialog: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string[] | null>;
@@ -51,6 +52,7 @@ const api: HiveAPI = {
     copy: (src: string, dest?: string) => ipcRenderer.invoke("file:copy", src, dest),
     write: (data: ArrayBuffer, name: string) => ipcRenderer.invoke("file:write", data, name),
     readHtml: (filePath: string) => ipcRenderer.invoke("file:readHtml", filePath),
+    readBytes: (filePath: string) => ipcRenderer.invoke("file:readBytes", filePath),
     openPath: (path: string, appName?: string) => ipcRenderer.invoke("file:openPath", path, appName),
     revealInFolder: (path: string) => ipcRenderer.invoke("file:revealInFolder", path),
     showOpenDialog: (options?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) =>

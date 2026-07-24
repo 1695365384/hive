@@ -6,6 +6,7 @@
 
 import type { HandlerContext, MethodHandler } from '../handler-context.js'
 import type { ProviderConfig } from '@bundy-lmw/hive-core'
+// Canonicalize legacy provider ids (glm→zai, kimi→moonshot, …) at the edge.
 import { WsDomainHandler } from './base.js'
 import type { ConfigUpdateParams } from '../data-types.js'
 import { createSuccessResponse, createErrorResponse } from '../types.js'
@@ -36,11 +37,12 @@ export class ConfigHandler extends WsDomainHandler {
     if (updates.provider) Object.assign(config.provider, updates.provider)
     if (updates.heartbeat) Object.assign(config.heartbeat, updates.heartbeat)
 
-    this.ctx.saveConfig(config)
-
     if (updates.provider) {
       this.applyProviderConfig(config.provider)
+      // applyProviderConfig may canonicalize provider.id — persist that
     }
+
+    this.ctx.saveConfig(config)
 
     const changedKeys = Object.keys(updates)
     this.ctx.broadcastEvent('config.changed', { keys: changedKeys })
@@ -72,14 +74,25 @@ export class ConfigHandler extends WsDomainHandler {
       return
     }
 
+    // register() canonicalizes legacy ids via pi-catalog-bridge.
     const runtimeProvider: ProviderConfig = {
       id: provider.id,
-      name: provider.id.toUpperCase(),
+      name: provider.id,
       apiKey: provider.apiKey,
       model: provider.model,
     }
 
-    server.agent.context.providerManager.register(runtimeProvider)
-    server.agent.useProvider(provider.id, provider.apiKey)
+    const resolved = server.agent.context.providerManager.register(runtimeProvider) as
+      | ProviderConfig
+      | void
+      | undefined
+    const canonicalId =
+      resolved && typeof resolved === 'object' && typeof resolved.id === 'string'
+        ? resolved.id
+        : provider.id
+    if (canonicalId !== provider.id) {
+      provider.id = canonicalId
+    }
+    server.agent.useProvider(canonicalId, provider.apiKey)
   }
 }

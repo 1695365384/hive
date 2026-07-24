@@ -1,8 +1,8 @@
 /**
- * Coordinator 可派发的 Worker 类型（单一事实来源）
+ * 可委派 Worker 类型（兼容旧测试 / Vertical Pack）
  *
- * agent-tool schema、coordinator.md、契约测试均应对齐此列表。
- * critic / arbiter 仅用于 AdversarialHarness，不可通过 agent() 委派。
+ * AgentLoop 架构下，主循环通过 `task` 工具动态 spawn subagent，
+ * 不再依赖这些预定义类型做路由。列表仍保留供 TaskManager / runner 兼容。
  */
 
 export const DELEGATABLE_WORKER_TYPES = [
@@ -15,6 +15,7 @@ export const DELEGATABLE_WORKER_TYPES = [
   'metis',
   'momus',
   'oracle',
+  'task',
 ] as const;
 
 export type DelegatableWorkerType = (typeof DELEGATABLE_WORKER_TYPES)[number];

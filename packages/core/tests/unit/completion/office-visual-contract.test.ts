@@ -11,6 +11,7 @@ import {
   hasDiagramIntent,
   isSimpleOfficeDeck,
   inferOfficeProgressPhase,
+  extractAddedSlideIndex,
   pptxHasVisualMedia,
   findLayoutIssueInTrace,
   hasScannableViewOutput,
@@ -82,6 +83,25 @@ describe('inferOfficeProgressPhase', () => {
     expect(inferOfficeProgressPhase('bash', { command: 'officecli add a.pptx / --type slide' })).toBe('adding_slide');
     expect(inferOfficeProgressPhase('bash', { command: 'officecli view a.pptx issues' })).toBe('validating');
     expect(inferOfficeProgressPhase('send-file', { path: '/tmp/a.pptx' })).toBe('delivering');
+  });
+});
+
+describe('extractAddedSlideIndex', () => {
+  it('parses last Added slide path from plain or nested tool output', () => {
+    expect(extractAddedSlideIndex('Added slide at /slide[1]')).toBe(1);
+    expect(
+      extractAddedSlideIndex('Added slide at /slide[1]\nAdded slide at /slide[2]\nAdded slide at /slide[3]'),
+    ).toBe(3);
+    expect(
+      extractAddedSlideIndex({
+        content: [{ type: 'text', text: 'Added slide at /slide[4]' }],
+      }),
+    ).toBe(4);
+  });
+
+  it('returns undefined when no slide path present', () => {
+    expect(extractAddedSlideIndex('ok')).toBeUndefined();
+    expect(extractAddedSlideIndex(null)).toBeUndefined();
   });
 });
 

@@ -106,8 +106,28 @@ export function formatToolLabel(toolName: string, args: unknown): string {
     return i18n.t("activity.tool.helper");
   }
 
-  if (name === "agent") {
-    const type = firstString(obj.type);
+  if (name === "web" || name === "webfetch" || name === "web-fetch" || name === "web_search" || name === "websearch") {
+    const query = firstString(obj.query, obj.q, obj.search, obj.prompt);
+    return query
+      ? i18n.t("activity.tool.webSearchWith", { query: truncate(query, 40) })
+      : i18n.t("activity.tool.webSearch");
+  }
+
+  if (name === "edit" || name === "write") {
+    const path = firstString(obj.file_path, obj.path, obj.filePath);
+    const file = basename(path);
+    if (name === "write") {
+      return file
+        ? i18n.t("activity.tool.writeFileWith", { file })
+        : i18n.t("activity.tool.writeFile");
+    }
+    return file
+      ? i18n.t("activity.tool.editFileWith", { file })
+      : i18n.t("activity.tool.editFile");
+  }
+
+  if (name === "task" || name === "agent") {
+    const type = firstString(obj.type, obj.subagent_type, obj.agent);
     const description = firstString(obj.description, obj.prompt, obj.task);
     const keys: Record<string, string> = {
       office: "activity.tool.agentOffice",
@@ -121,14 +141,18 @@ export function formatToolLabel(toolName: string, args: unknown): string {
       oracle: "activity.tool.agentOracle",
     };
     const base = i18n.t(keys[type] ?? "activity.tool.agentDefault");
-    if (type === "office" && description && looksLikeOfficeWork(description)) {
+    if ((type === "office" || !type) && description && looksLikeOfficeWork(description)) {
       return officeLabelFromText(description);
     }
-    return base;
+    return description ? `${base} · ${truncate(description, 36)}` : base;
   }
 
-  if (name === "web" || name === "webfetch" || name === "web-fetch") {
-    return i18n.t("activity.tool.web");
+  if (name === "remember") {
+    return i18n.t("activity.tool.remember");
+  }
+
+  if (name === "env") {
+    return i18n.t("activity.tool.env");
   }
 
   if (name === "task-stop" || name === "task_stop" || name === "send-message" || name === "send_message") {

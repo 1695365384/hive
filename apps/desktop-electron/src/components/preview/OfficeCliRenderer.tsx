@@ -36,12 +36,15 @@ export function OfficeCliRenderer({
     try {
       let htmlContent: string;
 
-      // Electron fast path: read local HTML file directly, no HTTP round-trip
-      if (isElectronRuntime() && filePath) {
+      // Electron fast path: only for real HTML decks. Never utf-8-read .pptx/.docx —
+      // that succeeds without throwing and renders ZIP bytes as 乱码 in srcDoc.
+      const localHtmlPath =
+        isElectronRuntime() && filePath && /\.html?$/i.test(filePath) ? filePath : null;
+
+      if (localHtmlPath) {
         try {
-          htmlContent = await window.hive!.file.readHtml(filePath);
+          htmlContent = await window.hive!.file.readHtml(localHtmlPath);
         } catch {
-          // Fall through to HTTP path if local read fails
           const queryParams = buildOfficePreviewQuery({
             src,
             servedPath,
@@ -97,6 +100,14 @@ export function OfficeCliRenderer({
         htmlContent = await res.text();
       }
 
+      // Guard: refuse non-HTML payloads (e.g. accidental binary/ZIP read)
+      if (!/<(?:!DOCTYPE\s+html|html)\b/i.test(htmlContent.slice(0, 512))) {
+        setFallbackHint(undefined);
+        onFallbackHint?.(undefined);
+        setStatus("fallback");
+        return;
+      }
+
       const enhanced = enhanceOfficePreviewHtml(htmlContent);
       setHtml(enhanced);
       setFallbackHint(undefined);
@@ -138,7 +149,14 @@ export function OfficeCliRenderer({
   }
 
   if (status === "fallback") {
-    return <>{fallback}</>;
+    return (
+      <div className="preview-fallback-wrap">
+        {fallbackHint && (
+          <p className="preview-fallback-wrap__hint">{fallbackHint}</p>
+        )}
+        {fallback}
+      </div>
+    );
   }
 
   if (status === "loading") {
@@ -152,7 +170,7 @@ export function OfficeCliRenderer({
 
   return (
     <div className="preview-embed-host">
-      <PreviewEmbed title={title} html={html} />
+      <PreviewEmbed iframeTitle={title} iframeSrcDoc={html} />
     </div>
   );
 }

@@ -21,8 +21,8 @@ import { TimeoutDelegation, NotificationDelegation } from './notification.js';
 import { TimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { ProviderCapability } from '../capabilities/ProviderCapability.js';
 import { SkillCapability } from '../capabilities/SkillCapability.js';
-import { CoordinatorCapability } from '../capabilities/CoordinatorCapability.js';
-import type { DispatchOptions, DispatchResult } from '../capabilities/CoordinatorCapability.js';
+import { AgentLoop } from './AgentLoop.js';
+import type { DispatchOptions, DispatchResult } from '../types/dispatch.js';
 import type { ProviderConnectionTestResult } from '../capabilities/ProviderCapability.js';
 import { SessionCapability } from '../capabilities/SessionCapability.js';
 import { ScheduleCapability } from '../capabilities/ScheduleCapability.js';
@@ -42,7 +42,7 @@ export class Agent {
   private _context: AgentContextImpl;
   private providerCap: ProviderCapability;
   private skillCap: SkillCapability;
-  private coordinatorCap: CoordinatorCapability;
+  private agentLoop: AgentLoop;
   private sessionCap: SessionCapability;
   private scheduleCap: ScheduleCapability;
   private sessionDelegation: SessionDelegation;
@@ -72,7 +72,7 @@ export class Agent {
     // 创建能力模块
     this.providerCap = new ProviderCapability();
     this.skillCap = new SkillCapability();
-    this.coordinatorCap = new CoordinatorCapability();
+    this.agentLoop = new AgentLoop();
     this.sessionCap = new SessionCapability(sessionConfig);
     this.scheduleCap = new ScheduleCapability();
     this.sessionDelegation = new SessionDelegation(this.sessionCap);
@@ -85,7 +85,7 @@ export class Agent {
     this._context.registerCapability(this.sessionCap);
     this._context.registerCapability(this.providerCap);
     this._context.registerCapability(this.skillCap);
-    this._context.registerCapability(this.coordinatorCap);
+    this._context.registerCapability(this.agentLoop);
     this._context.registerCapability(this.scheduleCap);
   }
 
@@ -215,14 +215,14 @@ export class Agent {
    * 统一任务分发 — 唯一的任务执行入口
    */
   async dispatch(task: string, options?: DispatchOptions): Promise<DispatchResult> {
-    return this.coordinatorCap.run(task, options);
+    return this.agentLoop.run(task, options);
   }
 
   /**
    * 获取 TaskManager（用于管理活跃 Worker）
    */
   get taskManager() {
-    return this.coordinatorCap.getTaskManager();
+    return this.agentLoop.getTaskManager();
   }
 
   // ============================================

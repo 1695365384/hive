@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import * as XLSX from "xlsx";
 import { PreviewErrorFallback } from "./PreviewErrorFallback";
 import type { ArtifactOpenMeta } from "./artifact-open-meta";
+import { loadArtifactArrayBuffer } from "../../lib/artifact-file";
 
 interface XlsxRendererProps extends ArtifactOpenMeta {
   src: string;
@@ -26,9 +27,15 @@ export function XlsxRenderer({ src, title, name, path, servedPath, artifactSrc, 
 
     const load = async () => {
       try {
-        const res = await fetch(src);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
+        let buf: ArrayBuffer;
+        try {
+          buf = await loadArtifactArrayBuffer({ src: artifactSrc, path, servedPath, name });
+        } catch (primaryErr) {
+          if (!src) throw primaryErr;
+          const res = await fetch(src);
+          if (!res.ok) throw primaryErr;
+          buf = await res.arrayBuffer();
+        }
         if (cancelled) return;
 
         const workbook = XLSX.read(buf, { type: "array" });
@@ -52,7 +59,7 @@ export function XlsxRenderer({ src, title, name, path, servedPath, artifactSrc, 
     return () => {
       cancelled = true;
     };
-  }, [src]);
+  }, [src, path, servedPath, artifactSrc, name]);
 
   useEffect(() => {
     const el = containerRef.current;

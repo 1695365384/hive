@@ -32,6 +32,7 @@ import { SessionId } from './SessionId.js';
 import { ArtifactEmitter } from '../artifacts/ArtifactEmitter.js';
 import {
   inferOfficeProgressPhase,
+  extractAddedSlideIndex,
 } from '../agents/completion/office-visual-contract.js';
 import {
   decideWorkerFinalizations,
@@ -174,7 +175,7 @@ class ServerImpl implements Server {
       this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
       // Keep Goal resumable via Continue — also push blocked UX to the client.
       if (isIncompleteGoal(this.goalStore.get(sessionId))) {
-        this.markGoalBlockedForResume(sessionId, ['已中断，可继续完成']);
+        this.goalStore.markBlocked(sessionId, ['已中断，可继续完成']);
       }
     }
   }
@@ -201,13 +202,8 @@ class ServerImpl implements Server {
     this.goalStore.bumpContinueAttempts(sessionId);
     this.goalStore.markActive(sessionId);
     const attempts = this.goalStore.get(sessionId)?.continueAttempts ?? 1;
-    this.emitTaskProgress(sessionId, {
-      phase: 'continue',
-      message: `继续完成同一目标 (${attempts}/${MAX_GOAL_CONTINUES})`,
-      reasons: goal?.reasons,
-      attempt: attempts,
-      maxAttempts: MAX_GOAL_CONTINUES,
-    });
+    // Goal resumption — no task-progress event (phase 'continue' removed in AgentLoop migration)
+    this.logger.info(`[agent] Goal resume attempt ${attempts}/${MAX_GOAL_CONTINUES} for session ${sessionId.slice(0, 8)}`);
 
     this.handleMessage({
       id: crypto.randomUUID(),
@@ -490,46 +486,12 @@ class ServerImpl implements Server {
     }
   }
 
-  private emitOfficeProgress(
-    sessionId: string,
-    progress: {
-      phase: 'routed' | 'creating' | 'adding_slide' | 'validating' | 'delivering' | 'blocked';
-      slide?: number;
-      slideTotal?: number;
-      message?: string;
-      workerId?: string;
-    },
-  ): void {
-    this.logger.info(`[agent] [office-progress] ${progress.phase}${progress.message ? `: ${progress.message}` : ''}`);
-    this.emitStreaming({
-      sessionId,
-      type: 'office-progress',
-      phase: progress.phase,
-      slide: progress.slide,
-      slideTotal: progress.slideTotal,
-      message: progress.message,
-      workerId: progress.workerId,
-    });
-  }
-
-  /** Mark Goal blocked and emit clickable Continue/Cancel actions to the UI. */
-  private markGoalBlockedForResume(sessionId: string, reasons: string[]): void {
-    this.goalStore.markBlocked(sessionId, reasons);
-    this.emitTaskProgress(sessionId, {
-      phase: 'blocked',
-      message: '任务未完成，可继续',
-      reasons,
-      actions: blockedActions(),
-    });
-  }
-
   private emitTaskProgress(
     sessionId: string,
     progress: {
-      phase: 'understand' | 'plan' | 'execute' | 'verify' | 'continue' | 'blocked' | 'done';
+      phase: 'blocked' | 'done';
       message?: string;
       reasons?: string[];
-      actions?: Array<{ id: 'continue' | 'cancel' | 'provide-info'; label: string }>;
       attempt?: number;
       maxAttempts?: number;
     },
@@ -541,8 +503,7 @@ class ServerImpl implements Server {
       phase: progress.phase,
       message: progress.message,
       reasons: progress.reasons,
-      actions: progress.actions,
-      attempt: progress.attempt,
+            attempt: progress.attempt,
       maxAttempts: progress.maxAttempts,
     });
   }
@@ -635,10 +596,37 @@ class ServerImpl implements Server {
     workerId?: string,
     workerType?: string,
   ): void {
+    // Only surface office milestones (creating / page N / validating / delivering).
+    // Skip non-office workers so dock stays quiet.
     if (workerType && workerType !== 'office') return;
     const phase = inferOfficeProgressPhase(toolName, input);
     if (!phase) return;
-    this.emitOfficeProgress(sessionId, { phase, workerId });
+    this.emitStreaming({
+      sessionId,
+      type: 'office-progress',
+      phase,
+      workerId,
+    });
+  }
+
+  /** Enrich adding_slide milestones with concrete page numbers from tool output. */
+  private maybeEmitOfficeToolResultProgress(
+    sessionId: string,
+    _toolName: string,
+    output: unknown,
+    workerId?: string,
+    workerType?: string,
+  ): void {
+    if (workerType && workerType !== 'office') return;
+    const slide = extractAddedSlideIndex(output);
+    if (slide == null) return;
+    this.emitStreaming({
+      sessionId,
+      type: 'office-progress',
+      phase: 'adding_slide',
+      slide,
+      workerId,
+    });
   }
 
   /**
@@ -661,6 +649,8 @@ class ServerImpl implements Server {
     const summary = formatToolResult(toolName, output);
     this.logger.info(`[agent] [tool-result] ${toolName} → ${summary}`);
     this.emitStreaming({ sessionId, type: 'tool-result', tool: toolName, output, workerId, workerType } as StreamingEventUnion);
+    // Prefer concrete "第 N 页" after the tool succeeds, not raw bash noise.
+    this.maybeEmitOfficeToolResultProgress(sessionId, toolName, output, workerId, workerType);
   }
 
   // ============================================
@@ -857,20 +847,26 @@ class ServerImpl implements Server {
               description: skill.description,
             });
           },
-          onOfficeProgress: (progress) => {
-            this.emitOfficeProgress(sessionKey, progress);
-          },
           onTaskProgress: (progress: TaskProgressEvent) => {
             // After user cancel, ignore late "done" pulses from the dying turn.
             if (abortController.signal.aborted && progress.phase === 'done') {
               const reasons = progress.reasons?.length
                 ? progress.reasons
                 : ['已中断，可继续完成'];
-              this.markGoalBlockedForResume(sessionKey, reasons);
+              this.goalStore.markBlocked(sessionKey, reasons);
               return;
             }
             this.goalStore.updateFromProgress(sessionKey, progress);
-            this.emitTaskProgress(sessionKey, progress);
+            // AgentLoop only surfaces terminal progress to the wire protocol.
+            if (progress.phase === 'done' || progress.phase === 'blocked') {
+              this.emitTaskProgress(sessionKey, {
+                phase: progress.phase,
+                message: progress.message,
+                reasons: progress.reasons,
+                attempt: progress.attempt,
+                maxAttempts: progress.maxAttempts,
+              });
+            }
           },
           onReasoning: (text) => {
             this.emitReasoningDebounced(sessionKey, text);
@@ -914,7 +910,7 @@ class ServerImpl implements Server {
             const reasons = existing?.reasons?.length
               ? existing.reasons
               : ['已中断，可继续完成'];
-            this.markGoalBlockedForResume(sessionKey, reasons);
+            this.goalStore.markBlocked(sessionKey, reasons);
           }
         } else if (verification) {
           if (verification.passed) {
@@ -924,7 +920,7 @@ class ServerImpl implements Server {
               .filter((r) => r && (r as { passed?: boolean }).passed === false)
               .map((r) => r.message)
               .filter(Boolean);
-            this.markGoalBlockedForResume(sessionKey, reasons.length ? reasons : ['完成校验未通过']);
+            this.goalStore.markBlocked(sessionKey, reasons.length ? reasons : ['完成校验未通过']);
           }
         } else if (result.success) {
           this.goalStore.markDone(sessionKey);
@@ -959,7 +955,7 @@ class ServerImpl implements Server {
         (error instanceof DOMException && error.name === 'AbortError')
         || (error instanceof Error && /abort/i.test(error.message));
       if (isAborted && isIncompleteGoal(this.goalStore.get(sessionKey))) {
-        this.markGoalBlockedForResume(sessionKey, ['已中断，可继续完成']);
+        this.goalStore.markBlocked(sessionKey, ['已中断，可继续完成']);
       }
       this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: false, cancelled: isAborted, error: errorMsg });
     } finally {
@@ -1178,7 +1174,7 @@ export function createServer(options: ServerOptions): Server {
 
   // Inject dbPath into ToolRegistry so env-tool can query SQLite
   if (dbPath) {
-    agent.context.runner.getToolRegistry().setEnvDbProvider(() => dbPath);
+    agent.context.toolRegistry.setEnvDbProvider(() => dbPath);
   }
 
   const server = new ServerImpl(agent, logger, channelContext);

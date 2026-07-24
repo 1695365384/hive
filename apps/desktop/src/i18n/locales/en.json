@@ -155,7 +155,15 @@
       "officeSheet": "Document assistant is preparing a spreadsheet",
       "helper": "Using a helper service",
       "generic": "Working on it",
-      "coordinate": "Coordinating the task"
+      "coordinate": "Coordinating the task",
+      "webSearch": "Searching the web",
+      "webSearchWith": "Searching · {{query}}",
+      "editFile": "Editing a file",
+      "editFileWith": "Editing · {{file}}",
+      "writeFile": "Writing a file",
+      "writeFileWith": "Writing · {{file}}",
+      "remember": "Saving a memory",
+      "env": "Updating environment"
     },
     "worker": {
       "office": "Office document",

@@ -26,7 +26,7 @@ describe('ProviderCapability', () => {
   });
 
   const anotherProvider = createTestProviderConfig({
-    id: 'glm',
+    id: 'zai',
     name: 'GLM',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     apiKey: 'glm-test-key',
@@ -125,15 +125,15 @@ describe('ProviderCapability', () => {
 
     it('should include Chinese provider names', () => {
       const presets = capability.listPresets();
-      const glmPreset = presets.find(p => p.id === 'glm');
+      const glmPreset = presets.find(p => p.id === 'zai');
 
       expect(glmPreset).toBeDefined();
-      expect(glmPreset?.name).toContain('GLM');
+      expect(glmPreset?.name).toMatch(/zAI|智谱/);
     });
 
     it('should include all known OpenAI-compatible providers', () => {
       const presets = capability.listPresets();
-      const knownProviders = ['deepseek', 'glm', 'qwen', 'kimi', 'moonshot', 'groq'];
+      const knownProviders = ['deepseek', 'qwen-portal', 'moonshot', 'groq'];
 
       for (const providerId of knownProviders) {
         const preset = presets.find(p => p.id === providerId);
@@ -141,6 +141,8 @@ describe('ProviderCapability', () => {
           expect(preset.type).toBe('openai-compatible');
         }
       }
+      const zai = presets.find(p => p.id === 'zai');
+      expect(zai?.type).toBe('anthropic');
     });
   });
 
@@ -150,39 +152,39 @@ describe('ProviderCapability', () => {
 
   describe('use()', () => {
     it('should switch provider successfully', async () => {
-      const result = await capability.use('glm');
+      const result = await capability.use('zai');
 
       expect(result).toBe(true);
-      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', undefined);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('zai', undefined);
     });
 
     it('should switch provider with API key', async () => {
       const newApiKey = 'new-api-key';
-      const result = await capability.use('glm', newApiKey);
+      const result = await capability.use('zai', newApiKey);
 
       expect(result).toBe(true);
-      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', newApiKey);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('zai', newApiKey);
     });
 
     it('should trigger provider:beforeChange hook', async () => {
-      await capability.use('glm', undefined, 'session-123');
+      await capability.use('zai', undefined, 'session-123');
 
       expect(context.hookRegistry.emit).toHaveBeenCalledWith(
         'provider:beforeChange',
         expect.objectContaining({
           sessionId: 'session-123',
-          newProviderId: 'glm',
+          newProviderId: 'zai',
         })
       );
     });
 
     it('should trigger provider:afterChange hook on success', async () => {
-      await capability.use('glm');
+      await capability.use('zai');
 
       expect(context.hookRegistry.emit).toHaveBeenCalledWith(
         'provider:afterChange',
         expect.objectContaining({
-          newProvider: 'glm',
+          newProvider: 'zai',
           success: true,
         })
       );
@@ -192,13 +194,13 @@ describe('ProviderCapability', () => {
       // 重新设置 mock 使 emit 返回 false
       vi.mocked(context.hookRegistry.emit).mockResolvedValueOnce(false);
 
-      const result = await capability.use('glm');
+      const result = await capability.use('zai');
 
       expect(result).toBe(false);
     });
 
     it('should use default session ID when not provided', async () => {
-      await capability.use('glm');
+      await capability.use('zai');
 
       expect(context.hookRegistry.emit).toHaveBeenCalledWith(
         'provider:beforeChange',
@@ -215,22 +217,22 @@ describe('ProviderCapability', () => {
 
   describe('useSync()', () => {
     it('should switch provider synchronously', () => {
-      const result = capability.useSync('glm');
+      const result = capability.useSync('zai');
 
       expect(result).toBe(true);
-      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', undefined);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('zai', undefined);
     });
 
     it('should switch provider with API key', () => {
       const newApiKey = 'new-api-key';
-      const result = capability.useSync('glm', newApiKey);
+      const result = capability.useSync('zai', newApiKey);
 
       expect(result).toBe(true);
-      expect(context.providerManager.switch).toHaveBeenCalledWith('glm', newApiKey);
+      expect(context.providerManager.switch).toHaveBeenCalledWith('zai', newApiKey);
     });
 
     it('should not trigger hooks', () => {
-      capability.useSync('glm');
+      capability.useSync('zai');
 
       // useSync 不应该触发 hooks
       expect(context.hookRegistry.emit).not.toHaveBeenCalled();

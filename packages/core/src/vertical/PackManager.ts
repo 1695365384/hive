@@ -39,18 +39,10 @@ export interface PackApplyTarget {
     register(name: string, config: AgentConfig): void;
     unregister(name: string): boolean;
   };
-  /** AgentRunner（用于访问 ToolRegistry + 注册自定义 Agent 定义） */
-  runner: {
-    getToolRegistry(): {
-      register(name: string, tool: Tool): void;
-      unregister(name: string): boolean;
-      registerAgentTools(agentType: string, toolNames: string[]): void;
-      unregisterAgentTools(agentType: string): boolean;
-    };
-    /** 注册自定义 Agent 定义（Vertical Pack 使用，让 runner 能执行 pack 声明的 agent） */
-    registerAgentDefinition(name: string, config: AgentConfig): void;
-    /** 注销自定义 Agent 定义（unloadPack 时使用） */
-    unregisterAgentDefinition(name: string): boolean;
+  /** 工具注册表（Vertical Pack 注册自定义工具） */
+  toolRegistry: {
+    register(name: string, tool: Tool): void;
+    unregister(name: string): boolean;
   };
   /** Hook 注册表 */
   hookRegistry: {
@@ -77,7 +69,7 @@ export interface PackApplyTarget {
  */
 interface PackResourceRecord {
   tools: string[];
-  agentAgents: string[]; // 注册到 agentRegistry + runner 的自定义 agent 名
+  agentAgents: string[]; // 注册到 agentRegistry 的自定义 agent 名
   capabilities: string[];
   skills: string[];
   hooks: string[]; // hook id 列表
@@ -313,19 +305,18 @@ export class PackManager {
       }
     }
 
-    // 2. SubAgent 定义（同时注册到 agentRegistry 和 runner，让 runner 能执行）
+    // 2. SubAgent 定义（注册到 agentRegistry；子代理执行由 pi task 核负责）
     if (pack.agents) {
       for (const { name, config: agentConfig } of pack.agents) {
         const nsName = this.namespace(pack, name);
         this.assertNoConflict(pack.id, this.agentOwner, record.agentAgents, 'agent', nsName);
         target.agentRegistry.register(nsName, agentConfig);
-        target.runner.registerAgentDefinition(nsName, agentConfig);
       }
     }
 
     // 3. Tool
     if (pack.tools) {
-      const registry = target.runner.getToolRegistry();
+      const registry = target.toolRegistry;
       for (const { name, tool } of pack.tools as ToolDefinition[]) {
         const nsName = this.namespace(pack, name);
         this.assertNoConflict(pack.id, this.toolOwner, record.tools, 'tool', nsName);
@@ -391,7 +382,7 @@ export class PackManager {
     }
 
     // 3. Tool
-    const toolRegistry = target.runner.getToolRegistry();
+    const toolRegistry = target.toolRegistry;
     for (const toolName of record.tools) {
       toolRegistry.unregister(toolName);
       this.toolOwner.delete(toolName);
@@ -406,7 +397,6 @@ export class PackManager {
     // 5. SubAgent
     for (const agentName of record.agentAgents) {
       target.agentRegistry.unregister(agentName);
-      target.runner.unregisterAgentDefinition(agentName);
       this.agentOwner.delete(agentName);
     }
 

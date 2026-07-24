@@ -152,7 +152,11 @@ export class ChatWsHandler extends EventEmitter {
       const { sessionId, filePath } = event
       const tid = SessionId.recipient(sessionId)
       const ws = this.threadClientMap.get(tid)
-      if (!ws || ws.readyState !== ws.OPEN) return
+      if (!ws || ws.readyState !== ws.OPEN) {
+        console.warn(`[chat-handler] Dropping file event for thread "${tid}": ` +
+          `${!ws ? 'no socket mapped' : 'socket not open (readyState=' + ws.readyState + ')'}`)
+        return
+      }
 
       try {
         const staged = await stageArtifactFile(sessionId, filePath)
@@ -291,7 +295,6 @@ export class ChatWsHandler extends EventEmitter {
           phase: event.phase,
           message: event.message,
           reasons: event.reasons,
-          actions: event.actions,
           attempt: event.attempt,
           maxAttempts: event.maxAttempts,
         })))
@@ -397,7 +400,9 @@ export class ChatWsHandler extends EventEmitter {
       case 'chat.continue':
         return this.handleChatContinue(req.params, req.id, client.ws)
       case 'chat.continueGoal':
-        return this.handleChatContinueGoal(req.params, req.id)
+        // Must pass ws so threadClientMap is rebound after reconnect/resume.
+        // Without this, streaming events drop with "no socket mapped".
+        return this.handleChatContinueGoal(req.params, req.id, client.ws)
       case 'chat.cancelGoal':
         return this.handleChatCancelGoal(req.params, req.id)
       case 'chat.getGoal':
@@ -514,8 +519,8 @@ export class ChatWsHandler extends EventEmitter {
     })
   }
 
-  private async handleChatContinueGoal(params: unknown, id: string): Promise<WsResponse> {
-    return this.handleChatContinue(params, id)
+  private async handleChatContinueGoal(params: unknown, id: string, ws?: WebSocket): Promise<WsResponse> {
+    return this.handleChatContinue(params, id, ws)
   }
 
   private handleChatCancelGoal(params: unknown, id: string): WsResponse {

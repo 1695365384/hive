@@ -59,10 +59,6 @@ function ArtifactIcon({ type }: { type: PreviewFileType }) {
   return <FileText className="w-5 h-5" aria-hidden />;
 }
 
-function formatFileSize(path: string): string {
-  // derive from extension type
-  return "";
-}
 
 type ArtifactsStripProps = {
   messages: ChatMessage[];

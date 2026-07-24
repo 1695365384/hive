@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { renderAsync } from "docx-preview";
 import { PreviewErrorFallback } from "./PreviewErrorFallback";
 import type { ArtifactOpenMeta } from "./artifact-open-meta";
+import { loadArtifactArrayBuffer } from "../../lib/artifact-file";
 
 interface DocxRendererProps extends ArtifactOpenMeta {
   src: string;
@@ -22,9 +23,15 @@ export function DocxRenderer({ src, title, name, path, servedPath, artifactSrc, 
 
     const load = async () => {
       try {
-        const res = await fetch(src);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
+        let buf: ArrayBuffer;
+        try {
+          buf = await loadArtifactArrayBuffer({ src: artifactSrc, path, servedPath, name });
+        } catch (primaryErr) {
+          if (!src) throw primaryErr;
+          const res = await fetch(src);
+          if (!res.ok) throw primaryErr;
+          buf = await res.arrayBuffer();
+        }
         if (cancelled) return;
 
         await renderAsync(buf, el, undefined, {
@@ -48,7 +55,7 @@ export function DocxRenderer({ src, title, name, path, servedPath, artifactSrc, 
       cancelled = true;
       while (el.firstChild) el.removeChild(el.firstChild);
     };
-  }, [src]);
+  }, [src, path, servedPath, artifactSrc, name]);
 
   if (status === "error") {
     return (

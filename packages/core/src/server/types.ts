@@ -34,6 +34,15 @@ export type StreamingEventUnion =
   | { type: 'worker-start'; sessionId: string; workerId: string; workerType: string; description?: string; scenarioId?: string }
   | { type: 'worker-complete'; sessionId: string; workerId: string; workerType: string; success: boolean; error?: string; duration: number }
   | {
+      type: 'task-progress';
+      sessionId: string;
+      phase: 'blocked' | 'done';
+      message?: string;
+      reasons?: string[];
+      attempt?: number;
+      maxAttempts?: number;
+    }
+  | {
       type: 'office-progress';
       sessionId: string;
       phase: 'routed' | 'creating' | 'adding_slide' | 'validating' | 'delivering' | 'blocked';
@@ -41,16 +50,6 @@ export type StreamingEventUnion =
       slideTotal?: number;
       message?: string;
       workerId?: string;
-    }
-  | {
-      type: 'task-progress';
-      sessionId: string;
-      phase: 'understand' | 'plan' | 'execute' | 'verify' | 'continue' | 'blocked' | 'done';
-      message?: string;
-      reasons?: string[];
-      actions?: Array<{ id: 'continue' | 'cancel' | 'provide-info'; label: string }>;
-      attempt?: number;
-      maxAttempts?: number;
     }
   | {
       type: 'heartbeat';

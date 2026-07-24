@@ -188,7 +188,7 @@ const result = await agent.dispatch(task: string, options?: DispatchOptions): Pr
 // Provider 管理
 agent.useProvider(name: string, apiKey?: string): boolean;
 agent.listProviders(): ProviderConfig[];
-agent.listAllProviders(): Promise<ModelsDevProvider[]>;
+agent.listAllProviders(): Promise<PiCatalogProvider[]>;
 agent.listProviderModels(providerId: string): Promise<ModelSpec[]>;
 
 // 技能管理
@@ -301,7 +301,7 @@ hive/
 │   │   │   ├── Agent.ts              # 唯一入口
 │   │   │   ├── AgentContext.ts        # 共享上下文 + Hook 注册表
 │   │   │   ├── agents.ts             # Worker 定义（explore/plan/general/schedule）
-│   │   │   └── runner.ts             # AgentRunner — Worker 执行引擎
+│   │   │   └── PiAgentSessionAdapter.ts # pi createAgentSession 适配器
 │   │   └── capabilities/
 │   │       ├── CoordinatorCapability.ts  # LLM 循环 + Worker 编排
 │   │       ├── ProviderCapability.ts     # Provider 注册 + AI SDK

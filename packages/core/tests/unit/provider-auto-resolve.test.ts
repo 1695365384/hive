@@ -1,14 +1,14 @@
 /**
  * ProviderManager 自动补全配置测试
  *
- * 测试 ProviderManager 从 models.dev Registry 自动补全 baseUrl、type、apiKey 的功能
+ * 测试 ProviderManager 从 pi catalog 自动补全 baseUrl、type、apiKey 的功能
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createProviderManager } from '../../src/providers/ProviderManager.js';
 import type { ProviderConfig } from '../../src/providers/types.js';
 
-describe('ProviderManager auto-resolve from Registry', () => {
+describe('ProviderManager auto-resolve from pi catalog', () => {
   beforeEach(() => {
     // 清理可能影响测试的环境变量
     vi.unstubAllEnvs();
@@ -46,7 +46,7 @@ describe('ProviderManager auto-resolve from Registry', () => {
 
     const config = manager.active!;
     expect(config.type).toBe('anthropic');
-    expect(config.baseUrl).toBe('https://api.anthropic.com/v1');
+    expect(config.baseUrl).toBe('https://api.anthropic.com');
   });
 
   it('should always use baseUrl from providers table (user config ignored)', () => {
@@ -133,6 +133,6 @@ describe('ProviderManager auto-resolve from Registry', () => {
     });
 
     const config = manager.active!;
-    expect(config.model).toBe('deepseek-chat');
+    expect(config.model).toBe('deepseek-v4-pro');
   });
 });

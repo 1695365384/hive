@@ -4,18 +4,18 @@
  * 核心设计：
  * - 主 Agent 作为唯一入口
  * - 统一任务分发（dispatch）
- * - 管理提供商（EnvSource + 内置预设）
+ * - 管理提供商（EnvSource + pi catalog）
  *
  * 架构：
  * ┌─────────────────────────────────────────┐
  * │            主 Agent (Agent)             │
  * │    唯一入口：dispatch() / chat()         │
  * ├─────────────────────────────────────────┤
- * │     CoordinatorCapability               │
+ * │     AgentLoop               │
  * │  Coordinator 模式 + Worker 委派       │
  * ├─────────────────────────────────────────┤
  * │           提供商管理                     │
- * │  EnvSource + 内置预设                   │
+ * │  EnvSource + pi catalog                 │
  * ├─────────────────────────────────────────┤
  * │         LLM Provider SDK                │
  * └─────────────────────────────────────────┘
@@ -54,15 +54,12 @@ export {
 // 统一任务执行
 // ============================================
 
-export {
-  CoordinatorCapability,
-} from './agents/index.js';
+// AgentLoop replaced by AgentLoop. Use Agent.dispatch() directly.
 
 export type {
   DispatchOptions,
   DispatchResult,
   DispatchTraceEvent,
-  /** 三元对抗质量控制配置 */
   AdversarialConfig,
 } from './agents/index.js';
 
@@ -119,15 +116,6 @@ export {
   getAgentConfig,
   getAllAgentNames,
 
-  // Agent 运行器
-  AgentRunner,
-  createAgentRunner,
-
-  // Task 系统（合并到 AgentRunner）
-  type TaskConfig,
-  type TaskResult,
-  type ParallelTaskConfig,
-
   // Prompt 模板
   THOROUGHNESS_PROMPTS,
   buildExplorePrompt,
@@ -138,34 +126,14 @@ export {
 // ============================================
 
 export {
-  // 核心类
   ProviderManager,
   createProviderManager,
-
-  // 配置来源
   EnvSource,
-  ModelsDevSource,
-  createModelsDevSource,
-  getModelsDevSource,
+  normalizeProviderId,
+  warmPiCatalog,
+  listPiProviders,
+  listPiProviderModels,
   createConfigChain,
-
-  // AI SDK 适配器
-  createAdapter,
-  createOpenAIAdapter,
-  createAnthropicAdapter,
-  createGoogleAdapter,
-  createOpenAICompatibleAdapter,
-  getProviderType,
-  getKnownProviders,
-  getKnownProvidersSync,
-  isKnownProvider,
-  adapterRegistry,
-
-  // 模型元数据
-  fetchModelSpec,
-  fetchProviderModels,
-
-  // 类型
   type ProviderConfig,
   type McpServerConfig,
   type McpStdioServerConfig,
@@ -175,8 +143,7 @@ export {
   type ConfigSource,
   type IProvider,
   type ProviderType,
-  type ProviderAdapter,
-  type ModelsDevProvider,
+  type PiCatalogProvider,
   isHttpMcpConfig,
   normalizeMcpServerConfig,
 } from './providers/index.js';

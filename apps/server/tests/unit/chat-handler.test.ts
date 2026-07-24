@@ -1,12 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock dependencies before importing
-vi.mock('node:fs', () => ({
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  existsSync: vi.fn(),
-  mkdirSync: vi.fn(),
-}))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    // Keep real fs for vitest/module graph; stub only if a test needs it later.
+    readFileSync: vi.fn((...args: Parameters<typeof actual.readFileSync>) => actual.readFileSync(...args)),
+    writeFileSync: vi.fn((...args: Parameters<typeof actual.writeFileSync>) => actual.writeFileSync(...args)),
+    existsSync: vi.fn((...args: Parameters<typeof actual.existsSync>) => actual.existsSync(...args)),
+    mkdirSync: vi.fn((...args: Parameters<typeof actual.mkdirSync>) => actual.mkdirSync(...args)),
+  }
+})
 
 vi.mock('../../src/config.js', () => ({
   HIVE_HOME: '/tmp/test-hive',
@@ -77,6 +82,7 @@ function createMockServer(overrides?: Record<string, any>) {
   return {
     handleMessage: vi.fn(),
     abort: vi.fn(),
+    continueGoal: vi.fn().mockResolvedValue({ ok: true, threadId: 'tid-A' }),
     onStreamingEvent: vi.fn(() => vi.fn()),
     onFileEvent: vi.fn(() => vi.fn()),
     agent: { dispatch: vi.fn().mockResolvedValue({ text: 'ok', success: true, duration: 0, tools: [] }) },
@@ -243,6 +249,89 @@ describe('ChatWsHandler', () => {
       closeHandler!()
 
       handler.closeAll()
+    })
+  })
+
+
+  describe('continueGoal + office progress', () => {
+    it('rebinds websocket on chat.continueGoal so streaming events are not dropped', async () => {
+      const { ws: ws1, getSentMessages: getSent1 } = createMockWs()
+      const { ws: ws2, getSentMessages: getSent2 } = createMockWs()
+      const handler = new ChatWsHandler(null)
+      handler.handleConnection(ws1 as any)
+      handler.handleConnection(ws2 as any)
+
+      let streamingHandler: any = null
+      const server = createMockServer({
+        onStreamingEvent: vi.fn((fn: any) => {
+          streamingHandler = fn
+          return vi.fn()
+        }),
+        continueGoal: vi.fn().mockResolvedValue({ ok: true, threadId: 'tid-resume' }),
+      })
+      handler.setServer(server as any)
+
+      // Original run on ws1
+      const messageHandler1 = vi.mocked(ws1.on).mock.calls.find(c => c[0] === 'message')?.[1]!
+      messageHandler1({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'hi', threadId: 'tid-resume' }, 'req-send')) })
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      // Simulate reconnect: continueGoal from ws2 must rebind the map
+      const messageHandler2 = vi.mocked(ws2.on).mock.calls.find(c => c[0] === 'message')?.[1]!
+      messageHandler2({ toString: () => JSON.stringify(createRequest('chat.continueGoal', { threadId: 'tid-resume' }, 'req-continue')) })
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      expect(server.continueGoal).toHaveBeenCalled()
+      const continueRes = getSent2().find((m: any) => m.id === 'req-continue' && m.type === 'res') as any
+      expect(continueRes?.success).toBe(true)
+
+      expect(streamingHandler).toBeDefined()
+      streamingHandler!({
+        sessionId: 'ws-chat:tid-resume',
+        type: 'office-progress',
+        phase: 'adding_slide',
+        slide: 2,
+      })
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      const officeEvent2 = getSent2().find((m: any) => m.event === 'agent.office-progress')
+      expect(officeEvent2).toBeDefined()
+      expect(officeEvent2.data).toMatchObject({ threadId: 'tid-resume', phase: 'adding_slide', slide: 2 })
+
+      // After rebind, ws1 should not receive the resumed stream
+      const officeEvent1 = getSent1().find((m: any) => m.event === 'agent.office-progress')
+      expect(officeEvent1).toBeUndefined()
+    })
+
+    it('forwards office-progress milestones to the mapped client', async () => {
+      const { ws, getSentMessages } = createMockWs()
+      const handler = new ChatWsHandler(null)
+      handler.handleConnection(ws as any)
+
+      let streamingHandler: any = null
+      const server = createMockServer({
+        onStreamingEvent: vi.fn((fn: any) => {
+          streamingHandler = fn
+          return vi.fn()
+        }),
+      })
+      handler.setServer(server as any)
+
+      const messageHandler = vi.mocked(ws.on).mock.calls.find(c => c[0] === 'message')?.[1]!
+      messageHandler({ toString: () => JSON.stringify(createRequest('chat.send', { prompt: 'ppt', threadId: 'tid-office' })) })
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      streamingHandler!({
+        sessionId: 'ws-chat:tid-office',
+        type: 'office-progress',
+        phase: 'creating',
+      })
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      const evt = getSentMessages().find((m: any) => m.event === 'agent.office-progress') as any
+      expect(evt).toBeDefined()
+      expect(evt.data.phase).toBe('creating')
+      expect(evt.data.threadId).toBe('tid-office')
     })
   })
 

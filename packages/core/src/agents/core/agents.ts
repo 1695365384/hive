@@ -92,7 +92,8 @@ export const CORE_AGENTS: Record<
 
   office: {
     type: 'office',
-    description: 'Office document specialist for creating PowerPoint, Word, and Excel documents using officecli.',
+    description:
+      'Office document specialist: PPT via dashi-ppt (lock template, short concrete copy, respect fillPlan budgets, no AI-slop/overflow); Word/Excel via officecli.',
     tools: ['bash', 'file', 'glob', 'grep', 'send-file', 'env'],
     maxTurns: 30,
   },

@@ -33,7 +33,7 @@ export function encodeFilesUrl(src: string): string {
 
 /** Prefer staged HTTP src; fall back to absolute path for officecli preview API */
 export function resolveArtifactPreviewSrc(path?: string, src?: string): string {
-  if (src?.startsWith("/files/")) return src;
+  if (src?.startsWith("/files/")) return encodeFilesUrl(src);
   if (path) return path;
   if (src) return src.startsWith("http") ? src : encodeFilesUrl(src);
   return "";
@@ -80,6 +80,28 @@ export function resolveArtifactLocalPath(ref: ArtifactFileRef): string | null {
     if (candidate && !candidate.startsWith("http")) return candidate;
   }
   return null;
+}
+
+/** Load exact artifact bytes (HTTP staged URL preferred). */
+export async function loadArtifactArrayBuffer(ref: ArtifactFileRef): Promise<ArrayBuffer> {
+  const http = resolveArtifactHttpUrl(ref.path, ref.src);
+  if (http) {
+    const res = await fetch(http);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.arrayBuffer();
+  }
+  throw new Error(i18n.t("file.notFound"));
+}
+
+/** Load exact HTML/text for the clicked file. */
+export async function loadArtifactText(ref: ArtifactFileRef): Promise<string> {
+  const http = resolveArtifactHttpUrl(ref.path, ref.src);
+  if (http) {
+    const res = await fetch(http);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  }
+  throw new Error(i18n.t("file.notFound"));
 }
 
 function downloadBlob(blob: Blob, filename: string): void {

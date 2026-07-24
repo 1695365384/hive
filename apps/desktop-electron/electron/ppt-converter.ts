@@ -63,7 +63,7 @@ export async function htmlToPptx(htmlPath: string, outputPath: string): Promise<
   try {
     // Load HTML via base64 data URL to avoid cross-origin restrictions
     const encoded = Buffer.from(html).toString("base64");
-    await win.loadURL(`data:text/html;base64,${encoded}`);
+    await win.loadURL(`data:text/html;charset=utf-8;base64,${encoded}`);
 
     // Wait for Tailwind CDN + fonts to load
     await new Promise((resolve) => setTimeout(resolve, 2000));

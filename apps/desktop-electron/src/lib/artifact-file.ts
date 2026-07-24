@@ -8,6 +8,7 @@ export type ArtifactFileRef = {
   path?: string;
   src?: string;
   name?: string;
+  servedPath?: string;
 };
 
 /** Decode staged /files/ segment once (avoids double-encoding already-encoded src). */
@@ -18,27 +19,33 @@ export function parseStagedFilename(src: string): string {
 
 /** Build fetch-safe HTTP URL for staged /files/ assets (encodes CJK filenames). */
 export function encodeFilesUrl(src: string): string {
+  if (!src) return src;
+  if (/^https?:\/\//i.test(src)) return src;
+
   const m = src.match(/\/files\/(.+)/);
   if (!m) return src;
   const name = m[1];
-  // Only re-encode if already-decoded (has non-URI-encoded chars)
-  if (name !== encodeURIComponent(decodeURIComponent(name))) {
-    return `/files/${encodeURIComponent(name)}`;
+  let encodedName: string;
+  try {
+    // decode first so we never double-encode
+    encodedName = encodeURIComponent(decodeURIComponent(name));
+  } catch {
+    encodedName = encodeURIComponent(name);
   }
-  return src;
+  return `${SERVER}/files/${encodedName}`;
 }
 
 /** Prefer staged HTTP src; fall back to absolute path for officecli preview API */
 export function resolveArtifactPreviewSrc(path?: string, src?: string): string {
-  if (src) return `${SERVER}${src}`;
+  if (src) return encodeFilesUrl(src);
   if (path) return path;
   return "";
 }
 
 /** HTTP URL for fetching file bytes (pptx-preview fallback, etc.) */
 export function resolveArtifactHttpUrl(_path?: string, src?: string): string | null {
-  if (src) return `${SERVER}${src}`;
-  return null;
+  if (!src) return null;
+  return encodeFilesUrl(src);
 }
 
 /** Query string for /api/preview/html — prefer absolute disk path to skip URL encoding issues. */
@@ -54,7 +61,14 @@ export function buildOfficePreviewQuery(options: {
   } else if (options.servedPath) {
     params.set("path", options.servedPath);
   } else if (options.src) {
-    params.set("src", options.src);
+    const staged = parseStagedFilename(options.src);
+    if (staged && options.src.includes("/files/")) {
+      params.set("file", staged);
+    } else if (options.src.startsWith("/") && !options.src.startsWith("/files/")) {
+      params.set("path", options.src);
+    } else {
+      params.set("src", options.src);
+    }
   } else {
     return null;
   }
@@ -71,15 +85,52 @@ export function isElectronRuntime(): boolean {
 
 /** Best local disk path for open / reveal / save-as. */
 export function resolveArtifactLocalPath(ref: ArtifactFileRef): string | null {
+  // Prefer staged/server copy when present — matches what preview/fetch use.
+  if (ref.servedPath && !ref.servedPath.startsWith("http")) return ref.servedPath;
   if (ref.path && !ref.path.startsWith("http")) return ref.path;
-  if (ref.src) {
-    const name = parseStagedFilename(ref.src);
-    if (name) {
-      // Files are served from .hive/files/ relative to working dir
-      return null; // Can't resolve without server context in Electron
-    }
-  }
   return null;
+}
+
+/**
+ * Load the *exact* artifact bytes the user clicked.
+ * Prefer HTTP `/files/` when staged; otherwise read the local disk path via Electron IPC.
+ * Never substitutes a sibling .html for a .pptx (or vice versa).
+ */
+export async function loadArtifactArrayBuffer(ref: ArtifactFileRef): Promise<ArrayBuffer> {
+  const http = resolveArtifactHttpUrl(ref.path, ref.src);
+  if (http) {
+    const res = await fetch(http);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.arrayBuffer();
+  }
+
+  const local = resolveArtifactLocalPath(ref);
+  if (local && isElectronRuntime()) {
+    return window.hive!.file.readBytes(local);
+  }
+
+  throw new Error(i18n.t("file.notFound"));
+}
+
+/** Load UTF-8 text for the exact HTML/SVG file the user clicked. */
+export async function loadArtifactText(ref: ArtifactFileRef): Promise<string> {
+  const http = resolveArtifactHttpUrl(ref.path, ref.src);
+  if (http) {
+    const res = await fetch(http);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  }
+
+  const local = resolveArtifactLocalPath(ref);
+  if (local && isElectronRuntime()) {
+    if (/\.html?$/i.test(local)) {
+      return window.hive!.file.readHtml(local);
+    }
+    const buf = await window.hive!.file.readBytes(local);
+    return new TextDecoder("utf-8").decode(buf);
+  }
+
+  throw new Error(i18n.t("file.notFound"));
 }
 
 function downloadBlob(blob: Blob, filename: string): void {

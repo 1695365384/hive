@@ -63,6 +63,14 @@ export async function startServer(options: ServerOptions = {}): Promise<{
     console.warn('[officecli] Setup failed:', err instanceof Error ? err.message : err);
   }
 
+  // ---- 1b2. Dashi PPT 内置技能：仓库 .hive/skills → $HIVE_HOME/skills ----
+  try {
+    const { setupDashiPpt } = await import('./dashi-ppt-setup.js');
+    await setupDashiPpt(context.agent);
+  } catch (err) {
+    console.warn('[dashi-ppt] Setup failed:', err instanceof Error ? err.message : err);
+  }
+
   // ---- 1c. 加载用户持久化 MCP（跳过 officecli）----
   try {
     const { loadPersistedMcpServersIntoManager } = await import('@bundy-lmw/hive-core');

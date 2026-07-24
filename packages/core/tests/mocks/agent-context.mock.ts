@@ -8,7 +8,6 @@ import { vi } from 'vitest';
 import type { AgentContext, AgentRegistry, AgentConfig } from '../../src/agents/core/types.js';
 import type { ProviderManager, ProviderConfig } from '../../src/providers/index.js';
 import type { SkillRegistry, Skill, SkillMatchResult } from '../../src/skills/index.js';
-import type { AgentRunner } from '../../src/agents/core/runner.js';
 import type { HookRegistry } from '../../src/hooks/index.js';
 import type { TimeoutCapability } from '../../src/agents/capabilities/TimeoutCapability.js';
 
@@ -31,9 +30,6 @@ export function createMockProviderManager(overrides?: {
     register: vi.fn(),
     unregister: vi.fn(),
     get: vi.fn(),
-    getModel: vi.fn().mockReturnValue({ modelId: 'mock-model', provider: 'mock' }),
-    getModelForProvider: vi.fn().mockReturnValue({ modelId: 'mock-model', provider: 'mock' }),
-    getModelWithSpec: vi.fn().mockResolvedValue({ model: { modelId: 'mock-model', provider: 'mock' }, spec: null }),
   } as unknown as ProviderManager;
 }
 
@@ -88,27 +84,20 @@ export function createMockSkillRegistry(overrides?: {
 }
 
 /**
- * 创建 Mock AgentRunner
+ * 创建 Mock ToolRegistry
  */
-export function createMockAgentRunner(): AgentRunner {
+export function createMockToolRegistry() {
   return {
-    execute: vi.fn(async () => ({
-      text: 'Mock agent result',
-      success: true,
-      tools: [],
-      usage: { input: 100, output: 50 },
-    })),
-    executeStreaming: vi.fn(async () => ({
-      text: 'Mock streaming result',
-      success: true,
-      tools: [],
-      usage: { input: 100, output: 50 },
-    })),
-    getToolRegistry: vi.fn(() => ({
-      getToolsForAgent: vi.fn(() => ({})),
-      getToolDescriptions: vi.fn(() => []),
-    })),
-  } as unknown as AgentRunner;
+    register: vi.fn(),
+    unregister: vi.fn(() => true),
+    getTool: vi.fn(),
+    getToolsForAgent: vi.fn(() => ({})),
+    getToolDescriptions: vi.fn(() => []),
+    registerBuiltInTools: vi.fn(),
+    registerAgentTools: vi.fn(),
+    unregisterAgentTools: vi.fn(() => true),
+    setEnvDbProvider: vi.fn(),
+  };
 }
 
 /**
@@ -239,7 +228,7 @@ export function createMockAgentContext(options: MockAgentContextOptions = {}): A
     matchResult: options.skillMatchResult,
   });
 
-  const runner = createMockAgentRunner();
+  const toolRegistry = createMockToolRegistry();
   const agentRegistry = createMockAgentRegistry({
     configs: options.agentConfigs,
   });
@@ -255,7 +244,7 @@ export function createMockAgentContext(options: MockAgentContextOptions = {}): A
   const context = {
     providerManager,
     skillRegistry,
-    runner,
+    toolRegistry,
     agentRegistry,
     hookRegistry,
     timeoutCap, // 直接作为属性

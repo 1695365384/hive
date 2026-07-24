@@ -74,17 +74,10 @@ describe('Provider Management Exports', () => {
     expect(core.EnvSource).toBeDefined();
   });
 
-  it('should export adapter creation functions', () => {
-    expect(core.createAdapter).toBeDefined();
-    expect(core.createOpenAIAdapter).toBeDefined();
-    expect(core.createAnthropicAdapter).toBeDefined();
-    expect(core.createGoogleAdapter).toBeDefined();
-    expect(core.createOpenAICompatibleAdapter).toBeDefined();
-  });
-
-  it('should export getKnownProviders', () => {
-    expect(core.getKnownProviders).toBeDefined();
-    expect(typeof core.getKnownProviders).toBe('function');
+  it('should export pi catalog helpers', () => {
+    expect(core.normalizeProviderId).toBeDefined();
+    expect(core.warmPiCatalog).toBeDefined();
+    expect(core.listPiProviders).toBeDefined();
   });
 });
 
@@ -316,20 +309,3 @@ describe('Convenience Functions', () => {
   });
 });
 
-// ============================================
-// 10. AgentRunner 导出
-// ============================================
-
-describe('AgentRunner Exports', () => {
-  it('should export AgentRunner class', async () => {
-    const { AgentRunner } = await import('../../src/index.js');
-    expect(AgentRunner).toBeDefined();
-    expect(typeof AgentRunner).toBe('function');
-  });
-
-  it('should export createAgentRunner factory', async () => {
-    const { createAgentRunner } = await import('../../src/index.js');
-    expect(createAgentRunner).toBeDefined();
-    expect(typeof createAgentRunner).toBe('function');
-  });
-});

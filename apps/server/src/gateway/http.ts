@@ -265,6 +265,15 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
       }
     }
 
+    // HTML deck already rendered — serve as-is (officecli only supports office formats)
+    if (/\.html?$/i.test(filePath)) {
+      const html = await readFile(filePath, 'utf-8')
+      if (!live) {
+        previewCache.set(cacheKey, { html, ts: Date.now() })
+      }
+      return c.html(html)
+    }
+
     try {
       // 运行 officecli view <file> html，输出到临时文件
       const tmpOutput = path.join(TEMP_DIR, `${path.basename(filePath)}.preview.html`)

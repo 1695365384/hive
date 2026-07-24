@@ -9,6 +9,8 @@ files:
 extraResources:
   - from: ../server/bundle
     to: server
+  - from: assets
+    to: assets
 mac:
   target:
     - dmg

@@ -1,7 +1,7 @@
 /**
- * Harness barrel export
+ * Harness barrel export — pure quality-gate helpers only.
+ * AdversarialHarness (LLMRuntime/AgentRunner-backed) removed with pi-only cutover.
  */
-export { AdversarialHarness, createAdversarialHarness } from './AdversarialHarness.js';
 export {
   parseCriticQuality,
   parseArbiterOutput,
@@ -18,10 +18,4 @@ export type {
   HarnessCallbacks,
   RoundRecord,
   ThesisResult,
-  AntithesisResult,
-  SynthesisResult,
-} from './types.js';
-export {
-  DEFAULT_QUALITY_WEIGHTS,
-  QUALITY_DIMENSION_DESCRIPTIONS,
 } from './types.js';

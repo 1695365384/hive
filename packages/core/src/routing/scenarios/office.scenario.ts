@@ -54,14 +54,16 @@ export const OFFICE_SCENARIO_ID = 'office-document' as const;
 export const OFFICE_SCENARIO_LABELS = {
   scenario: 'Office 文档',
   workerRunning: '正在制作 Office 文档',
-  workerDescription: '使用 officecli 制作 PPT / Word / Excel',
+  workerDescription: 'PPT 用 dashi-ppt；Word/Excel 用 officecli',
   inquiryNotification: 'Office 能力咨询',
   creationNotification: 'Office 文档制作',
 } as const;
 
 const OFFICE_INQUIRY_LINES = {
   zh: [
-    '可以。Office 文档（PPT / Word / Excel）由专用 office Worker 通过 **officecli** 处理，已集成在本系统中。',
+    '可以。Office 文档已接入本系统：',
+    '- **PPT / 演示 / 汇报**：优先 **dashi-ppt**（模板组合 → 可浏览器编辑 HTML → 导出可编辑 PPTX）',
+    '- **Word / Excel**：由 office Worker 通过 **officecli** 处理',
     '',
     '你不需要 python-pptx、AppleScript 或手动操作 PowerPoint。直接告诉我：',
     '- 文档类型（PPT / Word / Excel）',
@@ -71,11 +73,23 @@ const OFFICE_INQUIRY_LINES = {
     '我会立即开始制作。',
   ],
   en: [
-    'Yes. Office documents (PPT / Word / Excel) are handled by the dedicated **office Worker** using **officecli**, which is already integrated.',
+    'Yes. Office is integrated:',
+    '- **PPT / presentations**: prefer **dashi-ppt** (templated HTML deck → editable preview → editable PPTX export)',
+    '- **Word / Excel**: dedicated **office Worker** via **officecli**',
     '',
     'No python-pptx, AppleScript, or manual PowerPoint automation needed. Tell me the topic, outline, and format — I will start immediately.',
   ],
 } as const;
+
+const PPT_QUALITY_DIRECTIVE = [
+  '## PPT Quality Gate (mandatory)',
+  '- Use **dashi-ppt** only: lock template, fill props; never free-form HTML/`hive-ppt`/`ppt-design`.',
+  '- Respect every `fillPlan.text[].maxChars` / `copyBudgets`. Short titles; metric/display = number or short phrase.',
+  '- One idea per slide. No speech-long paragraphs.',
+  '- Ban AI-slop: 赋能/助力/开启新篇章/深度洞察/全面赋能/颠覆式创新, bilingual slogan stacking, emoji spam.',
+  '- Override ALL `copyKeys`. Leftover template copy = delivery failure.',
+  '- Pass `validate:goal-spec`, `validate:swiss`, `validate:goal-copy`. No overflow/overlap/clipping before send-file.',
+].join('\n');
 
 const OFFICE_ROUTING_HINT = [
   '## MANDATORY Routing (Office Task)',
@@ -84,15 +98,18 @@ const OFFICE_ROUTING_HINT = [
   '- You MUST call agent(type="office") exactly once (required deliverable Worker).',
   '- For research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages): call agent(type="explore") first, then agent(type="office") with the research (or call both — system direct-route runs explore then injects notes into office).',
   '- Do NOT call plan or general workers.',
-  '- Do NOT run env() or research how to make PPT — officecli is already installed.',
+  '- Do NOT run env() or research how to make PPT — tooling is already installed.',
   '- Do NOT mention python-pptx, AppleScript, or manual PowerPoint automation.',
   '- Do NOT answer with capability menus or "what would you like?" — delegate immediately.',
-  '- The office Worker uses **officecli** to create PPT/Word/Excel files.',
+  '- **PPT**: follow installed skill **dashi-ppt** (do NOT officecli-create slides page-by-page).',
+  '- **PPT quality**: short concrete copy, respect fillPlan maxChars, no AI-slop, no overflow.',
+  '- **Word/Excel**: use **officecli**.',
 ].join('\n');
 
 const OFFICE_COORDINATOR_BLURB =
-  '[Installed Capability] **officecli** is bundled and available. '
+  '[Installed Capability] **dashi-ppt** (PPT) + **officecli** (Word/Excel) are available. '
   + 'For PPT/Word/Excel tasks, spawn agent(type="office") — optionally parallel agent(type="explore") for research-heavy decks. '
+  + 'PPT must use dashi-ppt when installed; keep copy short, respect fillPlan budgets, ban AI-slop/overflow. '
   + 'Do NOT research python-pptx, AppleScript, or env() for Office tasks.';
 
 export const officeScenarioCopy: ScenarioCopy = {
@@ -136,19 +153,33 @@ export function resolveOfficeScenarioAction(task: string): OfficeScenarioAction 
     return {
       kind: 'creation',
       prompt: task,
-      description: OFFICE_SCENARIO_LABELS.workerDescription,
+      description: describeOfficeWorker(task),
     };
   }
   return { kind: 'none' };
 }
 
 export function buildOfficeWorkerSpawn(task: string, description?: string): WorkerSpawnInput {
+  const isPpt = /\b(ppt|pptx|powerpoint|presentation|幻灯片|演示文稿)\b/i.test(task);
   return {
     type: 'office',
-    prompt: task,
-    description: description ?? OFFICE_SCENARIO_LABELS.workerDescription,
+    prompt: isPpt ? `${task}\n\n${PPT_QUALITY_DIRECTIVE}` : task,
+    description: description ?? describeOfficeWorker(task),
     scenarioId: OFFICE_SCENARIO_ID,
   };
+}
+
+function describeOfficeWorker(task: string): string {
+  if (/\b(ppt|pptx|powerpoint|presentation|幻灯片|演示文稿)\b/i.test(task)) {
+    return '使用 dashi-ppt 制作可编辑 PPT';
+  }
+  if (/\b(word|docx)\b/i.test(task)) {
+    return '使用 officecli 制作 Word';
+  }
+  if (/\b(excel|xlsx|spreadsheet)\b/i.test(task)) {
+    return '使用 officecli 制作 Excel';
+  }
+  return OFFICE_SCENARIO_LABELS.workerDescription;
 }
 
 /**

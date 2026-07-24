@@ -52,6 +52,15 @@ hive skill list                                     # 列出已安装技能
 hive skill remove <name>                            # 移除用户技能
 ```
 
+## IDE 协作约定（固定，勿改）
+
+在 hive 仓库内改代码、查代码时：
+
+- **只用** Cursor 内置工具（Read / Grep / Glob / Shell / StrReplace 等）或 omp 运行时内置工具（grep / glob / file / bash 等）。
+- **禁止**调用 IDE 全局注入的第三方 MCP（如 codebrain、context7、github、tushare、open-websearch 等）——它们不属于 omp，且与 Hive Server 的 MCP 栈无关。
+- **omp 自身的 MCP** 仅指：内置 `officecli` + 用户在 Desktop 启用并写入 `.hive/mcp-servers.json` 的服务；catalog 见 `apps/server/mcp-catalog.json`。
+- omp 侧没有对应 MCP 时，**不得**改用其他 MCP；改用本地搜索/读文件，或 `semble search`（CLI，非 MCP）。
+
 ## E2E Testing
 
 E2E 测试调用真实 LLM API，会产生费用。未配置 API Key 时自动跳过。
@@ -108,7 +117,7 @@ TaskRouter（Coordinator 内唯一路由入口）
 
 Tauri 2 桌面端，Rust sidecar 管理 server 进程：
 - **开发模式**：用系统 `node` 直接运行 `apps/server/dist/main.js`
-- **生产模式**：执行 Node.js SEA 单文件二进制（`apps/server/scripts/bundle.sh` 打包，约 106MB）
+- **生产模式**：用 Bun 运行 `apps/server/dist/main.js`（Node SEA 已移除，pi 核要求 Bun）
 - 前端通过 WebSocket (`localhost:4450`) 与 server 通信
 - Zustand 状态管理，TanStack React Query 数据请求
 
@@ -238,4 +247,4 @@ PR 合并后：
 
 - **Core/Server**: TypeScript ESM, AI SDK, Hono, better-sqlite3, Zod v4, Vitest
 - **Desktop**: Tauri 2 (Rust), React 19, Vite 7, Tailwind CSS 4, Zustand
-- **Build**: esbuild (server bundle), Node.js SEA (单文件二进制), tsc
+- **Build**: tsc + Bun 运行 server；Desktop 为 Tauri/Vite（不再打 Node SEA）

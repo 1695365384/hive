@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { FileSearch } from "lucide-react";
 import type { Preview } from "../../stores/preview-store";
@@ -8,9 +8,10 @@ import { PptxRenderer } from "./PptxRenderer";
 import { DocxRenderer } from "./DocxRenderer";
 import { PdfRenderer } from "./PdfRenderer";
 import { XlsxRenderer } from "./XlsxRenderer";
-import { OfficeCliRenderer } from "./OfficeCliRenderer";
-import { resolveArtifactHttpUrl } from "../../lib/artifact-file";
+import { loadArtifactText, resolveArtifactHttpUrl } from "../../lib/artifact-file";
 import type { ArtifactOpenMeta } from "./artifact-open-meta";
+import { PreviewEmbed } from "./PreviewEmbed";
+import { PreviewErrorFallback } from "./PreviewErrorFallback";
 
 interface PreviewCanvasProps {
   preview: Preview | null;
@@ -33,9 +34,74 @@ function PreviewFrame({ children, flush }: { children: ReactNode; flush?: boolea
   );
 }
 
-export function PreviewCanvas({ preview, isRunning }: PreviewCanvasProps) {
-  const [officeCliHint, setOfficeCliHint] = useState<string | undefined>();
+/** Preview the exact HTML file the user clicked (not a sibling conversion). */
+function HtmlFileRenderer({
+  preview,
+  artifactMeta,
+}: {
+  preview: Preview;
+  artifactMeta: ArtifactOpenMeta;
+}) {
+  const { t } = useTranslation();
+  const [html, setHtml] = useState<string>("");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading");
+    void (async () => {
+      try {
+        const text = await loadArtifactText({
+          src: preview.src,
+          path: preview.filePath,
+          servedPath: preview.servedPath,
+          name: preview.title,
+        });
+        if (cancelled) return;
+        if (!/<(?:!DOCTYPE\s+html|html)\b/i.test(text.slice(0, 512))) {
+          setStatus("error");
+          return;
+        }
+        setHtml(text);
+        setStatus("ready");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preview.src, preview.filePath, preview.servedPath, preview.title]);
+
+  if (status === "error") {
+    return (
+      <PreviewErrorFallback
+        title={preview.title}
+        name={artifactMeta.name || preview.title}
+        path={artifactMeta.path}
+        servedPath={artifactMeta.servedPath}
+        artifactSrc={artifactMeta.artifactSrc}
+      />
+    );
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="preview-state preview-state--loading">
+        <span className="preview-state__spinner" aria-hidden />
+        <span>{t("preview.loading")}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="preview-embed-host">
+      <PreviewEmbed iframeTitle={preview.title} iframeSrcDoc={html} />
+    </div>
+  );
+}
+
+export function PreviewCanvas({ preview }: PreviewCanvasProps) {
   if (!preview) {
     return (
       <div className="preview-canvas">
@@ -52,73 +118,74 @@ export function PreviewCanvas({ preview, isRunning }: PreviewCanvasProps) {
     path: preview.filePath,
     servedPath: preview.servedPath,
     artifactSrc: preview.src,
-    officeCliHint,
   };
 
   const wrap = (node: ReactNode) => <div className="preview-canvas">{node}</div>;
 
   switch (preview.type) {
     case "html":
+      // Same file only: inline content OR load the clicked .html — never a converted sibling.
+      if (preview.content?.trim()) {
+        return wrap(
+          <PreviewFrame>
+            <SandboxedIframe html={preview.content} />
+          </PreviewFrame>,
+        );
+      }
       return wrap(
         <PreviewFrame>
-          <SandboxedIframe html={preview.content} />
-        </PreviewFrame>
+          <HtmlFileRenderer preview={preview} artifactMeta={artifactMeta} />
+        </PreviewFrame>,
       );
     case "svg":
       return wrap(
         <PreviewFrame>
           <SvgRenderer content={preview.content} />
-        </PreviewFrame>
+        </PreviewFrame>,
       );
     case "ppt":
+      // Render the clicked .pptx bytes directly — do not wait on officecli HTML conversion.
       return wrap(
-        <OfficeCliRenderer
-          src={preview.src ?? ""}
-          servedPath={preview.servedPath}
-          filePath={preview.filePath}
+        <PptxRenderer
+          src={httpSrc}
           title={title}
-          isRunning={isRunning}
-          onFallbackHint={setOfficeCliHint}
-          fallback={<PptxRenderer src={httpSrc} title={title} {...artifactMeta} />}
-        />
+          path={preview.filePath}
+          servedPath={preview.servedPath}
+          artifactSrc={preview.src}
+          name={preview.title}
+        />,
       );
     case "doc":
       return wrap(
-        <OfficeCliRenderer
-          src={preview.src ?? ""}
-          servedPath={preview.servedPath}
-          filePath={preview.filePath}
-          title={title}
-          isRunning={isRunning}
-          onFallbackHint={setOfficeCliHint}
-          fallback={
-            <PreviewFrame>
-              <DocxRenderer src={httpSrc} title={title} {...artifactMeta} />
-            </PreviewFrame>
-          }
-        />
+        <PreviewFrame>
+          <DocxRenderer
+            src={httpSrc}
+            title={title}
+            path={preview.filePath}
+            servedPath={preview.servedPath}
+            artifactSrc={preview.src}
+            name={preview.title}
+          />
+        </PreviewFrame>,
       );
     case "pdf":
       return wrap(
         <PreviewFrame flush>
           <PdfRenderer src={httpSrc} title={title} {...artifactMeta} />
-        </PreviewFrame>
+        </PreviewFrame>,
       );
     case "xlsx":
       return wrap(
-        <OfficeCliRenderer
-          src={preview.src ?? ""}
-          servedPath={preview.servedPath}
-          filePath={preview.filePath}
-          title={title}
-          isRunning={isRunning}
-          onFallbackHint={setOfficeCliHint}
-          fallback={
-            <PreviewFrame flush>
-              <XlsxRenderer src={httpSrc} title={title} {...artifactMeta} />
-            </PreviewFrame>
-          }
-        />
+        <PreviewFrame flush>
+          <XlsxRenderer
+            src={httpSrc}
+            title={title}
+            path={preview.filePath}
+            servedPath={preview.servedPath}
+            artifactSrc={preview.src}
+            name={preview.title}
+          />
+        </PreviewFrame>,
       );
   }
 }

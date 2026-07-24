@@ -25,7 +25,6 @@ interface FullMockTarget extends PackApplyTarget {
   capabilities: Map<string, unknown>;
   agents: Map<string, unknown>;
   tools: Map<string, unknown>;
-  agentTools: Map<string, string[]>;
   hooks: Map<string, { event: string; handler: unknown }>;
   hookSeq: number;
 }
@@ -35,7 +34,6 @@ function createFullMockTarget(): FullMockTarget {
     capabilities: new Map(),
     agents: new Map(),
     tools: new Map(),
-    agentTools: new Map(),
     hooks: new Map(),
     hookSeq: 0,
     registerCapability: (c: unknown) => {
@@ -47,17 +45,9 @@ function createFullMockTarget(): FullMockTarget {
       register: (name: string, config: unknown) => t.agents.set(name, config),
       unregister: (name: string) => t.agents.delete(name),
     },
-    runner: {
-      getToolRegistry: () => ({
-        register: (name: string, tool: unknown) => t.tools.set(name, tool),
-        unregister: (name: string) => t.tools.delete(name),
-        registerAgentTools: (agentType: string, toolNames: string[]) =>
-          t.agentTools.set(agentType, toolNames),
-        unregisterAgentTools: (agentType: string) => t.agentTools.delete(agentType),
-      }),
-      registerAgentDefinition: (name: string, config: unknown) =>
-        t.agents.set(name, config),
-      unregisterAgentDefinition: (name: string) => t.agents.delete(name),
+    toolRegistry: {
+      register: (name: string, tool: unknown) => t.tools.set(name, tool),
+      unregister: (name: string) => t.tools.delete(name),
     },
     hookRegistry: {
       on: (event: never, handler: unknown) => {

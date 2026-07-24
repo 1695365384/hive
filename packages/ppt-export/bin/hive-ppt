@@ -1,0 +1,6 @@
+#!/usr/bin/env bun
+// Hive PPT CLI entry point — delegates to compiled CLI module
+import('../dist/cli.js').then((m) => m.main()).catch((e) => {
+  console.error('hive-ppt: failed to load CLI module', e);
+  process.exit(99);
+});

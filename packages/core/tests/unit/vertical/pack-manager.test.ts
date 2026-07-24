@@ -33,24 +33,23 @@ function createMockTarget(): PackApplyTarget & {
   return {
     ...store,
     registerCapability: (c: unknown) => store.registeredCapabilities.push(c),
+    unregisterCapability: () => true,
     agentRegistry: {
       register: (name: string, config: unknown) =>
         store.registeredAgents.push({ name, config }),
+      unregister: () => true,
     },
-    runner: {
-      getToolRegistry: () => ({
-        register: (name: string, tool: unknown) =>
-          store.registeredTools.push({ name, tool }),
-        registerAgentTools: () => {},
-      }),
-      registerAgentDefinition: (name: string, config: unknown) =>
-        store.registeredAgents.push({ name, config }),
+    toolRegistry: {
+      register: (name: string, tool: unknown) =>
+        store.registeredTools.push({ name, tool }),
+      unregister: () => true,
     },
     hookRegistry: {
       on: (event: string, handler: unknown) => {
         store.registeredHooks.push({ event, handler });
         return "hook-id";
       },
+      off: () => true,
     },
   };
 }
@@ -212,8 +211,8 @@ describe("PackManager — apply", () => {
     await pm.apply(mockAgent, target);
 
     expect(target.registeredCapabilities).toHaveLength(1);
-    // agent 注册到 agentRegistry + runner.registerAgentDefinition（两处）
-    expect(target.registeredAgents).toHaveLength(2);
+    // agent 只注册到 agentRegistry
+    expect(target.registeredAgents).toHaveLength(1);
     expect(target.registeredAgents.every(a => a.name === "reviewer")).toBe(true);
     expect(target.registeredTools).toEqual([{ name: "query", tool: mockTool }]);
     expect(target.registeredHooks).toHaveLength(1);

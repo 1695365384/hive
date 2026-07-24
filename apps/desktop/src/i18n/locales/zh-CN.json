@@ -155,7 +155,15 @@
       "officeSheet": "文档助手正在整理表格",
       "helper": "正在调用辅助服务",
       "generic": "正在处理",
-      "coordinate": "正在协调任务"
+      "coordinate": "正在协调任务",
+      "webSearch": "正在检索网络",
+      "webSearchWith": "正在检索 · {{query}}",
+      "editFile": "正在编辑文件",
+      "editFileWith": "正在编辑 · {{file}}",
+      "writeFile": "正在写入文件",
+      "writeFileWith": "正在写入 · {{file}}",
+      "remember": "正在记住要点",
+      "env": "正在更新环境变量"
     },
     "worker": {
       "office": "Office 文档",

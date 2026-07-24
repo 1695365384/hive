@@ -9,8 +9,6 @@ import * as browser from "./browser-db";
 
 export type { MessageRow, SessionRow };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-let _isElectron = false;
 
 /** Check if we're running inside Electron (vs Vite dev server in browser). */
 function isElectronEnv(): boolean {

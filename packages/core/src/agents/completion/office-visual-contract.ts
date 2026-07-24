@@ -107,7 +107,20 @@ export function isSimpleOfficeDeck(task: string): boolean {
   return true;
 }
 
+/** Parse "Added slide at /slide[N]" (1-based) from officecli tool output. Prefer last match. */
+export function extractAddedSlideIndex(output: unknown): number | undefined {
+  const text = safeString(output);
+  const matches = [
+    ...text.matchAll(/Added slide at \/slide\[(\d+)\]/gi),
+  ];
+  const fallback = matches.length === 0 ? [...text.matchAll(/\/slide\[(\d+)\]/gi)] : matches;
+  if (fallback.length === 0) return undefined;
+  const n = Number(fallback[fallback.length - 1][1]);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 /** Infer progress phase from a tool name + input (bash/officecli heuristics). */
+
 export function inferOfficeProgressPhase(
   toolName: string,
   input: unknown,

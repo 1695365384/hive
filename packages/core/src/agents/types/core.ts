@@ -166,8 +166,8 @@ export interface AgentRegistry {
 export interface AgentContext {
   /** 提供商管理器 */
   providerManager: ProviderManager;
-  /** Agent 运行器 */
-  runner: import('../core/runner.js').AgentRunner;
+  /** 工具注册表（Vertical Pack / env-tool 等；主会话执行核为 pi） */
+  toolRegistry: import('../../tools/tool-registry.js').ToolRegistry;
   /** 技能注册表 */
   skillRegistry: SkillRegistry;
   /** Agent 注册表 */

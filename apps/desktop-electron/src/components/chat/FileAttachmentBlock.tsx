@@ -67,14 +67,16 @@ export function FileAttachmentBlock({
           servedPath,
           sourceMessageId: sourceMessageId || path || name,
         });
-      } else if (src) {
-        const res = await fetch(encodeFilesUrl(src));
-        const content = await res.text();
+      } else {
+        // Exact file: pass path/src so PreviewCanvas loads THIS html/svg — never a sibling.
         openFor({
           id,
           title: name,
           type: previewType as "html" | "svg",
-          content,
+          content: "",
+          src: previewSrc,
+          filePath: path,
+          servedPath,
           sourceMessageId: sourceMessageId || path || name,
         });
       }

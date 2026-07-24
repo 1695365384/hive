@@ -196,7 +196,8 @@ async fn spawn_server(state: &ServerState, force: bool) -> Result<(), String> {
     }
 
     // Resolve server binary:
-    // - Release / bundled app: use bundled Node SEA + main.js under resources/server
+    // - Release / bundled app: use bundled server resources if present
+    //   (Node SEA packaging removed; pi kernel requires Bun — prefer dist/main.js / bun)
     // - Dev (debug build): ALWAYS use apps/server/dist/main.js — target/debug/server
     //   may contain a stale copy from tauri resources and must not override live dist.
     let spawn_info = {
