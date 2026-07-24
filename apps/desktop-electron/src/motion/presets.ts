@@ -107,3 +107,85 @@ export function playSuccessPulse(el: HTMLElement | null): AnimHandle | null {
     ease: "inOut(2)",
   });
 }
+
+/** Backdrop fade used by modal surfaces. */
+export function playBackdropEnter(el: HTMLElement | null): AnimHandle | null {
+  if (!el) return null;
+  if (prefersReducedMotion()) {
+    snapEnter(el);
+    return null;
+  }
+  el.style.opacity = "0";
+  return animate(el, {
+    opacity: [0, 1],
+    duration: 220,
+    ease: "out(2)",
+  });
+}
+
+/** Dialog panel enter: restrained lift and scale, without a bouncy overshoot. */
+export function playDialogEnter(el: HTMLElement | null): AnimHandle | null {
+  if (!el) return null;
+  if (prefersReducedMotion()) {
+    snapEnter(el);
+    return null;
+  }
+  el.style.opacity = "0";
+  el.style.transform = "translateY(14px) scale(0.975)";
+  return animate(el, {
+    opacity: [0, 1],
+    y: [14, 0],
+    scale: [0.975, 1],
+    duration: 420,
+    ease: "out(4)",
+  });
+}
+
+/** Quick content transition for settings tab changes. */
+export function playPanelSwap(el: HTMLElement | null): AnimHandle | null {
+  if (!el) return null;
+  if (prefersReducedMotion()) {
+    snapEnter(el);
+    return null;
+  }
+  el.style.opacity = "0";
+  el.style.transform = "translateY(6px)";
+  return animate(el, {
+    opacity: [0, 1],
+    y: [6, 0],
+    duration: 260,
+    ease: "out(3)",
+  });
+}
+
+/** Directional entry for newly appended chat messages. */
+export function playMessageEnter(
+  el: HTMLElement | null,
+  opts?: { offsetX?: number },
+): AnimHandle | null {
+  if (!el) return null;
+  if (prefersReducedMotion()) {
+    snapEnter(el);
+    return null;
+  }
+  const x = opts?.offsetX ?? -10;
+  el.style.opacity = "0";
+  el.style.transform = `translateX(${x}px) translateY(4px)`;
+  return animate(el, {
+    opacity: [0, 1],
+    x: [x, 0],
+    y: [4, 0],
+    duration: 360,
+    ease: "out(3)",
+  });
+}
+
+/** A small acknowledgement when the composer becomes active. */
+export function playComposerFocus(el: HTMLElement | null): AnimHandle | null {
+  if (!el || prefersReducedMotion()) return null;
+  return animate(el, {
+    scale: [1, 1.008, 1],
+    duration: 300,
+    ease: "inOut(2)",
+  });
+}

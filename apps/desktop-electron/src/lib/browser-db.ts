@@ -1,6 +1,6 @@
 /**
  * Browser-mode persistence for Vite preview (`pnpm dev:ui`).
- * Tauri builds use SQLite via @tauri-apps/plugin-sql instead.
+ * Electron uses its preload database bridge; this module is the browser fallback.
  */
 
 import type { MessageRow, SessionRow } from "./db-types";

@@ -27,6 +27,7 @@ import type { ChatMessage, ContentPart } from "../types/chat";
 import { AskUserCard } from "../components/AskUserCard";
 import { BgToastHost } from "../components/chat/BgToastHost";
 import { ArrowUp, Plus, Square, Presentation, FileText, MessageSquare, BarChart3 } from "lucide-react";
+import { playMotion } from "../motion";
 
 function truncateActivityLabel(text: string, max = 48): string {
   const t = text.trim().replace(/\s+/g, " ");
@@ -73,6 +74,7 @@ export function ChatPage() {
   const stickToBottomRef = useRef(true);
   const wasRunningRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   /** Currently viewed session's in-flight thread (null when viewing a settled session). */
   const activeThreadIdRef = useRef<string | null>(null);
   const lastTextSeqRef = useRef(0);
@@ -1311,9 +1313,11 @@ export function ChatPage() {
               </div>
             )}
             <div
+              ref={composerRef}
               className="chat-composer"
               onDrop={handleDrop}
               onDragOver={handleDragOver}
+              onFocusCapture={() => playMotion("composer-focus", composerRef.current)}
             >
               <button
                 type="button"

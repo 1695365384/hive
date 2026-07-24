@@ -16,7 +16,7 @@ interface SessionState {
 
   // ── Actions ──
 
-  /** Initialize: detect Tauri env, load sessions, select most recent */
+  /** Initialize the Electron database, load sessions, and select the most recent. */
   init: () => Promise<void>;
   /** Reload session list from DB */
   loadSessions: () => Promise<void>;
@@ -44,7 +44,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   init: async () => {
     set({ loading: true, error: null });
     try {
-      // Probe whether Tauri SQL is available
+      // Probe whether the Electron database bridge is available.
       const list = await db.listSessions().catch(() => null);
       if (list === null) {
         // Browser mode or SQL unavailable

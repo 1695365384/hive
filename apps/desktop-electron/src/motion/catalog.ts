@@ -9,6 +9,11 @@ export const MOTION_IDS = [
   "worker-card-enter",
   "ask-user-options",
   "success-pulse",
+  "dialog-backdrop-enter",
+  "dialog-panel-enter",
+  "panel-swap",
+  "message-enter",
+  "composer-focus",
 ] as const;
 
 export type MotionId = (typeof MOTION_IDS)[number];
@@ -45,6 +50,31 @@ export const MOTION_CATALOG: readonly MotionCatalogEntry[] = [
     id: "success-pulse",
     scene: "worker-complete / celebration",
     description: "One-shot scale pulse on a card",
+  },
+  {
+    id: "dialog-backdrop-enter",
+    scene: "settings / modal backdrop mount",
+    description: "Backdrop fade-in",
+  },
+  {
+    id: "dialog-panel-enter",
+    scene: "settings / modal panel mount",
+    description: "Dialog panel lift + scale enter",
+  },
+  {
+    id: "panel-swap",
+    scene: "settings tab content changes",
+    description: "Short content lift on tab switch",
+  },
+  {
+    id: "message-enter",
+    scene: "user / assistant message appears",
+    description: "Directional message fade + slide",
+  },
+  {
+    id: "composer-focus",
+    scene: "chat composer receives focus",
+    description: "Subtle focus acknowledgement pulse",
   },
 ] as const;
 

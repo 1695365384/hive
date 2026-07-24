@@ -8,7 +8,7 @@ import {
 } from '../../src/routing/index.js';
 
 /**
- * Desktop worker-labels 应对齐此契约（见 apps/desktop worker-labels.test.ts）
+ * Electron Desktop worker-labels 应对齐此契约。
  */
 export const SCENARIO_LABEL_CONTRACT = {
   [OFFICE_SCENARIO_ID]: OFFICE_SCENARIO_LABELS.scenario,

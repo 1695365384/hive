@@ -5,6 +5,9 @@ describe("motion catalog", () => {
   it("lists stable shell presets", () => {
     expect(MOTION_IDS).toContain("worker-card-enter");
     expect(MOTION_IDS).toContain("activity-dock-enter");
+    expect(MOTION_IDS).toContain("dialog-panel-enter");
+    expect(MOTION_IDS).toContain("message-enter");
+    expect(MOTION_IDS).toContain("composer-focus");
     expect(MOTION_CATALOG).toHaveLength(MOTION_IDS.length);
   });
 
