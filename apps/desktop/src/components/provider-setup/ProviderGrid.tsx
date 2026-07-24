@@ -14,6 +14,7 @@ interface ProviderGridProps {
   /** ConfigPage: true. SetupWizard: false. */
   showSearch?: boolean;
   density?: "comfortable" | "compact";
+  scrollMode?: "contained" | "page";
 }
 
 export function ProviderGrid({
@@ -24,6 +25,7 @@ export function ProviderGrid({
   loading,
   showSearch = false,
   density = "comfortable",
+  scrollMode = "contained",
 }: ProviderGridProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
@@ -43,7 +45,12 @@ export function ProviderGrid({
   }
 
   const gridCols = columns === 4 ? "grid-cols-4" : "grid-cols-3";
-  const maxH = density === "compact" ? "max-h-56" : "max-h-48";
+  const maxH =
+    scrollMode === "contained"
+      ? density === "compact"
+        ? "max-h-56 overflow-y-auto pr-1"
+        : "max-h-48 overflow-y-auto pr-1"
+      : "";
   const pad = density === "compact" ? "p-2.5" : "p-3";
 
   return (
@@ -88,7 +95,7 @@ export function ProviderGrid({
           ) : null}
         </div>
       ) : (
-        <div className={`grid ${gridCols} gap-2 ${maxH} overflow-y-auto pr-1`}>
+        <div className={`grid ${gridCols} gap-2 ${maxH}`}>
           {filtered.map((p) => (
             <button
               key={p.id}

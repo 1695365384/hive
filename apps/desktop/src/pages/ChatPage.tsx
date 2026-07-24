@@ -27,6 +27,10 @@ import type { ChatMessage, ContentPart } from "../types/chat";
 import { AskUserCard } from "../components/AskUserCard";
 import { BgToastHost } from "../components/chat/BgToastHost";
 import { ArrowUp, Plus, Square, Presentation, FileText, MessageSquare, BarChart3 } from "lucide-react";
+import {
+  getEmptyStateScenarios,
+  type ScenarioSelection,
+} from "./empty-state-scenarios";
 
 function truncateActivityLabel(text: string, max = 48): string {
   const t = text.trim().replace(/\s+/g, " ");
@@ -57,6 +61,7 @@ export function ChatPage() {
   const { pendingFiles, uploading, addFiles, removeFile, clearFiles } = useFileUpload();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [scenarioGuidance, setScenarioGuidance] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
@@ -236,6 +241,7 @@ export function ChatPage() {
     store.setViewingSessionId(currentId);
 
     setError(null);
+    setScenarioGuidance("");
     usePreviewStore.getState().clear();
 
     if (store.hasLiveRun(currentId)) {
@@ -1141,6 +1147,7 @@ export function ChatPage() {
       useRunStore.getState().setMessageCache(activeThreadId, next);
       setMessages(next);
       setInput("");
+      setScenarioGuidance("");
       clearFiles();
       activityBeginRun();
       activeWorkersRef.current.delete(activeThreadId);
@@ -1179,8 +1186,20 @@ export function ChatPage() {
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
+    setScenarioGuidance("");
     syncComposerInputHeight(e.target);
   };
+
+  const handleScenarioSelect = useCallback((selection: ScenarioSelection) => {
+    setInput(selection.prompt);
+    setScenarioGuidance(selection.guidance);
+    window.requestAnimationFrame(() => {
+      const inputElement = inputRef.current;
+      if (!inputElement) return;
+      inputElement.focus();
+      syncComposerInputHeight(inputElement);
+    });
+  }, []);
 
   const handleFileSelect = useCallback(async () => {
     try {
@@ -1225,7 +1244,7 @@ export function ChatPage() {
       <BgToastHost />
       <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin" onScroll={handleScroll}>
         {isEmpty ? (
-          <EmptyState onScenarioSelect={setInput} />
+          <EmptyState onScenarioSelect={handleScenarioSelect} />
         ) : (
           <div ref={messagesRailRef} className="chat-rail chat-rail--messages py-6 space-y-6">
             {messages.map((msg) => (
@@ -1355,8 +1374,13 @@ export function ChatPage() {
                 )}
               </button>
             </div>
-            <p className="chat-composer__hint">
-              {isRunning ? t("chat.turnBusyHint") : t("chat.disclaimer")}
+            <p
+              className={`chat-composer__hint ${scenarioGuidance && !isRunning ? "chat-composer__hint--guidance" : ""}`}
+              aria-live="polite"
+            >
+              {isRunning
+                ? t("chat.turnBusyHint")
+                : scenarioGuidance || t("chat.disclaimer")}
             </p>
           </div>
         )}
@@ -1369,18 +1393,23 @@ export function ChatPage() {
   );
 }
 
-function EmptyState({ onScenarioSelect }: { onScenarioSelect: (text: string) => void }) {
+function EmptyState({
+  onScenarioSelect,
+}: {
+  onScenarioSelect: (selection: ScenarioSelection) => void;
+}) {
   const { t } = useTranslation();
-  const scenarios = [
-    { id: "ppt", icon: Presentation, label: t("chat.emptyScenarios.ppt"), hint: t("chat.emptyScenarioHintPpt"), prompt: "帮我做一份项目汇报 PPT，包含项目背景、进展、风险和下一步计划" },
-    { id: "doc", icon: FileText, label: t("chat.emptyScenarios.doc"), hint: t("chat.emptyScenarioHintDoc"), prompt: "帮我写本周周报，主要完成了用户登录模块开发和接口联调" },
-    { id: "meeting", icon: MessageSquare, label: t("chat.emptyScenarios.meeting"), hint: t("chat.emptyScenarioHintMeeting"), prompt: "帮我整理下面会议纪要的要点和待办事项" },
-    { id: "data", icon: BarChart3, label: t("chat.emptyScenarios.data"), hint: t("chat.emptyScenarioHintData"), prompt: "帮我分析这份数据，给出关键指标和趋势" },
-  ] as const;
+  const scenarios = getEmptyStateScenarios(t);
+  const scenarioIcons = {
+    ppt: Presentation,
+    doc: FileText,
+    meeting: MessageSquare,
+    data: BarChart3,
+  } as const;
   const quickPrompts: string[] = t("chat.emptyQuickPrompts", { returnObjects: true }) as unknown as string[] ?? [];
 
-  const handleScenario = (prompt: string) => {
-    onScenarioSelect(prompt);
+  const handleScenario = (selection: ScenarioSelection) => {
+    onScenarioSelect(selection);
   };
 
   return (
@@ -1391,20 +1420,23 @@ function EmptyState({ onScenarioSelect }: { onScenarioSelect: (text: string) => 
       </div>
 
       <div className="chat-empty-state__cards">
-        {scenarios.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className="chat-empty-state__card app-no-drag"
-            onClick={() => handleScenario(s.prompt)}
-          >
-            <span className="chat-empty-state__card-icon">
-              <s.icon className="w-4 h-4" />
-            </span>
-            <span className="chat-empty-state__card-label">{s.label}</span>
-            <span className="chat-empty-state__card-hint">{s.hint}</span>
-          </button>
-        ))}
+        {scenarios.map((s) => {
+          const Icon = scenarioIcons[s.id];
+          return (
+            <button
+              key={s.id}
+              type="button"
+              className="chat-empty-state__card app-no-drag"
+              onClick={() => handleScenario({ prompt: s.prompt, guidance: s.guidance })}
+            >
+              <span className="chat-empty-state__card-icon">
+                <Icon className="w-4 h-4" />
+              </span>
+              <span className="chat-empty-state__card-label">{s.label}</span>
+              <span className="chat-empty-state__card-hint">{s.hint}</span>
+            </button>
+          );
+        })}
       </div>
 
       {quickPrompts.length > 0 && (
@@ -1414,7 +1446,12 @@ function EmptyState({ onScenarioSelect }: { onScenarioSelect: (text: string) => 
               key={i}
               type="button"
               className="chat-empty-state__prompt-chip app-no-drag"
-              onClick={() => handleScenario(prompt)}
+              onClick={() =>
+                handleScenario({
+                  prompt,
+                  guidance: t("chat.emptyScenarioGuidanceGeneral"),
+                })
+              }
             >
               {prompt}
             </button>

@@ -3170,10 +3170,10 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1.5rem;
-  padding: 2rem 1rem;
-  min-height: 18rem;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: clamp(1rem, 3vh, 2rem) 1rem clamp(1.25rem, 4vh, 2.5rem);
+  min-height: 100%;
 }
 
 .chat-empty-state__greeting {
@@ -3189,7 +3189,7 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
 
 .chat-empty-state__greeting p {
   font-size: 0.8125rem;
-  color: oklch(0.52 0 0);
+  color: oklch(0.68 0 0);
   margin: 0;
 }
 
@@ -3208,8 +3208,8 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
   gap: 0.5rem;
   padding: 0.875rem 1rem;
   border-radius: 0.625rem;
-  background: oklch(0.2 0 0 / 0.55);
-  border: 1px solid oklch(0.28 0 0 / 0.6);
+  background: oklch(0.22 0 0 / 0.82);
+  border: 1px solid oklch(0.38 0 0 / 0.8);
   cursor: pointer;
   text-align: left;
   transition:
@@ -3219,9 +3219,15 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
 }
 
 .chat-empty-state__card:hover {
-  border-color: oklch(0.42 0 0 / 0.7);
-  background: oklch(0.24 0 0 / 0.7);
+  border-color: oklch(0.56 0 0 / 0.85);
+  background: oklch(0.27 0 0 / 0.9);
   transform: translateY(-1px);
+}
+
+.chat-empty-state__card:focus-visible,
+.chat-empty-state__prompt-chip:focus-visible {
+  outline: 2px solid oklch(0.78 0.13 75);
+  outline-offset: 2px;
 }
 
 .chat-empty-state__card:active {
@@ -3248,7 +3254,7 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
 
 .chat-empty-state__card-hint {
   font-size: 0.6875rem;
-  color: oklch(0.48 0 0);
+  color: oklch(0.68 0 0);
   line-height: 1.35;
 }
 
@@ -3265,9 +3271,9 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
   padding: 0.3125rem 0.625rem;
   border-radius: 9999px;
   font-size: 0.75rem;
-  color: oklch(0.65 0 0);
-  background: oklch(0.22 0 0 / 0.6);
-  border: 1px solid oklch(0.28 0 0 / 0.5);
+  color: oklch(0.75 0 0);
+  background: oklch(0.24 0 0 / 0.78);
+  border: 1px solid oklch(0.38 0 0 / 0.72);
   cursor: pointer;
   transition:
     border-color 150ms ease,
@@ -3276,7 +3282,11 @@ body.preview-resizing .preview-sidebar__resizer-grip span {
 }
 
 .chat-empty-state__prompt-chip:hover {
-  border-color: oklch(0.44 0 0 / 0.7);
-  color: oklch(0.88 0 0);
-  background: oklch(0.28 0 0 / 0.7);
+  border-color: oklch(0.56 0 0 / 0.85);
+  color: oklch(0.94 0 0);
+  background: oklch(0.3 0 0 / 0.9);
+}
+
+.chat-composer__hint--guidance {
+  color: oklch(0.76 0.08 75);
 }

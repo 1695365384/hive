@@ -20,6 +20,7 @@ vi.mock("../lib/db", () => ({
 }));
 
 import { useSessionStore } from "./session-store";
+import i18n from "../i18n";
 
 describe("session-store browser memory fallback", () => {
   beforeEach(async () => {
@@ -41,13 +42,22 @@ describe("session-store browser memory fallback", () => {
   });
 
   it("createSession keeps an in-memory session for chat send", async () => {
+    await i18n.changeLanguage("zh-CN");
     const id = await useSessionStore.getState().createSession();
     const state = useSessionStore.getState();
     expect(id).toBeTruthy();
     expect(state.currentId).toBe(id);
     expect(state.sessions).toHaveLength(1);
     expect(state.sessions[0].id).toBe(id);
+    expect(state.sessions[0].title).toBe("新对话");
     expect(state.error).toBeNull();
+  });
+
+  it("uses the active locale for new session titles", async () => {
+    await i18n.changeLanguage("en");
+    const id = await useSessionStore.getState().createSession();
+    expect(useSessionStore.getState().sessions.find((session) => session.id === id)?.title)
+      .toBe("New Chat");
   });
 
   it("renameSession and deleteSession work without SQLite", async () => {

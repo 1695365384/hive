@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import * as db from "../lib/db";
 import type { Session } from "../types/chat";
+import i18n from "../i18n";
 
 interface SessionState {
   /** All sessions (sorted by updated_at desc) */
@@ -78,12 +79,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   createSession: async () => {
     const id = crypto.randomUUID();
+    const defaultTitle = i18n.t("session.newChat");
     // Browser / Vite preview: keep sessions in memory so chat still works
     if (!get().available) {
       const now = Date.now();
       const session: Session = {
         id,
-        title: "New Chat",
+        title: defaultTitle,
         createdAt: now,
         updatedAt: now,
         messageCount: 0,
@@ -96,7 +98,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return id;
     }
     try {
-      await db.createSession(id);
+      await db.createSession(id, defaultTitle);
       await get().loadSessions();
       set({ currentId: id });
       return id;
