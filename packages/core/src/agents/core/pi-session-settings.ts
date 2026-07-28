@@ -5,7 +5,9 @@
 /** Runtime overrides passed to Settings.isolated / Settings.init. */
 export const HIVE_PI_COMPACTION_OVERRIDES = {
   'compaction.enabled': true,
-  'compaction.midTurnEnabled': true,
+  // mid-turn compaction is more aggressive and historically brittle with
+  // injected history; keep session-boundary compaction for the满分 bar.
+  'compaction.midTurnEnabled': false,
 } as const;
 
 /**

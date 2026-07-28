@@ -30,7 +30,7 @@ describe('formatHistoryForPrompt', () => {
 describe('pi compaction settings', () => {
   it('enables compaction overrides for createAgentSession', () => {
     expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.enabled']).toBe(true);
-    expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.midTurnEnabled']).toBe(true);
+    expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.midTurnEnabled']).toBe(false);
   });
 });
 
@@ -47,6 +47,11 @@ describe('seedPiSessionHistory', () => {
     );
     expect(seeded).toBe(2);
     expect(appendMessage).toHaveBeenCalledTimes(2);
+    expect(appendMessage.mock.calls[1][0]).toMatchObject({
+      role: 'assistant',
+      usage: expect.objectContaining({ totalTokens: 0 }),
+      stopReason: 'stop',
+    });
   });
 });
 

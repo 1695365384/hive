@@ -128,7 +128,7 @@ describe('Context 满分 fixtures', () => {
 
   it('长会话 compaction 配置存在且开启', () => {
     expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.enabled']).toBe(true);
-    expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.midTurnEnabled']).toBe(true);
+    expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.midTurnEnabled']).toBe(false);
   });
 });
 

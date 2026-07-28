@@ -103,6 +103,8 @@ function isAbortError(err: unknown): boolean {
 
 /**
  * Seed prior Hive turns into a pi SessionManager (best-effort).
+ * Assistant messages must carry a real Usage object — pi compaction calls
+ * `usage.orchestration` without a null check and crashes on bare text stubs.
  * Exported for unit tests.
  */
 export function seedPiSessionHistory(
@@ -111,16 +113,30 @@ export function seedPiSessionHistory(
 ): number {
   if (!sessionManager?.appendMessage || !history?.length) return 0;
   let seeded = 0;
+  const now = Date.now();
   for (const msg of history) {
     if (msg.role === 'system') continue;
     const content = typeof msg.content === 'string' ? msg.content.trim() : '';
     if (!content) continue;
     try {
-      sessionManager.appendMessage({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: [{ type: 'text', text: content }],
-        timestamp: Date.now(),
-      });
+      if (msg.role === 'assistant') {
+        sessionManager.appendMessage({
+          role: 'assistant',
+          content: [{ type: 'text', text: content }],
+          api: 'openai-completions',
+          provider: 'hive',
+          model: 'history',
+          usage: HIVE_HISTORY_USAGE_STUB,
+          stopReason: 'stop',
+          timestamp: now + seeded,
+        });
+      } else {
+        sessionManager.appendMessage({
+          role: 'user',
+          content: [{ type: 'text', text: content }],
+          timestamp: now + seeded,
+        });
+      }
       seeded += 1;
     } catch {
       // ignore shape mismatches — system-prompt history is the fallback
@@ -128,6 +144,16 @@ export function seedPiSessionHistory(
   }
   return seeded;
 }
+
+/** Minimal Usage so pi compaction/token math never sees undefined usage. */
+const HIVE_HISTORY_USAGE_STUB = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
 
 /**
  * Map a single pi AgentSessionEvent onto Hive DispatchOptions callbacks.
