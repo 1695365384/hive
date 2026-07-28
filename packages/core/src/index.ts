@@ -2,22 +2,22 @@
  * Hive Core - 多 Agent 协作框架
  *
  * 核心设计：
- * - 主 Agent 作为唯一入口
- * - 统一任务分发（dispatch）
- * - 管理提供商（EnvSource + pi catalog）
+ * - 主 Agent 作为唯一入口（dispatch / chat）
+ * - 执行核：AgentLoop → pi-coding-agent createAgentSession()
+ * - 提供商目录唯一来源：oh-my-pi pi-catalog
  *
  * 架构：
  * ┌─────────────────────────────────────────┐
  * │            主 Agent (Agent)             │
  * │    唯一入口：dispatch() / chat()         │
  * ├─────────────────────────────────────────┤
- * │     AgentLoop               │
- * │  Coordinator 模式 + Worker 委派       │
+ * │              AgentLoop                  │
+ * │   PiAgentSessionAdapter + tool bridge   │
  * ├─────────────────────────────────────────┤
- * │           提供商管理                     │
- * │  EnvSource + pi catalog                 │
+ * │     @oh-my-pi/pi-coding-agent            │
+ * │   (pi-agent-core 循环 + pi-ai 传输)      │
  * ├─────────────────────────────────────────┤
- * │         LLM Provider SDK                │
+ * │   ProviderManager + pi-catalog-bridge   │
  * └─────────────────────────────────────────┘
  *
  * 使用方式：
@@ -51,10 +51,8 @@ export {
 } from './agents/index.js';
 
 // ============================================
-// 统一任务执行
+// 统一任务执行（Agent.dispatch → AgentLoop）
 // ============================================
-
-// AgentLoop replaced by AgentLoop. Use Agent.dispatch() directly.
 
 export type {
   DispatchOptions,
@@ -64,17 +62,23 @@ export type {
 } from './agents/index.js';
 
 // ============================================
-// 场景路由（ScenarioRouter）
+// 场景辅助（completion / 标签）
+// 注意：TaskRouter 与 spawn helpers 已 @deprecated，不驱动 dispatch 热路径。
 // ============================================
 
 export {
   ScenarioRegistry,
+  /** @deprecated Not on AgentLoop dispatch path. Prefer completion helpers (isOfficeTask, etc.). */
   TaskRouter,
+  /** @deprecated Not on AgentLoop dispatch path. */
   createDefaultScenarioRegistry,
+  /** @deprecated Not on AgentLoop dispatch path. */
   createDefaultTaskRouter,
+  /** @deprecated Not on AgentLoop dispatch path. */
   defaultTaskRouter,
   getScenarioLabel,
   getAllScenarioLabels,
+  /** @deprecated Not on AgentLoop dispatch path. */
   validateWorkerSpawn,
   OFFICE_SCENARIO_ID,
   OFFICE_SCENARIO_LABELS,
@@ -85,9 +89,13 @@ export {
   officeScenario,
   scheduleScenario,
   namedWorkerScenario,
+  /** @deprecated Not on AgentLoop dispatch path. */
   buildOfficeWorkerSpawn,
+  /** @deprecated Not on AgentLoop dispatch path. */
   buildScheduleWorkerSpawn,
+  /** @deprecated Not on AgentLoop dispatch path. */
   buildNamedWorkerSpawn,
+  /** @deprecated Not on AgentLoop dispatch path. */
   detectNamedWorkerType,
   hasNoArtifactIntent,
 } from './routing/index.js';

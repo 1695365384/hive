@@ -159,6 +159,7 @@ export function resolveOfficeScenarioAction(task: string): OfficeScenarioAction 
   return { kind: 'none' };
 }
 
+/** @deprecated Not on AgentLoop dispatch path. */
 export function buildOfficeWorkerSpawn(task: string, description?: string): WorkerSpawnInput {
   const isPpt = /\b(ppt|pptx|powerpoint|presentation|幻灯片|演示文稿)\b/i.test(task);
   return {

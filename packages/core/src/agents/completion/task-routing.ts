@@ -24,7 +24,8 @@ import { isOfficeTask, buildOfficeRoutingDirective } from '../../routing/scenari
 import { isScheduleTask, buildScheduleRoutingDirective } from '../../routing/scenarios/schedule.scenario.js';
 
 /**
- * @deprecated 优先使用 TaskRouter.getRoutingHint()
+ * @deprecated Prefer `isOfficeTask` / `isScheduleTask` (or office/schedule scenario helpers)
+ * for completion checks. TaskRouter is not on the AgentLoop dispatch path.
  */
 export function getTaskRoutingDirective(task: string): string | null {
   if (isOfficeTask(task)) {

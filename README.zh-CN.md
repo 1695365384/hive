@@ -101,27 +101,20 @@ pnpm --filter @bundy-lmw/hive-server start
 
 ## 架构
 
-Hive 采用 **Coordinator-Worker** 模式。`Agent` 是唯一入口，`dispatch()` 委托给 `CoordinatorCapability`，后者管理 LLM 循环，按需启动专门的 **Worker Agent**。
+Hive 是包在 **oh-my-pi 执行核**外的产品/协议外壳。`Agent` 是唯一入口；`dispatch()` 经 `AgentLoop` → `PiAgentSessionAdapter` → `@oh-my-pi/pi-coding-agent` 的 `createAgentSession()`。Desktop WS、session-fs、`send-file`、Goal 仍在 Hive。
 
 <div align="center">
   <img src="docs/architecture.svg" alt="Hive 系统架构" width="860">
 </div>
 
-### Worker Agent 工具权限
+### 现行工具面
 
-| 工具 | explore | plan | general | schedule |
-|:-----|:--------|:-----|:--------|:---------|
-| `file` (读) | ✅ | ✅ | ✅ | — |
-| `glob` | ✅ | ✅ | ✅ | — |
-| `grep` | ✅ | ✅ | ✅ | — |
-| `web-search` | ✅ | ✅ | ✅ | — |
-| `web-fetch` | ✅ | ✅ | ✅ | — |
-| `env` | ✅ | ✅ | ✅ | — |
-| `bash` | — | — | ✅ | — |
-| `file` (写) | — | — | ✅ | — |
-| `ask-user` | — | — | ✅ | — |
-| `send-file` | — | — | ✅ | — |
-| `schedule` | — | — | — | ✅ |
+| 来源 | 工具 | 用途 |
+|:-----|:-----|:-----|
+| pi 内置 | `read`, `edit`, `write`, `bash`, `glob`, `grep`, `web_search`, `task`, … | 主 ReAct 循环 |
+| Hive `customTools` | `send-file`, `remember`, `env`, `ask-user`, `web-fetch`, … | Desktop / 产品扩展 |
+
+> 旧的 `TaskRouter` / Worker 类型表仍在包内（公有 API 已 deprecate），供标签与 `isOfficeTask` 等 completion 辅助使用，**不驱动** 现行 `dispatch` 热路径。
 
 ### 能力模块
 
@@ -129,12 +122,12 @@ Hive 采用 **Coordinator-Worker** 模式。`Agent` 是唯一入口，`dispatch(
 
 <table style="border:none; margin: 0 auto;">
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Coordinator</code></td>
-  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">调度 · Worker 编排 · 成本追踪</td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">AgentLoop</code></td>
+  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">调度 · pi createAgentSession · 工具桥</td>
 </tr>
 <tr style="border:none;">
   <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Provider</code></td>
-  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">注册 · 切换 · AI SDK 集成</td>
+  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">注册 · 切换 · pi-catalog</td>
 </tr>
 <tr style="border:none;">
   <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Skill</code></td>
@@ -299,20 +292,21 @@ hive/
 │   ├── agents/
 │   │   ├── core/
 │   │   │   ├── Agent.ts              # 唯一入口
+│   │   │   ├── AgentLoop.ts           # 唯一执行入口 → pi session
 │   │   │   ├── AgentContext.ts        # 共享上下文 + Hook 注册表
-│   │   │   ├── agents.ts             # Worker 定义（explore/plan/general/schedule）
+│   │   │   ├── hive-tool-bridge.ts    # Hive/MCP → pi customTools
 │   │   │   └── PiAgentSessionAdapter.ts # pi createAgentSession 适配器
 │   │   └── capabilities/
-│   │       ├── CoordinatorCapability.ts  # LLM 循环 + Worker 编排
-│   │       ├── ProviderCapability.ts     # Provider 注册 + AI SDK
+│   │       ├── ProviderCapability.ts     # Provider 注册 + pi-catalog
 │   │       ├── SkillCapability.ts        # 技能加载 + 匹配
 │   │       ├── SessionCapability.ts      # SQLite 持久化
 │   │       ├── TimeoutCapability.ts      # 心跳 + 卡死检测
 │   │       └── ScheduleCapability.ts     # 定时任务
 │   ├── providers/
 │   │   ├── ProviderManager.ts        # Provider 注册表
-│   │   └── adapters/                 # Anthropic, OpenAI, Google, OpenAI-compatible
-│   ├── tools/built-in/               # 14 个内置工具（bash, file, glob, grep, web 等）
+│   │   ├── pi-catalog-bridge.ts      # 模型目录唯一来源
+│   │   └── pi-auth-bridge.ts         # AuthStorage / ModelRegistry 桥
+│   ├── tools/built-in/               # Hive 工具（经 bridge 进入 pi customTools）
 │   ├── skills/                       # SkillLoader, SkillMatcher, SkillRegistry
 │   ├── hooks/                        # HookRegistry + 类型定义
 │   └── index.ts                      # 公共 API 导出

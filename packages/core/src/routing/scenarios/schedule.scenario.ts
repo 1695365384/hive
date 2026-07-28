@@ -107,6 +107,7 @@ export function buildScheduleRoutingDirective(): string {
   return scheduleScenarioCopy.routingHint();
 }
 
+/** @deprecated Not on AgentLoop dispatch path. */
 export function buildScheduleWorkerSpawn(task: string, description?: string): WorkerSpawnInput {
   return {
     type: 'schedule',

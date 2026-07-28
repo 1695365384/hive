@@ -1,8 +1,11 @@
 /**
  * ToolRegistry — 工具注册表
  *
- * 统一管理工具的注册、查询和按 Agent 类型分配。
- * 支持 AI SDK 标准 Tool 格式。
+ * 统一管理工具的注册、查询和按 Agent 类型分配（AI SDK `Tool` 形状）。
+ *
+ * Live chat 主路径使用 pi 内置工具 + `hive-tool-bridge` customTools；
+ * 本注册表仍服务回调注入（ask-user / send-file）、兼容层与部分测试。
+ * 双工具形状（ai Tool ↔ pi CustomTool）为已知债，见 TODOS.md。
  */
 
 import { type Tool } from 'ai';

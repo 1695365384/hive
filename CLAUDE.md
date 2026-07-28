@@ -76,36 +76,34 @@ cp apps/server/hive.config.example.json apps/server/hive.config.json
 
 ## Architecture
 
-### 核心设计：能力委托 + 场景路由
+### 核心设计：Hive 外壳 + pi 执行核
 
-Agent 是唯一入口，基础设施委托给 Capability，用户可见能力委托给 Scenario：
+Agent 是唯一入口。基础设施委托给 Capability；**聊天执行核**是 `@oh-my-pi/pi-coding-agent` 的 `createAgentSession()`（经 `AgentLoop` / `PiAgentSessionAdapter`）。外层 WS / session-fs / send-file / Goal 仍属 Hive。
 
 ```
 Agent（进程入口）
-├── ProviderCapability    — LLM 提供商
-├── SkillCapability       — 技能管理
-├── SessionCapability     — 会话持久化（SQLite）
-├── CoordinatorCapability — 对话 + Worker 委派
-├── ScheduleCapability    — 定时任务服务（node-cron）
-└── TimeoutCapability     — 心跳与超时
+├── ProviderCapability — LLM 提供商（目录唯一来源：pi-catalog）
+├── SkillCapability    — 技能管理
+├── SessionCapability  — 会话持久化（SQLite）
+├── AgentLoop          — 唯一执行入口 → pi createAgentSession
+├── ScheduleCapability — 定时任务服务（node-cron）
+└── TimeoutCapability  — 心跳与超时
 
-TaskRouter（Coordinator 内唯一路由入口）
-└── ScenarioRegistry
-    ├── office-document  → office Worker（officecli MCP + bash）
-    └── recurring-task   → schedule Worker
+pi-coding-agent（执行核）
+├── 内置工具：read / edit / write / bash / glob / grep / web_search / task …
+├── Hive customTools：send-file / remember / env / ask-user / …（hive-tool-bridge）
+└── 内部：pi-agent-core（工具循环）+ pi-ai（统一 LLM 传输）
 ```
 
-**术语**：Agent = 入口类；Worker = 委派执行单元；Scenario = 用户可见能力包；Capability = 基础设施模块。
+**术语**：Agent = 入口类；Capability = 基础设施模块；pi session = 实际 ReAct 循环。  
+`TaskRouter` / 旧 Worker 名表仍在仓库中（公有 API 已 deprecate），**不驱动** `dispatch` 热路径。`isOfficeTask` / `hasNoArtifactIntent` 等仍用于 completion verifier（如 PPT 交付校验）。
 
-### Worker 类型
+### 工具面（现行）
 
-| Worker | 工具 | 用途 |
-|--------|------|------|
-| explore | 只读 (file+glob+grep+web) | 文件发现、代码搜索 |
-| plan | 只读 | 计划研究、收集上下文 |
-| general | 全部内置工具 | 复杂任务、代码修改 |
-| office | bash + officecli MCP | PPT / Word / Excel |
-| schedule | schedule 工具 | 定时任务管理 |
+| 来源 | 工具 | 用途 |
+|------|------|------|
+| pi 内置 | read, edit, write, bash, glob, grep, web_search, task | 主循环读写与子任务 |
+| Hive bridge | send-file, remember, env, ask-user, web-fetch, … | Desktop/产品扩展能力 |
 
 ### Server 网关
 
@@ -125,7 +123,7 @@ Electron 33 桌面端，由主进程管理 Hive server 子进程：
 
 优先级：外部配置 (`hive.config.json`) > 环境变量 > 预设默认值
 
-国产 LLM 通过 OpenAI 兼容适配器 + AI SDK (`@ai-sdk/openai`) 接入，不依赖 `claude-agent-sdk`。
+模型目录与运行时探测走 oh-my-pi（`pi-catalog` + `pi-ai`）；Hive `ProviderManager` / `pi-auth-bridge` 注入 apiKey 与 model。
 
 ### Workspace 协议
 
