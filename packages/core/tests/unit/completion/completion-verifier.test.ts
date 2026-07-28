@@ -31,13 +31,14 @@ describe('officeCompletionVerifier', () => {
     expect(officeCompletionVerifier.match(trace({ task: 'hello' }))).toBe(false);
   });
 
-  it('fails when office worker was not spawned', async () => {
+  it('fails when no office file was delivered (pi path, no send-file)', async () => {
     const result = await officeCompletionVerifier.verify(trace({
       task: 'Create a PowerPoint deck',
-      toolCalls: [{ toolName: 'agent', input: { type: 'general' } }],
+      toolCalls: [{ toolName: 'write', input: { path: 'notes.txt' } }],
+      responseText: 'Done, here is a preview URL.',
     }));
     expect(result.passed).toBe(false);
-    expect(result.message).toContain('office Worker');
+    expect(result.message).toMatch(/send-file|delivery/i);
   });
 
   it('fails when office worker spawned but no artifact delivered', async () => {

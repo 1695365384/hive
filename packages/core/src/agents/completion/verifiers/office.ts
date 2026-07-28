@@ -52,23 +52,22 @@ export const officeCompletionVerifier: CompletionVerifier = {
 
   async verify(trace: TaskTrace): Promise<VerifyResult> {
     const routedTypes = [...getAgentWorkerTypes(trace), ...getSpawnedWorkerTypes(trace)];
-
-    if (!routedTypes.includes('office')) {
-      return {
-        verifierId: 'office',
-        passed: false,
-        message: 'Office document task did not spawn an office Worker (expected agent type "office").',
-      };
-    }
+    const hasOfficeWorker = routedTypes.includes('office');
+    const hasSendFile = trace.toolCalls.some(
+      (c) => c.toolName === 'send-file' || c.toolName === 'send_file',
+    );
 
     const docs = officeDocuments(trace);
     if (docs.length === 0) {
+      // Pi hot path: no office Worker required — delivery is send-file + artifacts.
       return {
         verifierId: 'office',
         passed: false,
-        message:
-          'Office Worker finished but no .pptx/.docx/.xlsx was delivered to chat. '
-          + 'Screenshots alone do not count — call send-file on the Office file.',
+        message: hasOfficeWorker || hasSendFile
+          ? 'Office task finished but no .pptx/.docx/.xlsx was delivered to chat. '
+            + 'Screenshots alone do not count — call send-file on the Office file.'
+          : 'Office document task finished without delivery. Call send-file on the .pptx/.docx/.xlsx.',
+        retryable: true,
       };
     }
 
