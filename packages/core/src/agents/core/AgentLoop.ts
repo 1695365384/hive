@@ -5,6 +5,7 @@
  */
 
 import type { AgentContext, AgentCapability } from '../types/core.js';
+import type { PersistentMemory } from '../../memory/types.js';
 import type { DispatchOptions, DispatchResult } from '../types/dispatch.js';
 import { PromptTemplate } from '../prompts/PromptTemplate.js';
 import { TaskManager } from './TaskManager.js';
@@ -283,7 +284,7 @@ export class AgentLoop implements AgentCapability {
 
     parts.push(PI_TOOL_NAME_PREFIX, template);
 
-    const memoryBlock = await this.buildMemoryPromptBlock();
+    const memoryBlock = await this.buildMemoryPromptBlock(task);
     if (memoryBlock) {
       parts.push('---', memoryBlock);
     }
@@ -311,13 +312,18 @@ export class AgentLoop implements AgentCapability {
     return parts.join('\n\n');
   }
 
-  private async buildMemoryPromptBlock(): Promise<string> {
+  private async buildMemoryPromptBlock(task?: string): Promise<string> {
     const fileMemory = this.context.fileMemory;
     const userId = this.context.currentUserId;
     if (!fileMemory || !userId) return '';
 
     try {
-      const raw = await fileMemory.readMemory(userId);
+      // MnemopiMemory supports query-aware recall as a 2nd arg; FileMemory ignores it.
+      const raw = await (
+        fileMemory as PersistentMemory & {
+          readMemory: (userId: string, recallQuery?: string) => Promise<string>;
+        }
+      ).readMemory(userId, task);
       return formatMemoryForPrompt(raw);
     } catch {
       return '';

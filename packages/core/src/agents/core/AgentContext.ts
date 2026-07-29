@@ -16,7 +16,7 @@ import type { Skill, SkillMatchResult } from '../../skills/index.js';
 import type { EnvironmentContext } from '../../environment/types.js';
 import { TimeoutCapability, createTimeoutCapability } from '../capabilities/TimeoutCapability.js';
 import { CapabilityRegistry } from './CapabilityRegistry.js';
-import type { FileMemory } from '../../memory/FileMemory.js';
+import type { PersistentMemory } from '../../memory/types.js';
 import { McpManager } from '../../mcp/McpManager.js';
 
 /**
@@ -54,7 +54,7 @@ export class AgentContextImpl implements AgentContext {
   currentUserId?: string;
 
   /** 文件型记忆存储实例（由 ServerImpl 在 dispatch 前设置） */
-  fileMemory?: FileMemory;
+  fileMemory?: PersistentMemory;
 
   /** Push deliverable paths into Desktop chat (set by ServerImpl during dispatch) */
   onDeliverArtifacts?: (filePaths: string[]) => void;

@@ -15,7 +15,7 @@ import {
   formatMemoryForPrompt,
   HIVE_MEMORY_PROMPT_MAX_CHARS,
 } from '../../../src/agents/core/AgentLoop.js';
-import { HIVE_PI_COMPACTION_OVERRIDES } from '../../../src/agents/core/pi-session-settings.js';
+import { HIVE_PI_COMPACTION_OVERRIDES, buildHivePiSessionOverrides } from '../../../src/agents/core/pi-session-settings.js';
 import {
   runWithPiAgentSession,
   HIVE_DEFAULT_MAX_TURNS,
@@ -126,9 +126,11 @@ describe('Context 满分 fixtures', () => {
     expect(block).toMatch(/…$/m);
   });
 
-  it('长会话 compaction 配置存在且开启', () => {
+  it('长会话 compaction + mnemopi 配置存在且开启', () => {
     expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.enabled']).toBe(true);
     expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.midTurnEnabled']).toBe(false);
+    const o = buildHivePiSessionOverrides({ workspaceDir: '/tmp/w', userId: 'u1' });
+    expect(o['memory.backend']).toBe('mnemopi');
   });
 });
 

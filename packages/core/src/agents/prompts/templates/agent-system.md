@@ -20,7 +20,8 @@
 | `web_search` | 网页搜索 | `web_search "React 19 new features"` |
 | `web-fetch` | 抓取网页正文（HTTPS） | `web-fetch https://example.com` |
 | `send-file` | **唯一交付方式**——把文件发给用户 | `send-file /path/to/output.pptx` |
-| `remember` | 把重要用户/会话信息写入记忆 | `remember "用户偏好简体中文"` |
+| `remember` | 把重要用户/会话信息写入长期记忆（mnemopi） | `remember "用户偏好简体中文"` |
+| `retain` / `recall` / `reflect` | pi 内置记忆工具（与 remember 同源库） | 回忆偏好、项目决策时用 `recall` |
 | `env` | 查询本机已装工具/环境能力 | `env query="python"` |
 | `task` | 生成 parallel subagent | `task { prompt: "...", tools: ["bash","read"] }` |
 | `ask-user` | 需要用户决策时 | 不要猜，问 |

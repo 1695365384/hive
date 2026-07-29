@@ -27,6 +27,7 @@ import { noopLogger } from '../types/logger.js';
 import { ChannelContext } from './ChannelContext.js';
 import { setSendFileCallback } from '../tools/built-in/send-file-tool.js';
 import { FileMemory } from '../memory/FileMemory.js';
+import { MnemopiMemory } from '../memory/MnemopiMemory.js';
 import { setRememberCallback } from '../tools/built-in/remember-tool.js';
 import { SessionId } from './SessionId.js';
 import { ArtifactEmitter } from '../artifacts/ArtifactEmitter.js';
@@ -133,7 +134,7 @@ class ServerImpl implements Server {
   _workspaceManager: WorkspaceManager | undefined;
 
   /** 文件型记忆存储（由 start() 初始化） */
-  private _fileMemory: FileMemory | undefined;
+  private _fileMemory: MnemopiMemory | FileMemory | undefined;
 
   constructor(
     agent: Agent,
@@ -329,9 +330,19 @@ class ServerImpl implements Server {
     // 初始化工作空间（创建 .hive/cache 等目录结构）
     if (this._workspaceManager) {
       await this._workspaceManager.initialize();
-      // 初始化文件型记忆存储
+      // 初始化 mnemopi 持久记忆（FTS SQLite）；失败则回退 FileMemory
       const rootPath = this._workspaceManager.getRootPath();
-      this._fileMemory = new FileMemory(rootPath);
+      try {
+        this._fileMemory = MnemopiMemory.forWorkspace(rootPath);
+        this.logger.info('[server] Memory backend: mnemopi');
+      } catch (error) {
+        this.logger.warn(
+          `[server] MnemopiMemory unavailable, falling back to FileMemory: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        this._fileMemory = new FileMemory(rootPath);
+      }
       // 注册 remember 工具回调（读取当前 agent context 中的 userId）
       setRememberCallback(async (content: string) => {
         const ctx = this.agent.context;
@@ -429,6 +440,16 @@ class ServerImpl implements Server {
       await this.scheduleEngine.stop();
       this.logger.info('[server] Schedule engine stopped');
     }
+
+    const mem = this._fileMemory as { close?: () => void } | undefined;
+    if (typeof mem?.close === 'function') {
+      try {
+        mem.close();
+      } catch {
+        // ignore
+      }
+    }
+    this._fileMemory = undefined;
 
     // 关闭数据库连接
     if (this.dbManager) {

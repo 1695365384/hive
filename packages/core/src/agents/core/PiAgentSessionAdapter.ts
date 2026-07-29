@@ -416,8 +416,13 @@ export async function runWithPiAgentSession(
           isolated?: (overrides?: Record<string, unknown>) => unknown;
         };
         if (typeof Settings?.isolated === 'function') {
-          const { HIVE_PI_COMPACTION_OVERRIDES } = await import('./pi-session-settings.js');
-          settings = Settings.isolated({ ...HIVE_PI_COMPACTION_OVERRIDES });
+          const { buildHivePiSessionOverrides } = await import('./pi-session-settings.js');
+          settings = Settings.isolated(
+            buildHivePiSessionOverrides({
+              workspaceDir: input.cwd,
+              userId: input.context?.currentUserId,
+            }),
+          );
         }
       } catch {
         // settings optional

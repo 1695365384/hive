@@ -21,7 +21,7 @@ Status: `landed: pi-only kernel + pi-catalog provider chain (awaiting real smoke
 | 3 | Agent Runtime | `@oh-my-pi/pi-agent-core` | ReAct/事件/工具循环 | **已接入主路径** |
 | 4 | Session SDK | `@oh-my-pi/pi-coding-agent` | `createAgentSession` 嵌入壳 | **已接入** |
 | 5 | Edit/Search natives | `hashline` + `@oh-my-pi/pi-natives` | 更高保真编辑/搜索 | 下一阶段（内核稳后默认享受） |
-| 6 | Memory | `@oh-my-pi/pi-mnemopi` | 替代/增强 FileMemory | 后续 |
+| 6 | Memory | `@oh-my-pi/pi-mnemopi` | 替代/增强 FileMemory | **已接入主路径**（FTS，`noEmbeddings`） |
 | 7 | Compaction | `snapcompact` + session compaction settings | 长上下文 | 后续 |
 | 8 | Collab/TUI | `@oh-my-pi/pi-wire` / `pi-tui` / `omp-stats` | CLI/协作；Hive Desktop 不接 | 明确 skip |
 

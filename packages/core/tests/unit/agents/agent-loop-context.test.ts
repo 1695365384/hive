@@ -7,7 +7,7 @@ import {
   formatHistoryForPrompt,
   HIVE_MEMORY_PROMPT_MAX_CHARS,
 } from '../../../src/agents/core/AgentLoop.js';
-import { HIVE_PI_COMPACTION_OVERRIDES } from '../../../src/agents/core/pi-session-settings.js';
+import { HIVE_PI_COMPACTION_OVERRIDES, buildHivePiSessionOverrides } from '../../../src/agents/core/pi-session-settings.js';
 import { seedPiSessionHistory } from '../../../src/agents/core/PiAgentSessionAdapter.js';
 
 describe('formatHistoryForPrompt', () => {
@@ -27,10 +27,19 @@ describe('formatHistoryForPrompt', () => {
   });
 });
 
-describe('pi compaction settings', () => {
-  it('enables compaction overrides for createAgentSession', () => {
+describe('pi session settings', () => {
+  it('enables compaction + mnemopi overrides for createAgentSession', () => {
     expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.enabled']).toBe(true);
     expect(HIVE_PI_COMPACTION_OVERRIDES['compaction.midTurnEnabled']).toBe(false);
+    const overrides = buildHivePiSessionOverrides({
+      workspaceDir: '/tmp/hive-ws',
+      userId: 'user/ada',
+    });
+    expect(overrides['memory.backend']).toBe('mnemopi');
+    expect(overrides['mnemopi.noEmbeddings']).toBe(true);
+    expect(overrides['mnemopi.autoRecall']).toBe(true);
+    expect(overrides['mnemopi.bank']).toBe('user_ada');
+    expect(String(overrides['mnemopi.dbPath'])).toContain('/user_ada.db');
   });
 });
 

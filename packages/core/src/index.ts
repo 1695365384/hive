@@ -527,11 +527,20 @@ export type {
 } from './environment/index.js';
 
 // ============================================
-// 文件型记忆系统
+// 持久记忆（mnemopi + FileMemory fallback）
 // ============================================
 
 export {
   FileMemory,
+  MnemopiMemory,
+  resolveMnemopiDbPath,
+  sanitizeMemoryBank,
+  isMnemopiRuntimeAvailable,
+} from './memory/index.js';
+
+export type {
+  PersistentMemory,
+  MnemopiMemoryOptions,
 } from './memory/index.js';
 
 // ============================================
