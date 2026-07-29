@@ -87,14 +87,7 @@ export const officeCompletionVerifier: CompletionVerifier = {
       const actual = zip.ok ? zip.slideCount : null;
       const expected = extractExpectedSlideCount(trace.task);
 
-      if (actual != null && actual < 2) {
-        return {
-          verifierId: 'office',
-          passed: false,
-          message: `PPT has only ${actual} slide(s); run officecli view outline and add slides before send-file.`,
-        };
-      }
-
+      // Explicit page count (including 1页) wins over the default ≥2 floor.
       if (expected != null) {
         if (actual == null) {
           return {
@@ -110,6 +103,12 @@ export const officeCompletionVerifier: CompletionVerifier = {
             message: `PPT slide count mismatch: user asked for ${expected} pages but file has ${actual} slides. Add missing slides before claiming completion.`,
           };
         }
+      } else if (actual != null && actual < 2) {
+        return {
+          verifierId: 'office',
+          passed: false,
+          message: `PPT has only ${actual} slide(s); run officecli view outline and add slides before send-file.`,
+        };
       }
 
       // Explicit ≤3-page text decks: skip FAKE_CHART (isSimpleOfficeDeck).

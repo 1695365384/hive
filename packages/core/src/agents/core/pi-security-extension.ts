@@ -10,6 +10,7 @@ import {
   isPathAllowed,
   isSensitiveFile,
 } from '../../tools/built-in/utils/security.js';
+import { getWorkingDirectory } from '../../workspace/session-fs.js';
 
 const PATH_TOOLS = new Set(['read', 'edit', 'write', 'glob', 'grep']);
 const WRITE_TOOLS = new Set(['edit', 'write']);
@@ -65,7 +66,7 @@ export function evaluatePiToolSecurity(
     return { block: false };
   }
 
-  const absolute = resolve(rawPath);
+  const absolute = resolve(getWorkingDirectory(), rawPath);
   const op = WRITE_TOOLS.has(toolName) ? 'write' : 'read';
 
   if (!isPathAllowed(absolute, op)) {

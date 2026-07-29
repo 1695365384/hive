@@ -257,16 +257,19 @@ function TaskProgressBanner({
       : `自动续跑 (${part.attempt}/${part.maxAttempts})`;
   }
   const blocked = part.phase === "blocked";
+  // Avoid "已完成 / 已完成" (phase + message identical).
+  const showMessage = label.trim() !== base.trim();
+  const reasons = (part.reasons ?? []).filter((r) => r.trim() && r.trim() !== label.trim());
   return (
     <div
       className={`task-progress-banner${blocked ? " task-progress-banner--blocked" : ""}${part.phase === "continue" ? " task-progress-banner--continue" : ""}`}
       role="status"
     >
       <div className="task-progress-banner__phase">{base}</div>
-      <div className="task-progress-banner__message">{label}</div>
-      {blocked && part.reasons && part.reasons.length > 0 ? (
+      {showMessage ? <div className="task-progress-banner__message">{label}</div> : null}
+      {blocked && reasons.length > 0 ? (
         <ul className="task-progress-banner__reasons">
-          {part.reasons.slice(0, 3).map((r) => (
+          {reasons.slice(0, 3).map((r) => (
             <li key={r}>{r}</li>
           ))}
         </ul>

@@ -7,7 +7,7 @@
 
 import { resolve, isAbsolute, relative, basename } from 'node:path';
 import dns from 'node:dns';
-import { getSessionFs } from '../../../workspace/session-fs.js';
+import { getSessionFs, getWorkingDirectory } from '../../../workspace/session-fs.js';
 
 // ============================================
 // 常量
@@ -143,7 +143,9 @@ export function isPathAllowed(
   filePath: string,
   operation: 'read' | 'write' = 'read',
 ): boolean {
-  const resolved = resolve(filePath);
+  // Relative paths resolve against the session workspace (not process.cwd),
+  // so write("notes.txt") lands inside the jail instead of apps/server/.
+  const resolved = resolve(getWorkingDirectory(), filePath);
   const session = getSessionFs();
 
   if (operation === 'write') {

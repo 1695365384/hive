@@ -706,7 +706,11 @@ export function ChatPage() {
     };
     if (isViewingThread(data.threadId)) {
       if (data.phase === "done") {
-        activitySetLastCompleted(data.message || titleMap.done);
+        // Only record a meaningful detail — generic "已完成" duplicates the dock prefix.
+        const detail = data.message?.trim();
+        if (detail && detail !== titleMap.done) {
+          activitySetLastCompleted(detail);
+        }
       } else if (data.phase === "blocked") {
         activitySetWorking({
           title: titleMap.blocked,
@@ -1296,6 +1300,7 @@ export function ChatPage() {
                   onClick={handleCancel}
                   className="ask-user__stop-btn app-no-drag"
                   title={t("chat.stop")}
+                  data-testid="chat-stop"
                 >
                   <Square className="w-3.5 h-3.5" fill="currentColor" />
                   <span>{t("chat.stop")}</span>
@@ -1352,6 +1357,7 @@ export function ChatPage() {
                 }`}
                 title={isRunning ? t("chat.stop") : t("chat.send")}
                 aria-label={isRunning ? t("chat.stop") : t("chat.send")}
+                data-testid={isRunning ? "chat-stop" : "chat-send"}
               >
                 {isRunning ? (
                   <Square className="w-3.5 h-3.5" fill="currentColor" />

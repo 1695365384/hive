@@ -28,31 +28,38 @@ export function finalizeRunContent(
   >();
   const completedWorkers = new Set<string>();
 
-  const next = content.map((part) => {
+  const next: ContentPart[] = [];
+  for (const part of content) {
+    // Drop live heartbeat pulses — they read as "仍在处理" after the turn ends.
+    if (part.type === "heartbeat") continue;
+
     if (part.type === "worker-start") {
       startedWorkers.set(part.workerId, {
         workerId: part.workerId,
         workerType: part.workerType,
       });
-      return part;
+      next.push(part);
+      continue;
     }
     if (part.type === "worker-complete") {
       completedWorkers.add(part.workerId);
-      return part;
+      next.push(part);
+      continue;
     }
     if (part.type === "tool-call" && part.result === undefined) {
       const startedAt = part.startedAt;
-      return {
+      next.push({
         ...part,
         result: endLabel,
         isError: failed,
         durationMs:
           part.durationMs ??
           (startedAt != null ? Math.max(0, Date.now() - startedAt) : undefined),
-      };
+      });
+      continue;
     }
-    return part;
-  });
+    next.push(part);
+  }
 
   for (const [workerId, meta] of startedWorkers) {
     if (completedWorkers.has(workerId)) continue;

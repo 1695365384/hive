@@ -44,6 +44,16 @@ describe('evaluatePiToolSecurity', () => {
     });
   });
 
+  it('allows relative write paths inside session workspace', async () => {
+    const sessionFs = createSessionFsContext('jail-test', workspace);
+    await runWithSessionFs(sessionFs, async () => {
+      const verdict = evaluatePiToolSecurity('write', {
+        path: 'smoke-tools.txt',
+      });
+      expect(verdict.block).toBe(false);
+    });
+  });
+
   it('blocks path traversal via ../ escape', async () => {
     const sessionFs = createSessionFsContext('jail-test', workspace);
     await runWithSessionFs(sessionFs, async () => {

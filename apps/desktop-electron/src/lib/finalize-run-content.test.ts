@@ -32,6 +32,20 @@ describe("finalizeRunContent", () => {
     });
   });
 
+  it("drops heartbeat pulses so cancel does not leave 仍在处理", () => {
+    const content: ContentPart[] = [
+      { type: "heartbeat", message: "仍在处理，请稍候…" },
+      { type: "tool-call", toolCallId: "t1", toolName: "bash", args: {}, startedAt: Date.now() },
+      { type: "heartbeat", message: "仍在处理，请稍候…" },
+    ];
+    const out = finalizeRunContent(content, { cancelled: true });
+    expect(out.every((p) => p.type !== "heartbeat")).toBe(true);
+    expect(out.find((p) => p.type === "tool-call")).toMatchObject({
+      result: "已取消",
+      isError: true,
+    });
+  });
+
   it("leaves completed parts alone", () => {
     const content: ContentPart[] = [
       { type: "tool-call", toolCallId: "t1", toolName: "Read", args: {}, result: "ok", durationMs: 12 },

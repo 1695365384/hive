@@ -98,6 +98,39 @@ describe('officeCompletionVerifier', () => {
     }
   });
 
+  it('passes explicit 1-page PPT (skips default ≥2 floor)', async () => {
+    const root = join(tmpdir(), `hive-completion-1slide-${Date.now()}`);
+    await mkdir(root, { recursive: true });
+    const one = await buildPptxFixture(root, 'one', { slides: 1 });
+    try {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一个只有1页的PPT，标题写 Hive Smoke PPT，然后用 send-file 发给我',
+        toolCalls: [{ toolName: 'send-file', input: { filePath: one } }],
+        artifacts: [one],
+      }));
+      expect(result.passed).toBe(true);
+      expect(result.message).toMatch(/1 slides/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('still fails unspecified 1-slide PPT under default ≥2 floor', async () => {
+    const root = join(tmpdir(), `hive-completion-1slide-floor-${Date.now()}`);
+    await mkdir(root, { recursive: true });
+    const one = await buildPptxFixture(root, 'one', { slides: 1 });
+    try {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一个项目汇报 PPT',
+        artifacts: [one],
+      }));
+      expect(result.passed).toBe(false);
+      expect(result.message).toMatch(/only 1 slide/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   describe('visual contract', () => {
     let root = '';
     let bare = '';
