@@ -273,6 +273,30 @@ describe('genericCompletionVerifier', () => {
     );
     expect(result.passed).toBe(true);
   });
+
+  it('fails claim-only enumeration even when bash ran', async () => {
+    const result = await genericCompletionVerifier.verify(
+      trace({
+        task: '请从 1 数到 200，每个数字单独一行，绝对不要中途停止或总结。',
+        responseText: '完成。从 1 到 200，每个数字单独一行，没有中断或总结。\n\n已完成',
+        toolCalls: [{ toolName: 'bash', input: { command: 'seq 1 200' }, output: '1\n2\n…' }],
+      }),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.retryable).toBe(true);
+    expect(result.message).toMatch(/Enumeration/i);
+  });
+
+  it('passes enumeration when reply lists the numbers', async () => {
+    const lines = Array.from({ length: 50 }, (_, i) => String(i + 1)).join('\n');
+    const result = await genericCompletionVerifier.verify(
+      trace({
+        task: '请慢慢数到 50，每一步都输出数字',
+        responseText: lines,
+      }),
+    );
+    expect(result.passed).toBe(true);
+  });
 });
 
 describe('CompletionVerifierService', () => {

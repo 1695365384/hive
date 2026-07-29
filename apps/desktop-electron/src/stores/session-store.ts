@@ -77,9 +77,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   createSession: async () => {
+    const { currentId, sessions, available } = get();
+    // Reuse the current empty chat so "+ New Chat" does not pile up empties.
+    if (currentId) {
+      const cur = sessions.find((s) => s.id === currentId);
+      if (cur && cur.messageCount === 0) {
+        return currentId;
+      }
+    }
+
+    const orphanEmpties = sessions.filter(
+      (s) => s.messageCount === 0 && s.id !== currentId,
+    );
+
     const id = crypto.randomUUID();
     // Browser / Vite preview: keep sessions in memory so chat still works
-    if (!get().available) {
+    if (!available) {
       const now = Date.now();
       const session: Session = {
         id,
@@ -89,13 +102,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         messageCount: 0,
       };
       set((s) => ({
-        sessions: [session, ...s.sessions],
+        sessions: [
+          session,
+          ...s.sessions.filter((x) => x.messageCount > 0),
+        ],
         currentId: id,
         error: null,
       }));
       return id;
     }
     try {
+      for (const orphan of orphanEmpties) {
+        await db.deleteSession(orphan.id);
+      }
       await db.createSession(id);
       await get().loadSessions();
       set({ currentId: id });

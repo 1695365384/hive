@@ -50,6 +50,45 @@ describe("session-store browser memory fallback", () => {
     expect(state.error).toBeNull();
   });
 
+  it("createSession reuses the current empty chat (ISSUE-003)", async () => {
+    const id1 = await useSessionStore.getState().createSession();
+    const id2 = await useSessionStore.getState().createSession();
+    expect(id2).toBe(id1);
+    expect(useSessionStore.getState().sessions).toHaveLength(1);
+  });
+
+  it("createSession prunes orphan empty chats when leaving a filled one", async () => {
+    const emptyA = await useSessionStore.getState().createSession();
+    // Simulate first message arriving on emptyA
+    useSessionStore.setState((s) => ({
+      sessions: s.sessions.map((session) =>
+        session.id === emptyA ? { ...session, messageCount: 2, title: "Filled" } : session,
+      ),
+    }));
+    // Manually leave an orphan empty (pre-fix pile-up)
+    const orphanId = crypto.randomUUID();
+    useSessionStore.setState((s) => ({
+      sessions: [
+        {
+          id: orphanId,
+          title: "New Chat",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          messageCount: 0,
+        },
+        ...s.sessions,
+      ],
+    }));
+
+    const id = await useSessionStore.getState().createSession();
+    const state = useSessionStore.getState();
+    expect(id).not.toBe(emptyA);
+    expect(id).not.toBe(orphanId);
+    expect(state.sessions).toHaveLength(2); // new empty + filled
+    expect(state.sessions.every((s) => s.id !== orphanId)).toBe(true);
+    expect(state.sessions.filter((s) => s.messageCount === 0)).toHaveLength(1);
+  });
+
   it("renameSession and deleteSession work without SQLite", async () => {
     const id = await useSessionStore.getState().createSession();
     await useSessionStore.getState().renameSession(id, "竞品调研 PPT");

@@ -5,6 +5,8 @@
  * empty / promise-only text and zero tool or worker activity.
  *
  * Conversational / Q&A tasks still pass without tools.
+ * Enumeration tasks (count 1→N) must include the numbers in responseText —
+ * bash-only "完成" claims are rejected even when tools ran.
  */
 
 import type { CompletionVerifier, TaskTrace, VerifyResult } from '../types.js';
@@ -18,6 +20,10 @@ const ANALYTICAL_RE =
 const PROMISE_ONLY_RE =
   /(我会|我将|让我来|稍后|接下来我会|马上开始|I will|I'll |Let me |I am going to|I'm going to)/i;
 
+/** Count / list-numbers tasks — delivery must appear in the user-visible reply. */
+const ENUMERATION_RE =
+  /(数到|数一数|从\s*\d+\s*[到至]\s*\d+|count\s+from\s+\d+|one\s+(number\s+)?per\s+line|每个数字|逐行输出|不要提前结束)/i;
+
 function looksLikeQuestion(task: string): boolean {
   const t = task.trim();
   if (/[?？]$/.test(t)) return true;
@@ -28,6 +34,102 @@ function looksLikeQuestion(task: string): boolean {
 
 function hasWork(trace: TaskTrace): boolean {
   return trace.toolCalls.length > 0 || trace.workerSpawns.length > 0;
+}
+
+function isEnumerationTask(task: string): boolean {
+  return ENUMERATION_RE.test(task);
+}
+
+function extractCountRange(task: string): { start: number; end: number } | null {
+  const fromTo =
+    task.match(/从\s*(\d+)\s*[到至]\s*(\d+)/) ||
+    task.match(/count\s+from\s+(\d+)\s+to\s+(\d+)/i) ||
+    task.match(/(\d+)\s*[到至~～\-–—]\s*(\d+)/);
+  if (fromTo) {
+    const start = Number(fromTo[1]);
+    const end = Number(fromTo[2]);
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start && end - start <= 10_000) {
+      return { start, end };
+    }
+  }
+  const countTo = task.match(/数到\s*(\d+)/);
+  if (countTo) {
+    const end = Number(countTo[1]);
+    if (Number.isFinite(end) && end >= 1 && end <= 10_000) {
+      return { start: 1, end };
+    }
+  }
+  return null;
+}
+
+/** Collect standalone integers that look like enumeration lines. */
+function extractNumberLines(text: string): number[] {
+  const out: number[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.trim().match(/^(\d+)$/);
+    if (m) out.push(Number(m[1]));
+  }
+  // Also accept space/comma-separated runs of digits (compact dumps).
+  if (out.length < 5) {
+    for (const m of text.matchAll(/(?:^|[\s,，])(\d+)(?=[\s,，]|$)/g)) {
+      out.push(Number(m[1]));
+    }
+  }
+  return out;
+}
+
+function responseCoversEnumeration(
+  text: string,
+  start: number,
+  end: number,
+): boolean {
+  const nums = extractNumberLines(text);
+  if (nums.length === 0) return false;
+  const set = new Set(nums);
+  const expected = end - start + 1;
+  let found = 0;
+  for (let i = start; i <= end; i++) {
+    if (set.has(i)) found++;
+  }
+  if (expected <= 40) {
+    return found >= Math.ceil(expected * 0.8) && set.has(start) && set.has(end);
+  }
+  // Large ranges: require endpoints + a solid sample (tools may dump the rest).
+  return set.has(start) && set.has(end) && found >= 40;
+}
+
+function verifyEnumeration(trace: TaskTrace, text: string): VerifyResult {
+  const range = extractCountRange(trace.task);
+  if (range) {
+    if (!responseCoversEnumeration(text, range.start, range.end)) {
+      return {
+        verifierId: 'generic',
+        passed: false,
+        message: `Enumeration task requires listing numbers ${range.start}…${range.end} in the reply (claim-only / tools-only output is not enough).`,
+        retryable: true,
+      };
+    }
+    return {
+      verifierId: 'generic',
+      passed: true,
+      message: 'Enumeration delivery check passed.',
+    };
+  }
+  // Enumeration-like wording without a clear range: require many number lines.
+  if (extractNumberLines(text).length < 10) {
+    return {
+      verifierId: 'generic',
+      passed: false,
+      message:
+        'Enumeration-like task finished without a substantial numeric list in the reply.',
+      retryable: true,
+    };
+  }
+  return {
+    verifierId: 'generic',
+    passed: true,
+    message: 'Enumeration delivery check passed (numeric list present).',
+  };
 }
 
 export const genericCompletionVerifier: CompletionVerifier = {
@@ -48,6 +150,11 @@ export const genericCompletionVerifier: CompletionVerifier = {
         message: 'Empty response with no tool/worker activity.',
         retryable: true,
       };
+    }
+
+    // Count / list tasks: never soft-pass on tools alone or short "完成" claims.
+    if (isEnumerationTask(trace.task)) {
+      return verifyEnumeration(trace, text);
     }
 
     const actionable = ACTIONABLE_RE.test(trace.task);
