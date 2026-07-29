@@ -180,9 +180,20 @@ class ServerImpl implements Server {
     }
   }
 
+  /**
+   * True only while a live (non-aborted) dispatch owns the session.
+   * After Stop, the AbortController may linger until `finally` cleanup —
+   * Continue must not treat that as busy.
+   */
+  private isSessionInFlight(sessionId: string): boolean {
+    const controller = this.activeAbortControllers.get(sessionId);
+    if (!controller) return false;
+    return !controller.signal.aborted;
+  }
+
   async continueGoal(sessionId: string): Promise<{ ok: boolean; error?: string; threadId?: string }> {
     const cont = this.goalGraph.beginContinue(sessionId, {
-      inFlight: this.activeAbortControllers.has(sessionId),
+      inFlight: this.isSessionInFlight(sessionId),
     });
     if (!cont.ok) {
       return { ok: false, error: cont.error };

@@ -287,6 +287,17 @@ describe('genericCompletionVerifier', () => {
     expect(result.message).toMatch(/Enumeration/i);
   });
 
+  it('does not treat bash sleep / cancel tasks as enumeration', async () => {
+    const result = await genericCompletionVerifier.verify(
+      trace({
+        task: '请用 bash 执行: sleep 60 ，不要提前结束',
+        responseText: '已取消',
+        toolCalls: [{ toolName: 'bash', input: { command: 'sleep 60' }, output: '' }],
+      }),
+    );
+    expect(result.passed).toBe(true);
+  });
+
   it('passes enumeration when reply lists the numbers', async () => {
     const lines = Array.from({ length: 50 }, (_, i) => String(i + 1)).join('\n');
     const result = await genericCompletionVerifier.verify(

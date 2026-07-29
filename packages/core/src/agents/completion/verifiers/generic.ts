@@ -23,7 +23,10 @@ const PROMISE_ONLY_RE =
 
 /** Count / list-numbers tasks — delivery must appear in the user-visible reply. */
 const ENUMERATION_RE =
-  /(数到|数一数|从\s*\d+\s*[到至]\s*\d+|count\s+from\s+\d+|one\s+(number\s+)?per\s+line|每个数字|逐行输出|不要提前结束)/i;
+  /(数到|数一数|从\s*\d+\s*[到至]\s*\d+|count\s+from\s+\d+|one\s+(number\s+)?per\s+line|每个数字|逐行输出)/i;
+
+/** Soft signal only when already enumeration-like (do not match alone — false-positives on sleep/cancel). */
+const ENUMERATION_NO_EARLY_STOP_RE = /不要提前结束|绝对不要中途停止|do\s+not\s+stop\s+early/i;
 
 /** Explicit one-item-per-line delivery (reject space-separated one-liners). */
 const PER_LINE_ENUM_RE =
@@ -42,7 +45,9 @@ function hasWork(trace: TaskTrace): boolean {
 }
 
 function isEnumerationTask(task: string): boolean {
-  return ENUMERATION_RE.test(task);
+  if (ENUMERATION_RE.test(task)) return true;
+  // "不要提前结束" alone is too broad (bash sleep, long tools); only with count cues.
+  return ENUMERATION_NO_EARLY_STOP_RE.test(task) && /\d+/.test(task) && /(数|count|数字|number)/i.test(task);
 }
 
 function requiresPerLineEnumeration(task: string): boolean {
