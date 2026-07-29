@@ -1,14 +1,12 @@
 /**
- * TaskManager — Worker 生命周期管理
+ * TaskManager — abort bridge for in-flight work.
  *
- * 追踪活跃的 Worker 任务，支持注册、中止和查询。
- * 供 AgentLoop / ServerImpl abort 子任务使用。
+ * Pi owns subagent scheduling (`task` tool). This class does **not** register
+ * live pi workers; AgentLoop / ServerImpl use it as an AbortBridge so channel
+ * cancel can fan out to any Hive-registered controllers if present.
  *
- * Worker 状态机：
- *   PENDING → RUNNING → SUCCESS
- *                    ↘ FAILED
- *                    ↘ CANCELLED
- *                    ↘ TIMEOUT
+ * Historical Worker state machine (unused on the pi hot path):
+ *   PENDING → RUNNING → SUCCESS | FAILED | CANCELLED | TIMEOUT
  */
 
 import type { DelegatableWorkerType } from './worker-types.js';

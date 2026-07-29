@@ -39,12 +39,7 @@ import {
   decideWorkerFinalizations,
   type OpenWorker,
 } from '../agents/completion/office-worker-finalize.js';
-import { createGoalStore, type GoalStore } from '../agents/completion/GoalStore.js';
-import {
-  resolveIdleContinuation,
-  isIncompleteGoal,
-  MAX_GOAL_CONTINUES,
-} from '../agents/completion/TodoEnforcer.js';
+import { createGoalGraph, type GoalGraph } from '../agents/graph/index.js';
 import { blockedActions } from '../agents/completion/discipline.js';
 import type { TaskProgressEvent } from '../agents/completion/types.js';
 import type {
@@ -112,7 +107,7 @@ class ServerImpl implements Server {
   private dbManager: ReturnType<typeof createDatabase> | undefined;
   private activeAbortControllers: Map<string, AbortController> = new Map();
   private activeDispatchSessionId: string | null = null;
-  private goalStore: GoalStore = createGoalStore();
+  private goalGraph: GoalGraph = createGoalGraph();
   private streamingHandlers: Set<StreamingHandler> = new Set();
   private fileHandlers: Set<FileHandler> = new Set();
   private artifactEmitter: ArtifactEmitter;
@@ -174,41 +169,30 @@ class ServerImpl implements Server {
       controller.abort();
       this.agent.taskManager.abortAll();
       this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
-      // Keep Goal resumable via Continue — also push blocked UX to the client.
-      if (isIncompleteGoal(this.goalStore.get(sessionId))) {
-        this.goalStore.markBlocked(sessionId, ['已中断，可继续完成']);
-      }
+      // Keep Goal resumable via Continue — Graph owns blocked transition.
+      this.goalGraph.onAbort(sessionId);
     }
   }
 
   async continueGoal(sessionId: string): Promise<{ ok: boolean; error?: string; threadId?: string }> {
-    const goal = this.goalStore.get(sessionId);
-    const decision = resolveIdleContinuation(goal, {
+    const cont = this.goalGraph.beginContinue(sessionId, {
       inFlight: this.activeAbortControllers.has(sessionId),
     });
-    if (decision.action === 'noop') {
-      return { ok: false, error: 'No incomplete Goal to continue' };
-    }
-    if (decision.action === 'busy') {
-      return { ok: false, error: 'Goal is already running' };
-    }
-    if (decision.action === 'exhausted') {
-      return { ok: false, error: 'Continue budget exhausted for this Goal' };
+    if (!cont.ok) {
+      return { ok: false, error: cont.error };
     }
 
     const parsed = SessionId.parse(sessionId);
     const threadId = parsed?.recipientId ?? sessionId;
     const channelId = parsed?.channelId ?? 'ws-chat';
 
-    this.goalStore.bumpContinueAttempts(sessionId);
-    this.goalStore.markActive(sessionId);
-    const attempts = this.goalStore.get(sessionId)?.continueAttempts ?? 1;
-    // Goal resumption — no task-progress event (phase 'continue' removed in AgentLoop migration)
-    this.logger.info(`[agent] Goal resume attempt ${attempts}/${MAX_GOAL_CONTINUES} for session ${sessionId.slice(0, 8)}`);
+    this.logger.info(
+      `[agent] Goal resume attempt ${cont.attempts}/${cont.maxAttempts} for session ${sessionId.slice(0, 8)}`,
+    );
 
     this.handleMessage({
       id: crypto.randomUUID(),
-      content: decision.prompt,
+      content: cont.prompt,
       type: 'text',
       from: { id: 'desktop-user', type: 'user' },
       to: { id: threadId, type: 'user' },
@@ -226,21 +210,18 @@ class ServerImpl implements Server {
     if (this.activeAbortControllers.has(sessionId)) {
       this.abort(sessionId);
     }
-    const goal = this.goalStore.get(sessionId);
-    if (!goal) {
-      return { ok: true };
+    const { hadGoal } = this.goalGraph.cancel(sessionId);
+    if (hadGoal) {
+      this.emitTaskProgress(sessionId, {
+        phase: 'done',
+        message: '已取消目标',
+      });
     }
-    this.goalStore.markCancelled(sessionId);
-    this.goalStore.clear(sessionId);
-    this.emitTaskProgress(sessionId, {
-      phase: 'done',
-      message: '已取消目标',
-    });
     return { ok: true };
   }
 
   getGoal(sessionId: string) {
-    return this.goalStore.get(sessionId);
+    return this.goalGraph.get(sessionId);
   }
 
   getActiveDispatchSessionId(): string | null {
@@ -760,13 +741,11 @@ class ServerImpl implements Server {
       this.activeAbortControllers.set(sessionKey, abortController);
       this.activeDispatchSessionId = sessionKey;
 
-      // GoalStore: fresh user turns replace Goal; Continue keeps the same Goal text
+      // GoalGraph: fresh user turns replace Goal; Continue keeps the same Goal text
       const isContinue = Boolean(channelMessage.metadata?.continueGoal);
-      if (isContinue) {
-        this.goalStore.ensure(sessionKey, channelMessage.content);
-      } else {
-        this.goalStore.start(sessionKey, channelMessage.content);
-      }
+      this.goalGraph.onUserTurn(sessionKey, channelMessage.content, {
+        continueGoal: isContinue,
+      });
 
       // 订阅 Worker 事件并转发到流式回调
       const workerHookIds: string[] = [];
@@ -869,15 +848,9 @@ class ServerImpl implements Server {
             });
           },
           onTaskProgress: (progress: TaskProgressEvent) => {
-            // After user cancel, ignore late "done" pulses from the dying turn.
-            if (abortController.signal.aborted && progress.phase === 'done') {
-              const reasons = progress.reasons?.length
-                ? progress.reasons
-                : ['已中断，可继续完成'];
-              this.goalStore.markBlocked(sessionKey, reasons);
-              return;
-            }
-            this.goalStore.updateFromProgress(sessionKey, progress);
+            this.goalGraph.onProgress(sessionKey, progress, {
+              aborted: abortController.signal.aborted,
+            });
             // AgentLoop only surfaces terminal progress to the wire protocol.
             if (progress.phase === 'done' || progress.phase === 'blocked') {
               this.emitTaskProgress(sessionKey, {
@@ -927,31 +900,14 @@ class ServerImpl implements Server {
           hasOfficeArtifact: !!result.success,
         });
 
-        // Sync GoalStore from completion verification when progress events were skipped.
-        // Cancelled turns must stay blocked/resumable — never markDone after abort.
+        // GoalGraph applies verification / cancel → done|blocked.
         const cancelled = abortController.signal.aborted;
-        const verification = (result as { verification?: { passed: boolean; results?: Array<{ message: string }> } }).verification;
-        if (cancelled) {
-          if (isIncompleteGoal(this.goalStore.get(sessionKey))) {
-            const existing = this.goalStore.get(sessionKey);
-            const reasons = existing?.reasons?.length
-              ? existing.reasons
-              : ['已中断，可继续完成'];
-            this.goalStore.markBlocked(sessionKey, reasons);
-          }
-        } else if (verification) {
-          if (verification.passed) {
-            this.goalStore.markDone(sessionKey);
-          } else if (isIncompleteGoal(this.goalStore.get(sessionKey))) {
-            const reasons = (verification.results ?? [])
-              .filter((r) => r && (r as { passed?: boolean }).passed === false)
-              .map((r) => r.message)
-              .filter(Boolean);
-            this.goalStore.markBlocked(sessionKey, reasons.length ? reasons : ['完成校验未通过']);
-          }
-        } else if (result.success) {
-          this.goalStore.markDone(sessionKey);
-        }
+        const verification = (result as { verification?: { passed: boolean; results?: Array<{ message: string; passed?: boolean }> } }).verification;
+        this.goalGraph.onTurnComplete(sessionKey, {
+          cancelled,
+          success: result.success,
+          verification,
+        });
 
         this.emitStreaming({
           sessionId: sessionKey,
@@ -989,8 +945,8 @@ class ServerImpl implements Server {
       const isAborted =
         (error instanceof DOMException && error.name === 'AbortError')
         || (error instanceof Error && /abort/i.test(error.message));
-      if (isAborted && isIncompleteGoal(this.goalStore.get(sessionKey))) {
-        this.goalStore.markBlocked(sessionKey, ['已中断，可继续完成']);
+      if (isAborted) {
+        this.goalGraph.onAbort(sessionKey);
       }
       this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: false, cancelled: isAborted, error: errorMsg });
     } finally {
@@ -1011,7 +967,7 @@ class ServerImpl implements Server {
   private hydrateGoalsFromDb(db: import('better-sqlite3').Database): void {
     try {
       const goalRepo = createGoalRepository(db);
-      this.goalStore.attachPersistence(goalRepo);
+      this.goalGraph.attachPersistence(goalRepo);
       const incomplete = goalRepo.loadIncomplete();
       const restored: typeof incomplete = [];
       for (const record of incomplete) {
@@ -1025,7 +981,7 @@ class ServerImpl implements Server {
         }
         restored.push(record);
       }
-      this.goalStore.hydrate(restored);
+      this.goalGraph.hydrate(restored);
       if (restored.length > 0) {
         this.logger.info(`[server] Restored ${restored.length} incomplete Goal(s) from disk`);
       }

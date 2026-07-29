@@ -1,5 +1,8 @@
 /**
- * TaskRouter — Coordinator 唯一路由入口
+ * TaskRouter — Scenario match implementation for GoalGraph.
+ *
+ * Graph owns the live entry (`GoalGraph.plan` → AttemptPlan).
+ * TaskRouter remains the ScenarioRegistry lookup used by that match step.
  */
 
 import type {

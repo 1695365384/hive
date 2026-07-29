@@ -11,8 +11,10 @@
  * │            主 Agent (Agent)             │
  * │    唯一入口：dispatch() / chat()         │
  * ├─────────────────────────────────────────┤
- * │     AgentLoop               │
- * │  Coordinator 模式 + Worker 委派       │
+ * │  Prompt → Context → Harness → Loop      │
+ * │            → Graph (GoalGraph)          │
+ * │  GoalGraph: match / Goal / verify / Continue │
+ * │  TaskRouter: Scenario match for Graph   │
  * ├─────────────────────────────────────────┤
  * │           提供商管理                     │
  * │  EnvSource + pi catalog                 │
@@ -64,7 +66,7 @@ export type {
 } from './agents/index.js';
 
 // ============================================
-// 场景路由（ScenarioRouter）
+// 场景路由（ScenarioRouter — Graph match impl）
 // ============================================
 
 export {
@@ -98,6 +100,25 @@ export type {
   RouterDecision,
   ScenarioLabels,
 } from './routing/index.js';
+
+// ============================================
+// Graph 层（GoalGraph — 工作单元如何连接）
+// ============================================
+
+export {
+  GoalGraph,
+  createGoalGraph,
+  planAttempt,
+  needsPptDelivery,
+} from './agents/graph/index.js';
+
+export type {
+  AttemptPlan,
+  TurnOutcome,
+  TurnVerification,
+  ContinueGoalResult,
+  GoalGraphOptions,
+} from './agents/graph/index.js';
 
 // ============================================
 // 子 Agent（高级用户）

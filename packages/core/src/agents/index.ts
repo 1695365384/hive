@@ -41,7 +41,8 @@ export {
 export {
   ProviderCapability,
   SkillCapability,
-  // CoordinatorCapability replaced by AgentLoop,
+  // AgentLoop + GoalGraph replace CoordinatorCapability,
+
   ScheduleCapability,
   createScheduleCapability,
 } from './capabilities/index.js';

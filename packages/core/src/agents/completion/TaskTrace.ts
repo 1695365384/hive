@@ -114,10 +114,21 @@ export class TaskTraceCollector {
 }
 
 export function getAgentWorkerTypes(trace: TaskTrace): string[] {
-  return trace.toolCalls
-    .filter(c => c.toolName === 'agent')
-    .map(c => (c.input as { type?: string } | undefined)?.type)
-    .filter((t): t is string => typeof t === 'string');
+  const types: string[] = [];
+  for (const c of trace.toolCalls) {
+    if (c.toolName === 'agent') {
+      const t = (c.input as { type?: string } | undefined)?.type;
+      if (typeof t === 'string') types.push(t);
+      continue;
+    }
+    // Live pi path: subagents are spawned via the `task` tool (agent field).
+    if (c.toolName === 'task') {
+      const input = c.input as { agent?: string; type?: string } | undefined;
+      const t = input?.agent ?? input?.type;
+      if (typeof t === 'string') types.push(t);
+    }
+  }
+  return types;
 }
 
 export function getSpawnedWorkerTypes(trace: TaskTrace): string[] {

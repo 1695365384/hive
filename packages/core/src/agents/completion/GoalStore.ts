@@ -1,8 +1,8 @@
 /**
- * Per-session Goal persistence for completion discipline.
+ * Per-session Goal persistence for GoalGraph (completion / Continue).
  *
- * Tracks the original user Goal across audit continues / blocked / user Continue,
- * so the Coordinator can resume the SAME task instead of treating Continue as a new chat.
+ * Tracks the original user Goal across blocked / user Continue,
+ * so Graph can resume the SAME task instead of treating Continue as a new chat.
  *
  * Optional GoalPersistence (SQLite) keeps incomplete Goals across process restarts.
  */

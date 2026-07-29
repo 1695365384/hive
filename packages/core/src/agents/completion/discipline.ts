@@ -1,5 +1,8 @@
 /**
- * Coordinator discipline helpers — audit continuation / blocked actions.
+ * Completion discipline helpers — blocked UX actions + audit prompt builders.
+ *
+ * Auto audit-continue is not wired on the live GoalGraph path; user Continue
+ * goes through GoalGraph.beginContinue → TodoEnforcer.
  */
 
 import type { CompletionVerifyResult, TaskProgressAction, TaskProgressEvent } from './types.js';

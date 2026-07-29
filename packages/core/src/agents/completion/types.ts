@@ -25,7 +25,7 @@ export interface VerifyResult {
   verifierId: string;
   passed: boolean;
   message: string;
-  /** Soft failures may be auto-continued by Coordinator discipline loop */
+  /** Soft failures may be resumed via GoalGraph Continue (user / idle) */
   retryable?: boolean;
 }
 
@@ -44,7 +44,7 @@ export interface CompletionVerifierOptions {
   verifiers?: CompletionVerifier[];
 }
 
-/** Unified task progress phases for UX + discipline loop */
+/** Unified task progress phases for UX + GoalGraph */
 export type TaskProgressPhase =
   | 'understand'
   | 'plan'

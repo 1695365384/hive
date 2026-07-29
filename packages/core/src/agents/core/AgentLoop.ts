@@ -22,6 +22,7 @@ import {
   bridgeMcpToolsToCustomTools,
   buildHiveCustomTools,
 } from './hive-tool-bridge.js';
+import { planAttempt, type AttemptPlan } from '../graph/index.js';
 
 /** Prefix explaining pi built-in + Hive custom tool names. */
 const PI_TOOL_NAME_PREFIX = `## Tool names (pi kernel)
@@ -50,10 +51,6 @@ export const HIVE_MEMORY_PROMPT_MAX_CHARS = 4000;
 
 /** Max prior messages fed into pi / system prompt. */
 export const HIVE_HISTORY_MAX_MESSAGES = 40;
-
-function isPptTask(task: string): boolean {
-  return /\b(?:ppt|pptx|powerpoint|presentation)\b|幻灯片|演示文稿|汇报材料/i.test(task);
-}
 
 /**
  * Agent 自驱动执行引擎
@@ -131,11 +128,16 @@ export class AgentLoop implements AgentCapability {
           this.context.currentDispatchTask = task;
 
           try {
+            // Graph layer: match → AttemptPlan (TaskRouter is the match impl).
+            const attempt = planAttempt(task);
+            this.emitRouteFromAttempt(attempt, options);
+
             const historyMessages = await this.resolveHistoryMessages(options);
             const systemPrompt = await this.buildSystemPrompt(
               task,
               options,
               historyMessages,
+              attempt,
             );
             const hiveCustomTools = [
               ...buildHiveCustomTools(this.context),
@@ -155,7 +157,7 @@ export class AgentLoop implements AgentCapability {
               context: this.context,
               historyMessages,
               maxTurns: options?.maxTurns ?? HIVE_DEFAULT_MAX_TURNS,
-              requiredDeliveryTool: isPptTask(task) ? 'send-file' : undefined,
+              requiredDeliveryTool: attempt.requiredDeliveryTool,
               onActivity: () => {
                 this.context.timeoutCap.updateActivity();
               },
@@ -267,14 +269,16 @@ export class AgentLoop implements AgentCapability {
   }
 
   /**
-   * 构建系统提示词：agent-system.md + pi 工具名前缀 + 命中/强制技能
+   * 构建系统提示词：agent-system.md + pi 工具名前缀 + Graph blurbs + 命中/强制技能
    * + memory / history（Context 层）
    */
   private async buildSystemPrompt(
     task: string,
     options?: DispatchOptions,
     historyMessages?: HiveHistoryMessage[],
+    attempt?: AttemptPlan,
   ): Promise<string> {
+    const plan = attempt ?? planAttempt(task);
     const template = this.promptTemplate.render('agent-system', {});
     const parts: string[] = [];
 
@@ -283,6 +287,10 @@ export class AgentLoop implements AgentCapability {
     }
 
     parts.push(PI_TOOL_NAME_PREFIX, template);
+
+    if (plan.blurbs.length > 0) {
+      parts.push('---', '## Scenario guidance (Graph)', ...plan.blurbs);
+    }
 
     const memoryBlock = await this.buildMemoryPromptBlock(task);
     if (memoryBlock) {
@@ -294,7 +302,7 @@ export class AgentLoop implements AgentCapability {
       parts.push('---', historyBlock);
     }
 
-    const activeSkill = this.resolveActiveSkill(task);
+    const activeSkill = this.resolveActiveSkill(task, plan);
     if (activeSkill) {
       options?.onSkill?.({
         name: activeSkill.metadata.name,
@@ -304,7 +312,10 @@ export class AgentLoop implements AgentCapability {
         '---',
         this.context.skillRegistry.generateSkillInstruction(activeSkill),
       );
-      if (activeSkill.metadata.name === 'dashi-ppt' && isPptTask(task)) {
+      if (
+        activeSkill.metadata.name === 'dashi-ppt' &&
+        plan.requiredDeliveryTool === 'send-file'
+      ) {
         parts.push('---', HIVE_DESKTOP_PPT_DELIVERY);
       }
     }
@@ -331,16 +342,35 @@ export class AgentLoop implements AgentCapability {
   }
 
   /**
-   * PPT 任务强制走 dashi-ppt（若已安装）；其它任务走自动匹配。
+   * PPT delivery tasks force dashi-ppt (when installed); others use auto-match.
+   * Delivery intent comes from GoalGraph AttemptPlan, not a local regex.
    */
-  private resolveActiveSkill(task: string) {
+  private resolveActiveSkill(task: string, attempt?: AttemptPlan) {
     const registry = this.context.skillRegistry;
-    if (isPptTask(task)) {
+    const plan = attempt ?? planAttempt(task);
+    if (plan.requiredDeliveryTool === 'send-file') {
       const dashi = registry.get('dashi-ppt');
       if (dashi) return dashi;
     }
 
     return registry.match(task)?.skill ?? null;
+  }
+
+  /** Surface Graph match to the channel for UX (direct / scenario). */
+  private emitRouteFromAttempt(
+    attempt: AttemptPlan,
+    options?: DispatchOptions,
+  ): void {
+    if (!options?.onRoute) return;
+    if (attempt.scenarioId) {
+      options.onRoute({
+        mode: 'hint',
+        scenarioId: attempt.scenarioId,
+        title: attempt.scenarioId,
+      });
+      return;
+    }
+    options.onRoute({ mode: 'direct' });
   }
 }
 

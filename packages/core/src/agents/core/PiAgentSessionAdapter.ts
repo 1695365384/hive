@@ -521,6 +521,16 @@ export async function runWithPiAgentSession(
               args: event.args,
               index,
             });
+            // Graph / verifiers: record pi `task` subagent as a worker spawn.
+            if (event.toolName === 'task') {
+              const args = event.args as
+                | { agent?: string; description?: string; prompt?: string }
+                | undefined;
+              collector.recordWorkerSpawn(
+                args?.agent ?? 'task',
+                args?.description,
+              );
+            }
           }
           if ((state.toolRounds ?? 0) > maxTurns) {
             state.success = false;

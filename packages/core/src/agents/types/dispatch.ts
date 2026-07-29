@@ -1,7 +1,7 @@
 /**
  * Agent dispatch types — shared between AgentLoop and ServerImpl.
  *
- * Extracted from CoordinatorCapability.ts during the Coordinator→AgentLoop migration.
+ * Extracted during the Coordinator→AgentLoop migration.
  */
 
 import type { TaskProgressEvent } from '../completion/types.js';
@@ -23,10 +23,8 @@ export interface DispatchOptions {
   /** 阶段回调 */
   onPhase?: (phase: string, message: string) => void;
   /**
-   * 路由决策回调（TaskRouter resolve 之后立刻触发）
-   * 用于交互层展示「直接回答 / 委派 Worker / 能力说明」
-   *
-   * @deprecated AgentLoop 不再有路由层；保留接口兼容性，但不被调用。
+   * Graph match callback (GoalGraph / TaskRouter → AttemptPlan).
+   * Fired at the start of AgentLoop.run for UX: direct vs scenario.
    */
   onRoute?: (route: {
     mode: 'direct' | 'inquiry' | 'delegate' | 'hint';
@@ -37,9 +35,8 @@ export interface DispatchOptions {
     title?: string;
   }) => void;
   /**
-   * Office PPT 进度（routed / phases / blocked）
-   *
-   * @deprecated AgentLoop 不再发送 per-slide 进度；保留接口兼容性，但不被调用。
+   * Office PPT 进度（legacy; AgentLoop does not emit per-slide progress).
+   * @deprecated Kept for channel API compatibility; unused on the pi path.
    */
   onOfficeProgress?: (progress: {
     phase: 'routed' | 'creating' | 'adding_slide' | 'validating' | 'delivering' | 'blocked';

@@ -76,26 +76,29 @@ cp apps/server/hive.config.example.json apps/server/hive.config.json
 
 ## Architecture
 
-### 核心设计：能力委托 + 场景路由
+### 核心设计：五层边界 + 场景匹配
 
-Agent 是唯一入口，基础设施委托给 Capability，用户可见能力委托给 Scenario：
+工程边界（由内向外）：**Prompt → Context → Harness → Loop → Graph**。
+Graph 的节点仍需要完整的内四层；外层不替代内层。
 
 ```
 Agent（进程入口）
 ├── ProviderCapability    — LLM 提供商
 ├── SkillCapability       — 技能管理
 ├── SessionCapability     — 会话持久化（SQLite）
-├── CoordinatorCapability — 对话 + Worker 委派
+├── AgentLoop             — Prompt/Context/Harness/Loop（pi）
+├── GoalGraph             — Graph：match → Goal → verify → Continue
 ├── ScheduleCapability    — 定时任务服务（node-cron）
 └── TimeoutCapability     — 心跳与超时
 
-TaskRouter（Coordinator 内唯一路由入口）
-└── ScenarioRegistry
-    ├── office-document  → office Worker（officecli MCP + bash）
-    └── recurring-task   → schedule Worker
+GoalGraph.plan(task)
+└── TaskRouter（Scenario match 实现）
+    └── ScenarioRegistry
+        ├── office-document  → office / dashi-ppt 约束
+        └── recurring-task   → schedule 约束
 ```
 
-**术语**：Agent = 入口类；Worker = 委派执行单元；Scenario = 用户可见能力包；Capability = 基础设施模块。
+**术语**：Agent = 入口类；Worker = 委派执行单元（pi `task`）；Scenario = 用户可见能力包；Capability = 基础设施模块；**GoalGraph** = 工作单元如何连接（非通用 workflow 引擎）。
 
 ### Worker 类型
 

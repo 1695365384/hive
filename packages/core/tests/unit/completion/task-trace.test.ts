@@ -71,3 +71,17 @@ describe('TaskTraceCollector', () => {
     expect(String(calls[1]!.output)).toContain('office done');
   });
 });
+
+describe('getAgentWorkerTypes', () => {
+  it('reads agent type and pi task.agent', async () => {
+    const { getAgentWorkerTypes, createEmptyTaskTrace } = await import(
+      '../../../src/agents/completion/TaskTrace.js'
+    );
+    const trace = createEmptyTaskTrace('每天提醒');
+    trace.toolCalls.push(
+      { toolName: 'agent', input: { type: 'schedule' } },
+      { toolName: 'task', input: { agent: 'office', description: 'deck' } },
+    );
+    expect(getAgentWorkerTypes(trace)).toEqual(['schedule', 'office']);
+  });
+});
