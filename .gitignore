@@ -127,6 +127,7 @@ docs/superpowers/
 /packages/core/.hive/
 
 # Local smoke-test and presentation preview files
+/apps/server/output/
 /apps/server/smoke*.txt
 /apps/server/*-demo.html
 /apps/server/project-report.html
