@@ -5,6 +5,7 @@
  */
 
 import type { TaskProgressEvent } from '../completion/types.js';
+import type { AttemptPlan } from '../graph/types.js';
 
 /**
  * 统一分发选项
@@ -20,6 +21,11 @@ export interface DispatchOptions {
   modelId?: string;
   /** 外部系统提示 */
   systemPrompt?: string;
+  /**
+   * Graph AttemptPlan from GoalGraph.planForTurn (sticky on Continue).
+   * When set, AgentLoop skips local planAttempt(task).
+   */
+  attemptPlan?: AttemptPlan;
   /** 阶段回调 */
   onPhase?: (phase: string, message: string) => void;
   /**

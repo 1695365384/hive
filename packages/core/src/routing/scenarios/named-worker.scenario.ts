@@ -59,8 +59,9 @@ const NAMED_WORKER_HINT = [
   '## MANDATORY Routing (Named Worker)',
   '',
   'The user explicitly named a Worker type.',
-  '- You MUST call agent() with that exact type on first dispatch.',
+  '- You MUST spawn `task` with that exact agent name on first dispatch.',
   '- Do NOT silently substitute explore for librarian/metis/momus/oracle.',
+  '- Legacy note: older docs said agent(type="…"); on the live path use `task` with agent `"…"`.',
 ].join('\n');
 
 export const namedWorkerScenarioCopy: ScenarioCopy = {
@@ -74,8 +75,8 @@ export const namedWorkerScenarioCopy: ScenarioCopy = {
     const type = detectNamedWorkerType(task);
     if (!type) return null;
     return (
-      `[Named Worker] User explicitly requested type="${type}". `
-      + `First agent() dispatch MUST use type="${type}" — do not substitute explore.`
+      `[Named Worker] User explicitly requested agent="${type}". `
+      + `First \`task\` spawn MUST use agent="${type}" — do not substitute explore.`
     );
   },
 };
@@ -113,7 +114,7 @@ function namedWorkerValidationError(expected: string, actual: string): string {
   return [
     'Status: FAILED',
     `Worker type "${actual}" is NOT allowed — user explicitly requested "${expected}".`,
-    `You MUST retry with agent(type="${expected}", prompt="...").`,
+    `You MUST retry with task({ agent: "${expected}", prompt: "..." }).`,
     'Do NOT silently substitute explore for librarian/metis/momus/oracle.',
   ].join('\n');
 }

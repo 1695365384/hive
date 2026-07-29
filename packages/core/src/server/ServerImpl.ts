@@ -171,6 +171,12 @@ class ServerImpl implements Server {
       this.logger.info(`[server] Agent execution aborted for session ${sessionId}`);
       // Keep Goal resumable via Continue — Graph owns blocked transition.
       this.goalGraph.onAbort(sessionId);
+      this.emitTaskProgress(sessionId, {
+        phase: 'blocked',
+        message: '已中断，可继续完成',
+        reasons: ['已中断，可继续完成'],
+        actions: blockedActions(),
+      });
     }
   }
 
@@ -494,6 +500,7 @@ class ServerImpl implements Server {
       phase: 'blocked' | 'done';
       message?: string;
       reasons?: string[];
+      actions?: Array<{ id: 'continue' | 'cancel' | 'provide-info'; label: string }>;
       attempt?: number;
       maxAttempts?: number;
     },
@@ -505,7 +512,8 @@ class ServerImpl implements Server {
       phase: progress.phase,
       message: progress.message,
       reasons: progress.reasons,
-            attempt: progress.attempt,
+      actions: progress.actions,
+      attempt: progress.attempt,
       maxAttempts: progress.maxAttempts,
     });
   }
@@ -746,6 +754,9 @@ class ServerImpl implements Server {
       this.goalGraph.onUserTurn(sessionKey, channelMessage.content, {
         continueGoal: isContinue,
       });
+      const attemptPlan = this.goalGraph.planForTurn(sessionKey, channelMessage.content, {
+        continueGoal: isContinue,
+      });
 
       // 订阅 Worker 事件并转发到流式回调
       const workerHookIds: string[] = [];
@@ -817,6 +828,7 @@ class ServerImpl implements Server {
         const result = await this.agent.dispatch(channelMessage.content, {
           chatId: sessionKey,
           abortSignal: abortController.signal,
+          attemptPlan,
           onPhase: (phase, message) => {
             this.logger.info(`[agent] [${phase}] ${message}`);
           },
@@ -857,6 +869,7 @@ class ServerImpl implements Server {
                 phase: progress.phase,
                 message: progress.message,
                 reasons: progress.reasons,
+                actions: progress.actions,
                 attempt: progress.attempt,
                 maxAttempts: progress.maxAttempts,
               });

@@ -297,6 +297,29 @@ describe('genericCompletionVerifier', () => {
     );
     expect(result.passed).toBe(true);
   });
+
+  it('fails per-line enumeration dumped as a single space-separated line', async () => {
+    const oneLiner = Array.from({ length: 30 }, (_, i) => String(i + 1)).join(' ');
+    const result = await genericCompletionVerifier.verify(
+      trace({
+        task: '从 1 数到 30，每个数字单独一行',
+        responseText: `完成。\n${oneLiner}`,
+      }),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.message).toMatch(/Per-line|Enumeration/i);
+  });
+
+  it('passes per-line enumeration with newline-dense delivery', async () => {
+    const lines = Array.from({ length: 30 }, (_, i) => String(i + 1)).join('\n');
+    const result = await genericCompletionVerifier.verify(
+      trace({
+        task: '从 1 数到 30，每个数字单独一行',
+        responseText: lines,
+      }),
+    );
+    expect(result.passed).toBe(true);
+  });
 });
 
 describe('CompletionVerifierService', () => {

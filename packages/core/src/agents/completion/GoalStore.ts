@@ -17,6 +17,12 @@ export interface GoalTodo {
   done: boolean;
 }
 
+/** Sticky Graph AttemptPlan fields for Continue (same Goal). */
+export interface GoalAttemptSticky {
+  scenarioId?: string;
+  requiredDeliveryTool?: 'send-file';
+}
+
 export interface GoalRecord {
   sessionId: string;
   /** Original user task text (not continuation prompts) */
@@ -28,6 +34,8 @@ export interface GoalRecord {
   auditAttempts: number;
   /** User / idle Continue resumes against the same Goal */
   continueAttempts: number;
+  /** Last Graph match — reused when Continue prompt would lose scenario */
+  lastAttempt?: GoalAttemptSticky;
   createdAt: number;
   updatedAt: number;
 }
@@ -153,6 +161,14 @@ export class GoalStore {
     const g = this.goals.get(sessionId);
     if (!g) return;
     g.continueAttempts += n;
+    g.updatedAt = Date.now();
+    this.persist(sessionId);
+  }
+
+  setLastAttempt(sessionId: string, attempt: GoalAttemptSticky): void {
+    const g = this.goals.get(sessionId);
+    if (!g) return;
+    g.lastAttempt = { ...attempt };
     g.updatedAt = Date.now();
     this.persist(sessionId);
   }

@@ -81,6 +81,37 @@ export class GoalGraph {
     return planAttempt(task, this.router);
   }
 
+  /**
+   * Match for this turn. On Continue, re-match the **original Goal text** so
+   * scenario / send-file constraints stick even when the continue prompt is conversational.
+   */
+  planForTurn(
+    sessionId: string,
+    content: string,
+    opts: { continueGoal?: boolean } = {},
+  ): AttemptPlan {
+    if (opts.continueGoal) {
+      const record = this.store.get(sessionId);
+      if (record?.goal) {
+        const fromOriginal = planAttempt(record.goal, this.router);
+        return {
+          task: content.trim(),
+          scenarioId: fromOriginal.scenarioId ?? record.lastAttempt?.scenarioId,
+          blurbs: fromOriginal.blurbs,
+          requiredDeliveryTool:
+            fromOriginal.requiredDeliveryTool ?? record.lastAttempt?.requiredDeliveryTool,
+        };
+      }
+    }
+
+    const plan = planAttempt(content, this.router);
+    this.store.setLastAttempt(sessionId, {
+      scenarioId: plan.scenarioId,
+      requiredDeliveryTool: plan.requiredDeliveryTool,
+    });
+    return plan;
+  }
+
   get(sessionId: string): GoalRecord | undefined {
     return this.store.get(sessionId);
   }

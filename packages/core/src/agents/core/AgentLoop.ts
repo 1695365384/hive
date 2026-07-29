@@ -128,8 +128,8 @@ export class AgentLoop implements AgentCapability {
           this.context.currentDispatchTask = task;
 
           try {
-            // Graph layer: match → AttemptPlan (TaskRouter is the match impl).
-            const attempt = planAttempt(task);
+            // Graph layer: prefer sticky AttemptPlan from GoalGraph (Continue-safe).
+            const attempt = options?.attemptPlan ?? planAttempt(task);
             this.emitRouteFromAttempt(attempt, options);
 
             const historyMessages = await this.resolveHistoryMessages(options);

@@ -295,6 +295,7 @@ export class ChatWsHandler extends EventEmitter {
           phase: event.phase,
           message: event.message,
           reasons: event.reasons,
+          actions: event.actions,
           attempt: event.attempt,
           maxAttempts: event.maxAttempts,
         })))

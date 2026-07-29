@@ -7,6 +7,7 @@
  * Conversational / Q&A tasks still pass without tools.
  * Enumeration tasks (count 1→N) must include the numbers in responseText —
  * bash-only "完成" claims are rejected even when tools ran.
+ * Per-line enumeration must be newline-dense (reject space-separated one-liners).
  */
 
 import type { CompletionVerifier, TaskTrace, VerifyResult } from '../types.js';
@@ -24,6 +25,10 @@ const PROMISE_ONLY_RE =
 const ENUMERATION_RE =
   /(数到|数一数|从\s*\d+\s*[到至]\s*\d+|count\s+from\s+\d+|one\s+(number\s+)?per\s+line|每个数字|逐行输出|不要提前结束)/i;
 
+/** Explicit one-item-per-line delivery (reject space-separated one-liners). */
+const PER_LINE_ENUM_RE =
+  /(每个数字单独一行|单独一行|逐行输出|one\s+(number\s+)?per\s+line|each\s+(number|digit)\s+on\s+(its\s+)?own\s+line)/i;
+
 function looksLikeQuestion(task: string): boolean {
   const t = task.trim();
   if (/[?？]$/.test(t)) return true;
@@ -38,6 +43,10 @@ function hasWork(trace: TaskTrace): boolean {
 
 function isEnumerationTask(task: string): boolean {
   return ENUMERATION_RE.test(task);
+}
+
+function requiresPerLineEnumeration(task: string): boolean {
+  return PER_LINE_ENUM_RE.test(task);
 }
 
 function extractCountRange(task: string): { start: number; end: number } | null {
@@ -62,14 +71,21 @@ function extractCountRange(task: string): { start: number; end: number } | null 
   return null;
 }
 
-/** Collect standalone integers that look like enumeration lines. */
-function extractNumberLines(text: string): number[] {
+/** Collect standalone integers that look like enumeration lines (newline-only). */
+function extractStrictNumberLines(text: string): number[] {
   const out: number[] = [];
   for (const line of text.split(/\r?\n/)) {
     const m = line.trim().match(/^(\d+)$/);
     if (m) out.push(Number(m[1]));
   }
-  // Also accept space/comma-separated runs of digits (compact dumps).
+  return out;
+}
+
+/** Collect standalone integers that look like enumeration lines. */
+function extractNumberLines(text: string, opts: { strictLines?: boolean } = {}): number[] {
+  const out = extractStrictNumberLines(text);
+  if (opts.strictLines) return out;
+  // Also accept space/comma-separated runs of digits (compact dumps) when not per-line.
   if (out.length < 5) {
     for (const m of text.matchAll(/(?:^|[\s,，])(\d+)(?=[\s,，]|$)/g)) {
       out.push(Number(m[1]));
@@ -82,8 +98,9 @@ function responseCoversEnumeration(
   text: string,
   start: number,
   end: number,
+  opts: { strictLines?: boolean } = {},
 ): boolean {
-  const nums = extractNumberLines(text);
+  const nums = extractNumberLines(text, opts);
   if (nums.length === 0) return false;
   const set = new Set(nums);
   const expected = end - start + 1;
@@ -98,10 +115,43 @@ function responseCoversEnumeration(
   return set.has(start) && set.has(end) && found >= 40;
 }
 
+/**
+ * Per-line tasks: reject dense one-liners / claim-only text with almost no newlines.
+ * Require enough newline-isolated number lines relative to the requested range.
+ */
+function verifyPerLineDensity(
+  task: string,
+  text: string,
+  range: { start: number; end: number } | null,
+): VerifyResult | null {
+  if (!requiresPerLineEnumeration(task)) return null;
+
+  const strictLines = extractStrictNumberLines(text);
+  const expected = range ? range.end - range.start + 1 : 30;
+  const minLines =
+    expected <= 40 ? Math.ceil(expected * 0.8) : Math.min(24, Math.ceil(expected * 0.12));
+
+  const newlineCount = (text.match(/\n/g) || []).length;
+  if (newlineCount < Math.max(3, Math.floor(minLines * 0.5)) || strictLines.length < minLines) {
+    return {
+      verifierId: 'generic',
+      passed: false,
+      message:
+        'Per-line enumeration requires one number per line in the reply (space-separated one-liners / claim-only text are not enough).',
+      retryable: true,
+    };
+  }
+  return null;
+}
+
 function verifyEnumeration(trace: TaskTrace, text: string): VerifyResult {
   const range = extractCountRange(trace.task);
+  const densityFail = verifyPerLineDensity(trace.task, text, range);
+  if (densityFail) return densityFail;
+
+  const strict = requiresPerLineEnumeration(trace.task);
   if (range) {
-    if (!responseCoversEnumeration(text, range.start, range.end)) {
+    if (!responseCoversEnumeration(text, range.start, range.end, { strictLines: strict })) {
       return {
         verifierId: 'generic',
         passed: false,
@@ -116,7 +166,8 @@ function verifyEnumeration(trace: TaskTrace, text: string): VerifyResult {
     };
   }
   // Enumeration-like wording without a clear range: require many number lines.
-  if (extractNumberLines(text).length < 10) {
+  const nums = extractNumberLines(text, { strictLines: strict });
+  if (nums.length < 10) {
     return {
       verifierId: 'generic',
       passed: false,

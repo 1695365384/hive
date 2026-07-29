@@ -95,20 +95,21 @@ const OFFICE_ROUTING_HINT = [
   '## MANDATORY Routing (Office Task)',
   '',
   'This user message is an **Office document task**.',
-  '- You MUST call agent(type="office") exactly once (required deliverable Worker).',
-  '- For research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages): call agent(type="explore") first, then agent(type="office") with the research (or call both — system direct-route runs explore then injects notes into office).',
+  '- You MUST spawn a subagent with the `task` tool using agent `"office"` exactly once (required deliverable Worker).',
+  '- For research-heavy decks (调研 / 市场 / 竞品 / ≥5 pages): spawn `task` with agent `"explore"` first, then `task` with agent `"office"` (or both — system may inject explore notes into office).',
   '- Do NOT call plan or general workers.',
   '- Do NOT run env() or research how to make PPT — tooling is already installed.',
   '- Do NOT mention python-pptx, AppleScript, or manual PowerPoint automation.',
-  '- Do NOT answer with capability menus or "what would you like?" — delegate immediately.',
+  '- Do NOT answer with capability menus or "what would you like?" — start delivery immediately.',
   '- **PPT**: follow installed skill **dashi-ppt** (do NOT officecli-create slides page-by-page).',
   '- **PPT quality**: short concrete copy, respect fillPlan maxChars, no AI-slop, no overflow.',
   '- **Word/Excel**: use **officecli**.',
+  '- Legacy note: older docs said agent(type="office"); on the live path use `task` with agent `"office"`.',
 ].join('\n');
 
 const OFFICE_COORDINATOR_BLURB =
   '[Installed Capability] **dashi-ppt** (PPT) + **officecli** (Word/Excel) are available. '
-  + 'For PPT/Word/Excel tasks, spawn agent(type="office") — optionally parallel agent(type="explore") for research-heavy decks. '
+  + 'For PPT/Word/Excel tasks, spawn `task` with agent `"office"` — optionally parallel `task` with agent `"explore"` for research-heavy decks. '
   + 'PPT must use dashi-ppt when installed; keep copy short, respect fillPlan budgets, ban AI-slop/overflow. '
   + 'Do NOT research python-pptx, AppleScript, or env() for Office tasks.';
 
@@ -243,7 +244,7 @@ function officeSpawnValidationError(workerType: string): string {
   return [
     `Status: FAILED`,
     `Worker type "${workerType}" is NOT allowed for Office document tasks.`,
-    `You MUST use agent(type="office") for the deliverable; optional parallel agent(type="explore") for research.`,
+    `You MUST use task({ agent: "office", prompt: "..." }) for the deliverable; optional parallel task({ agent: "explore", ... }) for research.`,
     `Do NOT use plan or general. officecli is already installed.`,
   ].join('\n');
 }

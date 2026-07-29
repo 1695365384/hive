@@ -420,14 +420,14 @@ export function ChatPage() {
   }, [mutateThreadMessages]);
 
   const appendPart = useCallback((threadId: string, part: ContentPart) => {
-    const run = useRunStore.getState().getRun(threadId);
+    const store = useRunStore.getState();
+    const run = store.getRun(threadId) ?? store.getRunOrSettling(threadId);
     mutateThreadMessages(threadId, (prev) =>
       patchAssistantMessage(prev, run?.assistantMsgId, (content) => appendContentPart(content, part)),
     );
   }, [mutateThreadMessages]);
 
-  /** After reload/reconnect, rehydrate blocked Goal banner from server. */
-  /** After reload/reconnect, rehydrate blocked Goal banner from server. */
+  /** After reload/reconnect/Stop, rehydrate blocked Goal banner (Continue CTA) from server. */
   const restoreIncompleteGoal = useCallback(async (threadId: string) => {
     try {
       const result = await request("chat.getGoal", { threadId }) as {
@@ -694,7 +694,13 @@ export function ChatPage() {
     attempt?: number;
     maxAttempts?: number;
   }) => {
-    if (!ensureLiveRun(data.threadId)) return;
+    // blocked/done must surface after Stop even while the run is settling
+    // (ensureLiveRun returns false once beginSettling runs).
+    if (data.phase !== "blocked" && data.phase !== "done") {
+      if (!ensureLiveRun(data.threadId)) return;
+    } else {
+      ensureLiveRun(data.threadId);
+    }
     const titleMap: Record<string, string> = {
       understand: "理解任务",
       plan: "规划中",
@@ -973,7 +979,11 @@ export function ChatPage() {
       const cached = useRunStore.getState().getMessageCache(threadId);
       if (cached) setMessages(cached);
     }
-  }, [activitySetIdle, isViewingThread]);
+    // Same-screen Continue CTA: server abort marks Goal blocked; rehydrate banner if WS race dropped it.
+    window.setTimeout(() => {
+      void restoreIncompleteGoal(threadId);
+    }, 120);
+  }, [activitySetIdle, isViewingThread, restoreIncompleteGoal]);
 
   /** Blocked banner actions: continue same Goal / provide info / cancel Goal */
   const handleBlockedAction = useCallback(async (action: "continue" | "provide-info" | "cancel") => {

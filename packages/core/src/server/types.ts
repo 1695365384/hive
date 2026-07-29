@@ -39,6 +39,7 @@ export type StreamingEventUnion =
       phase: 'blocked' | 'done';
       message?: string;
       reasons?: string[];
+      actions?: Array<{ id: 'continue' | 'cancel' | 'provide-info'; label: string }>;
       attempt?: number;
       maxAttempts?: number;
     }

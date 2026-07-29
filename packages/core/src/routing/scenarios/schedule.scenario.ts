@@ -86,8 +86,9 @@ const SCHEDULE_ROUTING_HINT = [
   '## MANDATORY Routing (Schedule Task)',
   '',
   'This user message is a **schedule/cron task**.',
-  '- You MUST call agent() with type="schedule".',
+  '- You MUST spawn `task` with agent `"schedule"`.',
   '- Do NOT use explore or general workers for scheduling.',
+  '- Legacy note: older docs said agent(type="schedule"); on the live path use `task` with agent `"schedule"`.',
 ].join('\n');
 
 export const scheduleScenarioCopy: ScenarioCopy = {
@@ -120,7 +121,7 @@ function scheduleSpawnValidationError(workerType: string): string {
   return [
     `Status: FAILED`,
     `Worker type "${workerType}" is NOT allowed for schedule tasks.`,
-    `You MUST retry with agent(type="schedule", prompt="...").`,
+    `You MUST retry with task({ agent: "schedule", prompt: "..." }).`,
   ].join('\n');
 }
 

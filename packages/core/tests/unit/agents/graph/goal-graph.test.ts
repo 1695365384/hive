@@ -99,4 +99,26 @@ describe('GoalGraph lifecycle', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/running/i);
   });
+
+  it('Continue planForTurn keeps office scenario + send-file sticky', () => {
+    const pptGoal = '帮我做一个项目汇报 PPT';
+    graph.onUserTurn('s1', pptGoal);
+    const first = graph.planForTurn('s1', pptGoal);
+    expect(first.scenarioId).toBe('office-document');
+    expect(first.requiredDeliveryTool).toBe('send-file');
+    expect(graph.get('s1')?.lastAttempt?.requiredDeliveryTool).toBe('send-file');
+
+    graph.onAbort('s1');
+    expect(graph.get('s1')?.status).toBe('blocked');
+
+    const cont = graph.beginContinue('s1', { inFlight: false });
+    expect(cont.ok).toBe(true);
+    if (!cont.ok) return;
+
+    graph.onUserTurn('s1', cont.prompt, { continueGoal: true });
+    const resumed = graph.planForTurn('s1', cont.prompt, { continueGoal: true });
+    expect(resumed.scenarioId).toBe('office-document');
+    expect(resumed.requiredDeliveryTool).toBe('send-file');
+    expect(resumed.blurbs.join('\n')).toMatch(/task/);
+  });
 });
