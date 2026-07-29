@@ -10,5 +10,8 @@ export {
   createGoalGraph,
   planAttempt,
   needsPptDelivery,
+  UnknownScenarioError,
   type GoalGraphOptions,
+  type PlanAttemptOptions,
+  type PlanForTurnOptions,
 } from './GoalGraph.js';

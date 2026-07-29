@@ -92,6 +92,8 @@
     "emptyScenarioHintDoc": "Describe your week, get a report",
     "emptyScenarioHintMeeting": "Paste meeting notes, extract action items",
     "emptyScenarioHintData": "Upload an Excel file for charts & insights",
+    "slashMenu": "Scenario commands",
+    "clearScenario": "Clear scenario",
     "emptyQuickPrompts": [
       "Make a mid-year review PPT",
       "Write an email for me",

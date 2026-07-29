@@ -92,6 +92,8 @@
     "emptyScenarioHintDoc": "描述本周工作，生成周报文档",
     "emptyScenarioHintMeeting": "粘贴会议记录，提取要点和待办",
     "emptyScenarioHintData": "上传 Excel，获取图表和分析",
+    "slashMenu": "场景命令",
+    "clearScenario": "清除场景",
     "emptyQuickPrompts": [
       "做一份年中总结 PPT",
       "帮我写一封邮件",

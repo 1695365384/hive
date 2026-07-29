@@ -34,14 +34,52 @@ export function needsPptDelivery(task: string): boolean {
   return PPT_DELIVERY_RE.test(task);
 }
 
+/** Thrown when chat.send forces an unknown ScenarioDefinition.id — never silent. */
+export class UnknownScenarioError extends Error {
+  readonly scenarioId: string;
+
+  constructor(scenarioId: string) {
+    super(`Unknown scenario: ${scenarioId}`);
+    this.name = 'UnknownScenarioError';
+    this.scenarioId = scenarioId;
+  }
+}
+
+export type PlanAttemptOptions = {
+  /** Explicit UI/slash lock — skips NLP match when set */
+  scenarioId?: string;
+};
+
 /**
  * Match task → AttemptPlan via TaskRouter (live Graph entry for routing).
+ * When `scenarioId` is set, force that scenario (blurbs + sticky id); unknown id throws.
  */
 export function planAttempt(
   task: string,
   router: TaskRouter = defaultTaskRouter,
+  opts: PlanAttemptOptions = {},
 ): AttemptPlan {
   const trimmed = task.trim();
+
+  if (opts.scenarioId) {
+    const scenario = router.getRegistry().getById(opts.scenarioId);
+    if (!scenario) {
+      throw new UnknownScenarioError(opts.scenarioId);
+    }
+    const blurbs: string[] = [];
+    const coord = scenario.copy.coordinatorBlurb?.(trimmed);
+    if (coord) blurbs.push(coord);
+    const hint = scenario.copy.routingHint();
+    if (hint && !blurbs.includes(hint)) blurbs.push(hint);
+
+    return {
+      task: trimmed,
+      scenarioId: opts.scenarioId,
+      blurbs,
+      requiredDeliveryTool: needsPptDelivery(trimmed) ? 'send-file' : undefined,
+    };
+  }
+
   const decision = router.resolve(trimmed);
   const scenarioId =
     decision.action === 'pass' ? undefined : decision.scenarioId;
@@ -63,6 +101,12 @@ export type GoalGraphOptions = {
   router?: TaskRouter;
 };
 
+export type PlanForTurnOptions = {
+  continueGoal?: boolean;
+  /** Fresh-turn force from chat.send metadata; ignored on Continue (sticky wins). */
+  scenarioId?: string;
+};
+
 export class GoalGraph {
   private readonly store: GoalStore;
   private readonly router: TaskRouter;
@@ -77,8 +121,8 @@ export class GoalGraph {
     return this.store;
   }
 
-  plan(task: string): AttemptPlan {
-    return planAttempt(task, this.router);
+  plan(task: string, opts: PlanAttemptOptions = {}): AttemptPlan {
+    return planAttempt(task, this.router, opts);
   }
 
   /**
@@ -88,12 +132,14 @@ export class GoalGraph {
   planForTurn(
     sessionId: string,
     content: string,
-    opts: { continueGoal?: boolean } = {},
+    opts: PlanForTurnOptions = {},
   ): AttemptPlan {
     if (opts.continueGoal) {
       const record = this.store.get(sessionId);
       if (record?.goal) {
-        const fromOriginal = planAttempt(record.goal, this.router);
+        const fromOriginal = planAttempt(record.goal, this.router, {
+          scenarioId: record.lastAttempt?.scenarioId,
+        });
         return {
           task: content.trim(),
           scenarioId: fromOriginal.scenarioId ?? record.lastAttempt?.scenarioId,
@@ -104,7 +150,9 @@ export class GoalGraph {
       }
     }
 
-    const plan = planAttempt(content, this.router);
+    const plan = planAttempt(content, this.router, {
+      scenarioId: opts.scenarioId,
+    });
     this.store.setLastAttempt(sessionId, {
       scenarioId: plan.scenarioId,
       requiredDeliveryTool: plan.requiredDeliveryTool,

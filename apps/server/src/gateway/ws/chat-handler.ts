@@ -420,9 +420,10 @@ export class ChatWsHandler extends EventEmitter {
   // ============================================
 
   private async handleChatSend(params: unknown, id: string, ws?: WebSocket): Promise<WsResponse> {
-    const { prompt, threadId, attachments } = params as {
+    const { prompt, threadId, attachments, scenarioId } = params as {
       prompt?: string;
       threadId?: string;
+      scenarioId?: string;
       attachments?: Array<{ type: string; path: string; name: string; size: number; mimeType: string }>;
     };
 
@@ -442,6 +443,10 @@ export class ChatWsHandler extends EventEmitter {
 
     if (!content) {
       return createErrorResponse(id, 'VALIDATION', 'prompt or attachments is required')
+    }
+
+    if (scenarioId != null && typeof scenarioId === 'string' && scenarioId.trim() === '') {
+      return createErrorResponse(id, 'VALIDATION', 'scenarioId must be a non-empty string when provided')
     }
 
     if (!this.server) {
@@ -467,6 +472,9 @@ export class ChatWsHandler extends EventEmitter {
       timestamp: Date.now(),
       metadata: {
         channelId: 'ws-chat',
+        ...(typeof scenarioId === 'string' && scenarioId.trim()
+          ? { scenarioId: scenarioId.trim() }
+          : {}),
       },
     })
 

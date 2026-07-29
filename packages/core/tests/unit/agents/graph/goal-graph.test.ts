@@ -121,4 +121,19 @@ describe('GoalGraph lifecycle', () => {
     expect(resumed.requiredDeliveryTool).toBe('send-file');
     expect(resumed.blurbs.join('\n')).toMatch(/task/);
   });
+
+  it('forced scenarioId locks office without NLP-friendly wording', () => {
+    graph.onUserTurn('s1', '季度复盘三页');
+    const plan = graph.planForTurn('s1', '季度复盘三页', {
+      scenarioId: 'office-document',
+    });
+    expect(plan.scenarioId).toBe('office-document');
+    expect(plan.blurbs.join('\n')).toMatch(/task|office/i);
+  });
+
+  it('unknown forced scenarioId throws UnknownScenarioError', () => {
+    expect(() =>
+      graph.planForTurn('s1', 'hi', { scenarioId: 'no-such-scene' }),
+    ).toThrow(/Unknown scenario/);
+  });
 });

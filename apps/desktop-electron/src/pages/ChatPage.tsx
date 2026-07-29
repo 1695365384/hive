@@ -26,8 +26,14 @@ import { useRunStore, RUN_SETTLE_MS } from "../stores/run-store";
 import type { ChatMessage, ContentPart } from "../types/chat";
 import { AskUserCard } from "../components/AskUserCard";
 import { BgToastHost } from "../components/chat/BgToastHost";
-import { ArrowUp, Plus, Square, Presentation, FileText, MessageSquare, BarChart3 } from "lucide-react";
+import { ArrowUp, Plus, Square, Presentation, FileText, MessageSquare, BarChart3, Clock } from "lucide-react";
 import { playMotion } from "../motion";
+import {
+  listEmptyStateSurfaces,
+  listScenarioSurfaces,
+  resolveSendPayload,
+  type ScenarioSurface,
+} from "@hive/scenario-surface";
 
 function truncateActivityLabel(text: string, max = 48): string {
   const t = text.trim().replace(/\s+/g, " ");
@@ -58,6 +64,9 @@ export function ChatPage() {
   const { pendingFiles, uploading, addFiles, removeFile, clearFiles } = useFileUpload();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  /** Empty-state / slash-menu lock — cleared after send */
+  const [pendingSurfaceId, setPendingSurfaceId] = useState<string | null>(null);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
@@ -1097,9 +1106,16 @@ export function ChatPage() {
   }, [askUserData, request, isRunning, activityClearWaiting, t, currentId]);
 
   const handleSend = useCallback(async () => {
-    const text = input.trim();
-    if ((!text && pendingFiles.length === 0) || isRunning) return;
+    const raw = input.trim();
+    if ((!raw && pendingFiles.length === 0 && !pendingSurfaceId) || isRunning) return;
     stickToBottomRef.current = true;
+
+    const payload = resolveSendPayload({
+      text: raw,
+      surfaceId: pendingSurfaceId ?? undefined,
+    });
+    const text = payload.prompt.trim();
+    if ((!text && pendingFiles.length === 0) || isRunning) return;
 
     setError(null);
     let threadId = currentId;
@@ -1165,6 +1181,8 @@ export function ChatPage() {
       useRunStore.getState().setMessageCache(activeThreadId, next);
       setMessages(next);
       setInput("");
+      setPendingSurfaceId(null);
+      setSlashMenuOpen(false);
       clearFiles();
       activityBeginRun();
       activeWorkersRef.current.delete(activeThreadId);
@@ -1182,7 +1200,12 @@ export function ChatPage() {
       }
 
       const attachments = pendingFiles.map(f => ({ type: f.type, path: f.path, name: f.name, size: f.size, mimeType: f.mimeType }));
-      await request("chat.send", { prompt: text || undefined, threadId: activeThreadId, attachments: attachments.length > 0 ? attachments : undefined });
+      await request("chat.send", {
+        prompt: text || undefined,
+        threadId: activeThreadId,
+        scenarioId: payload.scenarioId,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
     } catch (err) {
       const errorMessage = err instanceof Error
         ? err.message
@@ -1192,9 +1215,14 @@ export function ChatPage() {
       if (threadId) failPendingRun(threadId, errorMessage);
       else setError(errorMessage);
     }
-  }, [input, pendingFiles, isRunning, request, clearFiles, currentId, createSession, autoTitle, failPendingRun, activityBeginRun, t]);
+  }, [input, pendingSurfaceId, pendingFiles, isRunning, request, clearFiles, currentId, createSession, autoTitle, failPendingRun, activityBeginRun, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && slashMenuOpen) {
+      e.preventDefault();
+      setSlashMenuOpen(false);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -1202,9 +1230,30 @@ export function ChatPage() {
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
+    const value = e.target.value;
+    setInput(value);
+    // Clear card lock once user edits away from seeded prompt
+    if (pendingSurfaceId) setPendingSurfaceId(null);
+    setSlashMenuOpen(value.trimStart().startsWith("/"));
     syncComposerInputHeight(e.target);
   };
+
+  const handlePickSurface = useCallback((surface: ScenarioSurface) => {
+    setPendingSurfaceId(surface.id);
+    setInput(surface.defaultPrompt);
+    setSlashMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      syncComposerInputHeight(el);
+    });
+  }, []);
+
+  const handleEmptyScenario = useCallback((surface: ScenarioSurface) => {
+    setPendingSurfaceId(surface.id);
+    setInput(surface.defaultPrompt);
+  }, []);
 
   const handleFileSelect = useCallback(async () => {
     try {
@@ -1248,7 +1297,13 @@ export function ChatPage() {
       <BgToastHost />
       <div ref={scrollRef} className="chat-stage__scroll scrollbar-thin" onScroll={handleScroll}>
         {isEmpty ? (
-          <EmptyState onScenarioSelect={setInput} />
+          <EmptyState
+            onScenarioSelect={handleEmptyScenario}
+            onPromptFill={(text) => {
+              setPendingSurfaceId(null);
+              setInput(text);
+            }}
+          />
         ) : (
           <div ref={messagesRailRef} className="chat-rail chat-rail--messages py-6 space-y-6">
             {messages.map((msg) => (
@@ -1333,6 +1388,51 @@ export function ChatPage() {
                 <FilePreviewList files={pendingFiles} onRemove={removeFile} />
               </div>
             )}
+            {slashMenuOpen && (
+              <div className="slash-menu app-no-drag" role="listbox" aria-label={t("chat.slashMenu")}>
+                {listScenarioSurfaces()
+                  .filter((s) => {
+                    const q = input.trim().replace(/^\//, "").toLowerCase();
+                    if (!q) return true;
+                    return (
+                      s.id.startsWith(q) ||
+                      s.slash.some((a) => a.startsWith(q)) ||
+                      (s.scenarioId?.startsWith(q) ?? false)
+                    );
+                  })
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="slash-menu__item"
+                      onClick={() => handlePickSurface(s)}
+                    >
+                      <span className="slash-menu__cmd">/{s.slash[0]}</span>
+                      <span className="slash-menu__label">
+                        {t(`chat.emptyScenarios.${s.labelKey}`, { defaultValue: s.id })}
+                      </span>
+                      {s.scenarioId ? (
+                        <span className="slash-menu__badge">{s.scenarioId}</span>
+                      ) : null}
+                    </button>
+                  ))}
+              </div>
+            )}
+            {pendingSurfaceId ? (
+              <div className="scenario-chip-row app-no-drag">
+                <span className="scenario-chip">
+                  {t(`chat.emptyScenarios.${pendingSurfaceId}`, { defaultValue: pendingSurfaceId })}
+                  <button
+                    type="button"
+                    className="scenario-chip__clear"
+                    aria-label={t("chat.clearScenario")}
+                    onClick={() => setPendingSurfaceId(null)}
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            ) : null}
             <div
               ref={composerRef}
               className="chat-composer"
@@ -1396,19 +1496,24 @@ export function ChatPage() {
   );
 }
 
-function EmptyState({ onScenarioSelect }: { onScenarioSelect: (text: string) => void }) {
+function EmptyState({
+  onScenarioSelect,
+  onPromptFill,
+}: {
+  onScenarioSelect: (surface: ScenarioSurface) => void;
+  onPromptFill: (text: string) => void;
+}) {
   const { t } = useTranslation();
-  const scenarios = [
-    { id: "ppt", icon: Presentation, label: t("chat.emptyScenarios.ppt"), hint: t("chat.emptyScenarioHintPpt"), prompt: "帮我做一份项目汇报 PPT，包含项目背景、进展、风险和下一步计划" },
-    { id: "doc", icon: FileText, label: t("chat.emptyScenarios.doc"), hint: t("chat.emptyScenarioHintDoc"), prompt: "帮我写本周周报，主要完成了用户登录模块开发和接口联调" },
-    { id: "meeting", icon: MessageSquare, label: t("chat.emptyScenarios.meeting"), hint: t("chat.emptyScenarioHintMeeting"), prompt: "帮我整理下面会议纪要的要点和待办事项" },
-    { id: "data", icon: BarChart3, label: t("chat.emptyScenarios.data"), hint: t("chat.emptyScenarioHintData"), prompt: "帮我分析这份数据，给出关键指标和趋势" },
-  ] as const;
-  const quickPrompts: string[] = t("chat.emptyQuickPrompts", { returnObjects: true }) as unknown as string[] ?? [];
-
-  const handleScenario = (prompt: string) => {
-    onScenarioSelect(prompt);
+  const iconMap: Record<string, typeof Presentation> = {
+    ppt: Presentation,
+    doc: FileText,
+    meeting: MessageSquare,
+    data: BarChart3,
+    schedule: Clock,
   };
+  const scenarios = listEmptyStateSurfaces();
+  const quickPrompts: string[] =
+    (t("chat.emptyQuickPrompts", { returnObjects: true }) as unknown as string[]) ?? [];
 
   return (
     <div className="chat-empty-state">
@@ -1418,20 +1523,35 @@ function EmptyState({ onScenarioSelect }: { onScenarioSelect: (text: string) => 
       </div>
 
       <div className="chat-empty-state__cards">
-        {scenarios.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className="chat-empty-state__card app-no-drag"
-            onClick={() => handleScenario(s.prompt)}
-          >
-            <span className="chat-empty-state__card-icon">
-              <s.icon className="w-4 h-4" />
-            </span>
-            <span className="chat-empty-state__card-label">{s.label}</span>
-            <span className="chat-empty-state__card-hint">{s.hint}</span>
-          </button>
-        ))}
+        {scenarios.map((s) => {
+          const Icon = iconMap[s.id] ?? FileText;
+          const hintKey =
+            s.hintKey === "ppt"
+              ? "chat.emptyScenarioHintPpt"
+              : s.hintKey === "doc"
+                ? "chat.emptyScenarioHintDoc"
+                : s.hintKey === "meeting"
+                  ? "chat.emptyScenarioHintMeeting"
+                  : s.hintKey === "data"
+                    ? "chat.emptyScenarioHintData"
+                    : `chat.emptyScenarioHint${s.hintKey.charAt(0).toUpperCase()}${s.hintKey.slice(1)}`;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              className="chat-empty-state__card app-no-drag"
+              onClick={() => onScenarioSelect(s)}
+            >
+              <span className="chat-empty-state__card-icon">
+                <Icon className="w-4 h-4" />
+              </span>
+              <span className="chat-empty-state__card-label">
+                {t(`chat.emptyScenarios.${s.labelKey}`)}
+              </span>
+              <span className="chat-empty-state__card-hint">{t(hintKey)}</span>
+            </button>
+          );
+        })}
       </div>
 
       {quickPrompts.length > 0 && (
@@ -1441,7 +1561,7 @@ function EmptyState({ onScenarioSelect }: { onScenarioSelect: (text: string) => 
               key={i}
               type="button"
               className="chat-empty-state__prompt-chip app-no-drag"
-              onClick={() => handleScenario(prompt)}
+              onClick={() => onPromptFill(prompt)}
             >
               {prompt}
             </button>

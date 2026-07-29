@@ -135,3 +135,5 @@ docs/superpowers/
 # Accidental line-range export created during local inspection
 /apps/server/src/gateway/http.ts:250-257
 /packages/ppt-export/tests/validate.test.ts:18-24
+ # Local agent workspace
+/.crew/

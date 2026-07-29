@@ -20,6 +20,10 @@
     "./routing": {
       "import": "./dist/routing/index.js",
       "types": "./dist/routing/index.d.ts"
+    },
+    "./routing/scenario-surface": {
+      "import": "./dist/routing/scenario-surface.js",
+      "types": "./dist/routing/scenario-surface.d.ts"
     }
   },
   "bin": {

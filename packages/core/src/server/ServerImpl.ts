@@ -39,7 +39,7 @@ import {
   decideWorkerFinalizations,
   type OpenWorker,
 } from '../agents/completion/office-worker-finalize.js';
-import { createGoalGraph, type GoalGraph } from '../agents/graph/index.js';
+import { createGoalGraph, UnknownScenarioError, type GoalGraph } from '../agents/graph/index.js';
 import { blockedActions } from '../agents/completion/discipline.js';
 import type { TaskProgressEvent } from '../agents/completion/types.js';
 import type {
@@ -759,18 +759,42 @@ class ServerImpl implements Server {
       const abortController = new AbortController();
       this.activeAbortControllers.set(sessionKey, abortController);
       this.activeDispatchSessionId = sessionKey;
+      const workerHookIds: string[] = [];
 
       // GoalGraph: fresh user turns replace Goal; Continue keeps the same Goal text
       const isContinue = Boolean(channelMessage.metadata?.continueGoal);
+      const forcedScenarioId =
+        typeof channelMessage.metadata?.scenarioId === 'string'
+          ? channelMessage.metadata.scenarioId
+          : undefined;
       this.goalGraph.onUserTurn(sessionKey, channelMessage.content, {
         continueGoal: isContinue,
       });
-      const attemptPlan = this.goalGraph.planForTurn(sessionKey, channelMessage.content, {
-        continueGoal: isContinue,
-      });
+      let attemptPlan;
+      try {
+        attemptPlan = this.goalGraph.planForTurn(sessionKey, channelMessage.content, {
+          continueGoal: isContinue,
+          scenarioId: isContinue ? undefined : forcedScenarioId,
+        });
+      } catch (err) {
+        if (err instanceof UnknownScenarioError) {
+          this.logger.warn(`[server] Unknown scenarioId=${err.scenarioId}`);
+          this.emitStreaming({
+            sessionId: sessionKey,
+            type: 'complete',
+            success: false,
+            error: `未知场景: ${err.scenarioId}`,
+            text: `未知场景: ${err.scenarioId}`,
+          });
+          return;
+        }
+        throw err;
+      }
+      if (forcedScenarioId && !isContinue) {
+        this.logger.info(`[agent] [route] force scenario=${forcedScenarioId}`);
+      }
 
       // 订阅 Worker 事件并转发到流式回调
-      const workerHookIds: string[] = [];
 
       workerHookIds.push(
         this.agent.context.hookRegistry.on('worker:start', (ctx: any) => {

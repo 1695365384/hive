@@ -65,3 +65,14 @@ export {
 } from './scenarios/named-worker.scenario.js';
 
 export { hasNoArtifactIntent } from './intent.js';
+
+export type { ScenarioSurface, SlashResolveResult } from './scenario-surface.js';
+export {
+  listScenarioSurfaces,
+  listEmptyStateSurfaces,
+  getSurface,
+  getSurfaceByScenarioId,
+  resolveSlash,
+  resolveSendPayload,
+  isKnownForcedScenarioId,
+} from './scenario-surface.js';
