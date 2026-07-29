@@ -175,9 +175,6 @@ importers:
       '@oh-my-pi/pi-coding-agent':
         specifier: 17.0.6
         version: 17.0.6(yauzl@2.10.0)
-      '@opencode-ai/sdk':
-        specifier: ^1.17.17
-        version: 1.17.17
       ai:
         specifier: ^6.0.129
         version: 6.0.130(zod@4.3.6)
@@ -1322,9 +1319,6 @@ packages:
   '@oh-my-pi/snapcompact@17.0.6':
     resolution: {integrity: sha512-13KbdxqQvD1UswgB871dM/N1wDHMewUcSEGkyv/IVXkEWAgoT32qKA5MIAtm7YMCecGxcylP+N18Ysaas02JWA==}
     engines: {bun: '>=1.3.14'}
-
-  '@opencode-ai/sdk@1.17.17':
-    resolution: {integrity: sha512-ISDZaINP6YJfmRx52n+UgZ6s4uxaJyI8SZyOHbCXEsKFHdkzqqy7+Ay+8zYtWa8pdH3/949yoHd0KXleOKu+6A==}
 
   '@opentelemetry/api-logs@0.220.0':
     resolution: {integrity: sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==}
@@ -5261,6 +5255,11 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
+  sherpa-onnx-darwin-x64@1.13.3:
+    resolution: {integrity: sha512-TVQ35g7JIpDPB1lUDdcog+JtI0cI45ZzOnvHXm0DtWs/dgxnJXtWMY3uLRtBbLnysV9j5ljffwZ1IX9VDHsCzQ==}
+    cpu: [x64]
+    os: [darwin]
+
   sherpa-onnx-linux-arm64@1.13.4:
     resolution: {integrity: sha512-RMjMRqT82BgTXypNNGmLe6ZFYhc3WEvnAGl3DdkK7qB/kuXwkL3iHhV31wAecbnWPsnEpUoD+8cFovWSBzsCuw==}
     cpu: [arm64]
@@ -6994,10 +6993,6 @@ snapshots:
       '@oh-my-pi/pi-natives': 17.0.6
       '@oh-my-pi/pi-utils': 17.0.6
       '@oh-my-pi/pi-wire': 17.0.6
-
-  '@opencode-ai/sdk@1.17.17':
-    dependencies:
-      cross-spawn: 7.0.6
 
   '@opentelemetry/api-logs@0.220.0':
     dependencies:
@@ -11534,6 +11529,9 @@ snapshots:
   sherpa-onnx-darwin-arm64@1.13.4:
     optional: true
 
+  sherpa-onnx-darwin-x64@1.13.3:
+    optional: true
+
   sherpa-onnx-linux-arm64@1.13.4:
     optional: true
 
@@ -11543,6 +11541,7 @@ snapshots:
   sherpa-onnx-node@1.13.2:
     optionalDependencies:
       sherpa-onnx-darwin-arm64: 1.13.4
+      sherpa-onnx-darwin-x64: 1.13.3
       sherpa-onnx-linux-arm64: 1.13.4
       sherpa-onnx-linux-x64: 1.13.4
       sherpa-onnx-win-ia32: 1.13.4

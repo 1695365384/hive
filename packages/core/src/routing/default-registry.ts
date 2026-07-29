@@ -1,5 +1,8 @@
 /**
  * 内置场景注册
+ *
+ * TaskRouter / spawn validation is legacy (pre-AgentLoop). Live dispatch does not
+ * call these. Labels + scenario helpers remain for tests and completion verifiers.
  */
 
 import { ScenarioRegistry } from './ScenarioRegistry.js';
@@ -16,12 +19,12 @@ export function createDefaultScenarioRegistry(): ScenarioRegistry {
     .register(scheduleScenario);
 }
 
-/** 构建默认 TaskRouter */
+/** @deprecated Not on AgentLoop dispatch path. */
 export function createDefaultTaskRouter(): TaskRouter {
   return new TaskRouter(createDefaultScenarioRegistry());
 }
 
-/** 进程内默认单例（ScenarioRouter 共用） */
+/** @deprecated Not on AgentLoop dispatch path. */
 export const defaultTaskRouter = createDefaultTaskRouter();
 
 /** 场景 ID → 用户可见标签 */
@@ -39,6 +42,7 @@ export function getAllScenarioLabels(): Record<string, string> {
   return map;
 }
 
+/** @deprecated Not on AgentLoop dispatch path. */
 export function validateWorkerSpawn(task: string, spawn: import('./types.js').WorkerSpawnInput): string | null {
   return defaultTaskRouter.validateSpawn(task, spawn);
 }

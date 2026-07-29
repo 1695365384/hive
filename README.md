@@ -104,27 +104,20 @@ pnpm --filter @bundy-lmw/hive-server start
 
 ## Architecture
 
-Hive uses a **Coordinator-Worker** pattern. The `Agent` class is the single entry point. `dispatch()` delegates to `CoordinatorCapability`, which manages the LLM loop and spawns specialized **worker agents** as tools.
+Hive is a **product/protocol shell** around an **oh-my-pi** execution kernel. The `Agent` class is the single entry point. `dispatch()` runs through `AgentLoop` → `PiAgentSessionAdapter` → `@oh-my-pi/pi-coding-agent` `createAgentSession()`. Desktop WS, session-fs, `send-file`, and Goal stay in Hive.
 
 <div align="center">
   <img src="docs/architecture.svg" alt="Hive System Architecture" width="860">
 </div>
 
-### Worker Agent Tool Permissions
+### Execution tools (current)
 
-| Tool | explore | plan | general | schedule |
-|:-----|:--------|:-----|:--------|:---------|
-| `file` (read) | ✅ | ✅ | ✅ | — |
-| `glob` | ✅ | ✅ | ✅ | — |
-| `grep` | ✅ | ✅ | ✅ | — |
-| `web-search` | ✅ | ✅ | ✅ | — |
-| `web-fetch` | ✅ | ✅ | ✅ | — |
-| `env` | ✅ | ✅ | ✅ | — |
-| `bash` | — | — | ✅ | — |
-| `file` (write) | — | — | ✅ | — |
-| `ask-user` | — | — | ✅ | — |
-| `send-file` | — | — | ✅ | — |
-| `schedule` | — | — | — | ✅ |
+| Source | Tools | Role |
+|:-------|:------|:-----|
+| pi built-ins | `read`, `edit`, `write`, `bash`, `glob`, `grep`, `web_search`, `task`, … | Main ReAct loop |
+| Hive `customTools` | `send-file`, `remember`, `env`, `ask-user`, `web-fetch`, … | Desktop / product extensions |
+
+> Legacy `TaskRouter` / Worker-type tables remain in the package (deprecated public API) for labels and completion helpers such as `isOfficeTask`. They do **not** drive the live `dispatch` path.
 
 ### Capabilities
 
@@ -132,12 +125,12 @@ Hive uses a **Coordinator-Worker** pattern. The `Agent` class is the single entr
 
 <table style="border:none; margin: 0 auto;">
 <tr style="border:none;">
-  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Coordinator</code></td>
-  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">dispatch · worker orchestration · cost</td>
+  <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">AgentLoop</code></td>
+  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">dispatch · pi createAgentSession · tool bridge</td>
 </tr>
 <tr style="border:none;">
   <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Provider</code></td>
-  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">registry · switching · AI SDK</td>
+  <td style="border:none; padding:4px 0; color:#9ca3af; font-size:12px;">registry · switching · pi-catalog</td>
 </tr>
 <tr style="border:none;">
   <td style="border:none; padding:4px 6px;"><code style="background:#f3f4f6; padding:4px 10px; border-radius:0; font-size:12px; border:1px solid #e5e7eb;">Skill</code></td>
@@ -302,20 +295,21 @@ hive/
 │   ├── agents/
 │   │   ├── core/
 │   │   │   ├── Agent.ts              # Single entry point
+│   │   │   ├── AgentLoop.ts           # Sole execution entry → pi session
 │   │   │   ├── AgentContext.ts        # Shared context + hook registry
-│   │   │   ├── agents.ts             # Worker definitions (explore/plan/general/schedule)
+│   │   │   ├── hive-tool-bridge.ts    # Hive/MCP → pi customTools
 │   │   │   └── PiAgentSessionAdapter.ts # pi createAgentSession adapter
 │   │   └── capabilities/
-│   │       ├── CoordinatorCapability.ts  # LLM loop + worker orchestration
-│   │       ├── ProviderCapability.ts     # Provider registry + AI SDK
+│   │       ├── ProviderCapability.ts     # Provider registry + pi-catalog
 │   │       ├── SkillCapability.ts        # Skill loading + matching
 │   │       ├── SessionCapability.ts      # SQLite persistence
 │   │       ├── TimeoutCapability.ts      # Heartbeat + stall detection
 │   │       └── ScheduleCapability.ts     # Cron scheduling
 │   ├── providers/
 │   │   ├── ProviderManager.ts        # Provider registry
-│   │   └── adapters/                 # Anthropic, OpenAI, Google, OpenAI-compatible
-│   ├── tools/built-in/               # 14 tools (bash, file, glob, grep, web, etc.)
+│   │   ├── pi-catalog-bridge.ts      # Sole model catalog source
+│   │   └── pi-auth-bridge.ts         # AuthStorage / ModelRegistry bridge
+│   ├── tools/built-in/               # Hive tools (bridged into pi customTools)
 │   ├── skills/                       # SkillLoader, SkillMatcher, SkillRegistry
 │   ├── hooks/                        # HookRegistry + types
 │   └── index.ts                      # Public API exports

@@ -80,6 +80,7 @@ export const namedWorkerScenarioCopy: ScenarioCopy = {
   },
 };
 
+/** @deprecated Not on AgentLoop dispatch path. */
 export function detectNamedWorkerType(task: string): DelegatableWorkerType | null {
   const match = NAMED_WORKER_RE.exec(task);
   if (!match) return null;
@@ -92,6 +93,7 @@ export function matchesNamedWorkerScenario(task: string): boolean {
   return detectNamedWorkerType(task) !== null;
 }
 
+/** @deprecated Not on AgentLoop dispatch path. */
 export function buildNamedWorkerSpawn(
   task: string,
   type?: DelegatableWorkerType,

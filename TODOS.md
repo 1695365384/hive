@@ -1,5 +1,17 @@
 # TODOS
 
+## P2 — Dual-tool stack → pi CustomTool only
+
+**What:** Author new tools as pi CustomTool; retire Vercel `ai` `Tool` shells; shrink ToolRegistry to Hive extension bridge.
+
+**Why:** Live kernel is already pi; maintaining AI SDK Tool + bridge doubles every tool change and confuses the mental model.
+
+**Context:** Start at `packages/core/src/agents/core/hive-tool-bridge.ts` and `packages/core/src/tools/built-in/*`. Kernel uses pi builtins + customTools. Deferred from CEO arch-truth cleanup 2026-07-28 (HOLD SCOPE).
+
+**Effort:** L (human) → M with CC
+**Priority:** P2
+**Depends on:** Architecture truth cleanup (#152)
+
 ## P2 — waitForProviderReady after ConfigPage provider save
 
 - **What:** After `config.update` changes provider, await agent ready or show an honest restart/ready banner (SetupWizard already has `waitForProviderReady`).
@@ -7,6 +19,18 @@
 - **Context:** Deferred from CEO review 2026-07-17 provider-settings-commercial. Do after the UI polish wedge ships.
 - **Effort:** M (human) → S with CC
 - **Depends on:** Provider settings commercial polish PR
+
+## P3 — Remove deprecated TaskRouter public exports (breaking)
+
+**What:** On next breaking/major bump, drop `TaskRouter`, `defaultTaskRouter`, `validateWorkerSpawn`, named/office/schedule spawn builders from `@bundy-lmw/hive-core` public exports. Keep `isOfficeTask` / `hasNoArtifactIntent` (and labels if still needed).
+
+**Why:** Finish the deprecate-in-place story from #152 so grep stops pointing at a dead dispatch router.
+
+**Context:** AgentLoop/ServerImpl do not call TaskRouter. Public API was intentionally kept for semver in the arch-truth cleanup.
+
+**Effort:** M (human) → S with CC
+**Priority:** P3
+**Depends on:** #152 deprecate JSDoc landed
 
 ## P3 — Move LanguageSwitcher to General settings tab
 

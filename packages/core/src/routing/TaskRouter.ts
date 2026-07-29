@@ -1,5 +1,9 @@
 /**
- * TaskRouter — Coordinator 唯一路由入口
+ * TaskRouter — legacy scenario router (pre-AgentLoop / Coordinator era).
+ *
+ * @deprecated Not used by AgentLoop dispatch. Live path is pi createAgentSession.
+ * Kept for scenario labels, unit tests, and completion helpers. Prefer
+ * `isOfficeTask` / `hasNoArtifactIntent` for completion checks.
  */
 
 import type {
@@ -10,6 +14,7 @@ import type {
 } from './types.js';
 import { ScenarioRegistry } from './ScenarioRegistry.js';
 
+/** @deprecated Not on AgentLoop dispatch path. */
 export class TaskRouter {
   constructor(private readonly registry: ScenarioRegistry) {}
 
