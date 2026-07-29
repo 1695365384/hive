@@ -32,6 +32,26 @@ describe("finalizeRunContent", () => {
     });
   });
 
+  it("marks already-resolved tools as errors when cancelling", () => {
+    const content: ContentPart[] = [
+      {
+        type: "tool-call",
+        toolCallId: "t1",
+        toolName: "bash",
+        args: {},
+        result: "[Command cancelled]\n",
+        durationMs: 19600,
+      },
+    ];
+    const out = finalizeRunContent(content, { cancelled: true });
+    expect(out[0]).toMatchObject({
+      type: "tool-call",
+      result: "[Command cancelled]\n",
+      isError: true,
+      durationMs: 19600,
+    });
+  });
+
   it("drops heartbeat pulses so cancel does not leave 仍在处理", () => {
     const content: ContentPart[] = [
       { type: "heartbeat", message: "仍在处理，请稍候…" },

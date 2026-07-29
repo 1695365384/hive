@@ -792,7 +792,13 @@ export function ChatPage() {
       patchAssistantMessage(prev, run.assistantMsgId, (content) => {
         let c = content;
         if (data.cancelled) {
-          c = appendContentPart(c, { type: "text", text: t("chat.executionCancelled") });
+          const cancelledLabel = t("chat.executionCancelled");
+          const hasCancelText = c.some(
+            (p) => p.type === "text" && p.text.trim() === cancelledLabel,
+          );
+          if (!hasCancelText) {
+            c = appendContentPart(c, { type: "text", text: cancelledLabel });
+          }
         } else if (isError) {
           c = appendContentPart(c, { type: "text", text: t("chat.processFailed", { detail: data.error }) });
         }

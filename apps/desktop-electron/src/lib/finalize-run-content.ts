@@ -58,6 +58,12 @@ export function finalizeRunContent(
       });
       continue;
     }
+    // Cancel often lands tool-result ("[Command cancelled]") before local finalize —
+    // still mark the chip as error so the UI does not look successfully done.
+    if (part.type === "tool-call" && cancelled && !part.isError) {
+      next.push({ ...part, isError: true });
+      continue;
+    }
     next.push(part);
   }
 
