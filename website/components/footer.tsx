@@ -28,7 +28,7 @@ export async function Footer() {
               </li>
               <li>
                 <a
-                  href="https://github.com/1695365384/hive/tree/main/apps/desktop"
+                  href="https://github.com/1695365384/hive/tree/main/apps/desktop-electron"
                   className="transition-colors hover:text-text-primary"
                 >
                   {t('product.desktop')}

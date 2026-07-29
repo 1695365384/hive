@@ -322,7 +322,7 @@ hive/
 ├── apps/server/src/
 │   ├── main.ts                       # Server entry
 │   └── gateway/                      # Hono HTTP + WebSocket routes
-└── apps/desktop/                     # Tauri 2 desktop app (React 19)
+└── apps/desktop-electron/            # Electron 33 desktop app (React 19)
 ```
 
 </details>
@@ -338,6 +338,7 @@ hive/
 | `pnpm test` | Run tests (1,337 cases) |
 | `pnpm test:e2e` | E2E tests (requires API key) |
 | `pnpm --filter @bundy-lmw/hive-server start` | Start HTTP server |
+| `pnpm dev` | Build core/server and start the Electron desktop app |
 
 ---
 

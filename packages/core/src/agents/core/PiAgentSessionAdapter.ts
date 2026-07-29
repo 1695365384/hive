@@ -10,9 +10,23 @@ import type { DispatchOptions, DispatchResult } from '../types/dispatch.js';
 import type { ProviderManager } from '../../providers/ProviderManager.js';
 import { createPiAuthAndModel } from '../../providers/pi-auth-bridge.js';
 import type { BridgedCustomTool } from './hive-tool-bridge.js';
+import { createHiveSecurityExtension } from './pi-security-extension.js';
+import {
+  createCompletionVerifierService,
+} from '../completion/CompletionVerifier.js';
+import { TaskTraceCollector } from '../completion/TaskTrace.js';
+import type { CompletionVerifyResult } from '../completion/types.js';
+
+/** Default tool-round budget when DispatchOptions.maxTurns is omitted. */
+export const HIVE_DEFAULT_MAX_TURNS = 40;
 
 export interface PiSessionHandle {
   abort: () => void;
+}
+
+export interface HiveHistoryMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
 }
 
 export interface RunWithPiAgentSessionInput {
@@ -24,8 +38,15 @@ export interface RunWithPiAgentSessionInput {
   hiveCustomTools: BridgedCustomTool[];
   abortController: AbortController;
   onActiveSession?: (session: PiSessionHandle) => void;
+  /** Called on pi events so TimeoutCapability can refresh stall heartbeat. */
+  onActivity?: () => void;
   /** AgentContext for subagent → worker hook bridging (optional). */
   context?: AgentContext;
+  /**
+   * Prior Hive session turns to seed into pi SessionManager before prompt.
+   * Empty / omitted for first turn.
+   */
+  historyMessages?: HiveHistoryMessage[];
   /**
    * Test-only injection point. When omitted, dynamically imports
    * `@oh-my-pi/pi-coding-agent`.
@@ -55,6 +76,8 @@ export interface RunWithPiAgentSessionInput {
    * reported as a successful file delivery.
    */
   requiredDeliveryTool?: string;
+  /** Override maxTurns (defaults to options.maxTurns ?? HIVE_DEFAULT_MAX_TURNS). */
+  maxTurns?: number;
 }
 
 type MutableDispatch = {
@@ -65,6 +88,7 @@ type MutableDispatch = {
   success: boolean;
   error?: string;
   blockedMessage?: string;
+  toolRounds?: number;
 };
 
 function isAbortError(err: unknown): boolean {
@@ -76,6 +100,60 @@ function isAbortError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /aborted|abort/i.test(msg);
 }
+
+/**
+ * Seed prior Hive turns into a pi SessionManager (best-effort).
+ * Assistant messages must carry a real Usage object — pi compaction calls
+ * `usage.orchestration` without a null check and crashes on bare text stubs.
+ * Exported for unit tests.
+ */
+export function seedPiSessionHistory(
+  sessionManager: { appendMessage?: (message: unknown) => unknown } | null | undefined,
+  history: HiveHistoryMessage[] | undefined,
+): number {
+  if (!sessionManager?.appendMessage || !history?.length) return 0;
+  let seeded = 0;
+  const now = Date.now();
+  for (const msg of history) {
+    if (msg.role === 'system') continue;
+    const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+    if (!content) continue;
+    try {
+      if (msg.role === 'assistant') {
+        sessionManager.appendMessage({
+          role: 'assistant',
+          content: [{ type: 'text', text: content }],
+          api: 'openai-completions',
+          provider: 'hive',
+          model: 'history',
+          usage: HIVE_HISTORY_USAGE_STUB,
+          stopReason: 'stop',
+          timestamp: now + seeded,
+        });
+      } else {
+        sessionManager.appendMessage({
+          role: 'user',
+          content: [{ type: 'text', text: content }],
+          timestamp: now + seeded,
+        });
+      }
+      seeded += 1;
+    } catch {
+      // ignore shape mismatches — system-prompt history is the fallback
+    }
+  }
+  return seeded;
+}
+
+/** Minimal Usage so pi compaction/token math never sees undefined usage. */
+const HIVE_HISTORY_USAGE_STUB = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
 
 /**
  * Map a single pi AgentSessionEvent onto Hive DispatchOptions callbacks.
@@ -263,6 +341,16 @@ function wireSubagentHooks(
   };
 }
 
+function mergeVerification(
+  a: CompletionVerifyResult,
+  b: CompletionVerifyResult,
+): CompletionVerifyResult {
+  return {
+    passed: a.passed && b.passed,
+    results: [...a.results, ...b.results],
+  };
+}
+
 /**
  * Run one Hive dispatch turn through createAgentSession().
  */
@@ -276,7 +364,12 @@ export async function runWithPiAgentSession(
     tools: [],
     completedTools: [],
     success: true,
+    toolRounds: 0,
   };
+
+  const maxTurns =
+    input.maxTurns ?? input.options?.maxTurns ?? HIVE_DEFAULT_MAX_TURNS;
+  const collector = new TaskTraceCollector(input.task);
 
   let session: {
     subscribe: (listener: (event: any) => void) => () => void;
@@ -308,14 +401,27 @@ export async function runWithPiAgentSession(
       }));
 
     let createAgentSession = input.createAgentSession;
-    let SessionManager: { inMemory: () => unknown } | undefined;
+    // SessionManager shape varies by pi version; treat as best-effort seed target.
+    let SessionManager: { inMemory: (...args: never[]) => unknown } | undefined;
+    let settings: unknown | undefined;
 
     if (!createAgentSession) {
       const omp = await import('@oh-my-pi/pi-coding-agent');
       createAgentSession = omp.createAgentSession as unknown as NonNullable<
         RunWithPiAgentSessionInput['createAgentSession']
       >;
-      SessionManager = omp.SessionManager;
+      SessionManager = omp.SessionManager as { inMemory: (...args: never[]) => unknown };
+      try {
+        const Settings = omp.Settings as {
+          isolated?: (overrides?: Record<string, unknown>) => unknown;
+        };
+        if (typeof Settings?.isolated === 'function') {
+          const { HIVE_PI_COMPACTION_OVERRIDES } = await import('./pi-session-settings.js');
+          settings = Settings.isolated({ ...HIVE_PI_COMPACTION_OVERRIDES });
+        }
+      } catch {
+        // settings optional
+      }
     }
 
     if (!createAgentSession) {
@@ -323,7 +429,16 @@ export async function runWithPiAgentSession(
     }
 
     const sessionManager =
-      input.sessionManager ?? SessionManager?.inMemory?.() ?? { inMemory: true };
+      input.sessionManager ??
+      (SessionManager?.inMemory?.() as
+        | { appendMessage?: (message: unknown) => unknown }
+        | undefined) ??
+      { inMemory: true };
+
+    seedPiSessionHistory(
+      sessionManager as { appendMessage?: (message: unknown) => unknown },
+      input.historyMessages,
+    );
 
     const created = await createAgentSession({
       cwd: input.cwd,
@@ -331,6 +446,7 @@ export async function runWithPiAgentSession(
       modelRegistry,
       model,
       sessionManager,
+      ...(settings ? { settings } : {}),
       systemPrompt: input.systemPrompt,
       toolNames: [
         'read',
@@ -352,6 +468,7 @@ export async function runWithPiAgentSession(
       // Keep the allowlist via toolNames + disable MCP/LSP/extensions instead.
       restrictToolNames: false,
       customTools: input.hiveCustomTools,
+      extensions: [createHiveSecurityExtension()],
       enableMCP: false,
       enableLsp: false,
       enableIrc: false,
@@ -383,9 +500,54 @@ export async function runWithPiAgentSession(
       once: true,
     });
 
+    const openToolCalls: Array<{ name: string; args: unknown; index: number }> = [];
+
     unsubscribe = session.subscribe((event) => {
       try {
+        input.onActivity?.();
         mapPiSessionEventToDispatch(event, input.options, state);
+
+        if (event?.type === 'tool_execution_start') {
+          state.toolRounds = (state.toolRounds ?? 0) + 1;
+          if (typeof event.toolName === 'string') {
+            const index = collector.recordToolCall(event.toolName, event.args);
+            openToolCalls.push({
+              name: event.toolName,
+              args: event.args,
+              index,
+            });
+          }
+          if ((state.toolRounds ?? 0) > maxTurns) {
+            state.success = false;
+            state.error = `maxTurns (${maxTurns}) exceeded`;
+            try {
+              session?.abort();
+            } catch {
+              // ignore
+            }
+            input.abortController.abort();
+          }
+        } else if (event?.type === 'tool_execution_end') {
+          if (typeof event.toolName === 'string') {
+            const pendingIdx = openToolCalls.findIndex((c) => c.name === event.toolName);
+            const pending = pendingIdx >= 0 ? openToolCalls.splice(pendingIdx, 1)[0] : undefined;
+            if (pending) {
+              collector.recordToolResultAt(pending.index, event.result);
+              collector.recordArtifactsFromToolCall(
+                event.toolName,
+                pending.args,
+                event.result,
+              );
+            } else {
+              collector.recordToolResult(event.toolName, event.result);
+              collector.recordArtifactsFromToolCall(
+                event.toolName,
+                event.args,
+                event.result,
+              );
+            }
+          }
+        }
       } catch (err) {
         console.warn(
           '[PiAgentSessionAdapter] event map failed:',
@@ -400,39 +562,49 @@ export async function runWithPiAgentSession(
 
     if (input.abortController.signal.aborted) {
       state.success = false;
-      state.error = 'Request aborted';
+      state.error = state.error ?? 'Request aborted';
     }
 
     const finalText = (state.finalText || state.text).trim();
+    collector.setResponseText(finalText);
+
     const missingDelivery =
       input.requiredDeliveryTool &&
       !state.completedTools?.includes(input.requiredDeliveryTool);
 
-    if (missingDelivery) {
-      state.success = false;
-      state.error =
-        `任务尚未交付最终文件：必须调用 ${input.requiredDeliveryTool}。`;
-      input.options?.onTaskProgress?.({
-        phase: 'blocked',
-        message: state.error,
-        reasons: [state.error],
-      });
-    } else if (!input.abortController.signal.aborted) {
-      if (finalText) input.options?.onText?.(finalText);
-      input.options?.onTaskProgress?.({ phase: 'done' });
-    }
-
-    const verification = missingDelivery
+    const deliveryVerification: CompletionVerifyResult = missingDelivery
       ? {
           passed: false,
           results: [{
             verifierId: 'file-delivery',
             passed: false,
-            message: state.error!,
+            message:
+              `任务尚未交付最终文件：必须调用 ${input.requiredDeliveryTool}。`,
             retryable: true,
           }],
         }
       : { passed: true, results: [] };
+
+    const scenarioVerification = await createCompletionVerifierService().verify(
+      collector.getTrace(),
+    );
+    const verification = mergeVerification(deliveryVerification, scenarioVerification);
+
+    if (!verification.passed) {
+      state.success = false;
+      const reasons = verification.results
+        .filter((r) => !r.passed)
+        .map((r) => r.message);
+      state.error = reasons[0] ?? state.error ?? '完成校验未通过';
+      input.options?.onTaskProgress?.({
+        phase: 'blocked',
+        message: state.error,
+        reasons,
+      });
+    } else if (!input.abortController.signal.aborted) {
+      if (finalText) input.options?.onText?.(finalText);
+      input.options?.onTaskProgress?.({ phase: 'done' });
+    }
 
     return {
       text: finalText,
@@ -450,7 +622,7 @@ export async function runWithPiAgentSession(
         finalText: (state.finalText || state.text).trim(),
         success: false,
         duration: Date.now() - startTime,
-        error: 'Request aborted',
+        error: state.error ?? 'Request aborted',
         tools: state.tools,
         verification: { passed: true, results: [] },
       };

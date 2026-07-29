@@ -1,8 +1,7 @@
 /**
  * Graceful Shutdown
  *
- * Registers process signal handlers for clean shutdown in sidecar mode.
- * Works with Tauri's watch_server() which detects process exit and auto-restarts.
+ * Registers process signal handlers for clean shutdown when managed by Electron.
  */
 
 export interface GracefulShutdownOptions {

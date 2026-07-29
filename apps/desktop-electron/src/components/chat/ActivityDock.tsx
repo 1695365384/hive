@@ -55,10 +55,9 @@ function ActivityDockInner() {
   // Build the display line
   let line: string;
   if (phase === "completed" || phase === "idle") {
-    // "已完成 · 演示文稿已生成"
-    line = [prefix, rollup.lastCompleted?.label ?? rollup.title]
-      .filter(Boolean)
-      .join(" · ");
+    // "已完成 · 演示文稿已生成" — skip secondary when it duplicates the prefix
+    const secondary = (rollup.lastCompleted?.label ?? rollup.title)?.trim();
+    line = secondary && secondary !== prefix ? `${prefix} · ${secondary}` : prefix;
   } else if (phase === "waiting") {
     line = [prefix, rollup.detail].filter(Boolean).join(" · ");
   } else {

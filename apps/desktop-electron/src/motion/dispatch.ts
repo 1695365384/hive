@@ -1,8 +1,13 @@
 import type { MotionId } from "./catalog";
 import { isMotionId } from "./catalog";
 import {
+  playBackdropEnter,
+  playComposerFocus,
+  playDialogEnter,
   playEnterChip,
   playEnterUp,
+  playMessageEnter,
+  playPanelSwap,
   playStaggerEnter,
   playStaggerOptions,
   playSuccessPulse,
@@ -15,6 +20,8 @@ export type PlayMotionOptions = {
   /** For worker-card-enter: child selector inside container */
   childSelector?: string;
   duration?: number;
+  /** Horizontal entry offset used by message-enter. */
+  offsetX?: number;
 };
 
 /**
@@ -60,6 +67,26 @@ function runPreset(id: MotionId, target: MotionTarget, opts?: PlayMotionOptions)
     }
     case "success-pulse": {
       playSuccessPulse(single(target));
+      return;
+    }
+    case "dialog-backdrop-enter": {
+      playBackdropEnter(single(target));
+      return;
+    }
+    case "dialog-panel-enter": {
+      playDialogEnter(single(target));
+      return;
+    }
+    case "panel-swap": {
+      playPanelSwap(single(target));
+      return;
+    }
+    case "message-enter": {
+      playMessageEnter(single(target), { offsetX: opts?.offsetX });
+      return;
+    }
+    case "composer-focus": {
+      playComposerFocus(single(target));
       return;
     }
     default: {

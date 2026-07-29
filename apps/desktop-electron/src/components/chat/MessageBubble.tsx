@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { FileText } from "lucide-react";
+import { playMotion } from "../../motion";
 import type { ChatMessage } from "../../types/chat";
 import { groupContentParts } from "../../lib/group-content-parts";
 import { GroupedContentRenderer } from "./ContentRenderer";
@@ -35,10 +37,18 @@ export function MessageBubble({
   onBlockedAction,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isLast) return;
+    playMotion("message-enter", rootRef.current, {
+      offsetX: message.role === "user" ? 12 : -12,
+    });
+  }, [isLast, message.id, message.role]);
 
   if (message.role === "user") {
     return (
-      <div className="flex justify-end">
+      <div ref={rootRef} className="chat-message chat-message--user flex justify-end">
         <div className="max-w-[92%] sm:max-w-[88%] group">
           <div className="flex items-center gap-2 justify-end mb-1">
             <span className="text-xs text-stone-500">
@@ -100,7 +110,7 @@ export function MessageBubble({
   const lastReasoningIdx = findLastReasoningPartIndex(grouped);
 
   return (
-    <div className="flex justify-start">
+    <div ref={rootRef} className="chat-message chat-message--assistant flex justify-start">
       <div className="w-full min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
           <span className="text-xs font-medium text-stone-400">{t("chat.assistant")}</span>

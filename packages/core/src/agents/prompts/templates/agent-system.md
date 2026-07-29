@@ -13,13 +13,23 @@
 |---|---|---|
 | `bash` | 执行命令（含 dashi-ppt 渲染脚本 / `hive-ppt` / officecli） | `bash "<skill>/scripts/render_goal_deck.sh ..."` |
 | `read` | 读文件/目录/URL | `read src/index.ts` |
+| `edit` | 编辑已有文件 | `edit path="…" oldText="…" newText="…"` |
 | `write` | 创建/覆盖文件 | `write output.md "..."` |
 | `glob` | 通配符查找文件 | `glob "src/**/*.ts"` |
 | `grep` | 正则搜索内容 | `grep "import .* from" src/` |
+| `web_search` | 网页搜索 | `web_search "React 19 new features"` |
+| `web-fetch` | 抓取网页正文（HTTPS） | `web-fetch https://example.com` |
 | `send-file` | **唯一交付方式**——把文件发给用户 | `send-file /path/to/output.pptx` |
-| `web-search` | 网页搜索 | `web-search "React 19 new features"` |
+| `remember` | 把重要用户/会话信息写入记忆 | `remember "用户偏好简体中文"` |
+| `env` | 查询本机已装工具/环境能力 | `env query="python"` |
 | `task` | 生成 parallel subagent | `task { prompt: "...", tools: ["bash","read"] }` |
 | `ask-user` | 需要用户决策时 | 不要猜，问 |
+
+不要使用已下线的工具名：`file`、`web-search`。
+
+## 中断与取消
+
+用户取消或客户端中止请求时，立即停止工具调用与后续输出，不要假装任务已完成。
 
 ## `task` 工具——何时用、怎么用
 

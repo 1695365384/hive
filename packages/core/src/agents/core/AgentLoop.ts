@@ -12,18 +12,24 @@ import {
   createSessionFsContext,
   runWithSessionFs,
 } from '../../workspace/session-fs.js';
-import { runWithPiAgentSession } from './PiAgentSessionAdapter.js';
+import {
+  HIVE_DEFAULT_MAX_TURNS,
+  runWithPiAgentSession,
+  type HiveHistoryMessage,
+} from './PiAgentSessionAdapter.js';
 import {
   bridgeMcpToolsToCustomTools,
   buildHiveCustomTools,
 } from './hive-tool-bridge.js';
 
-/** Prefix explaining pi built-in tool names. */
+/** Prefix explaining pi built-in + Hive custom tool names. */
 const PI_TOOL_NAME_PREFIX = `## Tool names (pi kernel)
 
-Built-in tools: \`read\`, \`edit\`, \`write\`, \`bash\`, \`glob\`, \`grep\`, \`web_search\`, \`task\`.
-Deliver files to the user with \`send-file\`.
-Hive \`file\` read/write is replaced by \`read\` / \`edit\` / \`write\`.
+Built-in: \`read\`, \`edit\`, \`write\`, \`bash\`, \`glob\`, \`grep\`, \`web_search\`, \`task\`.
+Hive extensions: \`send-file\`, \`remember\`, \`env\`, \`ask-user\`, \`web-fetch\`.
+
+Do NOT call legacy names \`file\` or \`web-search\` — they are not on the live path.
+Deliver files to the user with \`send-file\` only.
 `;
 
 const HIVE_DESKTOP_PPT_DELIVERY = `## Hive Desktop PPT delivery
@@ -37,6 +43,12 @@ For a user request to create a PPT/presentation, the final deliverable is an edi
 - Keep operational narration such as “让我检查” or “现在开始” out of the final response. The activity timeline already shows concise progress.
 - The final response should be short: state that the file is ready and identify the delivered filename.
 `;
+
+/** Max chars of FileMemory injected into the system prompt. */
+export const HIVE_MEMORY_PROMPT_MAX_CHARS = 4000;
+
+/** Max prior messages fed into pi / system prompt. */
+export const HIVE_HISTORY_MAX_MESSAGES = 40;
 
 function isPptTask(task: string): boolean {
   return /\b(?:ppt|pptx|powerpoint|presentation)\b|幻灯片|演示文稿|汇报材料/i.test(task);
@@ -110,6 +122,7 @@ export class AgentLoop implements AgentCapability {
             {
               interval: timeoutConfig.heartbeatInterval,
               stallTimeout: timeoutConfig.stallTimeout,
+              action: 'abort',
             },
             abortController,
           );
@@ -117,10 +130,17 @@ export class AgentLoop implements AgentCapability {
           this.context.currentDispatchTask = task;
 
           try {
-            const systemPrompt = await this.buildSystemPrompt(task, options);
+            const historyMessages = await this.resolveHistoryMessages(options);
+            const systemPrompt = await this.buildSystemPrompt(
+              task,
+              options,
+              historyMessages,
+            );
             const hiveCustomTools = [
               ...buildHiveCustomTools(this.context),
-              ...bridgeMcpToolsToCustomTools(this.context.mcpManager.getAllTools()),
+              ...bridgeMcpToolsToCustomTools(
+                this.context.mcpManager.getAllTools() as Record<string, any>,
+              ),
             ];
 
             const result = await runWithPiAgentSession({
@@ -132,8 +152,15 @@ export class AgentLoop implements AgentCapability {
               hiveCustomTools,
               abortController,
               context: this.context,
+              historyMessages,
+              maxTurns: options?.maxTurns ?? HIVE_DEFAULT_MAX_TURNS,
               requiredDeliveryTool: isPptTask(task) ? 'send-file' : undefined,
+              onActivity: () => {
+                this.context.timeoutCap.updateActivity();
+              },
             });
+
+            await this.persistTurn(task, result, options);
 
             return {
               ...result,
@@ -179,9 +206,74 @@ export class AgentLoop implements AgentCapability {
   }
 
   /**
-   * 构建系统提示词：agent-system.md + pi 工具名前缀 + 命中/强制技能
+   * Load / create Hive session for chatId and return prior turns.
    */
-  private async buildSystemPrompt(task: string, options?: DispatchOptions): Promise<string> {
+  private async resolveHistoryMessages(
+    options?: DispatchOptions,
+  ): Promise<HiveHistoryMessage[]> {
+    const sessionCap = this.context.getSessionCap?.();
+    if (!sessionCap) return [];
+
+    const chatId = options?.chatId;
+    if (chatId) {
+      try {
+        const existing = await sessionCap.loadSession(chatId);
+        if (!existing) {
+          await sessionCap.createSession({ id: chatId });
+        }
+      } catch {
+        // SessionCapability may be uninitialized in unit tests
+        return [];
+      }
+    }
+
+    const messages = sessionCap.getMessages?.() ?? [];
+    return messages
+      .slice(-HIVE_HISTORY_MAX_MESSAGES)
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: typeof m.content === 'string' ? m.content : String(m.content ?? ''),
+      }))
+      .filter((m) => m.content.trim().length > 0);
+  }
+
+  /**
+   * Persist this turn so the next dispatch can reload Hive history.
+   */
+  private async persistTurn(
+    task: string,
+    result: DispatchResult,
+    options?: DispatchOptions,
+  ): Promise<void> {
+    const sessionCap = this.context.getSessionCap?.();
+    if (!sessionCap?.addUserMessage) return;
+
+    try {
+      if (options?.chatId && !sessionCap.getCurrentSession?.()) {
+        const existing = await sessionCap.loadSession(options.chatId);
+        if (!existing) {
+          await sessionCap.createSession({ id: options.chatId });
+        }
+      }
+      await sessionCap.addUserMessage(task);
+      if (result.text?.trim()) {
+        await sessionCap.addAssistantMessage(result.text);
+      }
+    } catch {
+      // Persistence must not fail the user-facing turn
+    }
+  }
+
+  /**
+   * 构建系统提示词：agent-system.md + pi 工具名前缀 + 命中/强制技能
+   * + memory / history（Context 层）
+   */
+  private async buildSystemPrompt(
+    task: string,
+    options?: DispatchOptions,
+    historyMessages?: HiveHistoryMessage[],
+  ): Promise<string> {
     const template = this.promptTemplate.render('agent-system', {});
     const parts: string[] = [];
 
@@ -190,6 +282,16 @@ export class AgentLoop implements AgentCapability {
     }
 
     parts.push(PI_TOOL_NAME_PREFIX, template);
+
+    const memoryBlock = await this.buildMemoryPromptBlock();
+    if (memoryBlock) {
+      parts.push('---', memoryBlock);
+    }
+
+    const historyBlock = formatHistoryForPrompt(historyMessages);
+    if (historyBlock) {
+      parts.push('---', historyBlock);
+    }
 
     const activeSkill = this.resolveActiveSkill(task);
     if (activeSkill) {
@@ -209,6 +311,19 @@ export class AgentLoop implements AgentCapability {
     return parts.join('\n\n');
   }
 
+  private async buildMemoryPromptBlock(): Promise<string> {
+    const fileMemory = this.context.fileMemory;
+    const userId = this.context.currentUserId;
+    if (!fileMemory || !userId) return '';
+
+    try {
+      const raw = await fileMemory.readMemory(userId);
+      return formatMemoryForPrompt(raw);
+    } catch {
+      return '';
+    }
+  }
+
   /**
    * PPT 任务强制走 dashi-ppt（若已安装）；其它任务走自动匹配。
    */
@@ -221,4 +336,32 @@ export class AgentLoop implements AgentCapability {
 
     return registry.match(task)?.skill ?? null;
   }
+}
+
+/** Format prior turns for system-prompt injection (also used by tests). */
+export function formatHistoryForPrompt(
+  history: HiveHistoryMessage[] | undefined,
+): string {
+  if (!history?.length) return '';
+  const lines: string[] = [
+    '## Conversation history',
+    'Prior turns in this Hive session (most recent last):',
+  ];
+  for (const msg of history) {
+    const label = msg.role === 'assistant' ? 'Assistant' : 'User';
+    lines.push(`${label}: ${msg.content}`);
+  }
+  return lines.join('\n');
+}
+
+/** Format FileMemory contents for system-prompt injection (also used by tests). */
+export function formatMemoryForPrompt(
+  raw: string,
+  maxChars = HIVE_MEMORY_PROMPT_MAX_CHARS,
+): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const clipped =
+    trimmed.length > maxChars ? `${trimmed.slice(0, maxChars)}\n…` : trimmed;
+  return `## Persistent memory\n\n${clipped}`;
 }

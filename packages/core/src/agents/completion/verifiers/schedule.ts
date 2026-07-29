@@ -16,19 +16,27 @@ export const scheduleCompletionVerifier: CompletionVerifier = {
 
   verify(trace: TaskTrace): VerifyResult {
     const routedTypes = [...getAgentWorkerTypes(trace), ...getSpawnedWorkerTypes(trace)];
+    const hasScheduleWorker = routedTypes.includes('schedule');
+    const hasScheduleTool = trace.toolCalls.some(
+      (c) => c.toolName === 'schedule' || c.toolName.includes('schedule'),
+    );
 
-    if (!routedTypes.includes('schedule')) {
+    if (!hasScheduleWorker && !hasScheduleTool) {
       return {
         verifierId: 'schedule',
         passed: false,
-        message: 'Schedule task did not spawn a schedule Worker (expected agent type "schedule").',
+        message:
+          'Schedule task finished without creating a schedule (expected schedule tool or schedule Worker).',
+        retryable: true,
       };
     }
 
     return {
       verifierId: 'schedule',
       passed: true,
-      message: 'Schedule Worker spawned successfully.',
+      message: hasScheduleWorker
+        ? 'Schedule Worker spawned successfully.'
+        : 'Schedule tool activity observed.',
     };
   },
 };

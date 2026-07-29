@@ -23,7 +23,7 @@
 
   <rect x="40" y="36" width="180" height="34" rx="0" fill="#161b22" stroke="#30363d"/>
   <text x="130" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">Desktop</text>
-  <text x="130" y="65" text-anchor="middle" class="small" fill="#8b949e">Tauri 2 + React 19</text>
+  <text x="130" y="65" text-anchor="middle" class="small" fill="#8b949e">Electron 33 + React 19</text>
 
   <rect x="240" y="36" width="180" height="34" rx="0" fill="#161b22" stroke="#30363d"/>
   <text x="330" y="51" text-anchor="middle" font-size="13" font-weight="600" fill="#e6edf3">External API</text>

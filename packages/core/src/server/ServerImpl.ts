@@ -885,10 +885,16 @@ class ServerImpl implements Server {
         // finalText is the assistant segment after the last tool call. It may
         // intentionally be empty; never fall back to accumulated operational
         // narration in result.text.
+        // When verification / abort fails, do not surface a premature success
+        // claim (e.g. "PPT_OK") as the channel reply — prefer the error.
         const finalText = (result as { finalText?: string }).finalText;
-        const replyText = (typeof finalText === 'string' ? finalText.trim() : '')
-          || (typeof finalText === 'undefined' ? result.text : '')
-          || (result.success ? '任务完成' : `任务失败：${result.error || '未知错误'}`);
+        const trimmedFinal =
+          typeof finalText === 'string' ? finalText.trim() : '';
+        const replyText = result.success
+          ? (trimmedFinal
+            || (typeof finalText === 'undefined' ? result.text : '')
+            || '任务完成')
+          : (`任务失败：${result.error || '未知错误'}`);
 
         this.logger.info(`[agent] completed (${result.duration}ms)`);
         this.logger.info(`[agent] [response] ${replyText}`);
@@ -926,7 +932,15 @@ class ServerImpl implements Server {
           this.goalStore.markDone(sessionKey);
         }
 
-        this.emitStreaming({ sessionId: sessionKey, type: 'complete', success: result.success, cancelled, error: result.error, text: replyText });
+        this.emitStreaming({
+          sessionId: sessionKey,
+          type: 'complete',
+          success: result.success,
+          cancelled,
+          error: result.error,
+          // On failure, keep error-facing text (not the model's premature claim).
+          text: replyText,
+        });
 
         this.logger.info(`[server] Agent response sent to channel (format: ${replyType})`);
       } finally {

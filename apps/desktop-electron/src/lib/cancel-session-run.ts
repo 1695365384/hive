@@ -3,6 +3,7 @@ import { finalizeRunContent } from "./finalize-run-content";
 import { persistAssistantNow } from "./persist-assistant";
 import { patchAssistantMessage } from "./chat-message-ops";
 import { useRunStore } from "../stores/run-store";
+import { useActivityStore } from "../stores/activity-store";
 
 /**
  * Cancel an in-flight session run (sidebar stop / delete-before-cancel).
@@ -39,6 +40,12 @@ export async function cancelSessionRun(sessionId: string): Promise<{ ok: boolean
   store.setPendingAsk(sessionId, null);
   store.clearToastsForSession(sessionId);
   store.beginSettling(sessionId);
+
+  // Sidebar stop does not go through ChatPage.handleCancel — clear the global dock here.
+  if (store.viewingSessionId === sessionId) {
+    useActivityStore.getState().setCompleted();
+  }
+
   window.setTimeout(() => {
     const still = useRunStore.getState().runs[sessionId];
     if (still?.phase === "settling") {

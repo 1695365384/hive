@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useLogPolling } from "../hooks/use-log-polling";
 import { useSessionStore } from "../stores/session-store";
@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { Session } from "../types/chat";
 import { formatRelativeTime } from "../lib/session-utils";
+import { playMotion } from "../motion";
 
 type SettingsTab = "config" | "mcp" | "skills" | "plugins" | "motion";
 type DrawerHeight = "collapsed" | "half" | "full";
@@ -327,6 +328,9 @@ function SettingsModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: "config", label: t("settings.provider"), icon: <Settings className="w-3.5 h-3.5" /> },
     { id: "mcp", label: t("settings.mcp"), icon: <Plug className="w-3.5 h-3.5" /> },
@@ -335,12 +339,26 @@ function SettingsModal({
     { id: "motion", label: t("settings.motion"), icon: <Clapperboard className="w-3.5 h-3.5" /> },
   ];
 
+  useEffect(() => {
+    playMotion("dialog-backdrop-enter", backdropRef.current);
+    playMotion("dialog-panel-enter", dialogRef.current);
+  }, []);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      playMotion("panel-swap", contentRef.current);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tab]);
+
   return (
     <div
+      ref={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         className="bg-stone-900 border border-stone-700 rounded-xl shadow-2xl flex flex-col overflow-hidden w-[min(56rem,calc(100vw-2rem))] h-[min(80vh,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -374,6 +392,7 @@ function SettingsModal({
 
         {/* 技能页自管滚动；其它 tab 仍用外层滚动 */}
         <div
+          ref={contentRef}
           className={
             tab === "skills"
               ? "flex-1 min-h-0 overflow-hidden"

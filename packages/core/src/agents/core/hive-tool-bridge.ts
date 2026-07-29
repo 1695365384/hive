@@ -1,17 +1,26 @@
 /**
- * Bridge Hive AI SDK tools → oh-my-pi CustomTool shape.
+ * Bridge Hive tools → oh-my-pi CustomTool shape.
  *
- * Reuses existing factory execute logic; does not copy business rules.
+ * Hive extensions use RawTool execute (no AI SDK Tool wrapper on the hot path).
+ * MCP tools still arrive as AI-SDK-shaped objects and are adapted structurally.
+ *
+ * NOTE: The broader Hive ToolRegistry / AI SDK built-ins are **legacy** for
+ * vertical packs and tests — the AgentLoop hot path only uses this bridge +
+ * pi builtins (jail via pi-security-extension).
  */
 
 import { z } from 'zod';
-import type { Tool } from 'ai';
 import type { AgentContext } from '../types/core.js';
-import { createSendFileTool } from '../../tools/built-in/send-file-tool.js';
-import { createRememberTool } from '../../tools/built-in/remember-tool.js';
-import { createEnvTool } from '../../tools/built-in/env-tool.js';
-import { createAskUserTool } from '../../tools/built-in/ask-user-tool.js';
-import { createWebFetchTool } from '../../tools/built-in/web-fetch-tool.js';
+import {
+  createRawSendFileTool,
+} from '../../tools/built-in/send-file-tool.js';
+import { createRawRememberTool } from '../../tools/built-in/remember-tool.js';
+import { createRawEnvTool } from '../../tools/built-in/env-tool.js';
+import { createRawAskUserTool } from '../../tools/built-in/ask-user-tool.js';
+import { createRawWebFetchTool } from '../../tools/built-in/web-fetch-tool.js';
+import { serializeToolResult } from '../../tools/harness/serializer.js';
+import type { ToolResult } from '../../tools/harness/types.js';
+import type { RawTool } from '../../tools/harness/with-harness.js';
 
 /** Structural CustomTool compatible with createAgentSession({ customTools }). */
 export interface BridgedCustomTool {
@@ -42,8 +51,17 @@ function stringifyResult(result: unknown): string {
   }
 }
 
+function isToolResult(value: unknown): value is ToolResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'ok' in value &&
+    typeof (value as { ok: unknown }).ok === 'boolean'
+  );
+}
+
 /**
- * Wrap a Hive tool execute function as a pi CustomTool.
+ * Wrap a plain execute function as a pi CustomTool.
  */
 export function bridgeAiSdkToolToCustomTool(input: {
   name: string;
@@ -59,50 +77,58 @@ export function bridgeAiSdkToolToCustomTool(input: {
     loadMode: 'essential',
     async execute(_toolCallId, params, _onUpdate, _ctx, signal) {
       const result = await input.execute(params, signal);
+      const text = isToolResult(result)
+        ? serializeToolResult(result, undefined, input.name)
+        : stringifyResult(result);
       return {
-        content: [{ type: 'text', text: stringifyResult(result) }],
+        content: [{ type: 'text', text }],
         details: result,
       };
     },
   };
 }
 
-type AnyAiTool = Tool<any, any> & {
-  description?: string;
-  execute?: (params: any, options?: { abortSignal?: AbortSignal }) => Promise<any>;
-};
-
-async function invokeAiTool(
-  tool: AnyAiTool,
-  params: unknown,
-  signal?: AbortSignal,
-): Promise<unknown> {
-  if (typeof tool.execute !== 'function') {
-    throw new Error('Tool has no execute function');
-  }
-  // Extra options args are ignored by single-arg executes.
-  return await tool.execute(params as any, { abortSignal: signal } as any);
+function bridgeRawTool<T>(input: {
+  name: string;
+  description: string;
+  parameters: unknown;
+  raw: RawTool<T>;
+  mapParams?: (params: unknown) => T;
+}): BridgedCustomTool {
+  return bridgeAiSdkToolToCustomTool({
+    name: input.name,
+    description: input.description || input.raw.description || input.name,
+    parameters: input.parameters,
+    execute: async (params) => {
+      const mapped = input.mapParams
+        ? input.mapParams(params)
+        : ((params ?? {}) as T);
+      return input.raw.execute(mapped, {});
+    },
+  });
 }
 
 /** Parameter schemas mirrored from built-in Hive tools (zod v4). */
-const sendFileParameters = z.object({
-  filePath: z
-    .string()
-    .optional()
-    .describe(
-      'Absolute or relative path to the local file. MUST be within the working directory; paths outside will be rejected.',
-    ),
-  path: z
-    .string()
-    .optional()
-    .describe('Alias of filePath (models often emit path)'),
-  description: z
-    .string()
-    .optional()
-    .describe('File description, shown as a caption when sending'),
-}).refine((v) => Boolean(v.filePath || v.path), {
-  message: 'filePath or path is required',
-});
+const sendFileParameters = z
+  .object({
+    filePath: z
+      .string()
+      .optional()
+      .describe(
+        'Absolute or relative path to the local file. MUST be within the working directory; paths outside will be rejected.',
+      ),
+    path: z
+      .string()
+      .optional()
+      .describe('Alias of filePath (models often emit path)'),
+    description: z
+      .string()
+      .optional()
+      .describe('File description, shown as a caption when sending'),
+  })
+  .refine((v) => Boolean(v.filePath || v.path), {
+    message: 'filePath or path is required',
+  });
 
 const rememberParameters = z.object({
   content: z
@@ -157,98 +183,91 @@ const webFetchParameters = z.object({
     .describe('Max characters of content to return, default 30000'),
 });
 
-function bridgeNamedHiveTool(input: {
-  name: string;
-  description: string;
-  parameters: unknown;
-  tool: AnyAiTool;
-}): BridgedCustomTool {
-  return bridgeAiSdkToolToCustomTool({
-    name: input.name,
-    description: input.description || input.tool.description || input.name,
-    parameters: input.parameters,
-    execute: (params, signal) => invokeAiTool(input.tool, params, signal),
-  });
-}
-
 /**
- * Build Hive-specific customTools for the pi kernel path.
- * Keeps Hive names (`send-file`, etc.) — do not rename to pi `ask`.
+ * Build Hive-specific customTools for the pi kernel path (RawTool execute).
  */
 export function buildHiveCustomTools(_context: AgentContext): BridgedCustomTool[] {
   return [
-    bridgeAiSdkToolToCustomTool({
+    bridgeRawTool({
       name: 'send-file',
       description:
         'Send a local file to the current session user. Supports files and images. IMPORTANT: The file path MUST be within the working directory. Prefer argument filePath (path is also accepted).',
       parameters: sendFileParameters,
-      execute: async (params, signal) => {
-        const raw = (params ?? {}) as { filePath?: string; path?: string; description?: string };
+      raw: createRawSendFileTool(),
+      mapParams: (params) => {
+        const raw = (params ?? {}) as {
+          filePath?: string;
+          path?: string;
+          description?: string;
+        };
         const filePath = raw.filePath || raw.path;
         if (!filePath) throw new Error('filePath or path is required');
-        return invokeAiTool(createSendFileTool() as AnyAiTool, {
-          filePath,
-          description: raw.description,
-        }, signal);
+        return { filePath, description: raw.description };
       },
     }),
-    bridgeNamedHiveTool({
+    bridgeRawTool({
       name: 'remember',
       description:
         'Save important information about the user or conversation context to memory.',
       parameters: rememberParameters,
-      tool: createRememberTool() as AnyAiTool,
+      raw: createRawRememberTool(),
     }),
-    bridgeNamedHiveTool({
+    bridgeRawTool({
       name: 'env',
       description:
         'Query installed system tools and environment capabilities on demand.',
       parameters: envParameters,
-      tool: createEnvTool() as AnyAiTool,
+      raw: createRawEnvTool(),
     }),
-    bridgeNamedHiveTool({
+    bridgeRawTool({
       name: 'ask-user',
       description:
         'Ask the user a question to get clarification or let them make a choice.',
       parameters: askUserParameters,
-      tool: createAskUserTool() as AnyAiTool,
+      raw: createRawAskUserTool(),
     }),
-    bridgeNamedHiveTool({
+    bridgeRawTool({
       name: 'web-fetch',
-      description:
-        'Fetch web page content (plain text) from a URL. HTTPS only.',
+      description: 'Fetch web page content (plain text) from a URL. HTTPS only.',
       parameters: webFetchParameters,
-      tool: createWebFetchTool() as AnyAiTool,
+      raw: createRawWebFetchTool(),
     }),
   ];
 }
 
+type McpToolLike = {
+  description?: string;
+  execute?: (
+    params: unknown,
+    options?: { abortSignal?: AbortSignal },
+  ) => Promise<unknown>;
+};
+
 /**
  * Bridge connected MCP tools from Hive McpManager into customTools.
- * Skips tools whose schema/execute cannot be bridged (logs + continues).
  */
 export function bridgeMcpToolsToCustomTools(
-  mcpTools: Record<string, Tool>,
+  mcpTools: Record<string, McpToolLike>,
 ): BridgedCustomTool[] {
   const bridged: BridgedCustomTool[] = [];
 
   for (const [name, tool] of Object.entries(mcpTools)) {
     try {
-      const aiTool = tool as AnyAiTool;
-      if (typeof aiTool.execute !== 'function') {
+      if (typeof tool.execute !== 'function') {
         console.warn(`[hive-tool-bridge] skip MCP tool "${name}": no execute`);
         continue;
       }
 
-      // Prefer a permissive object schema when zod schema is not recoverable.
       const parameters = z.record(z.string(), z.unknown());
+      const executeFn = tool.execute.bind(tool);
 
       bridged.push(
         bridgeAiSdkToolToCustomTool({
           name,
-          description: aiTool.description || `MCP tool ${name}`,
+          description: tool.description || `MCP tool ${name}`,
           parameters,
-          execute: (params, signal) => invokeAiTool(aiTool, params, signal),
+          execute: (params, signal) =>
+            executeFn(params, { abortSignal: signal }),
         }),
       );
     } catch (err) {

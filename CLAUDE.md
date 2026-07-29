@@ -12,13 +12,13 @@ Hive - 多 Agent 协作框架，AI Agent SDK。pnpm monorepo，TypeScript ESM，
 packages/core/           @bundy-lmw/hive-core        Agent SDK 核心
 packages/plugins/feishu/ @bundy-lmw/hive-plugin-feishu 飞书插件
 apps/server/             @bundy-lmw/hive-server       HTTP/WS 服务 (Hono + ws)
-apps/desktop/            @bundy-lmw/hive-desktop      Tauri 2 桌面应用 (Rust + React 19)
+apps/desktop-electron/   @bundy-lmw/hive-desktop-electron Electron 33 桌面应用 (React 19)
 website/                 @bundy-lmw/hive-website     Landing Page (Next.js 15 + Tailwind CSS 4)
 .hive/skills/                                         内置技能 (committed, 在 DEFAULT_WORKSPACE_DIR 下)
 .hive/skills.local/                                   用户安装的技能 (gitignored, via hive skill add)
 ```
 
-依赖关系：desktop → server → core，plugin-feishu → core。
+依赖关系：desktop-electron → server → core，plugin-feishu → core。
 
 ## Commands
 
@@ -31,7 +31,7 @@ pnpm --filter @bundy-lmw/hive-server build
 # 开发
 pnpm --filter @bundy-lmw/hive-core dev        # tsc --watch
 pnpm --filter @bundy-lmw/hive-server dev      # tsc --watch
-cd apps/desktop && pnpm dev                    # Tauri dev（启动 Vite + Rust + server）
+pnpm dev                                      # 构建 core/server 并启动 Electron
 
 # 测试
 pnpm test                                       # core 单元 + 集成测试（mock）
@@ -115,9 +115,9 @@ TaskRouter（Coordinator 内唯一路由入口）
 
 ### Desktop 应用
 
-Tauri 2 桌面端，Rust sidecar 管理 server 进程：
-- **开发模式**：用系统 `node` 直接运行 `apps/server/dist/main.js`
-- **生产模式**：用 Bun 运行 `apps/server/dist/main.js`（Node SEA 已移除，pi 核要求 Bun）
+Electron 33 桌面端，由主进程管理 Hive server 子进程：
+- **开发模式**：构建 server 后启动 Vite renderer 与 Electron 主进程
+- **生产模式**：从应用资源启动打包后的 server
 - 前端通过 WebSocket (`localhost:4450`) 与 server 通信
 - Zustand 状态管理，TanStack React Query 数据请求
 
@@ -246,5 +246,5 @@ PR 合并后：
 ## Tech Stack
 
 - **Core/Server**: TypeScript ESM, AI SDK, Hono, better-sqlite3, Zod v4, Vitest
-- **Desktop**: Tauri 2 (Rust), React 19, Vite 7, Tailwind CSS 4, Zustand
-- **Build**: tsc + Bun 运行 server；Desktop 为 Tauri/Vite（不再打 Node SEA）
+- **Desktop**: Electron 33, React 19, Vite 7, Tailwind CSS 4, Zustand
+- **Build**: tsc + Bun 运行 server；Desktop 为 Electron/Vite

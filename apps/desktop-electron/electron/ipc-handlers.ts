@@ -1,7 +1,7 @@
 /**
  * IPC handlers — registers all ipcMain.handle channels.
  *
- * Equivalent to all #[tauri::command] functions in lib.rs.
+ * Registers the desktop IPC surface exposed through preload.
  * Every channel MUST have a corresponding entry in preload.ts.
  */
 import { ipcMain, dialog, shell, Notification, app, BrowserWindow } from "electron";

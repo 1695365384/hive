@@ -1,7 +1,7 @@
 /**
  * System tray with server status display.
  *
- * Equivalent to the Tauri lib.rs build_tray() function (~50 lines of Rust).
+ * Builds and manages the Electron system tray.
  */
 import { Tray, Menu, nativeImage, app } from "electron";
 import path from "node:path";

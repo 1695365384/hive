@@ -52,23 +52,22 @@ export const officeCompletionVerifier: CompletionVerifier = {
 
   async verify(trace: TaskTrace): Promise<VerifyResult> {
     const routedTypes = [...getAgentWorkerTypes(trace), ...getSpawnedWorkerTypes(trace)];
-
-    if (!routedTypes.includes('office')) {
-      return {
-        verifierId: 'office',
-        passed: false,
-        message: 'Office document task did not spawn an office Worker (expected agent type "office").',
-      };
-    }
+    const hasOfficeWorker = routedTypes.includes('office');
+    const hasSendFile = trace.toolCalls.some(
+      (c) => c.toolName === 'send-file' || c.toolName === 'send_file',
+    );
 
     const docs = officeDocuments(trace);
     if (docs.length === 0) {
+      // Pi hot path: no office Worker required — delivery is send-file + artifacts.
       return {
         verifierId: 'office',
         passed: false,
-        message:
-          'Office Worker finished but no .pptx/.docx/.xlsx was delivered to chat. '
-          + 'Screenshots alone do not count — call send-file on the Office file.',
+        message: hasOfficeWorker || hasSendFile
+          ? 'Office task finished but no .pptx/.docx/.xlsx was delivered to chat. '
+            + 'Screenshots alone do not count — call send-file on the Office file.'
+          : 'Office document task finished without delivery. Call send-file on the .pptx/.docx/.xlsx.',
+        retryable: true,
       };
     }
 
@@ -88,14 +87,7 @@ export const officeCompletionVerifier: CompletionVerifier = {
       const actual = zip.ok ? zip.slideCount : null;
       const expected = extractExpectedSlideCount(trace.task);
 
-      if (actual != null && actual < 2) {
-        return {
-          verifierId: 'office',
-          passed: false,
-          message: `PPT has only ${actual} slide(s); run officecli view outline and add slides before send-file.`,
-        };
-      }
-
+      // Explicit page count (including 1页) wins over the default ≥2 floor.
       if (expected != null) {
         if (actual == null) {
           return {
@@ -111,6 +103,12 @@ export const officeCompletionVerifier: CompletionVerifier = {
             message: `PPT slide count mismatch: user asked for ${expected} pages but file has ${actual} slides. Add missing slides before claiming completion.`,
           };
         }
+      } else if (actual != null && actual < 2) {
+        return {
+          verifierId: 'office',
+          passed: false,
+          message: `PPT has only ${actual} slide(s); run officecli view outline and add slides before send-file.`,
+        };
       }
 
       // Explicit ≤3-page text decks: skip FAKE_CHART (isSimpleOfficeDeck).

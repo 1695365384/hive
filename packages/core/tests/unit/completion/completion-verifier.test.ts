@@ -31,13 +31,14 @@ describe('officeCompletionVerifier', () => {
     expect(officeCompletionVerifier.match(trace({ task: 'hello' }))).toBe(false);
   });
 
-  it('fails when office worker was not spawned', async () => {
+  it('fails when no office file was delivered (pi path, no send-file)', async () => {
     const result = await officeCompletionVerifier.verify(trace({
       task: 'Create a PowerPoint deck',
-      toolCalls: [{ toolName: 'agent', input: { type: 'general' } }],
+      toolCalls: [{ toolName: 'write', input: { path: 'notes.txt' } }],
+      responseText: 'Done, here is a preview URL.',
     }));
     expect(result.passed).toBe(false);
-    expect(result.message).toContain('office Worker');
+    expect(result.message).toMatch(/send-file|delivery/i);
   });
 
   it('fails when office worker spawned but no artifact delivered', async () => {
@@ -94,6 +95,39 @@ describe('officeCompletionVerifier', () => {
       expect(result.passed).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes explicit 1-page PPT (skips default ≥2 floor)', async () => {
+    const root = join(tmpdir(), `hive-completion-1slide-${Date.now()}`);
+    await mkdir(root, { recursive: true });
+    const one = await buildPptxFixture(root, 'one', { slides: 1 });
+    try {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一个只有1页的PPT，标题写 Hive Smoke PPT，然后用 send-file 发给我',
+        toolCalls: [{ toolName: 'send-file', input: { filePath: one } }],
+        artifacts: [one],
+      }));
+      expect(result.passed).toBe(true);
+      expect(result.message).toMatch(/1 slides/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('still fails unspecified 1-slide PPT under default ≥2 floor', async () => {
+    const root = join(tmpdir(), `hive-completion-1slide-floor-${Date.now()}`);
+    await mkdir(root, { recursive: true });
+    const one = await buildPptxFixture(root, 'one', { slides: 1 });
+    try {
+      const result = await officeCompletionVerifier.verify(trace({
+        task: '做一个项目汇报 PPT',
+        artifacts: [one],
+      }));
+      expect(result.passed).toBe(false);
+      expect(result.message).toMatch(/only 1 slide/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

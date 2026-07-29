@@ -17,7 +17,8 @@ const root = resolve(__dirname, '..');
 const dirs = [
   'packages/core/dist',
   'apps/server/dist',
-  'apps/desktop/dist',
+  'apps/desktop-electron/dist',
+  'apps/desktop-electron/dist-electron',
   'node_modules/.cache',
   'node-compile-cache',
 ];

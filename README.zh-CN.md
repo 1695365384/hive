@@ -319,7 +319,7 @@ hive/
 ├── apps/server/src/
 │   ├── main.ts                       # 服务入口
 │   └── gateway/                      # Hono HTTP + WebSocket 路由
-└── apps/desktop/                     # Tauri 2 桌面应用（React 19）
+└── apps/desktop-electron/            # Electron 33 桌面应用（React 19）
 ```
 
 </details>
@@ -335,6 +335,7 @@ hive/
 | `pnpm test` | 运行测试（1,337 个用例） |
 | `pnpm test:e2e` | E2E 测试（需 API Key） |
 | `pnpm --filter @bundy-lmw/hive-server start` | 启动 HTTP 服务 |
+| `pnpm dev` | 构建 core/server 并启动 Electron 桌面应用 |
 
 ---
 

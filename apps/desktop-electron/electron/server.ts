@@ -4,7 +4,7 @@
  * Spawns `bun dist/main.js` as a child process, watches for crashes,
  * auto-restarts with exponential backoff, and exposes status to the tray/UI.
  *
- * Equivalent to the Tauri lib.rs server management logic (~350 lines of Rust).
+ * Owns the bundled Hive server process lifecycle for the Electron desktop app.
  */
 import { ChildProcess, spawn, execSync } from "node:child_process";
 import fs from "node:fs";

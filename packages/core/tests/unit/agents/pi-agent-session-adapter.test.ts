@@ -268,6 +268,156 @@ describe('runWithPiAgentSession', () => {
     }));
   });
 
+  it('runs CompletionVerifier and blocks office tasks without send-file', async () => {
+    const onTaskProgress = vi.fn();
+    const listeners: Array<(event: any) => void> = [];
+    const createAgentSession = vi.fn(async () => ({
+      session: {
+        subscribe: (listener: (event: any) => void) => {
+          listeners.push(listener);
+          return () => {};
+        },
+        prompt: async () => {
+          for (const listener of listeners) {
+            listener({
+              type: 'message_update',
+              assistantMessageEvent: { type: 'text_delta', delta: 'PPT 已完成。' },
+            });
+            listener({ type: 'agent_end' });
+          }
+        },
+        abort: vi.fn(),
+        dispose: vi.fn(async () => {}),
+      },
+      eventBus: { on: () => () => {} },
+    }));
+
+    const result = await runWithPiAgentSession({
+      task: '做一个 PPT',
+      options: { onTaskProgress },
+      systemPrompt: 'sys',
+      cwd: process.cwd(),
+      providerManager: {} as any,
+      hiveCustomTools: [],
+      abortController: new AbortController(),
+      createAgentSession,
+      authAndModel: {
+        authStorage: {},
+        modelRegistry: {},
+        model: {},
+      },
+      sessionManager: {},
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.verification?.passed).toBe(false);
+    expect(result.verification?.results.some((r) => r.verifierId === 'office')).toBe(true);
+    expect(onTaskProgress).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'blocked',
+    }));
+  });
+
+  it('aborts when maxTurns is exceeded', async () => {
+    const abort = vi.fn();
+    const listeners: Array<(event: any) => void> = [];
+    const createAgentSession = vi.fn(async () => ({
+      session: {
+        subscribe: (listener: (event: any) => void) => {
+          listeners.push(listener);
+          return () => {};
+        },
+        prompt: async () => {
+          for (const listener of listeners) {
+            listener({
+              type: 'tool_execution_start',
+              toolName: 'bash',
+              args: { command: '1' },
+            });
+            listener({
+              type: 'tool_execution_end',
+              toolName: 'bash',
+              result: 'ok',
+            });
+            listener({
+              type: 'tool_execution_start',
+              toolName: 'bash',
+              args: { command: '2' },
+            });
+            listener({
+              type: 'tool_execution_end',
+              toolName: 'bash',
+              result: 'ok',
+            });
+            listener({ type: 'agent_end' });
+          }
+        },
+        abort,
+        dispose: vi.fn(async () => {}),
+      },
+      eventBus: { on: () => () => {} },
+    }));
+
+    const abortController = new AbortController();
+    const result = await runWithPiAgentSession({
+      task: 'loop forever',
+      systemPrompt: 'sys',
+      cwd: process.cwd(),
+      providerManager: {} as any,
+      hiveCustomTools: [],
+      abortController,
+      maxTurns: 1,
+      createAgentSession,
+      authAndModel: {
+        authStorage: {},
+        modelRegistry: {},
+        model: {},
+      },
+      sessionManager: {},
+    });
+
+    expect(abort).toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/maxTurns/);
+  });
+
+  it('seeds history into sessionManager before prompt', async () => {
+    const appendMessage = vi.fn();
+    const prompt = vi.fn(async () => {});
+    const createAgentSession = vi.fn(async () => ({
+      session: {
+        subscribe: () => () => {},
+        prompt,
+        abort: vi.fn(),
+        dispose: vi.fn(async () => {}),
+      },
+    }));
+
+    await runWithPiAgentSession({
+      task: 'follow up',
+      systemPrompt: 'sys',
+      cwd: process.cwd(),
+      providerManager: {} as any,
+      hiveCustomTools: [],
+      abortController: new AbortController(),
+      createAgentSession,
+      authAndModel: {
+        authStorage: {},
+        modelRegistry: {},
+        model: {},
+      },
+      sessionManager: { appendMessage },
+      historyMessages: [
+        { role: 'user', content: 'my name is Ada' },
+        { role: 'assistant', content: 'Hello Ada' },
+      ],
+    });
+
+    expect(appendMessage).toHaveBeenCalledTimes(2);
+    expect(appendMessage.mock.calls[0][0]).toMatchObject({ role: 'user' });
+    expect(appendMessage.mock.calls[1][0]).toMatchObject({ role: 'assistant' });
+    expect(prompt).toHaveBeenCalledWith('follow up');
+  });
+
   it('calls session.abort when abortSignal fires', async () => {
     const abort = vi.fn();
     const dispose = vi.fn(async () => {});

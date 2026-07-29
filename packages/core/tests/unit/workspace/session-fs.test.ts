@@ -63,6 +63,8 @@ describe('session workspace', () => {
       expect(isPathAllowed(wsFile, 'write')).toBe(true);
       expect(isPathAllowed(repoFile, 'write')).toBe(false);
       expect(isPathAllowed(wsFile, 'read')).toBe(true);
+      // Relative paths resolve against session workspace, not process.cwd
+      expect(isPathAllowed('notes.txt', 'write')).toBe(true);
       // README may or may not exist; path allowance should still pass for cwd root
       expect(isPathAllowed(join(process.cwd(), 'anything.txt'), 'read')).toBe(true);
     });

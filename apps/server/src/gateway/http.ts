@@ -69,10 +69,7 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
 
   const defaultOrigins = [
     'http://localhost:3000',
-    'http://localhost:1420', // Tauri dev (vite)
-    'http://tauri.localhost',
-    'https://tauri.localhost',
-    'tauri://localhost',
+    'http://localhost:5173', // Electron renderer dev (Vite)
   ]
 
   app.use(
@@ -82,15 +79,8 @@ export function createHttpGateway(ctx: HiveContext, hiveLogger?: HiveLogger | nu
         if (!origin) return (envOrigins ?? defaultOrigins)[0]
         if (envOrigins?.includes(origin)) return origin
         if (!envOrigins && defaultOrigins.includes(origin)) return origin
-        // Desktop dev may use any localhost port; Tauri prod uses tauri:// / tauri.localhost
+        // Electron renderer dev may use any localhost port.
         if (/^http:\/\/localhost:\d+$/.test(origin)) return origin
-        if (
-          origin === 'tauri://localhost' ||
-          origin.startsWith('http://tauri.localhost') ||
-          origin.startsWith('https://tauri.localhost')
-        ) {
-          return origin
-        }
         return (envOrigins ?? defaultOrigins)[0]
       },
       allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
